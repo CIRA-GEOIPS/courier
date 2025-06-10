@@ -1,0 +1,199 @@
+[tool.poetry]
+name = "PROJECT"
+version = "0.1.0"  # Starting with 0.1.0 is more standard than 0.0.0a
+description = "TODO"
+authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>"]
+license = "MIT"  # Add a license field
+repository = "https://github.com/biosafetylvl5/PROJECT"  # Add repository field
+
+packages = [{include="project", from="src"}]
+
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+]
+
+[tool.poetry.dependencies] # must download to run
+python = ">=3.8,<4.0"  # Specify upper bound to prevent Python 4 compatibility issues (lol, it'll be fun when python 4 comes out)
+rich
+rich-argparse
+
+# Doc group
+sphinx = { version = "^7.2.0", optional = true }
+sphinxcontrib-runcmd = { version = "*", optional = true }
+sphinxcontrib-napoleon = { version = "*", optional = true }
+sphinx-argparse = { version = "^0.4.0", optional = true }
+
+[tool.poetry.group.dev.dependencies]
+# Development dependencies that are always installed for development
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+black = "^23.7.0"
+ruff = "^0.0.287"
+mypy = "^1.5.1"
+pre-commit = "^3.3.3"
+brassy = "*"
+
+[tool.poetry.extras]
+doc = [
+    "sphinx",                    # for docs buildin
+    "sphinxcontrib-runcmd",      # for docs buildin
+    "sphinxcontrib-napoleon",    # for docs buildin
+    "sphinx-argparse",           # for docs buildin
+    "pinkrst",                   # for rst formatting
+    "doc8",                      # for rst linting
+    "brassy",                    # for changelog rendering
+]
+
+lint = [
+    "pinkrst",                   # for rst auto-formatting
+    "doc8",                      # for rst linting
+    "prettier",                  # YAML, JSON linting
+    "ruff",                      # Python linting
+    "mypy",                      # Type checking
+]
+
+test = [
+    "pytest",                    # for running tests
+    "pytest-cov",                # for test coverage
+    "pytest-xdist",              # for parallel testing
+]
+
+[tool.poetry.scripts]
+# project_cli = "project.cli:main"
+
+[tool.poetry.urls]
+Homepage = "https://github.com/biosafetylvl5/PROJECT"
+Issues = "https://github.com/biosafetylvl5/PROJECT/issues"
+Documentation = "https://biosafetylvl5.github.io/PROJECT/"
+
+## RUFF
+[tool.ruff]
+# Target Python version
+target-version = "py311"
+line-length = 88
+
+# Enable a wide range of rules
+select = [
+    "E", "F", "W",  # pycodestyle and Pyflakes
+    "I",            # isort
+    "N",            # PEP8 naming
+    "D",            # pydocstyle
+    "UP",           # pyupgrade
+    "B",            # flake8-bugbear
+    "C4",           # flake8-comprehensions
+    "SIM",          # flake8-simplify
+    "ARG",          # flake8-unused-arguments
+    "ERA",          # eradicate
+    "PL",           # Pylint
+    "RUF",          # Ruff-specific rules
+    "TCH",          # flake8-type-checking
+    "S",            # flake8-bandit (security)
+    "A",            # flake8-builtins
+    "COM",          # flake8-commas
+    "PT",           # flake8-pytest-style
+    "PTH",          # flake8-use-pathlib
+    "TRY",          # tryceratops (exception handling)
+]
+
+ignore = [
+    "D203",  # one-blank-line-before-class (conflicts with D211)
+    "D212",  # multi-line-summary-first-line (conflicts with D213)
+    "E731",  # allow variable assigned lambdas (PLEASE!!)
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+# Unlike Black, force unix style line endings ("\n")
+line-ending = "lf"
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.mccabe]
+max-complexity = 5
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Allow assert statements in tests
+"tests/**/*" = ["S101"]
+# Ignore import violations in __init__.py files
+"__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*", "**/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "docs"]
+skips = ["B101"]  # Skip assert warnings
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
