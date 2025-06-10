@@ -4,7 +4,7 @@ API
 Main Module
 ^^^^^^^^^^^
 
-.. automodule:: PROJECT.PROJECT
+.. automodule:: geoips_driver.geoips_driver
    :members:
    :undoc-members:
    :private-members:

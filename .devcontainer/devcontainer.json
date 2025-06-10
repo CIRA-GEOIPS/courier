@@ -2,7 +2,7 @@
 // For config options, see the devcontainers
 // README at: https://github.com/devcontainers/templates/tree/main/src/python
 {
-	"name": "PROJECT Devcontainer",
+	"name": "geoips_driver Devcontainer",
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
 	"features": {
 		"ghcr.io/devcontainers-contrib/features/poetry:2": {

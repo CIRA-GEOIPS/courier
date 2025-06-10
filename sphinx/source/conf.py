@@ -9,9 +9,9 @@
 
 import sys, os
 
-sys.path.insert(0, os.path.abspath("../../PROJECT"))
+sys.path.insert(0, os.path.abspath("../../geoips_driver"))
 
-project = "PROJECT"
+project = "geoips_driver"
 author = "Gwyn Uttmark"
 release = "0.0.3"
 

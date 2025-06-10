@@ -1,4 +1,4 @@
-Using PROJECT
+Using geoips_driver
 ============
 
 Example usage

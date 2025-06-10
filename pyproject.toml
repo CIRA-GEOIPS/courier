@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "PROJECT"
+name = "geoips_driver"
 version = "0.1.0"  # Starting with 0.1.0 is more standard than 0.0.0a
 description = "TODO"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>"]
 license = "MIT"  # Add a license field
-repository = "https://github.com/biosafetylvl5/PROJECT"  # Add repository field
+repository = "https://github.com/biosafetylvl5/geoips_driver"  # Add repository field
 
 packages = [{include="project", from="src"}]
 
@@ -72,9 +72,9 @@ test = [
 # project_cli = "project.cli:main"
 
 [tool.poetry.urls]
-Homepage = "https://github.com/biosafetylvl5/PROJECT"
-Issues = "https://github.com/biosafetylvl5/PROJECT/issues"
-Documentation = "https://biosafetylvl5.github.io/PROJECT/"
+Homepage = "https://github.com/biosafetylvl5/geoips_driver"
+Issues = "https://github.com/biosafetylvl5/geoips_driver/issues"
+Documentation = "https://biosafetylvl5.github.io/geoips_driver/"
 
 ## RUFF
 [tool.ruff]
