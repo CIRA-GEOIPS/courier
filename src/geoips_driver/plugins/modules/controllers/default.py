@@ -4,19 +4,17 @@ Assumes that stitched data will be produced from a set of data stemming from dif
 satellite sensors.
 """
 
+import logging
+import sqlite3 as sql
+import time
 from datetime import datetime
 from importlib.resources import files
-import logging
-import multiprocessing as mp
-import time
-
-import sqlite3 as sql
-
-from geoips_driver.algorithm_info import NewJulianDateException
-from geoips_driver.driver_components import ProcessSpawner, DriverUtilities
 
 from geoips.errors import PluginError
+
 from geoips_driver import interfaces
+from geoips_driver.algorithm_info import NewJulianDateException
+from geoips_driver.driver_components import DriverUtilities, ProcessSpawner
 
 LOG = logging.getLogger(__name__)
 
@@ -83,10 +81,10 @@ class DefaultDriver(ProcessSpawner):
             raise NotImplementedError(
                 f"No driver_config plugin under name '{driver_config}' could be found. "
                 "If you're positive this plugin exists, please run "
-                "'create_plugin_registries'."
+                "'create_plugin_registries'.",
             )
         dc = self.utils.dict_to_namespace(dc)
-        dispatchers = [plg for plg in dc.spec.dispatchers]
+        dispatchers = list(dc.spec.dispatchers)
         data_monitor = dc.spec.data_monitor.plugin
 
         db_path = self._create_db(driver_config)
@@ -164,8 +162,8 @@ class DefaultDriver(ProcessSpawner):
         cursor = conn.cursor()
         # Create a table for that database including the following columns
         cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS {} (
+            f"""
+            CREATE TABLE IF NOT EXISTS {driver_config_name} (
                 _id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fpath TEXT NOT NULL,
                 start_time DATETIME NOT NULL,
@@ -175,9 +173,7 @@ class DefaultDriver(ProcessSpawner):
                 obs_area TEXT NOT NULL,
                 product_name TEXT NOT NULL
             )
-            """.format(
-                driver_config_name
-            )
+            """,
         )
         conn.commit()
         conn.close()
@@ -221,7 +217,7 @@ def call(driver_config, start_time=None, end_time=None) -> None:
             raise TypeError(
                 f"Error: Argument 'start_time'={start_time} was provided but did not "
                 "meet the format required to generate a valid datetime object. Please "
-                "provide a string of only digits formatted YYYYMMDDHHNN."
+                "provide a string of only digits formatted YYYYMMDDHHNN.",
             )
         start_time = datetime.strptime(start_time, "%Y%m%d%H%M")
     print("Initializing NASWatcher")
@@ -230,7 +226,7 @@ def call(driver_config, start_time=None, end_time=None) -> None:
             DefaultDriver(driver_config, start_time)
         except Exception or NewJulianDateException or DrivingConcluded as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
                 # NOTE: Implement logic here to calculate the new start time based on
                 # the cadence provided in the driver config.
             if type(e).__name__ != "DrivingConcluded":

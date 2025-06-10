@@ -4,10 +4,9 @@ This has been designed specifically to capture information that we'll use to fil
 database, which will be used by GeoIPS NRT dispatchers and data_monitors.
 """
 
-from datetime import datetime, timedelta
 import os
-from pprint import pprint
 import re
+from datetime import datetime, timedelta
 
 interface = None
 
@@ -98,8 +97,8 @@ intervals = {
                 "fd": 10,
                 "la": 2,
                 "ela": 2,
-            }
-        }
+            },
+        },
     },
     "g16": {
         "abi": {
@@ -108,8 +107,8 @@ intervals = {
                 "radc": 5,
                 "radm1": 1,
                 "radm2": 1,
-            }
-        }
+            },
+        },
     },
     "g18": {
         "abi": {
@@ -118,22 +117,22 @@ intervals = {
                 "radc": 5,
                 "radm1": 1,
                 "radm2": 1,
-            }
-        }
+            },
+        },
     },
     "msg2": {
         "seviri": {
             "l1b": {
                 "full-disk": 15,
-            }
-        }
+            },
+        },
     },
     "msg3": {
         "seviri": {
             "l1b": {
                 "full-disk": 15,
-            }
-        }
+            },
+        },
     },
     "h09": {
         "ahi": {
@@ -141,8 +140,8 @@ intervals = {
                 "fldk": 10,
                 "jp": 10,
                 "r3": 10,
-            }
-        }
+            },
+        },
     },
 }
 
@@ -198,7 +197,7 @@ def pick_associated_regex(filename) -> str:
             return regex_strs[regex]
     raise re.error(
         f"Error: The input file '{filename}' could not be associated with any regex "
-        "pattern we have on file. Please provide a different filename."
+        "pattern we have on file. Please provide a different filename.",
     )
 
 
@@ -239,7 +238,6 @@ def parse_fpath_with_regex(fpath) -> dict:
         - A regex error when the provided regex string cannot be used to parse the
           basename of 'fpath'.
     """
-
     filename = os.path.basename(fpath)
     regex = pick_associated_regex(filename)
     match = re.match(regex, filename)
@@ -277,13 +275,13 @@ def parse_fpath_with_regex(fpath) -> dict:
         if sensor in ["abi"]:
             # Convert start time from Year-Day-of-Year-HHMM to datetime
             start_time = datetime.strptime(start_time_str[:7], "%Y%j") + timedelta(
-                hours=int(start_time_str[7:9]), minutes=int(start_time_str[9:11])
+                hours=int(start_time_str[7:9]), minutes=int(start_time_str[9:11]),
             )
             start_time_str = start_time.strftime("%Y%m%d%H%M")
         elif sensor in ["ahi"]:
             # Convert start time to datetime
             start_time = datetime.strptime(
-                f"{start_date}{start_hour}{start_min}", "%Y%m%d%H%M"
+                f"{start_date}{start_hour}{start_min}", "%Y%m%d%H%M",
             )
             start_time_str = start_time.strftime("%Y%m%d%H%M")
         else:
@@ -306,7 +304,7 @@ def parse_fpath_with_regex(fpath) -> dict:
             resolution = "meso1"
         elif resolution in ["la", "ela"]:
             resolution = resolution.replace("e", "extended-").replace(
-                "la", "local-area"
+                "la", "local-area",
             )
 
         parsed = {
@@ -322,7 +320,7 @@ def parse_fpath_with_regex(fpath) -> dict:
     else:
         raise re.error(
             f"Error: Could't parse the filename '{filename}' using the supplied regex: "
-            f"{regex}"
+            f"{regex}",
         )
 
 

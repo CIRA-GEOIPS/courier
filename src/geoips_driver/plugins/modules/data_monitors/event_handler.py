@@ -1,15 +1,14 @@
 """Generic file system watching module."""
 
+import os
+import sqlite3 as sql
+import time
 from concurrent.futures import ThreadPoolExecutor
 from importlib.resources import files
-import os
 from pathlib import Path
-import time
 
-import sqlite3 as sql
-from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
-
+from watchdog.observers.polling import PollingObserver
 
 interface = "data_monitors"
 name = "event_handler"
@@ -36,8 +35,8 @@ class EventListener(FileSystemEventHandler):
             - An event caught on the file system being watched.
         """
         file_path = event.src_path
-        bname = os.path.basename(file_path)
-        pl_path = Path(file_path)
+        os.path.basename(file_path)
+        Path(file_path)
         # NOTE: This will only work for GOES clavrx files right now. Need to add new
         # functionality which checks for the 'correct' file depending on algorithm,
         # satellite, sensor, and sector.
@@ -60,7 +59,7 @@ def start_monitor(monitor_config, end_time=None, **kwargs):
     kwargs: unpacked dict
         - An unpacked dictionary of additional keyword arguments. Currently not used.
     """
-    event_handler = EventListener()
+    EventListener()
     observer = PollingObserver()
     # observer.schedule(event_handler, path, recursive=True)
     # observer.start()

@@ -4,7 +4,7 @@
 # be easier to support in the long run.
 
 import abc
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from os import environ
 from types import SimpleNamespace
 
@@ -14,7 +14,7 @@ def nearest_half_hour_utc():
 
     Formatted: hhnn. I.e. '2030' or '0100', ...
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     minute = now.minute
     if minute < 25:
         # Round down to the previous hour
@@ -30,7 +30,7 @@ def nearest_half_hour_utc():
 
 def curr_calendar_date():
     """Return the current calendar date in string format {year}{month}{day}."""
-    curr_dt = datetime.now(timezone.utc)
+    curr_dt = datetime.now(UTC)
     year, month, day = curr_dt.year, curr_dt.month, curr_dt.day
     return f"{year}{str(month).zfill(2)}{str(day).zfill(2)}"
 
@@ -51,7 +51,7 @@ def calendar_to_julian(cal_dt=None) -> str:
         - Formatted: 'YYYYJJJ'
     """
     if cal_dt is None:
-        cal_dt = datetime.now(timezone.utc)
+        cal_dt = datetime.now(UTC)
     year, month, day = cal_dt.year, cal_dt.month, cal_dt.day
     date_obj = datetime(year, month, day)
     epoch = datetime(year, 1, 1)
@@ -138,7 +138,7 @@ class AlgorithmInfo(abc.ABC):
         """
         if isinstance(iter, dict):
             return SimpleNamespace(
-                **{key: self.dict_to_namespace(val) for key, val in iter.items()}
+                **{key: self.dict_to_namespace(val) for key, val in iter.items()},
             )
         elif isinstance(iter, list):
             return [self.dict_to_namespace(item) for item in iter]

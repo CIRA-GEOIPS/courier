@@ -4,11 +4,9 @@ Takes in a querier plugin and dispatcher plugin used to drive NRT processing mak
 of GeoIPS.
 """
 
-import logging
 import socket
 
 from geoips_driver.interfaces import dispatchers, queriers
-
 
 interface = "drivers"
 name = "default"
@@ -49,8 +47,8 @@ def call(querier, dispatcher, cadence, offset, port):
     # TODO: implement logic to query for appropriate files when a file is found via the
     # data_monitors that are running.
 
-    qplg = queriers.get_plugin(querier.name)
-    dplg = dispatchers.get_plugin(dispatcher.name)
+    queriers.get_plugin(querier.name)
+    dispatchers.get_plugin(dispatcher.name)
     # when a file is found: implement the pseudo-code written below
     # required_files = qplg(finfo, querier.arguments.source_names)
     # if required_files:

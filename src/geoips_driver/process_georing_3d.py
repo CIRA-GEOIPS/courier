@@ -5,22 +5,22 @@ or execute a set of processes in parallel if multiprocessing is selected.
 """
 
 import argparse
-from datetime import datetime, timezone
 import logging
-from multiprocessing import Pool
 import os
 import subprocess
 import time
+from datetime import UTC, datetime
+from multiprocessing import Pool
 
-from jinja2 import Environment, FileSystemLoader
-from watchdog.observers.polling import PollingObserver
-from watchdog.events import FileSystemEventHandler
 import xarray
+from jinja2 import Environment, FileSystemLoader
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver
 
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     calendar_to_julian,
-    NewJulianDateException,
 )
 
 LOG = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class NASWatcher(FileSystemEventHandler):
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
-                f"container for '{algorithm}' before instantiating a watcher for it."
+                f"container for '{algorithm}' before instantiating a watcher for it.",
             )
         self.max_cpu_count = os.cpu_count() // 4
         self.alg_info = algorithms[algorithm]
@@ -79,18 +79,18 @@ class NASWatcher(FileSystemEventHandler):
                 int(curr_jdate) > int(julian_date)
                 # Offset the day by 3 hours (hr 02 today - hr 23 prev day)
                 # as there is a delay of about 2hr 40 min for the data to come in
-                and datetime.now(timezone.utc).hour >= 2
+                and datetime.now(UTC).hour >= 2
             ):
                 # Directory was never created. Most likely caused by data outages from
                 # one or more satellites. Raise a julian date exception and move
                 # on to the next date.
                 raise NewJulianDateException(
                     f"Directory {self.watch_directory} was never created and a new "
-                    "day has started. Exiting to watch the next directory."
+                    "day has started. Exiting to watch the next directory.",
                 )
             else:
                 print(
-                    f"Waiting for data directory {self.watch_directory} to be created."
+                    f"Waiting for data directory {self.watch_directory} to be created.",
                 )
                 time.sleep(30)
         self.sector = self.alg_info.sector_mapping[sector]
@@ -121,9 +121,7 @@ class NASWatcher(FileSystemEventHandler):
 
         # Note that this is using xarray_open_dataset format and will need to be changed
         # if your file type is of a file format that can't be read using this technique
-        if initial_size == next_size and len(xarray.open_dataset(fpath).attrs):
-            return True
-        return False
+        return bool(initial_size == next_size and len(xarray.open_dataset(fpath).attrs))
 
     def on_created(self, event):
         """If a file in 'watch_directory' was created, call this func.
@@ -292,7 +290,7 @@ class NASWatcher(FileSystemEventHandler):
         """
         print(f"Beginning parallel processing of {self.alg_info.name} products.")
         with Pool(
-            processes=min(len(self.alg_info.product_names), self.max_cpu_count)
+            processes=min(len(self.alg_info.product_names), self.max_cpu_count),
         ) as pool:
             # Execute your GeoIPS bash scripts in parallel
             results = pool.map(
@@ -311,7 +309,7 @@ class NASWatcher(FileSystemEventHandler):
                     f.write(result)
                     print(
                         f"Output for script {product_name}_{output_type} saved "
-                        f"to {output_file}"
+                        f"to {output_file}",
                     )
         print(f"Finished parallel processing of {self.alg_info.name} products.")
         # Now, rsync the parent directories of the newly created outputs w/ OVCST4 for
@@ -367,7 +365,7 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True
+                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
             )
             return (
                 result.stdout.strip()
@@ -396,7 +394,7 @@ class NASWatcher(FileSystemEventHandler):
             subprocess.run(["sbatch", job_path], check=True)
             print(f"Submitted job for file: {fpath}")
         except subprocess.CalledProcessError as e:
-            LOG.error(f"Failed to submit job for file: {fpath}, error: {e}")
+            LOG.exception(f"Failed to submit job for file: {fpath}, error: {e}")
 
     def create_slurm_jobfile(self, job_name, executable, **kwargs):
         """Generate a slurm job file from the arguments provided using jinja.
@@ -481,7 +479,7 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     starting_jdate = calendar_to_julian()
     # Need a julian date as that is the format of directory names for GOES-CLAVR-x data
     event_handler = NASWatcher(
-        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm
+        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     observer = PollingObserver()
@@ -499,18 +497,18 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
                 int(curr_jdate) > int(starting_jdate)
                 # Offset the day by 3 hours (hr 02 today - hr 23 prev day)
                 # as there is a delay of about 2hr 40 min for the data to come in
-                and datetime.now(timezone.utc).hour >= 2
+                and datetime.now(UTC).hour >= 2
             ):
                 starting_jdate = curr_jdate
                 observer.stop()
                 observer.join()
                 raise NewJulianDateException(
-                    f"Reinitializing NASWatcher for julian date = {starting_jdate}."
+                    f"Reinitializing NASWatcher for julian date = {starting_jdate}.",
                 )
     # except KeyboardInterrupt:
     #     observer.stop()
     except Exception as e:
-        LOG.error(f"An error occurred: {e}")
+        LOG.exception(f"An error occurred: {e}")
         observer.stop()
     finally:
         observer.join()
@@ -563,7 +561,7 @@ def main():
             start_watching(alg, sat, sensor, sector, use_slurm=False)
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

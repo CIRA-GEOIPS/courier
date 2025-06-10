@@ -1,16 +1,16 @@
 finfo = {
     "GOES16": {
         "searchdir": f"/mnt/sat/grb/goes16/YYYY/YYYY_MM_DD_JJJ/abi/L1b/RadF",  # NOQA
-        "fpatterns": [f"*M6C13*sYYYYJJJHHNN*"],
+        "fpatterns": ["*M6C13*sYYYYJJJHHNN*"],
         "num_expected_files": 1,
     },
     "GOES18": {
         "searchdir": f"/mnt/sat/grb/goes18/YYYY/YYYY_MM_DD_JJJ/abi/L1b/RadF",  # NOQA
-        "fpatterns": [f"*M6C13*sYYYYJJJHHNN*"],
+        "fpatterns": ["*M6C13*sYYYYJJJHHNN*"],
         "num_expected_files": 1,
     },
     "M09": {
-        "searchdir": f"/mnt/sat/meteosat/meteosat-09/YYYYMMDD/MSG2",
+        "searchdir": "/mnt/sat/meteosat/meteosat-09/YYYYMMDD/MSG2",
         "fpatterns": [
             f"H-000-MSG2__-MSG2_IODC___-_________-EPI______-YYYYMMDDHHNN-__",  # NOQA
             f"H-000-MSG2__-MSG2_IODC___-_________-PRO______-YYYYMMDDHHNN-__",  # NOQA
@@ -19,7 +19,7 @@ finfo = {
         "num_expected_files": 10,
     },
     "M10": {
-        "searchdir": f"/mnt/sat/meteosat/meteosat-10/YYYYMMDD/MSG3",
+        "searchdir": "/mnt/sat/meteosat/meteosat-10/YYYYMMDD/MSG3",
         "fpatterns": [
             f"H-000-MSG3__-MSG3________-_________-EPI______-YYYYMMDDHHNN-__",  # NOQA
             f"H-000-MSG3__-MSG3________-_________-PRO______-YYYYMMDDHHNN-__",  # NOQA
@@ -28,13 +28,13 @@ finfo = {
         "num_expected_files": 10,
     },
     "GK2A": {
-        "searchdir": f"/mnt/GK2A/AMI/L1B/FD/YYYYMM/DD/HH",
-        "fpatterns": [f"*ir105_fd020ge_*YYYYMMDDHHNN*"],
+        "searchdir": "/mnt/GK2A/AMI/L1B/FD/YYYYMM/DD/HH",
+        "fpatterns": ["*ir105_fd020ge_*YYYYMMDDHHNN*"],
         "num_expected_files": 1,
     },
     "H09": {
-        "searchdir": f"/mnt/sat/ahi-unzip/himawari9/YYYYMMDD",
-        "fpatterns": [f"*YYYYMMDD_HHNN_B13_FLDK_*_S[01][0-9]10*"],
+        "searchdir": "/mnt/sat/ahi-unzip/himawari9/YYYYMMDD",
+        "fpatterns": ["*YYYYMMDD_HHNN_B13_FLDK_*_S[01][0-9]10*"],
         "num_expected_files": 10,
     },
 }

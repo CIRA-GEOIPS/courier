@@ -1,12 +1,12 @@
 """Generic file system watching module."""
 
-from importlib.resources import files
 import os
+import sqlite3 as sql
+from importlib.resources import files
 from pathlib import Path
 
-import sqlite3 as sql
-from watchdog.observers.polling import PollingObserver  # NOQA
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver  # NOQA
 
 interface = "data_monitors"
 name = "file_system"
@@ -33,8 +33,8 @@ class EventListener(FileSystemEventHandler):
             - An event caught on the file system being watched.
         """
         file_path = event.src_path
-        bname = os.path.basename(file_path)
-        pl_path = Path(file_path)
+        os.path.basename(file_path)
+        Path(file_path)
         # NOTE: This will only work for GOES clavrx files right now. Need to add new
         # functionality which checks for the 'correct' file depending on algorithm,
         # satellite, sensor, and sector.

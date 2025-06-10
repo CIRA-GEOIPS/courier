@@ -7,7 +7,6 @@ from geoips_driver.interfaces.module_based.data_monitors import data_monitors
 from geoips_driver.interfaces.module_based.dispatchers import dispatchers
 from geoips_driver.interfaces.module_based.drivers import drivers
 from geoips_driver.interfaces.module_based.queriers import queriers
-
 from geoips_driver.interfaces.yaml_based.controller_configs import controller_configs
 from geoips_driver.interfaces.yaml_based.monitor_configs import monitor_configs
 

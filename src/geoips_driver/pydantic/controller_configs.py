@@ -4,12 +4,11 @@ Used for validation of controller_config plugins.
 """
 
 from datetime import datetime
-from typing import ClassVar, Dict, List, Optional, Union
-
-from pydantic import Field, model_validator
+from typing import ClassVar
 
 from geoips.pydantic.bases import FrozenModel, PluginModel, PythonIdentifier
 from geoips.pydantic.workflows import WorkflowStepDefinitionModel
+from pydantic import Field
 
 
 class MonitorConfig(FrozenModel):
@@ -21,7 +20,7 @@ class MonitorConfig(FrozenModel):
             "Name of the monitor_config plugin, must be a valid Python identifier."
         ),
     )
-    arguments: Dict[str, List[str]] = Field(
+    arguments: dict[str, list[str]] = Field(
         ...,
         description=(
             "Dictionary of monitor-specific arguments, currently expects 'obs_area' as "
@@ -33,13 +32,13 @@ class MonitorConfig(FrozenModel):
 class DispatcherArgs(FrozenModel):
     """Required and optional arguments for a dispatcher plugin."""
 
-    display_name: Optional[str] = Field(
-        None, description="Optional name which can be used to name the process running."
+    display_name: str | None = Field(
+        None, description="Optional name which can be used to name the process running.",
     )
     template: str = Field(
-        ..., description="The name of the template spawn your process or job."
+        ..., description="The name of the template spawn your process or job.",
     )
-    steps: List[WorkflowStepDefinitionModel] = Field(
+    steps: list[WorkflowStepDefinitionModel] = Field(
         ...,
         description=("A list of steps that are needed to create your product(s)."),
     )
@@ -49,7 +48,7 @@ class PoolDispatcherArgs(DispatcherArgs):
     """Required and optional arguments for a pool dispatcher plugin."""
 
     core_count: int = Field(
-        ..., description="The number of cores used for your processing."
+        ..., description="The number of cores used for your processing.",
     )
 
 
@@ -68,7 +67,7 @@ class SlurmDispatcherArgs(DispatcherArgs):
 class DataMonitorArgs(FrozenModel):
     """Required and optional arguments for the data_monitor plugin."""
 
-    start_time: Optional[datetime] = Field(
+    start_time: datetime | None = Field(
         None,
         description=(
             "The start datetime to begin monitoring at. Optional. If provided, it must "
@@ -77,7 +76,7 @@ class DataMonitorArgs(FrozenModel):
             "will search continuously from this time on."
         ),
     )
-    end_time: Optional[datetime] = Field(
+    end_time: datetime | None = Field(
         None,
         description=(
             "The end datetime to stop monitoring at. Optional. If provided, it must "
@@ -85,7 +84,7 @@ class DataMonitorArgs(FrozenModel):
             "datetime object."
         ),
     )
-    monitor_configs: List[MonitorConfig] = Field(
+    monitor_configs: list[MonitorConfig] = Field(
         ...,
         description=(
             "A list of monitor_config plugins used to direct your data_monitor. "
@@ -96,7 +95,7 @@ class DataMonitorArgs(FrozenModel):
 class QuerierArgs(FrozenModel):
     """Required and optional arguments for a querier plugin."""
 
-    source_names: List[str] = Field(
+    source_names: list[str] = Field(
         ...,
         description=(
             "List of source names needed for this dispatcher. Corresponds to the source"
@@ -112,7 +111,7 @@ class Querier(FrozenModel):
     """Configuration for a querier plugin."""
 
     name: PythonIdentifier = Field(
-        ..., description="The name of the queier plugin to use."
+        ..., description="The name of the queier plugin to use.",
     )
     arguments: QuerierArgs = (
         Field(
@@ -128,9 +127,9 @@ class Dispatcher(FrozenModel):
     """Configuration for a dispatcher plugin."""
 
     name: PythonIdentifier = Field(
-        ..., description="The name of the dispatcher plugin to use."
+        ..., description="The name of the dispatcher plugin to use.",
     )
-    arguments: Union[PoolDispatcherArgs, SerialDispatcherArgs, SlurmDispatcherArgs] = (
+    arguments: PoolDispatcherArgs | SerialDispatcherArgs | SlurmDispatcherArgs = (
         Field(
             ...,
             description=(
@@ -178,7 +177,7 @@ class DriverArgs(FrozenModel):
             "https://dateparser.readthedocs.io/en/latest/index.html for more info."
         ),
     )
-    offset: Optional[str] = Field(
+    offset: str | None = Field(
         "0 min",
         description=(
             "An optional time offset from the top of the hour to dispatch a process at."
@@ -238,11 +237,11 @@ class DataMonitor(FrozenModel):
 class ControllerConfigSpec(FrozenModel):
     """Defines the specification for the controller_config plugin."""
 
-    data_monitors: List[DataMonitor] = Field(
-        ..., description="List of data_monitor plugins to use with your controller."
+    data_monitors: list[DataMonitor] = Field(
+        ..., description="List of data_monitor plugins to use with your controller.",
     )
-    drivers: List[Driver] = Field(
-        ..., description="List of driver plugins to use with your controller."
+    drivers: list[Driver] = Field(
+        ..., description="List of driver plugins to use with your controller.",
     )
 
 
@@ -252,5 +251,5 @@ class ControllerConfigPlugin(PluginModel):
     apiVersion: ClassVar[str] = "geoips_driver/v1"
 
     spec: ControllerConfigSpec = Field(
-        ..., description="Specification for the controller_config plugin."
+        ..., description="Specification for the controller_config plugin.",
     )

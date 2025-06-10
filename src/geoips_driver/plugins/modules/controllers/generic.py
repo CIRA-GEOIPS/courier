@@ -1,10 +1,11 @@
 """Generic controller plugin used to pilot GeoIPS processing for NRT products."""
 
 import logging
-from multiprocessing import Process
 import time
+from multiprocessing import Process
 
 from geoips.commandline.log_setup import setup_logging
+
 from geoips_driver import interfaces
 
 setup_logging()
@@ -61,7 +62,7 @@ def call(controller_config_name, port=6580):
         for pname, p in dm_processes.items():
             if not p.is_alive():
                 LOG.warning(
-                    f"Process with name '{pname}', ID '{p.pid}' is no longer alive."
+                    f"Process with name '{pname}', ID '{p.pid}' is no longer alive.",
                 )
                 p.join()
                 p.close()
@@ -69,7 +70,7 @@ def call(controller_config_name, port=6580):
         for pname, p in driver_processes.items():
             if not p.is_alive():
                 LOG.warning(
-                    f"Process with name '{pname}', ID '{p.pid}' is no longer alive."
+                    f"Process with name '{pname}', ID '{p.pid}' is no longer alive.",
                 )
                 p.join()
                 p.close()
