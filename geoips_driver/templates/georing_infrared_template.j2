@@ -1,0 +1,51 @@
+#!/bin/bash
+
+geoips run data_fusion \
+    --filename_formatter ovcst_fname \
+    --filename_formatter_kwargs '{"basedir": "/mnt/overcastnas1/erose/geoips/output/{{ outdir_type }}/Stitched-Infrared/"}' \
+    --sector_list overcast_georing \
+    --logging_level info \
+    --fusion_final_output_formatter {{ output_type }} \
+    --fusion_final_product_name Stitched-Infrared \
+    --fusion_final_source_name stitched \
+    --fusion_final_platform_name geo \
+    --minimum_coverage 0 \
+    --fuse_files $GEOIPS_TESTDATA_DIR/temp_infrared_data/data/*C13*G18*.nc \
+        --fuse_reader_name abi_netcdf \
+        --fuse_reader_kwargs '{"mask_sat_zen_greater": 85}' \
+        --fuse_product_name OVCST-IR-ABI \
+        --fuse_dataset_name goes18 \
+        --fuse_order 4 \
+    --fuse_files $GEOIPS_TESTDATA_DIR/temp_infrared_data/data/*C13*G16*.nc \
+        --fuse_reader_name abi_netcdf \
+        --fuse_reader_kwargs '{"mask_sat_zen_greater": 85}' \
+        --fuse_product_name OVCST-IR-ABI \
+        --fuse_dataset_name goes16 \
+        --fuse_order 5 \
+    --fuse_files $GEOIPS_TESTDATA_DIR/temp_infrared_data/data/*MSG2* \
+        --fuse_reader_name seviri_hrit \
+        --fuse_reader_kwargs '{"mask_sat_zen_greater": 85}' \
+        --fuse_product_name OVCST-IR-SEVIRI \
+        --fuse_dataset_name meteosat9 \
+        --fuse_order 1 \
+    --fuse_files $GEOIPS_TESTDATA_DIR/temp_infrared_data/data/*MSG3* \
+        --fuse_reader_name seviri_hrit \
+        --fuse_reader_kwargs '{"mask_sat_zen_greater": 85}' \
+        --fuse_product_name OVCST-IR-SEVIRI \
+        --fuse_dataset_name meteosat10 \
+        --fuse_order 0 \
+    --fuse_files $GEOIPS_TESTDATA_DIR/temp_infrared_data/data/gk2a*ir105* \
+        --fuse_reader_name ami_netcdf \
+        --fuse_reader_kwargs '{"mask_sat_zen_greater": 85}' \
+        --fuse_product_name OVCST-IR-AMI \
+        --fuse_dataset_name geokompsat \
+        --fuse_order 2 \
+    --fuse_files $GEOIPS_TESTDATA_DIR/temp_infrared_data/data/*H09*B13* \
+        --fuse_reader_name ahi_hsd \
+        --fuse_reader_kwargs '{"mask_sat_zen_greater": 85}' \
+        --fuse_product_name OVCST-IR-AHI \
+        --fuse_dataset_name himawari9 \
+        --fuse_order 3
+retval=$?
+
+exit $retval

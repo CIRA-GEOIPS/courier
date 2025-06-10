@@ -1,0 +1,27 @@
+interface: monitor_configs
+family: standard
+name: goes16_abi
+docstring: |
+  Information necessary to monitor for GOES16 ABI L1B data files at CIRA.
+spec:
+  Full-Disk:
+    parent_dir: "/mnt/sat/grb/goes16/YYYY/YYYY_MM_DD_JJJ/abi/L1b/RadF"
+    patterns:
+      - "*M6C[01][1-6]*sYYYYJJJHHNN*"
+    num_expected: 16
+  CONUS:
+    parent_dir: "/mnt/sat/grb/goes16/YYYY/YYYY_MM_DD_JJJ/abi/L1b/RadC"
+    patterns:
+      - "*M6C[01][1-6]*sYYYYJJJHHNN*"
+    num_expected: 16
+  Meso1:
+    parent_dir: "/mnt/sat/grb/goes16/YYYY/YYYY_MM_DD_JJJ/abi/L1b/RadM1"
+    patterns:
+      - "*M6C[01][1-6]*sYYYYJJJHHNN*"
+    num_expected: 16
+  Meso2:
+    parent_dir: "/mnt/sat/grb/goes16/YYYY/YYYY_MM_DD_JJJ/abi/L1b/RadM2"
+    patterns:
+      - "*M6C[01][1-6]*sYYYYJJJHHNN*"
+    num_expected: 16
+

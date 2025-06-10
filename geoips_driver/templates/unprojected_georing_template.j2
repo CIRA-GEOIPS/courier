@@ -1,0 +1,18 @@
+#!/bin/bash
+
+geoips run single_source {{ file_path }} \
+    --reader_name georing_netcdf \
+    --product_name {{ product_name }} \
+    --output_formatter {{ output_type }} \
+    --output_formatter_kwargs '{"x_size": "18000", "y_size": "7000", "is_3d": "{{ is_3d }}"}' \
+    --filename_formatter ovcst_fname \
+    --filename_formatter_kwargs '{"basedir": "/mnt/overcastnas1/erose/geoips/output/{{ outdir_type }}/{{ ovcst_product_name }}/"}' \
+    --logging_level info \
+    --minimum_coverage 0
+retval=$?
+
+exit $retval
+
+
+# --filename_formatter_kwargs '{"basedir": "/home/erose/geoips/geoips_packages/outdirs/preprocessed/"}' \
+# --filename_formatter_kwargs '{"basedir": "/home/erose/geoips/geoips_packages/outdirs/ovcst_test_run/{{ outdir_type }}/{{ ovcst_product_name }}/"}' \

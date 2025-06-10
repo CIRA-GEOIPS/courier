@@ -1,0 +1,15 @@
+interface: monitor_configs
+family: standard
+name: meteosat9_seviri
+docstring: |
+  Information necessary to monitor for Meteosat9 SEVIRI L1B data files at CIRA.
+spec:
+  Full-Disk:
+    parent_dir: "/mnt/sat/meteosat/meteosat-09/YYYYMMDD/MSG2"
+    patterns:
+      - "H-000-MSG2__-MSG2_IODC___-_________-EPI______-YYYYMMDDHHNN-__"
+      - "H-000-MSG2__-MSG2_IODC___-_________-PRO______-YYYYMMDDHHNN-__"
+      - "H-000-MSG2__-MSG2_IODC___-IR*___-00000[1-8]___-YYYYMMDDHHNN-C_"
+      - "H-000-MSG2__-MSG2_IODC___-VIS*___-00000[1-8]___-YYYYMMDDHHNN-C_"
+      - "H-000-MSG2__-MSG2_IODC___-WV*___-00000[1-8]___-YYYYMMDDHHNN-C_"
+    num_expected: 114

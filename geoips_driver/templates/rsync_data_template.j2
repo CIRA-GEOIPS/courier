@@ -1,0 +1,6 @@
+# Output directory of the associated image
+fdir=/mnt/overcastnas1/erose/geoips/output/unprojected_imagery/{{ product_name }}
+# Last file created in that directory (only works for single files; need to have something different for 3D products
+last_file=$(find $fdir -type f -printf "%T@ %p\n" | sort -n | tail -1 | cut -d' ' -f2)
+# sync that file over to the slider box
+rsync -avz $last_file slider@overcast4.cira.colostate.edu:/ingest/overcast/geo_ring/ovcst_{{ product_name }}/
