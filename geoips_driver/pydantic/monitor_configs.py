@@ -20,7 +20,8 @@ class ObservationArea(FrozenModel):
     parent_dir: Path = Field(..., description="Path template for data storage.")
     patterns: list[str] = Field(..., description="List of filename patterns to match.")
     num_expected: int = Field(
-        ..., description="Expected number of files per time step.",
+        ...,
+        description="Expected number of files per time step.",
     )
 
 
@@ -63,5 +64,6 @@ class MonitorConfigPlugin(PluginModel):
     apiVersion: ClassVar[str] = "geoips_driver/v1"
 
     spec: MonitorConfigSpec = Field(
-        ..., description="Specification for the monitor_config plugin.",
+        ...,
+        description="Specification for the monitor_config plugin.",
     )

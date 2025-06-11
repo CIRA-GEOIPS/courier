@@ -6,7 +6,7 @@ from multiprocessing import Process
 
 from geoips.commandline.log_setup import setup_logging
 
-from geoips_driver.src.geoips_driver import interfaces
+from geoips_driver import interfaces
 
 setup_logging()
 LOG = logging.getLogger(__name__)
@@ -16,26 +16,29 @@ name = "generic"
 family = "standard"
 
 
-def call(controller_config_name, port=6580):
+def call(controller_config, port=6580):
     """Initiate daemon-like NRT processing using GeoIPS.
 
     Parameters
     ----------
-    controller_config_name: str
+    controller_config: str
         - The name of the controller_config plugin used to inform this controller how to
           operate.
     port: int
         - The port number for microservices to send data over (no external access
           provided)
     """
-    controller_config = interfaces.driver_configs.get_plugin(controller_config_name)
-    driver = interfaces.drivers.get_plugin("default")
+    controller_config = interfaces.controller_configs.get_plugin(controller_config)
+    driver = interfaces.controllers.get_plugin("default")
 
     data_monitors = controller_config.spec.data_monitors
     drivers = controller_config.spec.drivers
+    monitor_configs = data_monitors[0].arguments.monitor_configs
 
     dm_processes = {}
     driver_processes = {}
+
+    # TODO: Need to implement logic to get the correct datetime to start processing on
 
     for dm in data_monitors:
         dm_plg = interfaces.data_monitors.get_plugin(dm.name)
@@ -43,15 +46,14 @@ def call(controller_config_name, port=6580):
         dm_processes[dm.name] = p
 
     for driver in drivers:
+        driver_plg = interfaces.drivers.get_plugin(driver.name)
         querier = driver.arguments.querier
         dispatcher = driver.arguments.dispatcher
         cadence = driver.arguments.cadence
         offset = driver.arguments.offset
-        # NOTE: Need to create a 'driver' plugin which accepts a querier and a
-        # dispatcher as its arguments.
         p = Process(
-            target=driver,
-            args=(querier, dispatcher, cadence, offset, port),
+            target=driver_plg,
+            args=(querier, dispatcher, monitor_configs, cadence, offset, port),
         )
         driver_processes[driver.name] = p
 

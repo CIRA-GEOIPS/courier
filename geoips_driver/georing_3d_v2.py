@@ -158,7 +158,12 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     starting_jdate = calendar_to_julian()
     # Need a julian date as that is the format of directory names for GOES-CLAVR-x data
     event_handler = OvercastRunner(
-        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm,
+        algorithm,
+        sat,
+        sensor,
+        sector,
+        starting_jdate,
+        use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     observer = PollingObserver()

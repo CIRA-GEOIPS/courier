@@ -22,7 +22,7 @@ from geoips_driver.clean.driver_components import (
     FileLocator,
     ProcessSpawner,
 )
-from geoips_driver.interfaces import controller_configs as driver_configs
+from geoips_driver.interfaces import controller_configs
 
 LOG = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ name = "default_stable"
 family = "obp"
 
 
-class DefaultDriver(ProcessSpawner):
+class DefaultController(ProcessSpawner):
     """Daemon which produces GeoIPS NRT outputs.
 
     Searches through one or more directories (denoted by satellite and sensor) for data
@@ -46,31 +46,31 @@ class DefaultDriver(ProcessSpawner):
     last_processed_hhnn = None
     utils = DriverUtilities()
 
-    def __init__(self, driver_config, start_time) -> None:
+    def __init__(self, controller_config, start_time) -> None:
         """Initialize the runner to start watching for data coming from 1+ directories.
 
         Parameters
         ----------
-        driver_config: GeoIPS driver_config yaml plugin
-            - GeoIPS yaml plugin which describes the configuration for locating, processing,
-            files, additionally specifying what products we want to create and how we
-            should output them.
+        controller_config: GeoIPS controller_config yaml plugin
+            - GeoIPS yaml plugin which describes the configuration for locating,
+            processing, files, additionally specifying what products we want to create
+            and how we should output them.
         start_time: Datetime object or None
             - If specified, begin your search for files and the specified time. If None,
             search the current calendar date starting at 0000 UTC.
             - Formatted: YYYYMMDDHHNN
         """
         try:
-            dc = driver_configs.get_plugin(driver_config)
+            cc = controller_configs.get_plugin(controller_config)
         except PluginError:
             raise NotImplementedError(
-                f"No driver_config plugin under name '{driver_config}' could be found. "
+                f"No driver_config plugin under name '{controller_config}' could be found. "
                 "If you're positive this plugin exists, please run "
                 "'create_plugin_registries'.",
             )
-        dc = self.utils.dict_to_namespace(dc)
-        self.dispatchers = list(dc.spec.dispatchers)
-        self.data_monitor = dc.spec.data_monitor.plugin
+        cc = self.utils.dict_to_namespace(cc)
+        self.dispatchers = list(cc.spec.dispatchers)
+        self.data_monitor = cc.spec.data_monitor.plugin
 
         cadence = self.dispatchers[0].arguments.cadence
         self.outdir = "/some/path"
@@ -280,18 +280,18 @@ class DefaultDriver(ProcessSpawner):
         return finfo
 
 
-def call(driver_config, start_time=None) -> None:
+def call(controller_config, start_time=None) -> None:
     """Start up the daemon and begin watching for data.
 
     When data is found, create and submit slurm jobfiles or execute bash scripts which
-    will produce GeoIPS output based on the input driver_config plugin.
+    will produce GeoIPS output based on the input controller_config plugin.
 
     If the daemon crashes for some reason, catch that failure, wait 5 seconds, and
     attempt to restart it.
 
     Parameters
     ----------
-    driver_config: GeoIPS driver_config yaml plugin
+    controller_config: GeoIPS controller_config yaml plugin
         - GeoIPS yaml plugin which describes the configuration for locating, processing,
           files, additionally specifying what products we want to create and how we
           should output them.
@@ -320,12 +320,12 @@ def call(driver_config, start_time=None) -> None:
     print("Initializing NASWatcher")
     while True:
         try:
-            DefaultDriver(driver_config, start_time)
+            DefaultController(controller_config, start_time)
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
                 LOG.exception(f"Watcher crashed with error: {e}")
                 # NOTE: Implement logic here to calculate the new start time based on
-                # the cadence provided in the driver config.
+                # the cadence provided in the controller config.
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

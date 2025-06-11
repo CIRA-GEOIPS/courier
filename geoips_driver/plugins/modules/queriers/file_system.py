@@ -17,17 +17,17 @@ Once this data is provided, you can use this class to search through inputted
 directories for your files.
 
 example_finfo = {
-    "GOES16": {
+    "Full-Disk_goes16_abi": {
         "parent_dir": "/mnt/grb/goes16/2024/2024_11_21_326/abi/L1b/RadF",
         "patterns": ["*M6C13*s20243261600*"],
         "num_expected": 1,
     },
-    "GOES18": {
+    "Full-Disk_goes18_abi": {
         "parent_dir": "/mnt/grb/goes18/2024/2024_11_21_326/abi/L1b/RadF",
         "patterns": ["*M6C13*s20243261600*"],
         "num_expected": 1,
     },
-    "M09": {
+    "Full-Disk_meteosat9_seviri": {
         "parent_dir": "/mnt/meteosat-09/20241121/MSG2",
         "patterns": [
             "H-000-MSG2__-MSG2_IODC___-_________-EPI______-202411211600-__",
@@ -36,7 +36,7 @@ example_finfo = {
         ],
         "num_expected": 10,
     },
-    "M10": {
+    "Full-Disk_meteosat10_seviri": {
         "parent_dir": "/mnt/meteosat-10/20241121/MSG3",
         "patterns": [
             "H-000-MSG3__-MSG3_IODC___-_________-EPI______-202411211600-__",
@@ -45,12 +45,12 @@ example_finfo = {
         ],
         "num_expected": 10,
     },
-    "GK2A": {
+    "Full-Disk_gk2a_abi": {
         "parent_dir": "/mnt/GK2A/AMI/L1B/FD/202411/21/16",
         "patterns": ["*ir105*202411211600*"],
         "num_expected": 1,
     },
-    "H09": {
+    "Full-Disk_himawari9_ahi": {
         "parent_dir": "/mnt/ahi/himawari9/20241121",
         "patterns": ["*20241121_1600_B13_FLDK_*_S[01][0-9]10*"],
         "num_expected": 10,
@@ -85,21 +85,9 @@ def filter_by_source_names(finfo, source_names):
     """
     filtered_finfo = {}
     for sat in finfo:
-        if sat.startswith("GOES"):
-            src = "abi"
-        elif sat == "GK2A":
-            src = "ami"
-        elif sat in ["M09", "M10"]:
-            src = "seviri"
-        elif sat in ["H08", "H09"]:
-            src = "ahi"
-        elif sat.startswith("MTG"):
-            src = "fci"
-        else:
-            raise ValueError(
-                f"Error: satellite key '{sat}' couldn't be associated with a valid "
-                "GeoIPS source_name. Run 'geoips list source-names' for more info.",
-            )
+        # source should always be the last element of the key. For example:
+        # 'Full-Disk_goes16_abi
+        src = sat.split("_")[-1]
         if src in source_names:
             filtered_finfo[sat] = finfo[sat]
     return filtered_finfo

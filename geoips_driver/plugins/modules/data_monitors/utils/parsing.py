@@ -275,13 +275,15 @@ def parse_fpath_with_regex(fpath) -> dict:
         if sensor in ["abi"]:
             # Convert start time from Year-Day-of-Year-HHMM to datetime
             start_time = datetime.strptime(start_time_str[:7], "%Y%j") + timedelta(
-                hours=int(start_time_str[7:9]), minutes=int(start_time_str[9:11]),
+                hours=int(start_time_str[7:9]),
+                minutes=int(start_time_str[9:11]),
             )
             start_time_str = start_time.strftime("%Y%m%d%H%M")
         elif sensor in ["ahi"]:
             # Convert start time to datetime
             start_time = datetime.strptime(
-                f"{start_date}{start_hour}{start_min}", "%Y%m%d%H%M",
+                f"{start_date}{start_hour}{start_min}",
+                "%Y%m%d%H%M",
             )
             start_time_str = start_time.strftime("%Y%m%d%H%M")
         else:
@@ -304,7 +306,8 @@ def parse_fpath_with_regex(fpath) -> dict:
             resolution = "meso1"
         elif resolution in ["la", "ela"]:
             resolution = resolution.replace("e", "extended-").replace(
-                "la", "local-area",
+                "la",
+                "local-area",
             )
 
         parsed = {

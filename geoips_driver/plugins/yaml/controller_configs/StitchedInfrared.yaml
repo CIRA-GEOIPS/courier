@@ -52,11 +52,13 @@ spec:
             core_count: 1
             template: georing_infrared_template
             steps:
-              - workflow:
-                  # name: Stitched-Infrared
-                  name: abi_infrared
-                  arguments: {}
-              - output_formatter:
-                  name: unprojected_image
-                  arguments:
-                    sectors: [overcast_georing]
+              workflow:
+                # name: Stitched-Infrared
+                kind: workflow
+                name: abi_infrared
+                arguments: {}
+              output_formatter:
+                kind: output_formatter
+                name: unprojected_image
+                arguments:
+                  sectors: [overcast_georing]

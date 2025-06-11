@@ -418,7 +418,10 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
+                ["/bin/bash", fpath],
+                check=True,
+                capture_output=True,
+                text=True,
             )
             return (
                 result.stdout.strip()
@@ -531,7 +534,12 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     """
     starting_cdate = curr_calendar_date()
     event_handler = NASWatcher(
-        algorithm, sat, sensor, sector, starting_cdate, use_slurm=use_slurm,
+        algorithm,
+        sat,
+        sensor,
+        sector,
+        starting_cdate,
+        use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     # observer = Observer()

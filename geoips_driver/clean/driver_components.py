@@ -77,7 +77,9 @@ class DateUtilities:
         else:
             # Round up to the next hour
             result = (now + timedelta(hours=1)).replace(
-                minute=0, second=0, microsecond=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
         return f"{str(result.hour).zfill(2)}{str(result.minute).zfill(2)}"
 
@@ -700,7 +702,10 @@ class ProcessSpawner(Templater, FileOperator):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
+                ["/bin/bash", fpath],
+                check=True,
+                capture_output=True,
+                text=True,
             )
             return (
                 result.stdout.strip()
@@ -766,3 +771,6 @@ class ProcessSpawner(Templater, FileOperator):
             # Modify the file permissions to be executable
             subprocess.run(["chmod", "+x", script_path], check=True)
             self.run_bash_script(script_path)
+
+
+driver_utils = DriverUtilities()
