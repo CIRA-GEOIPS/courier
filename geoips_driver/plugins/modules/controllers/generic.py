@@ -6,7 +6,7 @@ from multiprocessing import Process
 
 from geoips.commandline.log_setup import setup_logging
 
-from geoips_driver import interfaces
+from geoips_driver.src.geoips_driver import interfaces
 
 setup_logging()
 LOG = logging.getLogger(__name__)
