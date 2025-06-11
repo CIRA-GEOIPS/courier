@@ -5,20 +5,19 @@ or execute a set of processes in parallel if multiprocessing is selected.
 """
 
 import argparse
-from datetime import datetime, timezone
 import logging
 import os
 import time
+from datetime import UTC, datetime
 
-from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver
 
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     calendar_to_julian,
-    NewJulianDateException,
 )
-
 from geoips_driver.driver_components import ProcessSpawner
 
 LOG = logging.getLogger(__name__)
@@ -59,7 +58,7 @@ class OvercastRunner(ProcessSpawner):
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
-                f"container for '{algorithm}' before instantiating a watcher for it."
+                f"container for '{algorithm}' before instantiating a watcher for it.",
             )
         self.max_cpu_count = os.cpu_count() // 4
         self.alg_info = algorithms[algorithm]
@@ -77,18 +76,18 @@ class OvercastRunner(ProcessSpawner):
                 int(curr_jdate) > int(julian_date)
                 # Offset the day by 3 hours (hr 02 today - hr 23 prev day)
                 # as there is a delay of about 2hr 40 min for the data to come in
-                and datetime.now(timezone.utc).hour >= 2
+                and datetime.now(UTC).hour >= 2
             ):
                 # Directory was never created. Most likely caused by data outages from
                 # one or more satellites. Raise a julian date exception and move
                 # on to the next date.
                 raise NewJulianDateException(
                     f"Directory {self.watch_directory} was never created and a new "
-                    "day has started. Exiting to watch the next directory."
+                    "day has started. Exiting to watch the next directory.",
                 )
             else:
                 print(
-                    f"Waiting for data directory {self.watch_directory} to be created."
+                    f"Waiting for data directory {self.watch_directory} to be created.",
                 )
                 time.sleep(30)
         self.sector = self.alg_info.sector_mapping[sector]
@@ -159,7 +158,7 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     starting_jdate = calendar_to_julian()
     # Need a julian date as that is the format of directory names for GOES-CLAVR-x data
     event_handler = OvercastRunner(
-        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm
+        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     observer = PollingObserver()
@@ -177,18 +176,18 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
                 int(curr_jdate) > int(starting_jdate)
                 # Offset the day by 3 hours (hr 02 today - hr 23 prev day)
                 # as there is a delay of about 2hr 40 min for the data to come in
-                and datetime.now(timezone.utc).hour >= 2
+                and datetime.now(UTC).hour >= 2
             ):
                 starting_jdate = curr_jdate
                 observer.stop()
                 observer.join()
                 raise NewJulianDateException(
-                    f"Reinitializing NASWatcher for julian date = {starting_jdate}."
+                    f"Reinitializing NASWatcher for julian date = {starting_jdate}.",
                 )
     # except KeyboardInterrupt:
     #     observer.stop()
     except Exception as e:
-        LOG.error(f"An error occurred: {e}")
+        LOG.exception(f"An error occurred: {e}")
         observer.stop()
     finally:
         observer.join()
@@ -241,7 +240,7 @@ def main():
             start_watching(alg, sat, sensor, sector, use_slurm=False)
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

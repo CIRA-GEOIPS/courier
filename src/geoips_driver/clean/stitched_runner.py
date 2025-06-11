@@ -11,14 +11,12 @@ import shutil
 import time
 
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     calendar_to_julian,
     curr_calendar_date,
-    NewJulianDateException,
 )
-
 from geoips_driver.driver_components import FileLocator, ProcessSpawner
-
 
 LOG = logging.getLogger(__name__)
 
@@ -54,7 +52,7 @@ class StitchedRunner(ProcessSpawner):
                 f"Object '{stitched_object}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
                 f"container for '{stitched_object}' before instantiating a watcher for "
-                "it."
+                "it.",
             )
         self.alg_info = algorithms[stitched_object]
         self.use_slurm = use_slurm
@@ -96,7 +94,7 @@ class StitchedRunner(ProcessSpawner):
                 except FileNotFoundError:
                     print(
                         f"All required files for timestep {next_hhnn} weren't found. "
-                        "Skipping to next timestep."
+                        "Skipping to next timestep.",
                     )
 
                 prev_hhnn = next_hhnn
@@ -108,7 +106,7 @@ class StitchedRunner(ProcessSpawner):
                     nn = "00"
                     if hh == "00":
                         raise NewJulianDateException(
-                            "New date has started. Reinitialize this runner."
+                            "New date has started. Reinitialize this runner.",
                         )
                 else:
                     nn = "30"
@@ -131,7 +129,7 @@ class StitchedRunner(ProcessSpawner):
         self.fl = FileLocator(finfo)
         ffound = self.fl.all_files_found()
         while not ffound:
-            print(f"Waiting for data to be transferred to a temporary directory.")
+            print("Waiting for data to be transferred to a temporary directory.")
             print(f"{(times_searched * 30) / 60} minutes elapsed.")
             time.sleep(30)
             ffound = self.fl.all_files_found()
@@ -142,7 +140,7 @@ class StitchedRunner(ProcessSpawner):
                 # for the next time step.
                 raise FileNotFoundError(
                     "Process has been searching for required hours for over an hour and"
-                    " they haven't been found. Resetting search to next timestep."
+                    " they haven't been found. Resetting search to next timestep.",
                 )
 
         self.required_filepaths = self.fl.required_filepaths
@@ -286,7 +284,7 @@ def main() -> None:
             start_watching(so, use_slurm)
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

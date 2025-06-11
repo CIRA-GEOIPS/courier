@@ -6,28 +6,26 @@ or execute a set of processes in parallel if multiprocessing is selected.
 
 import argparse
 import logging
-from multiprocessing import Pool
 import os
-from pathlib import Path
 import subprocess
 import time
+from multiprocessing import Pool
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
-from watchdog.observers.polling import PollingObserver
-from watchdog.events import FileSystemEventHandler
 from pyhdf.SD import SD, SDC
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver
 
 # The import below does not work because the data we are watching is on a NAS drive.
 # Apparently, Observers only work on local disks. However, a PollingObserver works on
 # NAS drives, and is just a little less efficient, to the point where the difference is
 # neglegible. Works for our use case!
-
 # from watchdog.observers import Observer
-
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     calendar_to_julian,
-    NewJulianDateException,
 )
 
 LOG = logging.getLogger(__name__)
@@ -68,7 +66,7 @@ class NASWatcher(FileSystemEventHandler):
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
-                f"container for '{algorithm}' before instantiating a watcher for it."
+                f"container for '{algorithm}' before instantiating a watcher for it.",
             )
         self.max_cpu_count = os.cpu_count() // 4
         self.alg_info = algorithms[algorithm]
@@ -111,9 +109,7 @@ class NASWatcher(FileSystemEventHandler):
 
         # Note that this is using pyhdf and will need to be changed if your file type
         # is of a different file format
-        if initial_size == next_size and len(SD(fpath, SDC.READ).attributes()):
-            return True
-        return False
+        return bool(initial_size == next_size and len(SD(fpath, SDC.READ).attributes()))
 
     def on_created(self, event):
         """If a file in 'watch_directory' was created, call this func.
@@ -255,7 +251,7 @@ class NASWatcher(FileSystemEventHandler):
             - The name of the output_formatter plugin we'll use in GeoIPS
         """
         with Pool(
-            processes=min(len(self.alg_info.product_names), self.max_cpu_count)
+            processes=min(len(self.alg_info.product_names), self.max_cpu_count),
         ) as pool:
             # Execute your GeoIPS bash scripts in parallel
             results = pool.map(
@@ -274,7 +270,7 @@ class NASWatcher(FileSystemEventHandler):
                     f.write(result)
                     print(
                         f"Output for script {product_name}_{output_type} saved "
-                        f"to {output_file}"
+                        f"to {output_file}",
                     )
 
     def run_bash_script(self, fpath):
@@ -288,7 +284,7 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True
+                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
             )
             return (
                 result.stdout.strip()
@@ -317,7 +313,7 @@ class NASWatcher(FileSystemEventHandler):
             subprocess.run(["sbatch", job_path], check=True)
             print(f"Submitted job for file: {fpath}")
         except subprocess.CalledProcessError as e:
-            LOG.error(f"Failed to submit job for file: {fpath}, error: {e}")
+            LOG.exception(f"Failed to submit job for file: {fpath}, error: {e}")
 
     def create_slurm_jobfile(self, job_name, executable, **kwargs):
         """Generate a slurm job file from the arguments provided using jinja.
@@ -402,7 +398,7 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     starting_jdate = calendar_to_julian()
     # Need a julian date as that is the format of directory names for GOES-CLAVR-x data
     event_handler = NASWatcher(
-        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm
+        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     observer = PollingObserver()
@@ -421,12 +417,12 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
                 observer.stop()
                 observer.join()
                 raise NewJulianDateException(
-                    f"Reinitializing NASWatcher for julian date = {starting_jdate}."
+                    f"Reinitializing NASWatcher for julian date = {starting_jdate}.",
                 )
     # except KeyboardInterrupt:
     #     observer.stop()
     except Exception as e:
-        LOG.error(f"An error occurred: {e}")
+        LOG.exception(f"An error occurred: {e}")
         observer.stop()
     finally:
         observer.join()
@@ -481,7 +477,7 @@ def main():
             # start_watching("CLAVRX", "GOES18", "ABI", "RadF")
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

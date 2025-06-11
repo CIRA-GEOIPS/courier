@@ -4,30 +4,25 @@ Assumes that stitched data will be produced from a set of data stemming from dif
 satellite sensors.
 """
 
-from datetime import datetime, timedelta
 import logging
 import os
 import shutil
 import time
-
-from geoips_driver.algorithm_info import (
-    algorithms,
-    calendar_to_julian,
-    curr_calendar_date,
-    NewJulianDateException,
-)
-
-from geoips_driver.clean.driver_components import (
-    FileLocator,
-    ProcessSpawner,
-    DriverUtilities,
-)
-
-from geoips_driver.interfaces import controller_configs as driver_configs
+from datetime import datetime
 
 from geoips.errors import PluginError
-from geoips.interfaces import product_defaults
 
+from geoips_driver.algorithm_info import (
+    NewJulianDateException,
+    calendar_to_julian,
+    curr_calendar_date,
+)
+from geoips_driver.clean.driver_components import (
+    DriverUtilities,
+    FileLocator,
+    ProcessSpawner,
+)
+from geoips_driver.interfaces import controller_configs as driver_configs
 
 LOG = logging.getLogger(__name__)
 
@@ -71,17 +66,17 @@ class DefaultDriver(ProcessSpawner):
             raise NotImplementedError(
                 f"No driver_config plugin under name '{driver_config}' could be found. "
                 "If you're positive this plugin exists, please run "
-                "'create_plugin_registries'."
+                "'create_plugin_registries'.",
             )
         dc = self.utils.dict_to_namespace(dc)
-        self.dispatchers = [plg for plg in dc.spec.dispatchers]
+        self.dispatchers = list(dc.spec.dispatchers)
         self.data_monitor = dc.spec.data_monitor.plugin
 
         cadence = self.dispatchers[0].arguments.cadence
         self.outdir = "/some/path"
 
         date_dict = self.get_starting_date_dict(start_time)
-        dt = datetime(
+        datetime(
             date_dict["year"],
             date_dict["month"],
             date_dict["day"],
@@ -106,7 +101,7 @@ class DefaultDriver(ProcessSpawner):
                 except FileNotFoundError:
                     print(
                         f"All required files for timestep {next_hhnn} weren't found. "
-                        "Skipping to next timestep."
+                        "Skipping to next timestep.",
                     )
 
                 prev_hhnn = next_hhnn
@@ -119,7 +114,7 @@ class DefaultDriver(ProcessSpawner):
                     hrs_passed = new_nn // 60
                     new_hh = int(hh) + hrs_passed
                     if new_hh >= 24:
-                        dt = datetime(
+                        datetime(
                             date_dict["year"],
                             date_dict["month"],
                             date_dict["day"],
@@ -127,7 +122,7 @@ class DefaultDriver(ProcessSpawner):
                             minute=date_dict["hhnn"][2:],
                         )
                         raise NewJulianDateException(
-                            "New date has started. Reinitialize this runner."
+                            "New date has started. Reinitialize this runner.",
                         )
                     hh = str((new_hh) % 24).zfill(2)
                     nn = str((new_nn) % 60).zfill(2)
@@ -185,7 +180,7 @@ class DefaultDriver(ProcessSpawner):
         self.fl = FileLocator(finfo)
         ffound = self.fl.all_files_found()
         while not ffound:
-            print(f"Waiting for data to be transferred to a temporary directory.")
+            print("Waiting for data to be transferred to a temporary directory.")
             print(f"{(times_searched * 30) / 60} minutes elapsed.")
             time.sleep(30)
             ffound = self.fl.all_files_found()
@@ -196,7 +191,7 @@ class DefaultDriver(ProcessSpawner):
                 # for the next time step.
                 raise FileNotFoundError(
                     "Process has been searching for required hours for over an hour and"
-                    " they haven't been found. Resetting search to next timestep."
+                    " they haven't been found. Resetting search to next timestep.",
                 )
 
         self.required_filepaths = self.fl.required_filepaths
@@ -314,7 +309,7 @@ def call(driver_config, start_time=None) -> None:
             raise TypeError(
                 f"Error: Argument 'start_time'={start_time} was provided but did not "
                 "meet the format required to generate a valid datetime object. Please "
-                "provide a string of only digits formatted YYYYMMDDHHNN."
+                "provide a string of only digits formatted YYYYMMDDHHNN.",
             )
         year = start_time[:4]
         month = start_time[4:6]
@@ -328,7 +323,7 @@ def call(driver_config, start_time=None) -> None:
             DefaultDriver(driver_config, start_time)
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
                 # NOTE: Implement logic here to calculate the new start time based on
                 # the cadence provided in the driver config.
             else:

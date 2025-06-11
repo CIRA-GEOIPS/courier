@@ -6,22 +6,22 @@ or execute a set of processes in parallel if multiprocessing is selected.
 
 import argparse
 import bz2
-from glob import glob
 import logging
-from multiprocessing import Pool
 import os
-from pathlib import Path
 import subprocess
 import time
+from glob import glob
+from multiprocessing import Pool
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
-from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver
 
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     curr_calendar_date,
-    NewJulianDateException,
 )
 
 LOG = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class AhiGeoColorUtils:
         for band, res in self.band_resolution_mapping.items():
             for seg_div in self.segment_divisions:
                 required_fnames.append(
-                    f"HS_H09_{cdate}_{hhnn}_{band}_FLDK_{res}_{seg_div}.DAT.bz2"
+                    f"HS_H09_{cdate}_{hhnn}_{band}_FLDK_{res}_{seg_div}.DAT.bz2",
                 )
         return sorted(required_fnames)
 
@@ -91,7 +91,7 @@ class AhiGeoColorUtils:
             raise RuntimeError(
                 "Not all files for this timestep have been created yet. Please check "
                 "that the information you provided is correct, and if so, wait for "
-                "those files to be created."
+                "those files to be created.",
             )
 
         return full_paths
@@ -175,7 +175,7 @@ class NASWatcher(FileSystemEventHandler):
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
-                f"container for '{algorithm}' before instantiating a watcher for it."
+                f"container for '{algorithm}' before instantiating a watcher for it.",
             )
         self.required_gc_files = set()
         # Initialize variables for the AHI GeoColor Watcher
@@ -221,7 +221,7 @@ class NASWatcher(FileSystemEventHandler):
             not event.is_directory
             and "FLDK" in file_path
             and pl_path.suffix == ".bz2"
-            and any([band in bname for band in self.gc_utils.band_resolution_mapping])
+            and any(band in bname for band in self.gc_utils.band_resolution_mapping)
         ):
             # AHI GeoColor input file structure
             # header_satellite_cdate_hhnn_band_sector_res_segdiv.DAT.bz2
@@ -418,7 +418,7 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True
+                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
             )
             return (
                 result.stdout.strip()
@@ -447,7 +447,7 @@ class NASWatcher(FileSystemEventHandler):
             subprocess.run(["sbatch", job_path], check=True)
             print(f"Submitted job for file: {fpath}")
         except subprocess.CalledProcessError as e:
-            LOG.error(f"Failed to submit job for file: {fpath}, error: {e}")
+            LOG.exception(f"Failed to submit job for file: {fpath}, error: {e}")
 
     def create_slurm_jobfile(self, job_name, executable, **kwargs):
         """Generate a slurm job file from the arguments provided using jinja.
@@ -531,7 +531,7 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     """
     starting_cdate = curr_calendar_date()
     event_handler = NASWatcher(
-        algorithm, sat, sensor, sector, starting_cdate, use_slurm=use_slurm
+        algorithm, sat, sensor, sector, starting_cdate, use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     # observer = Observer()
@@ -551,12 +551,12 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
                 observer.stop()
                 observer.join()
                 raise NewJulianDateException(
-                    f"Reinitializing NASWatcher for calendar date = {starting_cdate}."
+                    f"Reinitializing NASWatcher for calendar date = {starting_cdate}.",
                 )
     # except KeyboardInterrupt:
     #     observer.stop()
     except Exception as e:
-        LOG.error(f"An error occurred: {e}")
+        LOG.exception(f"An error occurred: {e}")
         observer.stop()
     finally:
         observer.join()
@@ -611,7 +611,7 @@ def main():
             # start_watching("CLAVRX", "GOES18", "ABI", "RadF")
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

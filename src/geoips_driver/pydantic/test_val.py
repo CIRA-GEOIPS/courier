@@ -2,16 +2,14 @@
 
 from pprint import pprint
 
-
-from pydantic import ValidationError
 import yaml
+from pydantic import ValidationError
 
 from geoips_driver.pydantic.driver_configs import DriverConfigPlugin
 from geoips_driver.pydantic.monitor_configs import MonitorConfigPlugin
 
-
-dc = yaml.safe_load(open("../plugins/yaml/driver_configs/StitchedInfrared.yaml", "r"))
-mc = yaml.safe_load(open("../plugins/yaml/monitor_configs/goes16_abi.yaml", "r"))
+dc = yaml.safe_load(open("../plugins/yaml/driver_configs/StitchedInfrared.yaml"))
+mc = yaml.safe_load(open("../plugins/yaml/monitor_configs/goes16_abi.yaml"))
 
 dc_obj = None
 mc_obj = None

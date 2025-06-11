@@ -6,26 +6,24 @@ H09-AHI on bands at or near 10.4 micron (Channel 13).
 
 import bz2
 import logging
-from multiprocessing import Pool
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import time
+from multiprocessing import Pool
+from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 from watchdog.events import FileSystemEventHandler
 
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     calendar_to_julian,
     curr_calendar_date,
     nearest_half_hour_utc,
-    NewJulianDateException,
 )
-
 from geoips_driver.driver_components import FileLocator
-
 
 LOG = logging.getLogger(__name__)
 
@@ -61,7 +59,7 @@ class NASWatcher(FileSystemEventHandler):
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
-                f"container for '{algorithm}' before instantiating a watcher for it."
+                f"container for '{algorithm}' before instantiating a watcher for it.",
             )
         # Initialize variables for the AHI GeoColor Watcher
         self.max_cpu_count = os.cpu_count() // 4
@@ -100,7 +98,7 @@ class NASWatcher(FileSystemEventHandler):
                 except FileNotFoundError:
                     print(
                         f"All required files for timestep {next_hhnn} weren't found. "
-                        "Skipping to next timestep."
+                        "Skipping to next timestep.",
                     )
 
                 prev_hhnn = next_hhnn
@@ -112,7 +110,7 @@ class NASWatcher(FileSystemEventHandler):
                     nn = "00"
                     if hh == "00":
                         raise NewJulianDateException(
-                            "New date has started. Reinitialize this watcher."
+                            "New date has started. Reinitialize this watcher.",
                         )
                 else:
                     nn = "30"
@@ -126,7 +124,7 @@ class NASWatcher(FileSystemEventHandler):
         self.fl = FileLocator(finfo)
         ffound = self.fl.all_files_found()
         while not ffound:
-            print(f"Waiting for data to be transferred to a temporary directory.")
+            print("Waiting for data to be transferred to a temporary directory.")
             time.sleep(30)
             ffound = self.fl.all_files_found()
             times_searched += 1
@@ -136,19 +134,19 @@ class NASWatcher(FileSystemEventHandler):
                 # for the next time step.
                 raise FileNotFoundError(
                     "Process has been searching for required hours for over an hour and"
-                    " they haven't been found. Resetting search to next timestep."
+                    " they haven't been found. Resetting search to next timestep.",
                 )
 
         self.required_filepaths = self.fl.required_filepaths
         # List of file paths that end in '.bz2'. These need to be decompressed before
         # they can be used in GeoIPS (Himwarai9 AHI Files)
         bzipped_fpaths = list(
-            filter(lambda f: Path(f).suffix == ".bz2", self.required_filepaths)
+            filter(lambda f: Path(f).suffix == ".bz2", self.required_filepaths),
         )
         # All the other files used in this process are ready to go. No decompression
         # needed.
         ready_fpaths = list(
-            filter(lambda f: Path(f).suffix != ".bz2", self.required_filepaths)
+            filter(lambda f: Path(f).suffix != ".bz2", self.required_filepaths),
         )
         self.bzip_files_temporarily(bzipped_fpaths)
         # Make sure the files have decompressed fully
@@ -197,18 +195,18 @@ class NASWatcher(FileSystemEventHandler):
             "M09": {
                 "searchdir": f"/mnt/meteosat-09/{year}{month}{day}/MSG2",
                 "fpatterns": [
-                    f"H-000-MSG2__-MSG2_IODC___-_________-EPI______-{year}{month}{day}{hhnn}-__",  # NOQA
-                    f"H-000-MSG2__-MSG2_IODC___-_________-PRO______-{year}{month}{day}{hhnn}-__",  # NOQA
-                    f"H-000-MSG2__-MSG2_IODC___-IR_108___-00000[1-8]___-{year}{month}{day}{hhnn}-C_",  # NOQA
+                    f"H-000-MSG2__-MSG2_IODC___-_________-EPI______-{year}{month}{day}{hhnn}-__",
+                    f"H-000-MSG2__-MSG2_IODC___-_________-PRO______-{year}{month}{day}{hhnn}-__",
+                    f"H-000-MSG2__-MSG2_IODC___-IR_108___-00000[1-8]___-{year}{month}{day}{hhnn}-C_",
                 ],
                 "num_expected_files": 10,
             },
             "M10": {
                 "searchdir": f"/mnt/meteosat-10/{year}{month}{day}/MSG3",
                 "fpatterns": [
-                    f"H-000-MSG3__-MSG3________-_________-EPI______-{year}{month}{day}{hhnn}-__",  # NOQA
-                    f"H-000-MSG3__-MSG3________-_________-PRO______-{year}{month}{day}{hhnn}-__",  # NOQA
-                    f"H-000-MSG3__-MSG3________-IR_108___-00000[1-8]___-{year}{month}{day}{hhnn}-C_",  # NOQA
+                    f"H-000-MSG3__-MSG3________-_________-EPI______-{year}{month}{day}{hhnn}-__",
+                    f"H-000-MSG3__-MSG3________-_________-PRO______-{year}{month}{day}{hhnn}-__",
+                    f"H-000-MSG3__-MSG3________-IR_108___-00000[1-8]___-{year}{month}{day}{hhnn}-C_",
                 ],
                 "num_expected_files": 10,
             },
@@ -347,7 +345,7 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True
+                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
             )
             return (
                 result.stdout.strip()
@@ -376,7 +374,7 @@ class NASWatcher(FileSystemEventHandler):
             subprocess.run(["sbatch", job_path], check=True)
             print(f"Submitted job for file: {fname}")
         except subprocess.CalledProcessError as e:
-            LOG.error(f"Failed to submit job for file: {fname}, error: {e}")
+            LOG.exception(f"Failed to submit job for file: {fname}, error: {e}")
 
     def create_slurm_jobfile(self, job_name, executable, **kwargs):
         """Generate a slurm job file from the arguments provided using jinja.
@@ -511,7 +509,7 @@ def main():
             start_watching()
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting
