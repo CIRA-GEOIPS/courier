@@ -6,21 +6,21 @@ or execute a set of processes in parallel if multiprocessing is selected.
 
 import argparse
 import logging
-from multiprocessing import Pool
 import os
 import subprocess
 import time
+from multiprocessing import Pool
 
 from jinja2 import Environment, FileSystemLoader
-from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers.polling import PollingObserver
 
 from geoips_driver.algorithm_info import (
+    NewJulianDateException,
     algorithms,
     calendar_to_julian,
     curr_calendar_date,
     julian_to_calendar,
-    NewJulianDateException,
 )
 
 LOG = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class NASWatcher(FileSystemEventHandler):
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
-                f"container for '{algorithm}' before instantiating a watcher for it."
+                f"container for '{algorithm}' before instantiating a watcher for it.",
             )
         self.required_gc_files = set()
         # Initialize variables for the AHI GeoColor Watcher
@@ -114,7 +114,7 @@ class NASWatcher(FileSystemEventHandler):
         file_path = event.src_path
         bname = os.path.basename(file_path)
         if not event.is_directory and any(
-            [band.replace("B", "C") in bname for band in self.bands]
+            band.replace("B", "C") in bname for band in self.bands
         ):
             # ABI GeoColor input file structure
             # header_satellite_cdate_hhnn_band_sector_res_segdiv.DAT.bz2
@@ -126,15 +126,11 @@ class NASWatcher(FileSystemEventHandler):
             self.required_gc_files.add(file_path)
             if (
                 all(
-                    [
-                        any(
-                            [
-                                band.replace("B", "C") in os.path.basename(fpath)
+                    any(
+                            band.replace("B", "C") in os.path.basename(fpath)
                                 for fpath in self.required_gc_files
-                            ]
                         )
                         for band in self.bands
-                    ]
                 )
                 and self.last_start_dt_processed != start_dt
             ):
@@ -145,7 +141,7 @@ class NASWatcher(FileSystemEventHandler):
                 print(success_str)
                 time.sleep(30)
                 print("Starting processing...")
-                fpath_str = " ".join(sorted(list(self.required_gc_files)))
+                fpath_str = " ".join(sorted(self.required_gc_files))
                 self.start_processing(fpath_str)
                 self.last_start_dt_processed = start_dt
                 self.required_gc_files = set()
@@ -283,7 +279,7 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True
+                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
             )
             return (
                 result.stdout.strip()
@@ -312,7 +308,7 @@ class NASWatcher(FileSystemEventHandler):
             subprocess.run(["sbatch", job_path], check=True)
             print(f"Submitted job for file: {fpath}")
         except subprocess.CalledProcessError as e:
-            LOG.error(f"Failed to submit job for file: {fpath}, error: {e}")
+            LOG.exception(f"Failed to submit job for file: {fpath}, error: {e}")
 
     def create_slurm_jobfile(self, job_name, executable, **kwargs):
         """Generate a slurm job file from the arguments provided using jinja.
@@ -396,7 +392,7 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     """
     starting_cdate = curr_calendar_date()
     event_handler = NASWatcher(
-        algorithm, sat, sensor, sector, starting_cdate, use_slurm=use_slurm
+        algorithm, sat, sensor, sector, starting_cdate, use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
     # observer = Observer()
@@ -416,12 +412,12 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
                 observer.stop()
                 observer.join()
                 raise NewJulianDateException(
-                    f"Reinitializing NASWatcher for calendar date = {starting_cdate}."
+                    f"Reinitializing NASWatcher for calendar date = {starting_cdate}.",
                 )
     # except KeyboardInterrupt:
     #     observer.stop()
     except Exception as e:
-        LOG.error(f"An error occurred: {e}")
+        LOG.exception(f"An error occurred: {e}")
         observer.stop()
     finally:
         observer.join()
@@ -476,7 +472,7 @@ def main():
             # start_watching("CLAVRX", "GOES18", "ABI", "RadF")
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
-                LOG.error(f"Watcher crashed with error: {e}")
+                LOG.exception(f"Watcher crashed with error: {e}")
             else:
                 print(e)
             time.sleep(5)  # Wait a bit before restarting

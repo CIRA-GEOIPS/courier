@@ -4,31 +4,30 @@ Used for validation of monitor_config plugins.
 """
 
 from pathlib import Path
-from typing import ClassVar, Dict, List
-
-from pydantic import Field, model_validator
+from typing import ClassVar
 
 from geoips.pydantic.bases import (
     FrozenModel,
     PermissiveFrozenModel,
     PluginModel,
 )
+from pydantic import Field, model_validator
 
 
 class ObservationArea(FrozenModel):
     """Configuration for an ObservationArea model."""
 
     parent_dir: Path = Field(..., description="Path template for data storage.")
-    patterns: List[str] = Field(..., description="List of filename patterns to match.")
+    patterns: list[str] = Field(..., description="List of filename patterns to match.")
     num_expected: int = Field(
-        ..., description="Expected number of files per time step."
+        ..., description="Expected number of files per time step.",
     )
 
 
 class MonitorConfigSpec(PermissiveFrozenModel):
     """Defines the specification for the monitor_config plugin."""
 
-    obs_areas: Dict[str, ObservationArea] = Field(
+    obs_areas: dict[str, ObservationArea] = Field(
         ...,
         description=(
             "A dictionary of observation areas containing information for data "
@@ -64,5 +63,5 @@ class MonitorConfigPlugin(PluginModel):
     apiVersion: ClassVar[str] = "geoips_driver/v1"
 
     spec: MonitorConfigSpec = Field(
-        ..., description="Specification for the monitor_config plugin."
+        ..., description="Specification for the monitor_config plugin.",
     )

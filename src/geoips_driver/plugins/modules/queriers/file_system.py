@@ -98,7 +98,7 @@ def filter_by_source_names(finfo, source_names):
         else:
             raise ValueError(
                 f"Error: satellite key '{sat}' couldn't be associated with a valid "
-                "GeoIPS source_name. Run 'geoips list source-names' for more info."
+                "GeoIPS source_name. Run 'geoips list source-names' for more info.",
             )
         if src in source_names:
             filtered_finfo[sat] = finfo[sat]

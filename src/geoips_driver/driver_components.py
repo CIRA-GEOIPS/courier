@@ -5,19 +5,19 @@ or more locations. Once the required files have arrived, we create job scripts f
 jinja2 templates that spawn GeoIPS processing based on the provided inputs.
 """
 
-from glob import glob
+import bz2
 import logging
 import os
-from pathlib import Path
 import subprocess
 import time
+from glob import glob
 from multiprocessing import Pool
+from pathlib import Path
 from types import SimpleNamespace
 
-import bz2
+import xarray
 from jinja2 import Environment, FileSystemLoader
 from jinja2.environment import Template
-import xarray
 from pyhdf.SD import SD, SDC
 
 LOG = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class DriverUtilities:
         """
         if isinstance(iter, dict):
             return SimpleNamespace(
-                **{key: self.dict_to_namespace(val) for key, val in iter.items()}
+                **{key: self.dict_to_namespace(val) for key, val in iter.items()},
             )
         elif isinstance(iter, list):
             return [self.dict_to_namespace(item) for item in iter]
@@ -156,7 +156,7 @@ class FileLocator:
                     if not isinstance(fpattern, str):
                         raise RuntimeError(
                             "Error: cannot match search for a file pattern that is not "
-                            "a string."
+                            "a string.",
                         )
                     print(f"PATTERN = {self.searchdirs[key]}/{fpattern}")
                     ffound_by_pattern = glob(f"{self.searchdirs[key]}/{fpattern}")
@@ -167,13 +167,13 @@ class FileLocator:
                 if len(ffound) != self.num_expected_files[key]:
                     raise FileNotFoundError(
                         "Expected files have not yet been created. Either switch "
-                        "inputs or wait until those files have been created."
+                        "inputs or wait until those files have been created.",
                     )
                 self.required_filepaths += ffound
             else:
                 raise RuntimeError(
                     "Error: cannot match search for a file pattern that is not "
-                    "list of strings (min length = 1)."
+                    "list of strings (min length = 1).",
                 )
         self.required_filepaths = sorted(self.required_filepaths)
 
@@ -190,12 +190,12 @@ class FileLocator:
             raise RuntimeWarning(
                 "Warning: All files have been found with the initial arguments "
                 "provided to this class. If you want to view a new search space, "
-                "please call 'FileLocator.reset_search(finfo)' ."
+                "please call 'FileLocator.reset_search(finfo)' .",
             )
         try:
             self.generate_required_filepaths()
             self.files_found = True
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             self.files_found = False
         return self.files_found
 
@@ -454,9 +454,7 @@ class FileOperator:
             Path(fpath).suffix == ".nc"
             and initial_size == next_size
             and len(xarray.open_dataset(fpath).attrs)
-        ):
-            return True
-        elif (
+        ) or (
             Path(fpath).suffix == ".hdf"
             and initial_size == next_size
             and len(SD(fpath, SDC.READ).attributes())
@@ -466,7 +464,7 @@ class FileOperator:
             raise RuntimeError(
                 f"ERROR: Retrieved file '{os.path.basename(fpath)}' has an extension "
                 "that we don't know how to handle. Cannot determine if this file has "
-                "been fully written."
+                "been fully written.",
             )
         return False
 
@@ -556,7 +554,7 @@ class ProcessSpawner(Templater, FileOperator):
         """
         print(f"Beginning parallel processing of {self.alg_info.name} products.")
         with Pool(
-            processes=min(len(self.alg_info.product_names), self.max_cpu_count)
+            processes=min(len(self.alg_info.product_names), self.max_cpu_count),
         ) as pool:
             # Execute your GeoIPS bash scripts in parallel
             results = pool.map(
@@ -585,7 +583,7 @@ class ProcessSpawner(Templater, FileOperator):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True
+                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
             )
             return (
                 result.stdout.strip()
@@ -614,7 +612,7 @@ class ProcessSpawner(Templater, FileOperator):
             subprocess.run(["sbatch", job_path], check=True)
             print(f"Submitted job for file: {fname}")
         except subprocess.CalledProcessError as e:
-            LOG.error(f"Failed to submit job for file: {fname}, error: {e}")
+            LOG.exception(f"Failed to submit job for file: {fname}, error: {e}")
 
     def sync_with_slider(self) -> None:
         """Sync the produced output with SLIDER, on machine overcast4.
