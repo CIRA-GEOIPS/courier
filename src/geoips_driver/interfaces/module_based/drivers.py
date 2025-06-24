@@ -7,7 +7,7 @@ class DriversInterface(BaseModuleInterface):
     """Interface for module plugins used to drive GeoIPS processing."""
 
     name = "drivers"
-    apiVersion = "geoips_driver/v1"
+    apiVersion = "geoips_driver/v1"  # noqa: N815
 
 
 drivers = DriversInterface()

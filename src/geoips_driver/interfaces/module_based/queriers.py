@@ -14,7 +14,7 @@ class QueriersInterface(BaseModuleInterface):
     """
 
     name = "queriers"
-    apiVersion = "geoips_driver/v1"
+    apiVersion = "geoips_driver/v1"  # noqa: N815
 
 
 queriers = QueriersInterface()

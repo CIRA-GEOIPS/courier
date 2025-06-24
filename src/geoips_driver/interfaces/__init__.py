@@ -3,10 +3,10 @@
 
 """GeoIPS Driver Interface Module."""
 
+from geoips_driver.interfaces.module_based.controllers import controllers
 from geoips_driver.interfaces.module_based.data_monitors import data_monitors
 from geoips_driver.interfaces.module_based.dispatchers import dispatchers
 from geoips_driver.interfaces.module_based.drivers import drivers
-from geoips_driver.interfaces.module_based.controllers import controllers
 from geoips_driver.interfaces.module_based.queriers import queriers
 from geoips_driver.interfaces.yaml_based.controller_configs import controller_configs
 from geoips_driver.interfaces.yaml_based.monitor_configs import monitor_configs
@@ -30,4 +30,4 @@ yaml_based_interfaces = [
 # not recognize the above imports as being used.  F401 ignored via
 # per-file ignore in geoips/.config/flake8 config.  See comment above
 # for more information.
-__all__ = module_based_interfaces + yaml_based_interfaces
+__all__ = module_based_interfaces + yaml_based_interfaces # noqa: PLE0605

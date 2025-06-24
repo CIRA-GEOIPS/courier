@@ -4,10 +4,10 @@ Used for validation of controller_config plugins.
 """
 
 from datetime import datetime
-from typing import ClassVar, Dict
+from typing import ClassVar
 
 from geoips.pydantic.bases import FrozenModel, PluginModel, PythonIdentifier
-from geoips.pydantic.workflows import PythonIdentifier, WorkflowStepDefinitionModel
+from geoips.pydantic.workflows import WorkflowStepDefinitionModel
 from pydantic import Field
 
 
@@ -40,7 +40,7 @@ class DispatcherArgs(FrozenModel):
         ...,
         description="The name of the template spawn your process or job.",
     )
-    steps: Dict[PythonIdentifier, WorkflowStepDefinitionModel] = Field(
+    steps: dict[PythonIdentifier, WorkflowStepDefinitionModel] = Field(
         ...,
         description=("A list of steps that are needed to create your product(s)."),
     )
@@ -143,34 +143,6 @@ class Dispatcher(FrozenModel):
         ),
     )
 
-    # @model_validator(mode="before")
-    # def _validate_arguments(cls, values):
-    #     """Validate that the set of args matches the dispatcher's arg format.
-
-    #     Raises
-    #     ------
-    #     pydantic.ValidationError:
-    #         - Raised if the set of arguments provided does not match the argument set
-    #           specified by the dispatcher chosen.
-    #     KeyError:
-    #         - Raised if either 'name' or 'arguments' aren't provided for a dispatcher
-    #     """
-    #     arg_map = {
-    #         "pool": PoolDispatcherArgs,
-    #         "serial": SerialDispatcherArgs,
-    #         "slurm": SlurmDispatcherArgs,
-    #     }
-    #     try:
-    #         arg_map[values["name"]](**values["arguments"])
-    #     except KeyError:
-    #         raise KeyError(
-    #             "Error: dispatcher object was missing one or more of the following keys"
-    #             ": ['name', 'arguments']. Please add these key value pairs before "
-    #             "continuing."
-    #         )
-    #     return values
-
-
 class DriverArgs(FrozenModel):
     """Required and optional arguments for the driver plugin."""
 
@@ -255,7 +227,7 @@ class ControllerConfigSpec(FrozenModel):
 class ControllerConfigPlugin(PluginModel):
     """Represents the controller_config plugin configuration."""
 
-    apiVersion: ClassVar[str] = "geoips_driver/v1"
+    apiVersion: ClassVar[str] = "geoips_driver/v1" # noqa: N815
 
     spec: ControllerConfigSpec = Field(
         ...,

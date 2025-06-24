@@ -6,8 +6,8 @@ of GeoIPS.
 
 import socket
 
-from geoips_driver.interfaces import dispatchers, queriers
 from geoips_driver.geoips_driver_utils import monitor_configs_to_finfo
+from geoips_driver.interfaces import dispatchers, queriers
 
 interface = "drivers"
 name = "default"
@@ -51,13 +51,13 @@ def call(querier, dispatcher, monitor_configs, cadence, offset, port):
     # TODO: implement logic to query for appropriate files when a file is found via the
     # data_monitors that are running.
 
-    qplg = queriers.get_plugin(querier.name)
-    dplg = dispatchers.get_plugin(dispatcher.name)
+    queriers.get_plugin(querier.name)
+    dispatchers.get_plugin(dispatcher.name)
 
     finfo = monitor_configs_to_finfo(monitor_configs)
 
-    for key, val in finfo.items():
-        finfo[key]
+    for _key, val in finfo.items():
+        val
     # when a file is found: implement the pseudo-code written below
     # required_files = qplg(finfo, querier.arguments.source_names)
     # if required_files:
