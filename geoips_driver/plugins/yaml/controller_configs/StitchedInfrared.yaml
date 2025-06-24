@@ -1,0 +1,64 @@
+interface: controller_configs
+name: StitchedInfrared
+family: standard
+docstring: |
+  The StitchedInfrared controller_configs default plugin.
+spec:
+  # Could be data_monitors if data is arriving from different sources
+  data_monitors:
+    - name: file_system
+      arguments:
+        # start_time: 2025-03-26T14:30:00Z
+        # end_time: 2025-03-26T19:30:00Z
+        # potentially add buffer before ending driver
+        monitor_configs:
+          - name: goes16_abi
+            arguments:
+            # Change from sector to observation_area, or something along those lines
+              obs_area: [Full-Disk]
+          - name: goes18_abi
+            arguments:
+              obs_area: [Full-Disk]
+          - name: meteosat9_seviri
+            arguments:
+              obs_area: [Full-Disk]
+          - name: meteosat10_seviri
+            arguments:
+              obs_area: [Full-Disk]
+          - name: gk2a_ami
+            arguments:
+              obs_area: [Full-Disk]
+          - name: himawari9_ahi
+            arguments:
+              obs_area: [Full-Disk]
+  drivers:
+    - name: default
+      arguments:
+        # deciding to use dateparser's natural language format:
+        # https://dateparser.readthedocs.io/en/latest/index.html
+        # cadence and offset should be part of the querier
+        # only job of a dispatcher should be to run what it's given
+        cadence: "30 min"
+        offset: "0 min"
+        querier:
+          name: file_system
+          arguments:
+            source_names: [abi, seviri, ami, ahi]
+        dispatcher:
+          name: pool
+          arguments:
+            # display_name: StitchedInfrared-Pool
+            display_name: InfraredABI-Pool
+            core_count: 1
+            template: georing_infrared_template
+            steps:
+              workflow:
+                # name: Stitched-Infrared
+                kind: workflow
+                name: abi_infrared
+                arguments: {}
+              output_formatter:
+                kind: output_formatter
+                name: unprojected_image
+                arguments:
+                  sectors: [overcast_georing]
