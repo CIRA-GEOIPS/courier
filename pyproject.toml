@@ -29,11 +29,7 @@ classifiers = [
 python = ">=3.11,<4.0"  # Specify upper bound to prevent Python 4 compatibility issues (lol, it'll be fun when python 4 comes out)
 rich = "*"
 rich-argparse = "*"
-<<<<<<< HEAD
 jinja2 = "*"  # Required for templates and script creation
-=======
-jinja2 = "*" # Required for templates and script creation
->>>>>>> origin/file-system-querier
 watchdog = "*" # Required to listen for data (used by daemon)
 
 # Optional dependencies for extras
@@ -149,6 +145,3 @@ build-backend = "poetry.core.masonry.api"
 name = "cz_conventional_commits"
 tag_format = "v$version"
 version_provider = "poetry"
-
-[tool.poetry.plugins."geoips_driver.plugin_packages"]
-"geoips_driver" = "geoips_driver"
