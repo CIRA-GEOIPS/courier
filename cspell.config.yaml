@@ -1,0 +1,20 @@
+version: "0.2"
+ignorePaths: []
+dictionaryDefinitions: []
+dictionaries: []
+words:
+  - argparse
+  - commitizen
+  - geoips
+  - mypy
+  - pinkrst
+  - pytest
+  - Uttmark
+ignoreWords:
+  - addopts
+  - repr
+  - runcmd
+  - sphinxcontrib
+  - testpaths
+  - xdist
+import: []
