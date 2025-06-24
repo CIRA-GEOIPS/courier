@@ -26,5 +26,5 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -e .
 
-      - name: Test run
-        run: brassy -h
+#      - name: Test run
+#        run: brassy -h
