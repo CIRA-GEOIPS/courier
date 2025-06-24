@@ -2,17 +2,10 @@
 name = "geoips_driver"
 version = "0.1.0"  # Starting with 0.1.0 is more standard than 0.0.0a
 description = "TODO"
-<<<<<<< HEAD
 authors = ["Evan Rose <none@email.com>", "Gwyn Uttmark <biosafetylevel5@gmail.com>"]
 repository = "https://github.com/biosafetylvl5/geoips_driver"  # Add repository field
 
 packages = [{include = "geoips_driver", from = "src"}]
-=======
-authors = ["Evan Rose <mrewrose@gmail.com>", "Gwyn Uttmark <biosafetylevel5@gmail.com>"]
-repository = "https://github.com/biosafetylvl5/geoips_driver"  # Add repository field
-
-packages = [{include="geoips_driver"}]
->>>>>>> origin/file-system-querier
 
 readme = "README.md"
 classifiers = [
