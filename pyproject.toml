@@ -24,29 +24,30 @@ rich = "*"
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
+geoips = "^1.16.1"
 
 # Optional dependencies for extras
-sphinx = { version = "^7.2.0", optional = true }
+sphinx = { version = "*", optional = true }
 sphinxcontrib-runcmd = { version = "*", optional = true }
 sphinxcontrib-napoleon = { version = "*", optional = true }
-sphinx-argparse = { version = "^0.4.0", optional = true }
+sphinx-argparse = { version = "*", optional = true }
 pinkrst = { version = "*", optional = true }
 doc8 = { version = "*", optional = true }
 prettier = { version = "*", optional = true }
-ruff = { version = "^0.0.287", optional = true }
-mypy = { version = "^1.5.1", optional = true }
-pytest = { version = "^7.4.0", optional = true }
-pytest-cov = { version = "^4.1.0", optional = true }
+ruff = { version = "*", optional = true }
+mypy = { version = "*", optional = true }
+pytest = { version = "*", optional = true }
+pytest-cov = { version = "*", optional = true }
 pytest-xdist = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 # Development dependencies that are always installed for development
-pytest = "^7.4.0"
-pytest-cov = "^4.1.0"
-black = "^23.7.0"
-ruff = "^0.0.287"
-mypy = "^1.5.1"
-pre-commit = "^3.3.3"
+pytest = "*"
+pytest-cov = "*"
+black = "*"
+ruff = "*"
+mypy = "*"
+pre-commit = "*"
 brassy = "*"
 
 [tool.poetry.extras]
