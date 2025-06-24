@@ -4,12 +4,10 @@
 {
 	"name": "geoips_driver Devcontainer",
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
-	"features": {
-		"ghcr.io/devcontainers-contrib/features/poetry:2": {
-			"version": "latest"
-		}
-	},
-	"postCreateCommand": "poetry install --with dev --extras 'doc lint test'",
+	"postCreateCommand": "pip install .[doc,lint,test]",
+	"mounts": [
+		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+	],
 	"customizations": {
 		"vscode": {
 			"extensions": [
