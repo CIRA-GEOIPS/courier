@@ -16,7 +16,7 @@ name = "generic"
 family = "standard"
 
 
-def call(controller_config, port=6580):
+def call(controller_config:str, port=6580) -> None:
     """Initiate daemon-like NRT processing using GeoIPS.
 
     Parameters

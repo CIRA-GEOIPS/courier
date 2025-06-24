@@ -52,10 +52,10 @@ brassy = "*"
 
 [tool.poetry.extras]
 doc = [
-    "sphinx",                    # for docs buildin
-    "sphinxcontrib-runcmd",      # for docs buildin
-    "sphinxcontrib-napoleon",    # for docs buildin
-    "sphinx-argparse",           # for docs buildin
+    "sphinx",                    # for docs building
+    "sphinxcontrib-runcmd",      # for docs building
+    "sphinxcontrib-napoleon",    # for docs building
+    "sphinx-argparse",           # for docs building
     "pinkrst",                   # for rst formatting
     "doc8",                      # for rst linting
 ]

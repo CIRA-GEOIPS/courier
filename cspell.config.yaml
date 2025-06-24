@@ -6,11 +6,15 @@ words:
   - argparse
   - commitizen
   - geoips
+  - kwargs
   - mypy
+  - NOAA
   - pinkrst
   - pytest
   - Uttmark
 ignoreWords:
+  - outdirs
+  - retval
   - addopts
   - repr
   - runcmd
