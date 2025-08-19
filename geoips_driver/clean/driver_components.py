@@ -7,6 +7,7 @@ jinja2 templates that spawn GeoIPS processing based on the provided inputs.
 
 import bz2
 import logging
+from importlib import resources
 import os
 import subprocess
 import time
@@ -320,21 +321,29 @@ class Templater:
 
     alg_info = None
 
-    def get_template(self, template_name, template_dir="./templates") -> Template:
+    def get_template(
+        self,
+        template_name,
+        template_dir=None,
+    ) -> Template:
         """Retrieve the appropriate jinja2 template from the specified arguments.
 
         Parameters
         ----------
         template_name: str
             - The name of the template to load
-        template_dir: str
-            - The filepath (string) to the directory in which the template exists
+        template_dir: str, default=None
+            - The filepath (string) to the directory in which the template exists. If
+              None, this defaults to
+              $GEOIPS_PACKAGES_DIR/geoips_driver/geoips_driver/templates
 
         Returns
         -------
         template: jinja2 Template
             - A jinja2 template requested form template_name
         """
+        if template_dir is None:
+            template_dir = str(resources.files("geoips_driver") / "templates")
         # Grab the appropriate template
         env = Environment(loader=FileSystemLoader(template_dir))
         template = env.get_template(f"{template_name}.j2")
@@ -774,3 +783,6 @@ class ProcessSpawner(Templater, FileOperator):
 
 
 driver_utils = DriverUtilities()
+date_utils = DateUtilities()
+template_utils = Templater()
+process_utils = ProcessSpawner()
