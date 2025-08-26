@@ -70,23 +70,6 @@ class SlurmDispatcherArgs(DispatcherArgs):
 class DataMonitorArgs(FrozenModel):
     """Required and optional arguments for the data_monitor plugin."""
 
-    start_time: datetime | None = Field(
-        None,
-        description=(
-            "The start datetime to begin monitoring at. Optional. If provided, it must "
-            "be a valid isoformat utc datetime string, which will be converted into a "
-            "datetime object. If no end datetime is provided, then the data monitor "
-            "will search continuously from this time on."
-        ),
-    )
-    end_time: datetime | None = Field(
-        None,
-        description=(
-            "The end datetime to stop monitoring at. Optional. If provided, it must "
-            "be a valid isoformat utc datetime string, which will be converted into a "
-            "datetime object."
-        ),
-    )
     monitor_configs: list[MonitorConfig] = Field(
         ...,
         description=(
@@ -106,6 +89,15 @@ class QuerierArgs(FrozenModel):
             "larger set of data files for the dispatcher. For example, if you had files"
             " sourced from 'abi', 'seviri', and 'ahi', you could filter what files are "
             "needed by specifying one or more of those source names."
+        ),
+    )
+    timeout: str = Field(
+        ...,
+        description=(
+            "Maximum allotted time for querier to search for a certain set of files. "
+            "If this time is surpassed, the querier will iterate to the next applicable"
+            " set of files.\nFormatted using dateparser's natural language format. See "
+            "https://dateparser.readthedocs.io/en/latest/index.html for more info."
         ),
     )
 
@@ -143,6 +135,7 @@ class Dispatcher(FrozenModel):
         ),
     )
 
+<<<<<<< HEAD:src/geoips_driver/pydantic/controller_configs.py
 class DriverArgs(FrozenModel):
     """Required and optional arguments for the driver plugin."""
 
@@ -191,6 +184,34 @@ class Driver(FrozenModel):
             "optionally can include 'start_time', 'end_time'."
         ),
     )
+=======
+    # @model_validator(mode="before")
+    # def _validate_arguments(cls, values):
+    #     """Validate that the set of args matches the dispatcher's arg format.
+
+    #     Raises
+    #     ------
+    #     pydantic.ValidationError:
+    #         - Raised if the set of arguments provided does not match the argument set
+    #           specified by the dispatcher chosen.
+    #     KeyError:
+    #         - Raised if either 'name' or 'arguments' aren't provided for a dispatcher
+    #     """
+    #     arg_map = {
+    #         "pool": PoolDispatcherArgs,
+    #         "serial": SerialDispatcherArgs,
+    #         "slurm": SlurmDispatcherArgs,
+    #     }
+    #     try:
+    #         arg_map[values["name"]](**values["arguments"])
+    #     except KeyError:
+    #         raise KeyError(
+    #             "Error: dispatcher object was missing one or more of the following keys"
+    #             ": ['name', 'arguments']. Please add these key value pairs before "
+    #             "continuing."
+    #         )
+    #     return values
+>>>>>>> origin/file-system-querier:geoips_driver/pydantic/controller_configs.py
 
 
 class DataMonitor(FrozenModel):
@@ -218,9 +239,51 @@ class ControllerConfigSpec(FrozenModel):
         ...,
         description="List of data_monitor plugins to use with your controller.",
     )
-    drivers: list[Driver] = Field(
+    cadence: str = Field(
         ...,
-        description="List of driver plugins to use with your controller.",
+        description=(
+            "How often a job should be dispatched. Formatted using dateparser's "
+            "natural language format. See "
+            "https://dateparser.readthedocs.io/en/latest/index.html for more info."
+        ),
+    )
+    offset: str | None = Field(
+        "0 min",
+        description=(
+            "An optional time offset from the top of the hour to dispatch a process at."
+            " Formatted using dateparser's natural language format. See "
+            "https://dateparser.readthedocs.io/en/latest/index.html for more info."
+        ),
+    )
+    start_time: datetime | None = Field(
+        None,
+        description=(
+            "The start datetime to begin monitoring at. Optional. If provided, it must "
+            "be a valid isoformat utc datetime string, which will be converted into a "
+            "datetime object. If no end datetime is provided, then the data monitor "
+            "will search continuously from this time on."
+        ),
+    )
+    end_time: datetime | None = Field(
+        None,
+        description=(
+            "The end datetime to stop monitoring at. Optional. If provided, it must "
+            "be a valid isoformat utc datetime string, which will be converted into a "
+            "datetime object."
+        ),
+    )
+    dispatcher: Dispatcher = Field(
+        ...,
+        description=(
+            "The dispatcher plugin used to spawn processes/jobs via this driver."
+        ),
+    )
+    querier: Querier = Field(
+        ...,
+        description=(
+            "The querier plugin used to query an information storage system via this "
+            "driver."
+        ),
     )
 
 

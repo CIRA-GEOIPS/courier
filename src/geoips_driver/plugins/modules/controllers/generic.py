@@ -32,8 +32,12 @@ def call(controller_config:str, port=6580) -> None:
     driver = interfaces.controllers.get_plugin("default")
 
     data_monitors = controller_config.spec.data_monitors
-    drivers = controller_config.spec.drivers
     monitor_configs = data_monitors[0].arguments.monitor_configs
+    querier = controller_config.spec.querier
+    dispatcher = controller_config.spec.dispatcher
+
+    cadence = controller_config.spec.cadence
+    offset = controller_config.spec.offset
 
     dm_processes = {}
     driver_processes = {}
@@ -45,17 +49,11 @@ def call(controller_config:str, port=6580) -> None:
         p = Process(target=dm_plg, args=(dm.arguments, port))
         dm_processes[dm.name] = p
 
-    for driver in drivers:
-        driver_plg = interfaces.drivers.get_plugin(driver.name)
-        querier = driver.arguments.querier
-        dispatcher = driver.arguments.dispatcher
-        cadence = driver.arguments.cadence
-        offset = driver.arguments.offset
-        p = Process(
-            target=driver_plg,
-            args=(querier, dispatcher, monitor_configs, cadence, offset, port),
-        )
-        driver_processes[driver.name] = p
+    p = Process(
+        target=driver,
+        args=(querier, dispatcher, monitor_configs, cadence, offset, port),
+    )
+    driver_processes[driver.name] = p
 
     while True:
         dead_dmp = 0
