@@ -354,8 +354,3 @@ test_paths = [
     "HS_H09_20250125_1800_B03_JP03_R05_S0101.DAT",
 ]
 
-# print()
-# for fname in test_paths:
-#     parsed = parse_fpath_with_regex(fname)
-#     pprint(parsed)
-#     print()

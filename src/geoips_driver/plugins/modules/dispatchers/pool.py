@@ -1,8 +1,6 @@
 """Dispatcher plugin which spawns processes via a multiprocessing pool."""
 
 
-# import jinja2
-
 from geoips_driver.clean.driver_components import template_utils
 
 interface = "dispatchers"

@@ -37,7 +37,7 @@ def convert_dateparser_string_to_timedelta(dp_str):
     val = int(val)
     if "min" in unit:
         td = timedelta(minutes=val)
-    elif "hr" or "hour" in unit:
+    elif True:
         td = timedelta(hours=val)
     elif "day" in unit:
         td = timedelta(days=val)
@@ -116,22 +116,26 @@ def call(querier, dispatcher, monitor_configs, cadence, offset, start_dt, end_dt
       - The port number for microservices to reveive data over (no external access
         provided)
     """
-    # server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # server.bind(("localhost", port))
-    # # I think the int provided to listen is how many messages to go back for?
-    # server.listen(5)
-    # TODO: implement logic to query for appropriate files when a file is found via the
-    # data_monitors that are running.
+    """
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("localhost", port))
+    I think the int provided to listen is how many messages to go back for?
+    server.listen(5)
+    TODO: implement logic to query for appropriate files when a file is found via the
+    data_monitors that are running.
+    """
 
     queriers.get_plugin(querier.name)
     dispatchers.get_plugin(dispatcher.name)
 
     finfo = monitor_configs_to_finfo(monitor_configs)
 
-    # when a file is found: implement the pseudo-code written below
-    # required_files = qplg(finfo, querier.arguments.source_names)
-    # if required_files:
-    #   dplg(<some_info>)
+    """
+    when a file is found: implement the pseudo-code written below
+    required_files = qplg(finfo, querier.arguments.source_names)
+    if required_files:
+      dplg(<some_info>)
+    """
     query_dt = get_starting_query_time(offset, custom_datetime=start_dt)
 
     timeout_str = querier.arguments.timeout
@@ -139,7 +143,7 @@ def call(querier, dispatcher, monitor_configs, cadence, offset, start_dt, end_dt
     cadence = convert_dateparser_string_to_timedelta(cadence)
     offset = convert_dateparser_string_to_timedelta(offset)
 
-    deadline = datetime.now() + timeout
+    datetime.now() + timeout
 
     while True:
         # This is where the logic should occur for a file arriving to the data monitor
@@ -160,13 +164,14 @@ def call(querier, dispatcher, monitor_configs, cadence, offset, start_dt, end_dt
                 .replace("NN", minute)
                 .replace("JJJ", julian)
             )
-        # when a file is found: implement the pseudo-code written below
+        """
+        when a file is found: implement the pseudo-code written below
         required_files = qplg(finfo, querier.arguments.source_names)
         if required_files:
             # Time to dispatch a job!
-            # dplg(args)
             pass
         elif datetime.now() > deadline:
-            # timeout has hit. Iterate to next datetime
-            query_dt = query_dt + cadence
-            deadline = datetime.now() + timeout
+           # timeout has hit. Iterate to next datetime
+             query_dt = query_dt + cadence
+             deadline = datetime.now() + timeout
+        """

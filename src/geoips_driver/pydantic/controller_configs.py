@@ -183,33 +183,6 @@ class Driver(FrozenModel):
             "optionally can include 'start_time', 'end_time'."
         ),
     )
-    # @model_validator(mode="before")
-    # def _validate_arguments(cls, values):
-    #     """Validate that the set of args matches the dispatcher's arg format.
-
-    #     Raises
-    #     ------
-    #     pydantic.ValidationError:
-    #         - Raised if the set of arguments provided does not match the argument set
-    #           specified by the dispatcher chosen.
-    #     KeyError:
-    #         - Raised if either 'name' or 'arguments' aren't provided for a dispatcher
-    #     """
-    #     arg_map = {
-    #         "pool": PoolDispatcherArgs,
-    #         "serial": SerialDispatcherArgs,
-    #         "slurm": SlurmDispatcherArgs,
-    #     }
-    #     try:
-    #         arg_map[values["name"]](**values["arguments"])
-    #     except KeyError:
-    #         raise KeyError(
-    #             "Error: dispatcher object was missing one or more of the following keys"
-    #             ": ['name', 'arguments']. Please add these key value pairs before "
-    #             "continuing."
-    #         )
-    #     return values
-
 
 class DataMonitor(FrozenModel):
     """Represents the data monitoring configuration."""
