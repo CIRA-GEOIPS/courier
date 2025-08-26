@@ -1,0 +1,23 @@
+service:
+  name: "dispatcher-service"
+  max_concurrent_jobs: 3
+  job_timeout: 300
+  
+templates:
+  directory: "/app/shared/templates"
+  
+directories:
+  temp: "/data/temp"
+  output: "/data/output"
+  
+rabbitmq:
+  queues:
+    job_submissions:
+      consume: true
+    job_status:
+      publish: true
+    output_files:
+      publish: true
+      
+logging:
+  level: "INFO"

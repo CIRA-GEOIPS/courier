@@ -1,0 +1,106 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"    # AMQP port
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - geoips-network
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: geoips_system
+      POSTGRES_USER: admin  
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: pg_isready -U admin -d geoips_system
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    networks:
+      - geoips-network
+
+  watcher-service:
+    build: 
+      context: .
+      dockerfile: services/watcher/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_ID: watcher-service-001
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
+      DATABASE_URL: postgresql://admin:admin@postgres:5432/geoips_system
+    volumes:
+      - ./data:/data
+      - ./shared:/app/shared
+      - ./configs:/app/configs
+    networks:
+      - geoips-network
+    restart: unless-stopped
+
+  querier-service:
+    build: 
+      context: .
+      dockerfile: services/querier/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_ID: querier-service-001
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
+      DATABASE_URL: postgresql://admin:admin@postgres:5432/geoips_system
+    volumes:
+      - ./data:/data
+      - ./shared:/app/shared
+      - ./configs:/app/configs
+    networks:
+      - geoips-network
+    restart: unless-stopped
+
+  dispatcher-service:
+    build: 
+      context: .
+      dockerfile: services/dispatcher/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_ID: dispatcher-service-001
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
+      DATABASE_URL: postgresql://admin:admin@postgres:5432/geoips_system
+    volumes:
+      - ./data:/data
+      - ./shared:/app/shared
+      - ./configs:/app/configs
+    networks:
+      - geoips-network
+    restart: unless-stopped
+
+networks:
+  geoips-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

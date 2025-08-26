@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Cloud Water Content Processing Script
+# Generated from template for job: {{ job_id }}
+
+set -e
+
+echo "Starting Cloud Water Content processing..."
+echo "Job ID: {{ job_id }}"
+echo "CWC File: {{ cwc_file }}"
+echo "CLAVRX File: {{ clavrx_file }}"
+echo "Timestamp: {{ timestamp }}"
+
+# Input files
+CWC_FILE="/data/input/{{ cwc_file }}"
+CLAVRX_FILE="/data/input/{{ clavrx_file }}"
+
+# Output file
+OUTPUT_FILE="/data/output/enhanced_clavrx_{{ timestamp }}.hdf"
+
+# Create output directory if it doesn't exist
+mkdir -p /data/output
+
+# Simulate processing (in real implementation, this would call actual processing tools)
+echo "Processing CWC data from: $CWC_FILE"
+echo "Processing CLAVRX data from: $CLAVRX_FILE"
+
+# Simulate file processing
+echo "Combining CWC and CLAVRX data..."
+sleep 2
+
+# Create output file with simulated enhanced data
+{
+    echo "Enhanced CLAVRX Data with Cloud Water Content"
+    echo "Generated at: $(date)"
+    echo "Source CWC: {{ cwc_file }}"
+    echo "Source CLAVRX: {{ clavrx_file }}"
+    echo "Job ID: {{ job_id }}"
+    echo ""
+    echo "=== Simulated Enhanced Data ==="
+    cat "$CWC_FILE" 2>/dev/null || echo "CWC data processed"
+    echo ""
+    cat "$CLAVRX_FILE" 2>/dev/null || echo "CLAVRX data processed"
+} > "$OUTPUT_FILE"
+
+echo "Processing completed successfully!"
+echo "Output file created: $OUTPUT_FILE"
+
+# Return the output file path for the dispatcher
+echo "OUTPUT_FILE:$OUTPUT_FILE"

@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --job-name={{ job_name }}
+#SBATCH --output={{ output_file }}
+#SBATCH --error={{ error_file }}
+#SBATCH --ntasks={{ ntasks }}
+#SBATCH --time={{ time }}
+#SBATCH --partition={{ partition }}
+#SBATCH --mem-per-cpu={{ mem_per_cpu }}
+
+# Your commands here
+srun {{ executable }} {{ executable_args }}
