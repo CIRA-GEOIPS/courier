@@ -5,14 +5,15 @@ or execute a set of processes in parallel if multiprocessing is selected.
 """
 
 import argparse
+import bz2
 import logging
 import os
 import subprocess
 import time
-from datetime import UTC, datetime
+from glob import glob
 from multiprocessing import Pool
+from pathlib import Path
 
-import xarray
 from jinja2 import Environment, FileSystemLoader
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers.polling import PollingObserver
@@ -20,10 +21,123 @@ from watchdog.observers.polling import PollingObserver
 from geoips_driver.algorithm_info import (
     NewJulianDateException,
     algorithms,
-    calendar_to_julian,
+    curr_calendar_date,
 )
 
 LOG = logging.getLogger(__name__)
+
+
+class AhiGeoColorUtils:
+    """Object providing utility functions for producing AHI GeoColor Imagery."""
+
+    band_resolution_mapping = {
+        "B01": "R10",
+        "B02": "R10",
+        "B03": "R05",
+        "B04": "R10",
+        "B07": "R20",
+        "B13": "R20",
+    }
+    segment_divisions = [f"S{str(num).zfill(2)}10" for num in range(1, 11)]
+    temp_savedir = f"{os.environ['GEOIPS_TESTDATA_DIR']}/test_data_ahi_day/temp_files"
+
+    def required_geocolor_fnames(self, cdate, hhnn):
+        """Generate a listing of all fnames needed to produce AHI GeoColor images exist.
+
+        Generate all AHI fnames for Bands 1, 2, 3, 4, 7, & 13 at time <cdate>_<hhmm>.
+        This will return a list of required files needed to produce AHI GeoColor
+        Imagery.
+
+        Parameters
+        ----------
+        cdate: str
+            - The calendar date of the data used for GeoColor.
+              Formatted: {yyyy}{mm}{dd}.
+        hhmm: str
+            - The hour and minute of 'cdate' that we'll use to produce GeoColor imagery.
+        """
+        required_fnames = []
+        for band, res in self.band_resolution_mapping.items():
+            for seg_div in self.segment_divisions:
+                required_fnames.append(
+                    f"HS_H09_{cdate}_{hhnn}_{band}_FLDK_{res}_{seg_div}.DAT.bz2",
+                )
+        return sorted(required_fnames)
+
+    def get_full_geocolor_paths(self, datadir, cdate, hhnn):
+        """Return a list of full paths to files needed to produce AHI GeoColor imagery.
+
+        Check that all files for Bands 1, 2, 3, 4, 7, & 13 are found in 'datadir' at
+        time <cdate>_<hhmm>. This will return full file paths to the required
+        files if all exist, otherwise, a RuntimeError will be raised.
+
+        Parameters
+        ----------
+        datadir: str
+            - The path to the directory containing the files used for GeoColor.
+        cdate: str
+            - The calendar date of the data used for GeoColor.
+              Formatted: {yyyy}{mm}{dd}.
+        hhnn: str
+            - The hour and minute of 'cdate' that we'll use to produce GeoColor imagery.
+        """
+        required_fnames = self.required_geocolor_fnames(cdate, hhnn)
+        files_exist = [
+            os.path.exists(f"{datadir}/{cdate}/{fname}") for fname in required_fnames
+        ]
+        full_paths = [f"{datadir}/{cdate}/{fname}" for fname in required_fnames]
+
+        if not all(files_exist):
+            raise RuntimeError(
+                "Not all files for this timestep have been created yet. Please check "
+                "that the information you provided is correct, and if so, wait for "
+                "those files to be created.",
+            )
+
+        return full_paths
+
+    def bzip_files_temporarily(self, datadir, cdate, hhnn):
+        """Decompress .bz2 files to a new location temporarily for GeoColor processing.
+
+        Check that all files for Bands 1, 2, 3, 4, 7, & 13 are found in 'datadir' at
+        time <cdate>_<hhmm>. This will return either True, all files found, or false,
+        some files missing.
+
+        Parameters
+        ----------
+        datadir: str
+            - The path to the directory containing the files used for GeoColor.
+        cdate: str
+            - The calendar date of the data used for GeoColor.
+              Formatted: {yyyy}{mm}{dd}.
+        hhnn: str
+            - The hour and minute of 'cdate' that we'll use to produce GeoColor imagery.
+        """
+        full_paths = self.get_full_geocolor_paths(datadir, cdate, hhnn)
+        in_out_fpaths = [
+            (fpath, f"{self.temp_savedir}/{os.path.basename(fpath)[:-4]}")
+            for fpath in full_paths
+        ]
+        with Pool(processes=os.cpu_count() // 8) as pool:
+            pool.starmap(
+                self._decompress_bzip_file,
+                in_out_fpaths,
+            )
+
+    def _decompress_bzip_file(self, input_fpath, output_fpath):
+        """Decompress a .bz2 file found at input_fpath to output_fpath.
+
+        Parameters
+        ----------
+        input_fpath: str
+            - The full path to the .bz2 file.
+        output_fpath: str
+            - The full path to the decompressed file, whose data comes from
+              'intput_fpath'.
+        """
+        with bz2.BZ2File(input_fpath, "rb") as file:
+            with open(output_fpath, "wb") as output:
+                output.write(file.read())
 
 
 class NASWatcher(FileSystemEventHandler):
@@ -34,11 +148,11 @@ class NASWatcher(FileSystemEventHandler):
     on the hardware in which you are running on.
     """
 
-    def __init__(self, algorithm, sat, sensor, sector, julian_date, use_slurm=True):
-        """Start up the NASWatcher to listen for arriving data at 'watch_directory'.
+    gc_utils = AhiGeoColorUtils()
+    last_processed_hhnn = None
 
-        Where 'watch_directory' is set based on the provided parameters. This will need
-        to be adjusted based on where data is arriving on the machine you are watching.
+    def __init__(self, algorithm, sat, sensor, sector, calendar_date, use_slurm=True):
+        """Initialize the daemon to listen for arriving data at 'watch_directory.
 
         Parameters
         ----------
@@ -50,84 +164,49 @@ class NASWatcher(FileSystemEventHandler):
             - The sensor on 'sat' which makes use of 'algorithm'
         sector: str
             - The geospatial sector containing data produced from 'algorithm.sat.sensor'
-        julian_date: str
+        calendar_date: str
             - The current julian date in which we are runnign this NASWatcher
-            - Formatted: {year}{julian_date}
+            - Formatted: {yyyy}{mm}{dd}
         use_slurm: bool (default = True)
             - Whether or not we want to use slurm-based automated processing. If False,
               we'll use multiprocessing to automate.
         """
-        if algorithm not in algorithms:
+        if algorithm not in algorithms or algorithm != "AHI":
             raise NotImplementedError(
                 f"Algorithm '{algorithm}' hasn't been implemented in "
                 "geoips_driver.algorithm_info:algorithms. Please create an info "
                 f"container for '{algorithm}' before instantiating a watcher for it.",
             )
+        self.required_gc_files = set()
+        # Initialize variables for the AHI GeoColor Watcher
         self.max_cpu_count = os.cpu_count() // 4
         self.alg_info = algorithms[algorithm]
         self.use_slurm = use_slurm
         # NOTE: most likely need to add a check here to ensure that
         # sat, sensor, and sector are valid keys to this information dictionary
         self.watch_directory = (
-            f"{self.alg_info.paths[sat][sensor][sector]}/{julian_date}/"
+            f"{self.alg_info.paths[sat][sensor][sector]}/{calendar_date}/"
         )
-        # If this watcher was just initialized and the watch directory doesn't exist,
-        # wait for the directory to be created before initializing the actual watcher.
-        while not os.path.exists(self.watch_directory):
-            curr_jdate = calendar_to_julian()
-            if (
-                int(curr_jdate) > int(julian_date)
-                # Offset the day by 3 hours (hr 02 today - hr 23 prev day)
-                # as there is a delay of about 2hr 40 min for the data to come in
-                and datetime.now(UTC).hour >= 2
-            ):
-                # Directory was never created. Most likely caused by data outages from
-                # one or more satellites. Raise a julian date exception and move
-                # on to the next date.
-                raise NewJulianDateException(
-                    f"Directory {self.watch_directory} was never created and a new "
-                    "day has started. Exiting to watch the next directory.",
-                )
-            else:
-                print(
-                    f"Waiting for data directory {self.watch_directory} to be created.",
-                )
-                time.sleep(30)
         self.sector = self.alg_info.sector_mapping[sector]
 
         if self.use_slurm:
             self.outdir = self.alg_info.slurm_dir
         else:
             self.outdir = self.alg_info.mp_dir
-        # Initialize the rest of the components from the parent FileSystemEventHandler
+
+        # If this watcher was just initialized and the watch directory doesn't exist,
+        # wait for the directory to be created before initializing the actual watcher.
+        while not os.path.exists(self.watch_directory):
+            print(f"Waiting for data directory {self.watch_directory} to be created.")
+            time.sleep(30)
+
         super().__init__()
-
-    def file_fully_written(self, fpath):
-        """Determine if a file has been fully written to disk.
-
-        Parameters
-        ----------
-        fpath: str
-            - The path to the file we're checking to see if it's fully written.
-        """
-        # This seems to work for the time being. What's annoying about these Observer
-        # classes is that they both recognize that a file has arrived in a directory
-        # before it is necessarily fully written to disk. This is a workaround that
-        # checks for file size after each minute, and if those match, then attempt to
-        # read the attributes of the file as those generally are written last.
-        initial_size = os.path.getsize(fpath)
-        time.sleep(60)
-        next_size = os.path.getsize(fpath)
-
-        # Note that this is using xarray_open_dataset format and will need to be changed
-        # if your file type is of a file format that can't be read using this technique
-        return bool(initial_size == next_size and len(xarray.open_dataset(fpath).attrs))
 
     def on_created(self, event):
         """If a file in 'watch_directory' was created, call this func.
 
         If the created source path was an actual file, not a directory, then execute
-        OVERCAST GEOring_3d processing.
+        GeoIPS CLAVR-X processing.
 
         Parameters
         ----------
@@ -136,25 +215,82 @@ class NASWatcher(FileSystemEventHandler):
         """
         # Called when a file is created
         file_path = event.src_path
-        print(f"EVENT TYPE = {event.event_type}")
-        print(f"EVENT PATH = {file_path}")
-        # This conditional filters out files we don't want
-        if not event.is_directory:
+        bname = os.path.basename(file_path)
+        pl_path = Path(file_path)
+        if (
+            not event.is_directory
+            and "FLDK" in file_path
+            and pl_path.suffix == ".bz2"
+            and any(band in bname for band in self.gc_utils.band_resolution_mapping)
+        ):
+            # AHI GeoColor input file structure
+            # header_satellite_cdate_hhnn_band_sector_res_segdiv.DAT.bz2
+            # HS_H09_20240719_1340_B08_FLDK_R20_S1010.DAT.bz2
+            # 0__1___2________3____4___5____6___7.DAT.bz2
+            fsplit = file_path.split("_")
+            cdate = fsplit[2]
+            hhnn = fsplit[3]
             print(f"Detected new file: {file_path}")
-            fully_written = False
-            while not fully_written:
-                print("Waiting for file be fully written to disc...")
-                fully_written = self.file_fully_written(file_path)
+            try:
+                self.gc_utils.get_full_geocolor_paths(
+                    self.alg_info.basedir,
+                    cdate,
+                    hhnn,
+                )
+                files_found = True
+            except RuntimeError:
+                # Not all files exist yet for processing
+                # print("Still waiting for a few files...")
+                files_found = False
 
-            # Kick of your queue of jobs or multiprocesses
-            self.start_processing(file_path)
+            if files_found and self.last_processed_hhnn != hhnn:
+                success_str = (
+                    "All files exist! Starting processing after files have been written"
+                    "..."
+                )
+                print(success_str)
+                time.sleep(30)
+                print("Starting processing...")
+                self.prepare_process_cleanup(cdate, hhnn)
+                self.last_processed_hhnn = hhnn
+
+    def prepare_process_cleanup(self, cdate, hhnn):
+        """Prepare files for processing, process, then remove decompressed files.
+
+        Parameters
+        ----------
+        cdate: str
+            - The calendar date of the data used for GeoColor.
+              Formatted: {yyyy}{mm}{dd}.
+        hhnn: str
+            - The hour and minute of 'cdate' that we'll use to produce GeoColor imagery.
+        """
+        # Decompress the required files to a temporary location
+        print("Decompressing Files for AHI GeoColor Imagery")
+        self.gc_utils.bzip_files_temporarily(
+            self.alg_info.basedir,
+            cdate,
+            hhnn,
+        )
+        # Wait a bit to ensure the files have been decompressed fully. This might need
+        # to be adjusted. Previously was getting errors that these files didn't exist,
+        # although they did. Hopefully this fixes things.
+        time.sleep(6)
+        # Only start processing if all files needed have been found and
+        # decompressed with bunzip2
+        self.start_processing(f"{self.gc_utils.temp_savedir}/*")
+        # Remove the temporarily decompressed files
+        for fpath in glob(f"{self.gc_utils.temp_savedir}/*.DAT"):
+            os.remove(fpath)
+        # Reset found / required files for the next timestep of processing
+        self.required_gc_files = set()
 
     def start_processing(self, fpath):
         """Execute a series of processes using data found at file_path.
 
         If self.use_slurm is True, Submit a series jobfiles to slurm via 'sbatch' for
-        the incoming GEOring_3d file. Otherwise, use multiprocessing to execute your
-        processes in parallel.
+        the incoming CLAVR-X file.
+        Otherwise, use multiprocessing to execute your processes in parallel.
 
         Where the set of processes / jobfiles is from the number of output types and
         product types.
@@ -174,38 +310,35 @@ class NASWatcher(FileSystemEventHandler):
         fpath: str
             - The path to the data file which just arrived.
         """
-        fname = os.path.basename(fpath)
-
+        script_paths = []
         for output_type in self.alg_info.output_types:
-            # Produce both imagery_annotated and imagery_clean outputs
-            script_paths = []
-            for product_name in self.alg_info.product_names:
-                # Do this for a set of GEOring_3d products that we want to produce
-                # if (
-                #     product_name in ["Cloud_Type", "Cloud_Water_Content"]
-                #     and output_type == "imagery_annotated"
-                # ):
-                #     output_type = "ov_imagery_annotated"
-                script_path = self.create_clavrx_script(
-                    fpath,
-                    product_name,
-                    output_type,
-                )
-                if self.use_slurm:
-                    # Create, submit, and the job using sbatch (SLURM)
+            for sector in ["himawari", "south_china_sea"]:
+                # Produce both imagery_annotated and imagery_clean outputs
+                for product_name in self.alg_info.product_names:
+                    # Do this for a set of CLAVR-X products that we want to produce
+                    script_path = self.create_clavrx_script(
+                        fpath,
+                        product_name,
+                        output_type,
+                        sector,
+                    )
+                    if self.use_slurm:
+                        # Create, submit, and the job using sbatch (SLURM)
+                        fname = f"ahi_gc_{output_type}"
+                        self.run_jobfile(fname, fpath, script_path)
+                    else:
+                        script_paths.append(script_path)
+                    # Remove the bash script after it has been executed.
+                    # NOTE: Need to determine how long it will take to run that file
+                    # after we've submitted it to slurm. Might just to clean up every
+                    # once in a while for the time being.
 
-                    # NOTE: I haven't yet tested this as I wasn't positive on the
-                    # resource allocation I should provide for each job
-                    self.run_jobfile(fname, fpath, script_path)
-                else:
-                    script_paths.append(script_path)
-                # NOTE: No need to remove the bash script after it has been executed, as
-                # the are overwritten for each file.
-            if not self.use_slurm:
-                self.parallel_process(script_paths, output_type)
+                    # os.remove(script_path)
+        if not self.use_slurm:
+            self.parallel_process(script_paths)
 
-    def create_clavrx_script(self, fpath, product_name, output_type):
-        """Generate a bash script for producing GEOring_3d products via GeoIPS.
+    def create_clavrx_script(self, fpath, product_name, output_type, sector):
+        """Generate a bash script for producing CLAVR-X products via GeoIPS.
 
         Where a clavrx bash script expects a filepath, product_name, and output_type.
 
@@ -217,67 +350,42 @@ class NASWatcher(FileSystemEventHandler):
             - The name of the product plugin we'll use in GeoIPS
         output_type: str
             - The name of the output_formatter plugin we'll use in GeoIPS
+        sector: str
+            - The name of the sector plugin we'll be using in the GeoIPS process
         """
         # Load the Jinja2 template
         env = Environment(loader=FileSystemLoader("."))
-        # Using georing template, replace if using a template for a different type of
-        # product
-        # if product_name in ["Cloud_Type", "Cloud_Water_Content"]:
-        #     template = env.get_template("templates/georing_slice_template.j2")
-        # else:
-        #     template = env.get_template("templates/georing_template.j2")
-        template = env.get_template("templates/unprojected_georing_template.j2")
+        template = env.get_template("templates/ahi_geocolor_template.j2")
 
         if output_type == "imagery_annotated":
             outdir_type = "annotated_imagery"
-        elif output_type == "imagery_clean":
-            outdir_type = "clean_imagery"
-        elif output_type == "unprojected_image":
-            outdir_type = "unprojected_imagery"
         else:
-            outdir_type = output_type
-        # Create a modified product name for slider devs: needed for accurate placement
-        # of rsync'd data
-        ovcst_product_name = (
-            product_name.lower().replace("unprojected-", "").replace("-", "_")
-        )
+            outdir_type = "clean_imagery"
         # Define the context for the template
         context = {
             "file_path": fpath,
             "product_name": product_name,
-            "ovcst_product_name": ovcst_product_name,
             "output_type": output_type,
             "outdir_type": outdir_type,
-            # "sector": self.sector,  # No sector here as unprojected doesn't take one
+            "sector": sector,
         }
-        if any(
-            pname in product_name.lower()
-            for pname in ["cloud-type", "cloud-water-content"]
-        ):
-            context["is_3d"] = "True"
-        else:
-            context["is_3d"] = "False"
+
         # Render the template with the context
         clavrx_bash_script = template.render(context)
         script_path = (
-            f"{self.outdir}/temp_scripts/{self.alg_info.name}/"
-            f"{product_name}_{output_type}.sh"
+            f"{self.outdir}/temp_scripts/{product_name}_{output_type}_{sector}.sh"
         )
-
-        if not os.path.exists(os.path.dirname(script_path)):
-            os.makedirs(os.path.dirname(script_path))
 
         # Write the rendered template to a file
         with open(script_path, "w") as f:
             f.write(clavrx_bash_script)
 
-        # Modify the file permissions to be executable
         subprocess.run(["chmod", "+x", script_path], check=True)
 
         print(f"CLAVR-X Bash Script '{product_name}_{output_type}.sh' was created.")
         return script_path
 
-    def parallel_process(self, script_paths, output_type):
+    def parallel_process(self, script_paths):
         """Execute a set of processes in parallel for each script in 'script_paths'.
 
         Parameters
@@ -285,74 +393,19 @@ class NASWatcher(FileSystemEventHandler):
         script_paths: list[str]
             - A list of file paths that are associated with GeoIPS bash scripts used
               for processing
-        output_type: str
-            - The name of the output_formatter plugin we'll use in GeoIPS
         """
-        print(f"Beginning parallel processing of {self.alg_info.name} products.")
-        with Pool(
-            processes=min(len(self.alg_info.product_names), self.max_cpu_count),
-        ) as pool:
-            # Execute your GeoIPS bash scripts in parallel
+        with Pool(processes=4) as pool:
             results = pool.map(
                 self.run_bash_script,
                 script_paths,
             )
             # Save outputs to individual files
             for i, result in enumerate(results):
-                product_name = self.alg_info.product_names[i]
                 # Create a unique output file name
-                output_file = (
-                    f"{self.outdir}/output/output_{product_name}_{output_type}.log"
-                )
-                # Write the output log to disk
+                output_file = f"{self.outdir}/output/output_{os.path.basename(script_paths[i])[:-3]}.log"  # noqa
                 with open(output_file, "w") as f:
                     f.write(result)
-                    print(
-                        f"Output for script {product_name}_{output_type} saved "
-                        f"to {output_file}",
-                    )
-        print(f"Finished parallel processing of {self.alg_info.name} products.")
-        # Now, rsync the parent directories of the newly created outputs w/ OVCST4 for
-        # SLIDER-based display.
-        print("Sending data over to SLIDER using rsync.")
-        self.sync_with_slider()
-
-    def sync_with_slider(self):
-        """Sync the produced output with SLIDER, on machine overcast4.
-
-        Template has hardcoded values for where to grab data from (source) and where to
-        place data (destination). Since this is sending data to a different machine,
-        you'll need to set up an ssh-key on that machine so that this can be ran as a
-        daemon.
-        """
-        # Grab the appropriate template for rsync
-        env = Environment(loader=FileSystemLoader("."))
-        template = env.get_template("templates/rsync_data_template.j2")
-        for product_name in self.alg_info.product_names:
-            if any(
-                pname in product_name.lower()
-                for pname in ["cloud-type", "cloud-water-content"]
-            ):
-                continue
-            # NOTE: Remove the if statement above once Zayd is ready for 3D data
-            ovcst_pname = (
-                product_name.lower().replace("unprojected-", "").replace("-", "_")
-            )
-            context = {"product_name": ovcst_pname}
-            # Render the template with the context
-            rsync_bash_script = template.render(context)
-            script_path = f"{self.outdir}/temp_scripts/rsync/{ovcst_pname}.sh"
-
-            if not os.path.exists(os.path.dirname(script_path)):
-                os.makedirs(os.path.dirname(script_path))
-
-            # Write the rendered template to a file
-            with open(script_path, "w") as f:
-                f.write(rsync_bash_script)
-
-            # Modify the file permissions to be executable
-            subprocess.run(["chmod", "+x", script_path], check=True)
-            self.run_bash_script(script_path)
+                    print(f"Output for script {script_paths[i]} saved to {output_file}")
 
     def run_bash_script(self, fpath):
         """Execute the bash script at 'fpath' while adhering to bandit protocols.
@@ -365,7 +418,10 @@ class NASWatcher(FileSystemEventHandler):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
+                ["/bin/bash", fpath],
+                check=True,
+                capture_output=True,
+                text=True,
             )
             return (
                 result.stdout.strip()
@@ -476,12 +532,17 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
         - Whether or not we want to use slurm-based automated processing. If False,
             we'll use multiprocessing to automate.
     """
-    starting_jdate = calendar_to_julian()
-    # Need a julian date as that is the format of directory names for GOES-CLAVR-x data
+    starting_cdate = curr_calendar_date()
     event_handler = NASWatcher(
-        algorithm, sat, sensor, sector, starting_jdate, use_slurm=use_slurm,
+        algorithm,
+        sat,
+        sensor,
+        sector,
+        starting_cdate,
+        use_slurm=use_slurm,
     )
     print(f"Started watching directory: {event_handler.watch_directory}")
+    # observer = Observer()
     observer = PollingObserver()
     observer.schedule(event_handler, event_handler.watch_directory, recursive=True)
     observer.start()
@@ -492,18 +553,13 @@ def start_watching(algorithm, sat, sensor, sector, use_slurm=True):
     try:
         while observer.is_alive():
             time.sleep(1)
-            curr_jdate = calendar_to_julian()
-            if (
-                int(curr_jdate) > int(starting_jdate)
-                # Offset the day by 3 hours (hr 02 today - hr 23 prev day)
-                # as there is a delay of about 2hr 40 min for the data to come in
-                and datetime.now(UTC).hour >= 2
-            ):
-                starting_jdate = curr_jdate
+            curr_cdate = curr_calendar_date()
+            if int(curr_cdate) > int(starting_cdate):
+                starting_cdate = curr_cdate
                 observer.stop()
                 observer.join()
                 raise NewJulianDateException(
-                    f"Reinitializing NASWatcher for julian date = {starting_jdate}.",
+                    f"Reinitializing NASWatcher for calendar date = {starting_cdate}.",
                 )
     # except KeyboardInterrupt:
     #     observer.stop()
@@ -518,7 +574,7 @@ def main():
     """Start up the daemon and begin watching for data at 'watch_directory'.
 
     When data is found, create and submit slurm jobfiles which will produce a set of
-    GEOring_3d products for each data file via geoips and geoips_clavrx.
+    CLAVR-X products for each data file via geoips and geoips_clavrx.
 
     If the daemon crashes for some reason, catch that failure, wait 5 seconds, and
     attempt to restart it.
@@ -528,29 +584,28 @@ def main():
         "--algorithm",
         "-alg",
         type=str,
-        default="GEORING",
-        choices=list(algorithms.keys()),
+        default="AHI",
         help="The algorithm that you want your data to come from.",
     )
     parser.add_argument(
         "--satellite",
         "-sat",
         type=str,
-        default="GEORING",
+        default="Himawari9",
         help="The satellite that you want your data to come from.",
     )
     parser.add_argument(
         "--sensor",
         "-sens",
         type=str,
-        default="GEORING",
+        default="AHI",
         help="The sensor of the satellite that you want your data to come from.",
     )
     parser.add_argument(
         "--sector",
         "-sect",
         type=str,
-        default="ALL",
+        default="FLDK",
         help="The sector that you want your data to come from.",
     )
     ARGS = parser.parse_args()
@@ -559,6 +614,9 @@ def main():
     while True:
         try:
             start_watching(alg, sat, sensor, sector, use_slurm=False)
+            # start_watching("CLAVRX", "GOES16", "ABI", "RadF")
+            # start_watching("CLAVRX", "GOES18", "ABI", "RadC")
+            # start_watching("CLAVRX", "GOES18", "ABI", "RadF")
         except Exception and NewJulianDateException as e:
             if type(e).__name__ != "NewJulianDateException":
                 LOG.exception(f"Watcher crashed with error: {e}")

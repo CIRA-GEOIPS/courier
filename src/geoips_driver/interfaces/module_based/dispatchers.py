@@ -10,7 +10,7 @@ class DispatchersInterface(BaseModuleInterface):
     """
 
     name = "dispatchers"
-    apiVersion = "geoips_driver/v1"
+    apiVersion = "geoips_driver/v1"  # noqa: N815
 
 
 dispatchers = DispatchersInterface()

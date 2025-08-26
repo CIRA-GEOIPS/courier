@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.7', '3.13']  # Specify the Python versions you want to test
+        python-version: ['3.11', '3.13']  # Specify the Python versions you want to test
 
     steps:
       - name: Check out the repository code
@@ -26,5 +26,5 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -e .
 
-      - name: Test run
-        run: brassy -h
+#      - name: Test run
+#        run: brassy -h

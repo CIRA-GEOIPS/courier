@@ -7,7 +7,7 @@ class DataMonitorsInterface(BaseModuleInterface):
     """Interface used for data monitoring a file system in different manners."""
 
     name = "data_monitors"
-    apiVersion = "geoips_driver/v1"
+    apiVersion = "geoips_driver/v1"  # noqa: N815
 
 
 data_monitors = DataMonitorsInterface()

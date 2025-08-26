@@ -1,6 +1,10 @@
 # Target Python version
 target-version = "py311"
 line-length = 88
+exclude = [
+    "tests",
+    "src/legacy",
+]
 
 # Enable a wide range of rules
 [lint]

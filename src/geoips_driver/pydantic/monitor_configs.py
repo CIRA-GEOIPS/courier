@@ -14,13 +14,22 @@ from geoips.pydantic.bases import (
 from pydantic import Field, model_validator
 
 
+class NotADictionaryError(TypeError):
+    """Raised when an object is expected to be a dictionary but is not."""
+
+    def __init__(self, obj=None, message=None):
+        if message is None:
+            message = f"Expected a dictionary, but got {type(obj).__name__}: {obj}"
+        super().__init__(message)
+
 class ObservationArea(FrozenModel):
     """Configuration for an ObservationArea model."""
 
     parent_dir: Path = Field(..., description="Path template for data storage.")
     patterns: list[str] = Field(..., description="List of filename patterns to match.")
     num_expected: int = Field(
-        ..., description="Expected number of files per time step.",
+        ...,
+        description="Expected number of files per time step.",
     )
 
 
@@ -51,7 +60,7 @@ class MonitorConfigSpec(PermissiveFrozenModel):
             - Raised if values is not an instance of a dictionary
         """
         if not isinstance(values, dict):  # Ensure it's a dict
-            raise TypeError("Input must be a dictionary")
+            raise NotADictionaryError(values)
         if "obs_areas" not in values:
             return {"obs_areas": values}
         return values
@@ -60,8 +69,9 @@ class MonitorConfigSpec(PermissiveFrozenModel):
 class MonitorConfigPlugin(PluginModel):
     """Represents the monitor_config plugin configuration."""
 
-    apiVersion: ClassVar[str] = "geoips_driver/v1"
+    apiVersion: ClassVar[str] = "geoips_driver/v1" # noqa: N815
 
     spec: MonitorConfigSpec = Field(
-        ..., description="Specification for the monitor_config plugin.",
+        ...,
+        description="Specification for the monitor_config plugin.",
     )

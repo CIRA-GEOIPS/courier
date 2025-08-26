@@ -583,7 +583,10 @@ class ProcessSpawner(Templater, FileOperator):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
+                ["/bin/bash", fpath],
+                check=True,
+                capture_output=True,
+                text=True,
             )
             return (
                 result.stdout.strip()

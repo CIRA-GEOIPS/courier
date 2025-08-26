@@ -7,6 +7,7 @@ jinja2 templates that spawn GeoIPS processing based on the provided inputs.
 
 import bz2
 import logging
+from importlib import resources
 import os
 import subprocess
 import time
@@ -77,7 +78,9 @@ class DateUtilities:
         else:
             # Round up to the next hour
             result = (now + timedelta(hours=1)).replace(
-                minute=0, second=0, microsecond=0,
+                minute=0,
+                second=0,
+                microsecond=0,
             )
         return f"{str(result.hour).zfill(2)}{str(result.minute).zfill(2)}"
 
@@ -143,8 +146,8 @@ class FileLocator:
     """Object which is able to locate sets of files stemming from multiple directories.
 
     See 'example_finfo' for an example of how to set up your search space. Information
-    needed is the 'searchdir' (search directory) for where your data comes from,
-    'fpatterns' (file patterns to match), and 'num_expected_files' (number of expected
+    needed is the 'parent_dir' (search directory) for where your data comes from,
+    'patterns' (file patterns to match), and 'num_expected' (number of expected
     files to find).
 
     Once this data is provided, you can use this class to search through inputted
@@ -153,42 +156,42 @@ class FileLocator:
 
     example_finfo = {
         "GOES16": {
-            "searchdir": "/mnt/grb/goes16/2024/2024_11_21_326/abi/L1b/RadF",
-            "fpatterns": ["*M6C13*s20243261600*"],
-            "num_expected_files": 1,
+            "parent_dir": "/mnt/grb/goes16/2024/2024_11_21_326/abi/L1b/RadF",
+            "patterns": ["*M6C13*s20243261600*"],
+            "num_expected": 1,
         },
         "GOES18": {
-            "searchdir": "/mnt/grb/goes18/2024/2024_11_21_326/abi/L1b/RadF",
-            "fpatterns": ["*M6C13*s20243261600*"],
-            "num_expected_files": 1,
+            "parent_dir": "/mnt/grb/goes18/2024/2024_11_21_326/abi/L1b/RadF",
+            "patterns": ["*M6C13*s20243261600*"],
+            "num_expected": 1,
         },
         "M09": {
-            "searchdir": "/mnt/meteosat-09/20241121/MSG2",
-            "fpatterns": [
+            "parent_dir": "/mnt/meteosat-09/20241121/MSG2",
+            "patterns": [
                 "H-000-MSG2__-MSG2_IODC___-_________-EPI______-202411211600-__",
                 "H-000-MSG2__-MSG2_IODC___-_________-PRO______-202411211600-__",
                 "H-000-MSG2__-MSG2_IODC___-IR_108___-00000[1-8]___-202411211600-C_",
             ],
-            "num_expected_files": 10,
+            "num_expected": 10,
         },
         "M10": {
-            "searchdir": "/mnt/meteosat-10/20241121/MSG3",
-            "fpatterns": [
+            "parent_dir": "/mnt/meteosat-10/20241121/MSG3",
+            "patterns": [
                 "H-000-MSG3__-MSG3_IODC___-_________-EPI______-202411211600-__",
                 "H-000-MSG3__-MSG3_IODC___-_________-PRO______-2024112116000-__",
                 "H-000-MSG3__-MSG3_IODC___-IR_108___-00000[1-8]___-202411211600-C_",
             ],
-            "num_expected_files": 10,
+            "num_expected": 10,
         },
         "GK2a": {
-            "searchdir": "/mnt/GK2A/AMI/L1B/FD/202411/21/16",
-            "fpatterns": ["*ir105*202411211600*"],
-            "num_expected_files": 1,
+            "parent_dir": "/mnt/GK2A/AMI/L1B/FD/202411/21/16",
+            "patterns": ["*ir105*202411211600*"],
+            "num_expected": 1,
         },
         "M10": {
-            "searchdir": "/mnt/ahi/himawari9/20241121",
-            "fpatterns": ["*20241121_1600_B13_FLDK_*_S[01][0-9]10*"],
-            "num_expected_files": 10,
+            "parent_dir": "/mnt/ahi/himawari9/20241121",
+            "patterns": ["*20241121_1600_B13_FLDK_*_S[01][0-9]10*"],
+            "num_expected": 10,
         },
     }
 
@@ -208,23 +211,23 @@ class FileLocator:
         """
         self.files_found = False
         self.required_filepaths = []
-        self.searchdirs = {}
-        self.fpatterns = {}
-        self.num_expected_files = {}
+        self.parent_dirs = {}
+        self.patterns = {}
+        self.num_expected = {}
         for key, val in finfo.items():
             if not isinstance(val, dict) or list(val.keys()) != [
-                "searchdir",
-                "fpatterns",
-                "num_expected_files",
+                "parent_dir",
+                "patterns",
+                "num_expected",
             ]:
                 raise RuntimeError(
-                    "Error: 'fpatterns' must be a dictionary that matches this format: "
-                    r"key1: {'searchdir': str, 'fpatterns': list(str), 'num_expected_files': int}, ..."  # NOQA
-                    r"keyX: {'searchdir': str, 'fpatterns': list(str), 'num_expected_files': int}"  # NOQA
+                    "Error: 'patterns' must be a dictionary that matches this format: "
+                    r"key1: {'parent_dir': str, 'patterns': list(str), 'num_expected': int}, ..."  # NOQA
+                    r"keyX: {'parent_dir': str, 'patterns': list(str), 'num_expected': int}"  # NOQA
                 )
-            self.searchdirs[key] = val["searchdir"]
-            self.fpatterns[key] = val["fpatterns"]
-            self.num_expected_files[key] = val["num_expected_files"]
+            self.parent_dirs[key] = val["parent_dir"]
+            self.patterns[key] = val["patterns"]
+            self.num_expected[key] = val["num_expected"]
 
     def generate_required_filepaths(self) -> None:
         """Generate one or more filepaths pointing towards expected existing files.
@@ -233,7 +236,7 @@ class FileLocator:
         this class.
         """
         self.required_filepaths = []
-        for key, val in self.fpatterns.items():
+        for key, val in self.patterns.items():
             if isinstance(val, list):
                 # List of values provided, loop over all of those values
                 ffound = []
@@ -243,13 +246,13 @@ class FileLocator:
                             "Error: cannot match search for a file pattern that is not "
                             "a string.",
                         )
-                    print(f"PATTERN = {self.searchdirs[key]}/{fpattern}")
-                    ffound_by_pattern = glob(f"{self.searchdirs[key]}/{fpattern}")
+                    print(f"PATTERN = {self.parent_dirs[key]}/{fpattern}")
+                    ffound_by_pattern = glob(f"{self.parent_dirs[key]}/{fpattern}")
                     ffound += ffound_by_pattern
                 ffound = list(set(ffound))
                 print(ffound)
-                # print(f"{self.searchdirs[key]}/{fpattern}")
-                if len(ffound) != self.num_expected_files[key]:
+                # print(f"{self.parent_dirs[key]}/{fpattern}")
+                if len(ffound) != self.num_expected[key]:
                     raise FileNotFoundError(
                         "Expected files have not yet been created. Either switch "
                         "inputs or wait until those files have been created.",
@@ -263,7 +266,7 @@ class FileLocator:
         self.required_filepaths = sorted(self.required_filepaths)
 
     def all_files_found(self) -> bool:
-        """Determine if all the required files in 'searchdir' have been found.
+        """Determine if all the required files in 'parent_dir' have been found.
 
         If all files have been found, then set self.files_found to True. This way
         a user will have to update the file patterns provided to locate a new file or
@@ -318,21 +321,29 @@ class Templater:
 
     alg_info = None
 
-    def get_template(self, template_name, template_dir="./templates") -> Template:
+    def get_template(
+        self,
+        template_name,
+        template_dir=None,
+    ) -> Template:
         """Retrieve the appropriate jinja2 template from the specified arguments.
 
         Parameters
         ----------
         template_name: str
             - The name of the template to load
-        template_dir: str
-            - The filepath (string) to the directory in which the template exists
+        template_dir: str, default=None
+            - The filepath (string) to the directory in which the template exists. If
+              None, this defaults to
+              $GEOIPS_PACKAGES_DIR/geoips_driver/geoips_driver/templates
 
         Returns
         -------
         template: jinja2 Template
             - A jinja2 template requested form template_name
         """
+        if template_dir is None:
+            template_dir = str(resources.files("geoips_driver") / "templates")
         # Grab the appropriate template
         env = Environment(loader=FileSystemLoader(template_dir))
         template = env.get_template(f"{template_name}.j2")
@@ -700,7 +711,10 @@ class ProcessSpawner(Templater, FileOperator):
         try:
             # Run the bash script using subprocess.run
             result = subprocess.run(
-                ["/bin/bash", fpath], check=True, capture_output=True, text=True,
+                ["/bin/bash", fpath],
+                check=True,
+                capture_output=True,
+                text=True,
             )
             return (
                 result.stdout.strip()
@@ -766,3 +780,9 @@ class ProcessSpawner(Templater, FileOperator):
             # Modify the file permissions to be executable
             subprocess.run(["chmod", "+x", script_path], check=True)
             self.run_bash_script(script_path)
+
+
+driver_utils = DriverUtilities()
+date_utils = DateUtilities()
+template_utils = Templater()
+process_utils = ProcessSpawner()
