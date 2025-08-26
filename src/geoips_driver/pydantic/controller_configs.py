@@ -4,10 +4,10 @@ Used for validation of controller_config plugins.
 """
 
 from datetime import datetime
-from typing import ClassVar, Dict
+from typing import ClassVar
 
 from geoips.pydantic.bases import FrozenModel, PluginModel, PythonIdentifier
-from geoips.pydantic.workflows import PythonIdentifier, WorkflowStepDefinitionModel
+from geoips.pydantic.workflows import WorkflowStepDefinitionModel
 from pydantic import Field
 
 
@@ -40,7 +40,7 @@ class DispatcherArgs(FrozenModel):
         ...,
         description="The name of the template spawn your process or job.",
     )
-    steps: Dict[PythonIdentifier, WorkflowStepDefinitionModel] = Field(
+    steps: dict[PythonIdentifier, WorkflowStepDefinitionModel] = Field(
         ...,
         description=("A list of steps that are needed to create your product(s)."),
     )
@@ -135,6 +135,54 @@ class Dispatcher(FrozenModel):
         ),
     )
 
+class DriverArgs(FrozenModel):
+    """Required and optional arguments for the driver plugin."""
+
+    cadence: str = Field(
+        ...,
+        description=(
+            "How often a job should be dispatched. Formatted using dateparser's "
+            "natural language format. See "
+            "https://dateparser.readthedocs.io/en/latest/index.html for more info."
+        ),
+    )
+    offset: str | None = Field(
+        "0 min",
+        description=(
+            "An optional time offset from the top of the hour to dispatch a process at."
+            " Formatted using dateparser's natural language format. See "
+            "https://dateparser.readthedocs.io/en/latest/index.html for more info."
+        ),
+    )
+    dispatcher: Dispatcher = Field(
+        ...,
+        description=(
+            "The dispatcher plugin used to spawn processes/jobs via this driver."
+        ),
+    )
+    querier: Querier = Field(
+        ...,
+        description=(
+            "The querier plugin used to query an information storage system via this "
+            "driver."
+        ),
+    )
+
+
+class Driver(FrozenModel):
+    """Represents the configuration for a driver plugin in YAML."""
+
+    name: PythonIdentifier = Field(
+        ...,
+        description=("Name of the driver plugin, must be a valid Python identifier."),
+    )
+    arguments: DriverArgs = Field(
+        ...,
+        description=(
+            "Dictionary of plugin arguments, must include 'monitor_configs' and "
+            "optionally can include 'start_time', 'end_time'."
+        ),
+    )
     # @model_validator(mode="before")
     # def _validate_arguments(cls, values):
     #     """Validate that the set of args matches the dispatcher's arg format.
@@ -239,7 +287,7 @@ class ControllerConfigSpec(FrozenModel):
 class ControllerConfigPlugin(PluginModel):
     """Represents the controller_config plugin configuration."""
 
-    apiVersion: ClassVar[str] = "geoips_driver/v1"
+    apiVersion: ClassVar[str] = "geoips_driver/v1" # noqa: N815
 
     spec: ControllerConfigSpec = Field(
         ...,

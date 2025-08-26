@@ -61,7 +61,7 @@ class DefaultDriver(ProcessSpawner):
     last_processed_hhnn = None
     utils = DriverUtilities()
 
-    def __init__(self, driver_config, start_time, end_time) -> None:
+    def __init__(self, driver_config, start_time: datetime | None, end_time: datetime | None) -> None:
         """Initialize the runner to start watching for data coming from 1+ directories.
 
         Parameters

@@ -5,11 +5,10 @@ of GeoIPS.
 """
 
 from datetime import datetime, timedelta
-import socket
 
 from geoips_driver.clean.driver_components import date_utils
-from geoips_driver.interfaces import dispatchers, queriers
 from geoips_driver.geoips_driver_utils import monitor_configs_to_finfo
+from geoips_driver.interfaces import dispatchers, queriers
 
 interface = "drivers"
 name = "default"
@@ -32,7 +31,7 @@ def convert_dateparser_string_to_timedelta(dp_str):
     if " " not in dp_str:
         raise ValueError(
             "Error: Dateparser string must be formatted '<val> <unit>'. Please include "
-            "a space in this string."
+            "a space in this string.",
         )
     val, unit = dp_str.split(" ")
     val = int(val)
@@ -45,7 +44,7 @@ def convert_dateparser_string_to_timedelta(dp_str):
     else:
         raise ValueError(
             "Error: cannot parse timeout string provided. Please use minutes, hours, or"
-            "days as a unit for timeout."
+            "days as a unit for timeout.",
         )
     return td
 
@@ -77,7 +76,7 @@ def get_starting_query_time(offset, custom_datetime=None):
         yyyymmdd = date_utils.curr_calendar_date()
         hhnn = date_utils.nearest_half_hour_utc()[:2] + "00"
     dt = datetime.strptime(f"{yyyymmdd}{hhnn}", "%Y%m%d%H%M") + timedelta(
-        minutes=int(offset.split(" ")[0])
+        minutes=int(offset.split(" ")[0]),
     )
     return dt
 
@@ -124,11 +123,15 @@ def call(querier, dispatcher, monitor_configs, cadence, offset, start_dt, end_dt
     # TODO: implement logic to query for appropriate files when a file is found via the
     # data_monitors that are running.
 
-    qplg = queriers.get_plugin(querier.name)
-    dplg = dispatchers.get_plugin(dispatcher.name)
+    queriers.get_plugin(querier.name)
+    dispatchers.get_plugin(dispatcher.name)
 
     finfo = monitor_configs_to_finfo(monitor_configs)
 
+    # when a file is found: implement the pseudo-code written below
+    # required_files = qplg(finfo, querier.arguments.source_names)
+    # if required_files:
+    #   dplg(<some_info>)
     query_dt = get_starting_query_time(offset, custom_datetime=start_dt)
 
     timeout_str = querier.arguments.timeout

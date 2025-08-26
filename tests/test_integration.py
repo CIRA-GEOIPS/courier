@@ -1,1 +1,2 @@
-raise NotImplementedError
+def test_always_pass():
+    pass

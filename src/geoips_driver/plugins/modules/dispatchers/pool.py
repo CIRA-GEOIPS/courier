@@ -1,12 +1,9 @@
 """Dispatcher plugin which spawns processes via a multiprocessing pool."""
 
-import multiprocessing as mp
-from os.path import basename
-import time
 
 # import jinja2
 
-from geoips_driver.clean.driver_components import process_utils, template_utils
+from geoips_driver.clean.driver_components import template_utils
 
 interface = "dispatchers"
 name = "pool"
