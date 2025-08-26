@@ -135,7 +135,6 @@ class Dispatcher(FrozenModel):
         ),
     )
 
-<<<<<<< HEAD:src/geoips_driver/pydantic/controller_configs.py
 class DriverArgs(FrozenModel):
     """Required and optional arguments for the driver plugin."""
 
@@ -184,7 +183,6 @@ class Driver(FrozenModel):
             "optionally can include 'start_time', 'end_time'."
         ),
     )
-=======
     # @model_validator(mode="before")
     # def _validate_arguments(cls, values):
     #     """Validate that the set of args matches the dispatcher's arg format.
@@ -211,7 +209,6 @@ class Driver(FrozenModel):
     #             "continuing."
     #         )
     #     return values
->>>>>>> origin/file-system-querier:geoips_driver/pydantic/controller_configs.py
 
 
 class DataMonitor(FrozenModel):
