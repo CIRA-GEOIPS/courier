@@ -5,11 +5,10 @@ of GeoIPS.
 """
 
 from datetime import datetime, timedelta
-import socket
 
 from geoips_driver.clean.driver_components import date_utils
-from geoips_driver.interfaces import dispatchers, queriers
 from geoips_driver.geoips_driver_utils import monitor_configs_to_finfo
+from geoips_driver.interfaces import dispatchers, queriers
 
 interface = "drivers"
 name = "default"
@@ -32,7 +31,7 @@ def convert_dateparser_string_to_timedelta(dp_str):
     if " " not in dp_str:
         raise ValueError(
             "Error: Dateparser string must be formatted '<val> <unit>'. Please include "
-            "a space in this string."
+            "a space in this string.",
         )
     val, unit = dp_str.split(" ")
     val = int(val)
@@ -45,7 +44,7 @@ def convert_dateparser_string_to_timedelta(dp_str):
     else:
         raise ValueError(
             "Error: cannot parse timeout string provided. Please use minutes, hours, or"
-            "days as a unit for timeout."
+            "days as a unit for timeout.",
         )
     return td
 
@@ -77,7 +76,7 @@ def get_starting_query_time(offset, custom_datetime=None):
         yyyymmdd = date_utils.curr_calendar_date()
         hhnn = date_utils.nearest_half_hour_utc()[:2] + "00"
     dt = datetime.strptime(f"{yyyymmdd}{hhnn}", "%Y%m%d%H%M") + timedelta(
-        minutes=int(offset.split(" ")[0])
+        minutes=int(offset.split(" ")[0]),
     )
     return dt
 
