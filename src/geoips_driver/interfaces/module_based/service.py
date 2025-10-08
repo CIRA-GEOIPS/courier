@@ -197,7 +197,7 @@ def setup_logging() -> logging.Logger:
     True
     """
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     return logging.getLogger(__name__)
@@ -298,9 +298,9 @@ def log_execution(func: Callable) -> Callable:
         try:
             result = func(*args, **kwargs)
             logger.debug(f"Successfully executed {func.__name__}")
+            return result
         except Exception:
             logger.exception(f"Error in {func.__name__}")
-        return result
 
     return wrapper
 
@@ -364,8 +364,7 @@ class ServiceManager(ABC):
         pass
 
 
-# Plugin Protocol
-class PluginProtocol(Protocol):
+class Plugin(Protocol):
     """Protocol defining the interface that all plugins must implement."""
 
     @property
@@ -400,7 +399,7 @@ class PluginProtocol(Protocol):
 class PluginInfo:
     """Information about a plugin instance."""
 
-    plugin: PluginProtocol
+    plugin: Plugin
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
     last_health_check: datetime | None = None
@@ -429,12 +428,13 @@ class PluginManager(ServiceManager):
     True
     """
 
-    def __init__(self, config: ServiceConfig):
+    def __init__(self, config: ServiceConfig, parent_service):
         self._config = config
         self._plugins: dict[str, PluginInfo] = {}
         self._lock = threading.RLock()
         self._running = False
         self._monitor_thread: threading.Thread | None = None
+        self._service = parent_service
 
         # Metrics
         self._plugin_state_metric = prometheus_client.Gauge(
@@ -453,7 +453,7 @@ class PluginManager(ServiceManager):
             ["plugin_name"],
         )
 
-    def register_plugin(self, plugin: PluginProtocol, config: dict[str, Any]) -> None:
+    def register_plugin(self, plugin: Plugin, config: dict[str, Any]) -> None:
         """Register a new plugin with the manager.
 
         Parameters
@@ -475,11 +475,14 @@ class PluginManager(ServiceManager):
         True
         """
         with self._lock:
+            plugin = plugin(self._service)
             if plugin.name in self._plugins:
                 raise ValueError(f"Plugin {plugin.name} already registered")
 
             plugin.initialize(config)
-            self._plugins[plugin.name] = PluginInfo(plugin=plugin)
+            logger.info(plugin)
+            logger.info(plugin.name)
+            self._plugins[plugin] = PluginInfo(plugin=plugin)
             logger.info(f"Registered plugin: {plugin.name} v{plugin.version}")
 
     def _start_plugin(self, plugin_info: PluginInfo) -> None:
@@ -680,12 +683,13 @@ class PluginManager(ServiceManager):
             return True  # Not running is a valid state
 
         with self._lock:
+            health = [f"{info.plugin.name} is {info.state} and {info.plugin.is_healthy()}" for info in self._plugins.values()]
+            logger.debug(", ".join(health))
             healthy_plugins = filter_map(
-                lambda info: info.state == PluginRunState.RUNNING,
+                lambda info: info.state in [PluginRunState.RUNNING, PluginRunState.STARTING],
                 lambda info: info.plugin.is_healthy(),
                 self._plugins.values(),
             )
-
             return any(healthy_plugins) if self._plugins else True
 
     def get_plugin_status(self) -> dict[str, dict[str, Any]]:
@@ -813,7 +817,6 @@ class PrometheusManager(ServiceManager):
         """
         return self._server_started
 
-    @log_execution
     def send_heartbeat(self) -> None:
         """Update heartbeat metric with current Unix timestamp.
 
@@ -893,7 +896,7 @@ class RabbitMQManager(ServiceManager):
         >>> # isinstance(connection, pika.BlockingConnection)
         >>> # True
         """
-        logger.debug("Attempting to connect to RabbitMQ")
+        logger.debug("Attempting to connect to RabbitMQ at url %s" % self._config.rabbitmq_url)
         parameters = pika.URLParameters(self._config.rabbitmq_url)
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
@@ -1068,7 +1071,7 @@ class SignalHandler:
 
 
 class Service:
-    """Enhanced service class with plugin support.
+    """Service class with plugin support.
 
     Coordinates startup, health monitoring, heartbeat loop, and graceful shutdown
     of all service components including plugins. Uses dependency injection for
@@ -1095,7 +1098,7 @@ class Service:
 
         self._prometheus_manager = PrometheusManager(self._config)
         self._rabbitmq_manager = RabbitMQManager(self._config)
-        self._plugin_manager = PluginManager(self._config)
+        self._plugin_manager = PluginManager(self._config, self)
 
         self._managers: list[ServiceManager] = [
             self._prometheus_manager,
@@ -1103,7 +1106,14 @@ class Service:
             self._plugin_manager,
         ]
 
-    def register_plugin(self, plugin: PluginProtocol, config: dict[str, Any]) -> None:
+    @log_execution
+    def emit(self, queue, message):
+        if not queue in self._rabbitmq_manager._queues:
+            self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
+        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
+            channel.basic_publish(exchange="", routing_key=queue, body=message)
+
+    def register_plugin(self, plugin: Plugin, config: dict[str, Any]) -> None:
         """Register a plugin with the service.
 
         Parameters
@@ -1174,6 +1184,8 @@ class Service:
         >>> service._health_check()
         False
         """
+        logger.debug("Monitor health checks: "+ ", ".join((f"{manager}: {manager.is_healthy()}" for manager in self._managers)))
+
         return all(manager.is_healthy() for manager in self._managers)
 
     def _run_heartbeat_loop(self) -> None:
@@ -1248,7 +1260,7 @@ class Service:
 
 def create_service_with_plugins(
     config: ServiceConfig | None = None,
-    plugins: list[tuple[PluginProtocol, dict[str, Any]]] | None = None,
+    plugins: list[tuple[Plugin, dict[str, Any]]] | None = None,
 ) -> Service:
     """Create new Service instance with optional configuration and plugins.
 
@@ -1306,9 +1318,10 @@ def main() -> None:
     >>> pass  # Placeholder for doctest
     """
     try:
-        config = ServiceConfig()
+        config = ServiceConfig(rabbitmq_url="amqp://admin:admin_test@rabbitmqhost:5672/")
 
-        plugins = []  # No plugins for now
+        from geoips_driver.plugins.modules.data_monitors.file_system_polling import FileSystemPoller
+        plugins = [(FileSystemPoller, {})]
 
         service = create_service_with_plugins(config, plugins)
         service.start()
