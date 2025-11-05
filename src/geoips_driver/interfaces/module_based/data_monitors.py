@@ -5,13 +5,17 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
+import geoips.interfaces.base as GeoIPSPlugin
+
 from geoips_driver.interfaces.module_based.service import (
-    Plugin,
+    ServicePlugin,
     log_execution,
     setup_logging,
 )
 
 logger = setup_logging()
+
+FILE_FOUND_QUEUE = "FilesFoundQueue"
 
 @dataclass
 class File:
@@ -22,7 +26,7 @@ class File:
     hostname: str
 
 
-class DataMonitor(Plugin):
+class DataMonitor(ServicePlugin, GeoIPSPlugin):
     """Base data monitor plugin."""
 
     def __init__(self, service):
@@ -62,3 +66,6 @@ class DataMonitor(Plugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
+def call():
+    raise NotImplementedError("You cannot call this plugin directly.")

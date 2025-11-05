@@ -365,7 +365,7 @@ class ServiceManager(ABC):
         pass
 
 
-class Plugin(Protocol):
+class ServicePlugin(Protocol):
     """Protocol defining the interface that all plugins must implement."""
 
     @property
@@ -397,10 +397,10 @@ class Plugin(Protocol):
 
 # Plugin management
 @dataclass
-class PluginInfo:
+class PluginStateInfo:
     """Information about a plugin instance."""
 
-    plugin: Plugin
+    plugin: ServicePlugin
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
     last_health_check: datetime | None = None
@@ -431,7 +431,7 @@ class PluginManager(ServiceManager):
 
     def __init__(self, config: ServiceConfig, parent_service):
         self._config = config
-        self._plugins: dict[str, PluginInfo] = {}
+        self._plugins: dict[str, PluginStateInfo] = {}
         self._lock = threading.RLock()
         self._running = False
         self._monitor_thread: threading.Thread | None = None
@@ -454,7 +454,7 @@ class PluginManager(ServiceManager):
             ["plugin_name"],
         )
 
-    def register_plugin(self, plugin: Plugin, config: dict[str, Any]) -> None:
+    def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
         """Register a new plugin with the manager.
 
         Parameters
@@ -483,10 +483,10 @@ class PluginManager(ServiceManager):
             plugin.initialize(config)
             logger.info(plugin)
             logger.info(plugin.name)
-            self._plugins[plugin] = PluginInfo(plugin=plugin)
+            self._plugins[plugin] = PluginStateInfo(plugin=plugin)
             logger.info(f"Registered plugin: {plugin.name} v{plugin.version}")
 
-    def _start_plugin(self, plugin_info: PluginInfo) -> None:
+    def _start_plugin(self, plugin_info: PluginStateInfo) -> None:
         """Start a plugin in a separate thread."""
 
         def run_plugin():
@@ -524,7 +524,7 @@ class PluginManager(ServiceManager):
         )
         plugin_info.thread.start()
 
-    def _stop_plugin(self, plugin_info: PluginInfo) -> None:
+    def _stop_plugin(self, plugin_info: PluginStateInfo) -> None:
         """Stop a plugin gracefully."""
         if plugin_info.state in (PluginRunState.RUNNING, PluginRunState.STARTING):
             try:
@@ -587,7 +587,7 @@ class PluginManager(ServiceManager):
 
             time.sleep(1)  # Short sleep to be responsive
 
-    def _handle_failed_plugin(self, plugin_info: PluginInfo) -> None:
+    def _handle_failed_plugin(self, plugin_info: PluginStateInfo) -> None:
         """Handle a failed plugin with restart logic."""
         plugin_name = plugin_info.plugin.name
         now = datetime.now()
@@ -1178,7 +1178,7 @@ class Service:
                     raise
 
 
-    def register_plugin(self, plugin: Plugin, config: dict[str, Any]) -> None:
+    def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
         """Register a plugin with the service.
 
         Parameters
@@ -1325,7 +1325,7 @@ class Service:
 
 def create_service_with_plugins(
     config: ServiceConfig | None = None,
-    plugins: list[tuple[Plugin, dict[str, Any]]] | None = None,
+    plugins: list[tuple[ServicePlugin, dict[str, Any]]] | None = None,
 ) -> Service:
     """Create new Service instance with optional configuration and plugins.
 
