@@ -1,6 +1,7 @@
 """Service manager.
 
-Manager with Prometheus metrics, RabbitMQ integration, and plugin support."""
+Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
+"""
 
 import logging
 import os
@@ -581,7 +582,7 @@ class PluginManager(ServiceManager):
                                 plugin_info.state = PluginRunState.FAILED
                                 self._handle_failed_plugin(plugin_info)
 
-                    except Exception as e:
+                    except Exception:
                         logger.exception(f"Error monitoring plugin {plugin_name}")
 
             time.sleep(1)  # Short sleep to be responsive
@@ -1108,10 +1109,34 @@ class Service:
 
     @log_execution
     def emit(self, queue, message):
-        if not queue in self._rabbitmq_manager._queues:
+        if queue not in self._rabbitmq_manager._queues:
             self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
             channel.basic_publish(exchange="", routing_key=queue, body=message)
+
+    @log_execution
+    def consume(self, queue):
+        if queue not in self._rabbitmq_manager._queues:
+            self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
+
+        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
+            for method_frame, properties, body in channel.consume(queue, auto_ack=False):
+                try:
+                    yield body
+                    # Acknowledge the message after successful processing
+                    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                except GeneratorExit:
+                    # Handle generator cleanup (when consumer stops)
+                    channel.basic_nack(delivery_tag=method_frame.delivery_tag,
+                                       requeue=True)
+                    channel.cancel()
+                    raise
+                except Exception:
+                    # If processing fails, reject + requeue message for another day
+                    channel.basic_nack(delivery_tag=method_frame.delivery_tag,
+                                       requeue=True)
+                    raise
+
 
     def register_plugin(self, plugin: Plugin, config: dict[str, Any]) -> None:
         """Register a plugin with the service.
@@ -1184,7 +1209,7 @@ class Service:
         >>> service._health_check()
         False
         """
-        logger.debug("Monitor health checks: "+ ", ".join((f"{manager}: {manager.is_healthy()}" for manager in self._managers)))
+        logger.debug("Monitor health checks: "+ ", ".join(f"{manager}: {manager.is_healthy()}" for manager in self._managers))
 
         return all(manager.is_healthy() for manager in self._managers)
 
@@ -1320,7 +1345,9 @@ def main() -> None:
     try:
         config = ServiceConfig(rabbitmq_url="amqp://admin:admin_test@rabbitmqhost:5672/")
 
-        from geoips_driver.plugins.modules.data_monitors.file_system_polling import FileSystemPoller
+        from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
+            FileSystemPoller,
+        )
         plugins = [(FileSystemPoller, {})]
 
         service = create_service_with_plugins(config, plugins)

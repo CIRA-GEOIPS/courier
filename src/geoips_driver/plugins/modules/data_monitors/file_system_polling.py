@@ -1,11 +1,11 @@
-from typing import Generator
-from geoips_driver.interfaces.module_based.data_monitors import DataMonitor
-from geoips_driver.interfaces.module_based.data_monitors import File
-from geoips_driver.interfaces.module_based.service import setup_logging
-import logging
 import queue
-from watchdog.observers import Observer
+from collections.abc import Generator
+
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
+from geoips_driver.interfaces.module_based.data_monitors import DataMonitor, File
+from geoips_driver.interfaces.module_based.service import setup_logging
 
 logger = setup_logging()
 
@@ -34,7 +34,8 @@ class FileSystemPoller(DataMonitor):
         Args:
             path (str): The directory path to watch. Defaults to the current directory.
 
-        Yields:
+        Yields
+        ------
             str: The path of a newly created file.
         """
         path = "/workspaces/geoips-driver/fake_files"

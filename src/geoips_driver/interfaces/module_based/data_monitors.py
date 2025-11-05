@@ -1,29 +1,22 @@
 """Python class for the data_monitors geoips_driver interface."""
 
-import os
-import time
-import signal
-import logging
-import re
-import uuid
-from datetime import datetime
-from pathlib import Path
-from dataclasses import dataclass
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-from geoips_driver.interfaces.module_based.service import setup_logging
-
-from typing import Generator
-from geoips_driver.interfaces.module_based.service import Plugin, log_execution
 import threading
+from collections.abc import Generator
+from dataclasses import dataclass
+from pathlib import Path
 
-from geoips_driver.interfaces.module_based.service import setup_logging
+from geoips_driver.interfaces.module_based.service import (
+    Plugin,
+    log_execution,
+    setup_logging,
+)
 
 logger = setup_logging()
 
 @dataclass
 class File:
     """File dataclass"""
+
     frozen=True
     file: Path
     hostname: str
