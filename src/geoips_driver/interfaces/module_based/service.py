@@ -1116,6 +1116,46 @@ class Service:
 
     @log_execution
     def consume(self, queue):
+        """Generator that yields messages from a message broker queue.
+
+        This returns a generator that yields messages from the specified queue.
+        It handles message acknowledgment on successful processing and
+        requeues messages if processing fails or the consumer stops.
+
+        Parameters
+        ----------
+        queue : str
+            The name of the queue to consume messages from. If the queue doesn't
+            exist, it will be created.
+
+        Yields
+        ------
+        bytes
+            The message
+
+        Raises
+        ------
+        GeneratorExit
+            Raised when the generator is explicitly closed. Messages are requeued,
+            generator is closed and exception is re-raised.
+        Exception
+            Messages are requeued and exception is re-raised.
+
+        Examples
+        --------
+        >>> for message in consume('my_queue'):
+        ...     data = json.loads(message)
+        ...     print(f"Processing: {data}")
+        ...     # Message is auto-acked after this
+
+        >>> # Stop consuming after N messages
+        >>> consumer_gen = self.consume('my_queue')
+        >>> for i, message in enumerate(consumer_gen):
+        ...     if i >= 10:
+        ...         consumer_gen.close() # MUST manually close or generator will remain open
+        ...         break
+        ...     do_thing_with_message(message)
+        """
         if queue not in self._rabbitmq_manager._queues:
             self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
 
