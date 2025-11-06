@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 #import geoips.interfaces.base as GeoIPSPlugin # TODO Fix this to .... be runable..
-
 from geoips_driver.interfaces.module_based.service import (
     ServicePlugin,
     log_execution,
