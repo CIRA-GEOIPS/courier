@@ -1388,7 +1388,10 @@ def main() -> None:
         from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
             FileSystemPoller,
         )
-        plugins = [(FileSystemPoller, {})]
+        from geoips_driver.plugins.modules.job_queuer.dummy_job_queuer import (
+            JoberQueuer,
+        )
+        plugins = [(FileSystemPoller, {}), (JoberQueuer, {})]
 
         service = create_service_with_plugins(config, plugins)
         service.start()

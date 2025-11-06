@@ -5,7 +5,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
-import geoips.interfaces.base as GeoIPSPlugin
+#import geoips.interfaces.base as GeoIPSPlugin # TODO Fix this to .... be runable..
 
 from geoips_driver.interfaces.module_based.service import (
     ServicePlugin,
@@ -26,7 +26,7 @@ class File:
     hostname: str
 
 
-class DataMonitor(ServicePlugin, GeoIPSPlugin):
+class DataMonitor(ServicePlugin):#, GeoIPSPlugin):
     """Base data monitor plugin."""
 
     def __init__(self, service):

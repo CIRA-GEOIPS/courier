@@ -3,7 +3,7 @@
 import threading
 import time
 
-import geoips.interfaces.base as GeoIPSPlugin
+#import geoips.interfaces.base as GeoIPSPlugin # TODO: actually.... import the class lol
 
 from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE, File
 from geoips_driver.interfaces.module_based.service import (
@@ -60,22 +60,25 @@ class Job:
         return time.time() - self.timeout < self.last_modified
 
 
-class JobReady(ServicePlugin, GeoIPSPlugin):
+class JobReady(ServicePlugin):#, GeoIPSPlugin):
     """Base data filter plugin."""
 
     def __init__(self, service):
         self.parent_service = service
         self.queue = "JobReady"
         self._running=False
-        self.job_groups = []
+        self.job_groups = None
 
     def emit(self, job) -> None:
         message = str(job)
+        logger.info(f"Queueing job with message {message}")
         self.parent_service.emit(queue=self.queue, message=message)
 
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
+        logger.debug("Starting to handle incoming files")
         for file in self.parent_service.consume(FILE_FOUND_QUEUE):
+            logger.debug(f"Received file {file} from file queue")
             for job_group in enumerate(self.job_groups):
                 if job_group.add_file(file): # aka file added
                     for ready_job in job_group.ready_jobs():
