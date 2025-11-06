@@ -82,7 +82,9 @@ def maybe(default: T) -> Callable[[T | None], T]:
 
 
 def filter_map(
-    predicate: Callable[[T], bool], transform: Callable[[T], R], items: Iterable[T],
+    predicate: Callable[[T], bool],
+    transform: Callable[[T], R],
+    items: Iterable[T],
 ) -> list[R]:
     """Filter and map in a single operation.
 
@@ -178,16 +180,16 @@ class ServiceConfig:
     )
 
 
-def setup_logging() -> logging.Logger:
+def setup_logging(name: str | None = None) -> logging.Logger:
     """Configure logger with standardized formatting and return module logger.
 
     Sets up basic logging configuration with INFO level and timestamp formatting
-    for the entire application, then returns a logger instance for this module.
+    for the entire application, then returns a logger instance.
 
     Returns
     -------
     logging.Logger
-        Configured logger instance for this module.
+        Configured logger instance.
 
     Examples
     --------
@@ -201,7 +203,7 @@ def setup_logging() -> logging.Logger:
         level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    return logging.getLogger(__name__)
+    return logging.getLogger(name if name else __name__)
 
 
 logger = setup_logging()
@@ -684,10 +686,14 @@ class PluginManager(ServiceManager):
             return True  # Not running is a valid state
 
         with self._lock:
-            health = [f"{info.plugin.name} is {info.state} and {info.plugin.is_healthy()}" for info in self._plugins.values()]
+            health = [
+                f"{info.plugin.name} is {info.state} and {info.plugin.is_healthy()}"
+                for info in self._plugins.values()
+            ]
             logger.debug(", ".join(health))
             healthy_plugins = filter_map(
-                lambda info: info.state in [PluginRunState.RUNNING, PluginRunState.STARTING],
+                lambda info: info.state
+                in [PluginRunState.RUNNING, PluginRunState.STARTING],
                 lambda info: info.plugin.is_healthy(),
                 self._plugins.values(),
             )
@@ -897,7 +903,9 @@ class RabbitMQManager(ServiceManager):
         >>> # isinstance(connection, pika.BlockingConnection)
         >>> # True
         """
-        logger.debug("Attempting to connect to RabbitMQ at url %s" % self._config.rabbitmq_url)
+        logger.debug(
+            "Attempting to connect to RabbitMQ at url %s" % self._config.rabbitmq_url,
+        )
         parameters = pika.URLParameters(self._config.rabbitmq_url)
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
@@ -979,6 +987,7 @@ class RabbitMQManager(ServiceManager):
 
             # Declare existing queues on new connection
             for queue_name, config in self._queues.items():
+                logger.debug(f"Creating queue {queue_name} with config {config}")
                 channel.queue_declare(queue=queue_name, **config)
 
             yield connection, channel
@@ -1114,7 +1123,7 @@ class Service:
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
             channel.basic_publish(exchange="", routing_key=queue, body=message)
 
-    @log_execution
+    # @log_execution
     def consume(self, queue):
         """Generator that yields messages from a message broker queue.
 
@@ -1160,23 +1169,26 @@ class Service:
             self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
 
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
-            for method_frame, properties, body in channel.consume(queue, auto_ack=False):
+            for method_frame, properties, body in channel.consume(
+                queue, auto_ack=False,
+            ):
                 try:
                     yield body
                     # Acknowledge the message after successful processing
                     channel.basic_ack(delivery_tag=method_frame.delivery_tag)
                 except GeneratorExit:
                     # Handle generator cleanup (when consumer stops)
-                    channel.basic_nack(delivery_tag=method_frame.delivery_tag,
-                                       requeue=True)
+                    channel.basic_nack(
+                        delivery_tag=method_frame.delivery_tag, requeue=True,
+                    )
                     channel.cancel()
                     raise
                 except Exception:
                     # If processing fails, reject + requeue message for another day
-                    channel.basic_nack(delivery_tag=method_frame.delivery_tag,
-                                       requeue=True)
+                    channel.basic_nack(
+                        delivery_tag=method_frame.delivery_tag, requeue=True,
+                    )
                     raise
-
 
     def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
         """Register a plugin with the service.
@@ -1249,7 +1261,12 @@ class Service:
         >>> service._health_check()
         False
         """
-        logger.debug("Monitor health checks: "+ ", ".join(f"{manager}: {manager.is_healthy()}" for manager in self._managers))
+        logger.debug(
+            "Monitor health checks: "
+            + ", ".join(
+                f"{manager}: {manager.is_healthy()}" for manager in self._managers
+            ),
+        )
 
         return all(manager.is_healthy() for manager in self._managers)
 
@@ -1358,7 +1375,8 @@ def create_service_with_plugins(
 
     if plugins:
         register_plugin_partial = partial(
-            lambda p_c, s: s.register_plugin(*p_c), s=service,
+            lambda p_c, s: s.register_plugin(*p_c),
+            s=service,
         )
         list(map(register_plugin_partial, plugins))
 
@@ -1383,7 +1401,9 @@ def main() -> None:
     >>> pass  # Placeholder for doctest
     """
     try:
-        config = ServiceConfig(rabbitmq_url="amqp://admin:admin_test@rabbitmqhost:5672/")
+        config = ServiceConfig(
+            rabbitmq_url="amqp://admin:admin_test@rabbitmqhost:5672/",
+        )
 
         from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
             FileSystemPoller,
@@ -1391,6 +1411,7 @@ def main() -> None:
         from geoips_driver.plugins.modules.job_queuer.dummy_job_queuer import (
             JoberQueuer,
         )
+
         plugins = [(FileSystemPoller, {}), (JoberQueuer, {})]
 
         service = create_service_with_plugins(config, plugins)

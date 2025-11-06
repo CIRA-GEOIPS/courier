@@ -7,7 +7,8 @@ from watchdog.observers import Observer
 from geoips_driver.interfaces.module_based.data_monitors import DataMonitor, File
 from geoips_driver.interfaces.module_based.service import setup_logging
 
-logger = setup_logging()
+logger = setup_logging("FSPolling")
+
 
 class FileSystemPoller(DataMonitor):
     name = "FileSystemPoller-Watchdog"
@@ -15,10 +16,13 @@ class FileSystemPoller(DataMonitor):
 
     def __init__(self, service):
         super().__init__(service)
+
     def initialize(self, config):
         pass
+
     def is_healthy(self):
         return True
+
     def find_file(self) -> Generator[File, None, None]:
         """
         Watches a directory for new files and yields their paths.

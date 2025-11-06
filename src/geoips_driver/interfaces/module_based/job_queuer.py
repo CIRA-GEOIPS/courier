@@ -3,7 +3,7 @@
 import threading
 import time
 
-#import geoips.interfaces.base as GeoIPSPlugin # TODO: actually.... import the class lol
+# import geoips.interfaces.base as GeoIPSPlugin # TODO: actually.... import the class lol
 from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE, File
 from geoips_driver.interfaces.module_based.service import (
     ServicePlugin,
@@ -12,6 +12,7 @@ from geoips_driver.interfaces.module_based.service import (
 )
 
 logger = setup_logging()
+
 
 class JobGroup:
     def __init__(self, job_name, config) -> None:
@@ -46,7 +47,7 @@ class Job:
         self.config = config
         self.files = set()
         self.last_modified = time.time()
-        self.timeout = 60 * 60 * 24 # 24 hours
+        self.timeout = 60 * 60 * 24  # 24 hours
 
     def ready():
         return False
@@ -59,14 +60,14 @@ class Job:
         return time.time() - self.timeout < self.last_modified
 
 
-class JobReady(ServicePlugin):#, GeoIPSPlugin):
+class JobReady(ServicePlugin):  # , GeoIPSPlugin):
     """Base data filter plugin."""
 
     def __init__(self, service):
         self.parent_service = service
         self.queue = "JobReady"
-        self._running=False
-        self.job_groups = None
+        self._running = False
+        self.job_groups = []
 
     def emit(self, job) -> None:
         message = str(job)
@@ -79,12 +80,11 @@ class JobReady(ServicePlugin):#, GeoIPSPlugin):
         for file in self.parent_service.consume(FILE_FOUND_QUEUE):
             logger.debug(f"Received file {file} from file queue")
             for job_group in enumerate(self.job_groups):
-                if job_group.add_file(file): # aka file added
+                if job_group.add_file(file):  # aka file added
                     for ready_job in job_group.ready_jobs():
                         self.emit(ready_job)
                 elif job_group.is_old():
                     self.job_groups.remove(job_group)
-
 
     @log_execution
     def start(self) -> None:
@@ -92,8 +92,11 @@ class JobReady(ServicePlugin):#, GeoIPSPlugin):
             return
         else:
             self._running = False
-        self._main_thread = threading.Thread(target=self.handle_incoming_files,
-                                             name=self.name, daemon=True)
+        self._main_thread = threading.Thread(
+            target=self.handle_incoming_files,
+            name=self.name,
+            daemon=True,
+        )
         self._running = True
         self._main_thread.start()
         return
@@ -103,6 +106,7 @@ class JobReady(ServicePlugin):#, GeoIPSPlugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
 
 def call():
     raise NotImplementedError("You cannot call this plugin directly.")

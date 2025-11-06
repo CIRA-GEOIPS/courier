@@ -5,7 +5,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
-#import geoips.interfaces.base as GeoIPSPlugin # TODO Fix this to .... be runable..
+# import geoips.interfaces.base as GeoIPSPlugin # TODO Fix this to .... be runable..
 from geoips_driver.interfaces.module_based.service import (
     ServicePlugin,
     log_execution,
@@ -16,23 +16,24 @@ logger = setup_logging()
 
 FILE_FOUND_QUEUE = "FilesFoundQueue"
 
+
 @dataclass
 class File:
     """File dataclass"""
 
-    frozen=True
+    frozen = True
     file: Path
     hostname: str
 
 
-class DataMonitor(ServicePlugin):#, GeoIPSPlugin):
+class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
     """Base data monitor plugin."""
 
     def __init__(self, service):
         self.parent_service = service
-        self.queue = "DataMonitor"
+        self.queue = FILE_FOUND_QUEUE
         self.message_template = "file: '{file}', hostname: '{hostname}'"
-        self._running=False
+        self._running = False
 
     def find_file(self) -> Generator[File, None, None]:
         """Generator that yields Files"""
@@ -41,7 +42,6 @@ class DataMonitor(ServicePlugin):#, GeoIPSPlugin):
     def emit(self, file: File) -> None:
         message = self.message_template.format(file=file.file, hostname=file.hostname)
         self.parent_service.emit(queue=self.queue, message=message)
-
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue"""
@@ -55,7 +55,11 @@ class DataMonitor(ServicePlugin):#, GeoIPSPlugin):
             return
         else:
             self._running = False
-        self._main_thread = threading.Thread(target=self.find_and_emit_files, name=self.name, daemon=True)
+        self._main_thread = threading.Thread(
+            target=self.find_and_emit_files,
+            name=self.name,
+            daemon=True,
+        )
         self._running = True
         self._main_thread.start()
         return
@@ -65,6 +69,7 @@ class DataMonitor(ServicePlugin):#, GeoIPSPlugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
 
 def call():
     raise NotImplementedError("You cannot call this plugin directly.")
