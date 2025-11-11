@@ -1,4 +1,4 @@
-"""Python class for the data_filter geoips_driver interface."""
+"""Python class for the job_queuers geoips_driver interface."""
 
 import threading
 import time

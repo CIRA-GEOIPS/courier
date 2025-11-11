@@ -1,5 +1,5 @@
 from geoips_driver.interfaces.module_based.data_monitors import File
-from geoips_driver.interfaces.module_based.job_queuer import JobGroup, JobReady
+from geoips_driver.interfaces.module_based.job_queuers import JobGroup, JobReady
 from geoips_driver.interfaces.module_based.service import setup_logging
 
 logger = setup_logging("JoberGroup")
