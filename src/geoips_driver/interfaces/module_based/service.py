@@ -9,6 +9,7 @@ import signal
 import threading
 import time
 import uuid
+import pickle
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
@@ -1121,7 +1122,10 @@ class Service:
         if queue not in self._rabbitmq_manager._queues:
             self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
-            channel.basic_publish(exchange="", routing_key=queue, body=message)
+            # Pickle the message before publishing it. Consuming function will unpickle
+            # so we can handle the 'object' as expected.
+            body = pickle.dumps(message)
+            channel.basic_publish(exchange="", routing_key=queue, body=body)
 
     # @log_execution
     def consume(self, queue):
@@ -1170,23 +1174,27 @@ class Service:
 
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
             for method_frame, properties, body in channel.consume(
-                queue, auto_ack=False,
+                queue,
+                auto_ack=False,
             ):
                 try:
-                    yield body
+                    message = pickle.loads(body)
+                    yield message
                     # Acknowledge the message after successful processing
                     channel.basic_ack(delivery_tag=method_frame.delivery_tag)
                 except GeneratorExit:
                     # Handle generator cleanup (when consumer stops)
                     channel.basic_nack(
-                        delivery_tag=method_frame.delivery_tag, requeue=True,
+                        delivery_tag=method_frame.delivery_tag,
+                        requeue=True,
                     )
                     channel.cancel()
                     raise
                 except Exception:
                     # If processing fails, reject + requeue message for another day
                     channel.basic_nack(
-                        delivery_tag=method_frame.delivery_tag, requeue=True,
+                        delivery_tag=method_frame.delivery_tag,
+                        requeue=True,
                     )
                     raise
 
@@ -1402,17 +1410,20 @@ def main() -> None:
     """
     try:
         config = ServiceConfig(
-            rabbitmq_url="amqp://admin:admin_test@rabbitmqhost:5672/",
+            rabbitmq_url="amqp://admin:admin_test@localhost:5672/",
         )
 
         from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
             FileSystemPoller,
         )
-        from geoips_driver.plugins.modules.job_queuer.dummy_job_queuer import (
+        from geoips_driver.plugins.modules.job_queuers.dummy_job_queuer import (
             JoberQueuer,
         )
+        from geoips_driver.plugins.modules.dispatchers.serial import (
+            SerialDispatcher,
+        )
 
-        plugins = [(FileSystemPoller, {}), (JoberQueuer, {})]
+        plugins = [(FileSystemPoller, {}), (JoberQueuer, {}), (SerialDispatcher, {})]
 
         service = create_service_with_plugins(config, plugins)
         service.start()

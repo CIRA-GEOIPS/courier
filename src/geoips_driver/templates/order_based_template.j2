@@ -1,0 +1,9 @@
+#!/bin/bash
+
+geoips run order_based {{ filepaths }} \
+    --generated '{{ generated }}' \
+    --logging_level info \
+    --minimum_coverage 0
+retval=$?
+
+exit $retval

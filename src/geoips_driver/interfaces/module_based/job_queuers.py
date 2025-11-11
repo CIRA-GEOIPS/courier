@@ -13,6 +13,8 @@ from geoips_driver.interfaces.module_based.service import (
 
 logger = setup_logging()
 
+JOB_READY_QUEUE = "JobReadyQueue"
+
 
 class JobGroup:
     def __init__(self, job_name, config) -> None:
@@ -21,22 +23,27 @@ class JobGroup:
         self.jobs = {}
 
     def ready_jobs(self):
-        return [job for job in self.jobs if job.ready()]
+        return [job for job in self.jobs.values() if job.ready()]
 
-    def file_is_relevant(file):
+    def file_is_relevant(self, file):
         return False
 
     def get_job_id_from_file(self, file: File):
-        return file.name
+        return file.file
 
     def add_file(self, file):
+        """YEAAAA."""
+        if not isinstance(file, File):
+            file = File(file, hostname="localhost")
+
         if not self.file_is_relevant(file):
             return False
         jid = self.get_job_id_from_file(file)
-        if jid in self.jobs:
-            self.jobs[jid].add_file(file)
-        else:
+
+        if jid not in self.jobs:
             self.jobs[jid] = Job(self.name, jid, self.config)
+        self.jobs[jid].add_file(file.file)
+
         return True
 
 
@@ -49,11 +56,11 @@ class Job:
         self.last_modified = time.time()
         self.timeout = 60 * 60 * 24  # 24 hours
 
-    def ready():
-        return False
+    def ready(self):
+        return True
 
     def add_file(self, file):
-        self.files.append(file)
+        self.files.add(file)
         self.last_modified = time.time()
 
     def is_old(self):
@@ -65,12 +72,12 @@ class JobReady(ServicePlugin):  # , GeoIPSPlugin):
 
     def __init__(self, service):
         self.parent_service = service
-        self.queue = "JobReady"
+        self.queue = JOB_READY_QUEUE
         self._running = False
         self.job_groups = []
 
     def emit(self, job) -> None:
-        message = str(job)
+        message = job.files
         logger.info(f"Queueing job with message {message}")
         self.parent_service.emit(queue=self.queue, message=message)
 
@@ -79,8 +86,11 @@ class JobReady(ServicePlugin):  # , GeoIPSPlugin):
         logger.debug("Starting to handle incoming files")
         for file in self.parent_service.consume(FILE_FOUND_QUEUE):
             logger.debug(f"Received file {file} from file queue")
-            for job_group in enumerate(self.job_groups):
-                if job_group.add_file(file):  # aka file added
+            for idx, job_group in enumerate(self.job_groups):
+                fpath = file.split(",")[0].split(" ")[1]
+                logger.debug(f"FILE = {fpath}")
+
+                if job_group.add_file(fpath):  # aka file added
                     for ready_job in job_group.ready_jobs():
                         self.emit(ready_job)
                 elif job_group.is_old():

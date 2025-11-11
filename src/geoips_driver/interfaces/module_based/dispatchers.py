@@ -52,8 +52,12 @@ class Dispatcher(ServicePlugin):
         )
         self.parent_service.emit(queue=self.queue, message=message)
 
-    def yield_and_emit_execution_logs(self) -> None:
-        """Execute a process and yield its log output."""
+    def handle_incoming_jobs(self) -> None:
+        """Execute given a steady stream of jobs, log and execute them.
+
+        Once a job is complete, yield the result of its execution to a downstream
+        service.
+        """
         for ex_log in self.yield_execution_log():
             logger.info(f"Found file: {ex_log}")
             self.emit(ex_log)
@@ -65,7 +69,7 @@ class Dispatcher(ServicePlugin):
         else:
             self._running = False
         self._main_thread = threading.Thread(
-            target=self.yield_and_emit_execution_logs,
+            target=self.handle_incoming_jobs,
             name=self.name,
             daemon=True,
         )

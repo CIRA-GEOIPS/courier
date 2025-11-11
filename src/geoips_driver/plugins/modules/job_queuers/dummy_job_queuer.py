@@ -9,7 +9,7 @@ class JoberGroup(JobGroup):
     def __init__(self, config) -> None:
         super().__init__("DummyJober", config)
 
-    def file_is_relevant(file):
+    def file_is_relevant(self, file):
         return True
 
     def get_job_id_from_file(self, file: File):

@@ -42,7 +42,7 @@ class FileSystemPoller(DataMonitor):
         ------
             str: The path of a newly created file.
         """
-        path = "/workspaces/geoips-driver/fake_files"
+        path = "/home/evan/geoips/geoips_packages/geoips_driver/fake_files"
         file_queue = queue.Queue()
 
         # This handler simply puts the path of any new file into the queue
