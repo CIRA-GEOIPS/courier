@@ -1,0 +1,15 @@
+interface: monitor_configs
+family: standard
+name: meteosat10_seviri
+docstring: |
+  Information necessary to monitor for Meteosat10 SEVIRI L1B data files at CIRA.
+spec:
+  Full-Disk:
+    parent_dir: "/mnt/sat/meteosat/meteosat-10/{{ YYYY }}{{ MM }}{{ DD }}/MSG3"
+    patterns:
+      - "H-000-MSG3__-MSG3________-_________-EPI______-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-__"
+      - "H-000-MSG3__-MSG3________-_________-PRO______-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-__"
+      - "H-000-MSG3__-MSG3________-IR*___-00000[1-8]___-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-C_"
+      - "H-000-MSG3__-MSG3________-VIS*___-00000[1-8]___-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-C_"
+      - "H-000-MSG3__-MSG3________-WV*___-00000[1-8]___-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-C_"
+    num_expected: 90

@@ -1,0 +1,21 @@
+interface: monitor_configs
+family: standard
+name: gk2a_ami
+docstring: |
+  Information necessary to monitor for GK-2A AMI L1B data files at CIRA.
+spec:
+  Full-Disk:
+    parent_dir: "/mnt/GK2A/AMI/L1B/FD/{{ YYYY }}{{ MM }}/{{ DD }}/{{ HH }}"
+    patterns:
+      - "gk2a_ami_le1b_fd*ge_*{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}*"
+    num_expected: 16
+  Extended-Local-Area:
+    parent_dir: "/mnt/GK2A/AMI/L1B/ELA/{{ YYYY }}{{ MM }}/{{ DD }}/{{ HH }}"
+    patterns:
+      - "gk2a_ami_le1b_ela*lc_*{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}*"
+    num_expected: 16
+  Local-Area:
+    parent_dir: "/mnt/GK2A/AMI/L1B/LA/{{ YYYY }}{{ MM }}/{{ DD }}/{{ HH }}"
+    patterns:
+      - "gk2a_ami_le1b_la*ge_*{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}*"
+    num_expected: 16

@@ -1,0 +1,38 @@
+interface: controller_configs
+name: cfg_revised
+family: standard
+docstring: |
+  The StitchedInfrared controller_configs default plugin.
+spec:
+  data_monitor:
+    name: file_system
+    arguments:
+      monitor_configs:
+        - name: goes19_abi
+          arguments:
+            obs_area: [Full-Disk]
+  # start_time: 2025-03-26T14:30:00Z
+  # end_time: 2025-03-26T19:30:00Z
+  # potentially add buffer before ending driver
+  cadence: "10 min"
+  offset: "0 min"
+  querier:
+    name: file_system
+    arguments:
+      source_names: [abi]
+      timeout: "1 hr"
+  dispatcher:
+    name: serial
+    arguments:
+      display_name: G19-ABI-FD-INFRARED
+      template: order_based_template
+      steps:
+        workflow:
+          kind: workflow
+          name: abi_infrared
+          arguments: {}
+        output_formatter:
+          kind: output_formatter
+          name: imagery_annotated
+          arguments:
+            sectors: [global_cylindrical]

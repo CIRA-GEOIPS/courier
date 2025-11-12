@@ -1417,13 +1417,17 @@ def main() -> None:
             FileSystemPoller,
         )
         from geoips_driver.plugins.modules.job_queuers.dummy_job_queuer import (
-            JoberQueuer,
+            OVERCASTJobQueuer,
         )
         from geoips_driver.plugins.modules.dispatchers.serial import (
             SerialDispatcher,
         )
 
-        plugins = [(FileSystemPoller, {}), (JoberQueuer, {}), (SerialDispatcher, {})]
+        plugins = [
+            (FileSystemPoller, {}),
+            (OVERCASTJobQueuer, {}),
+            (SerialDispatcher, {}),
+        ]
 
         service = create_service_with_plugins(config, plugins)
         service.start()

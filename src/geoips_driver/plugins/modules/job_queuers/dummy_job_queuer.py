@@ -2,12 +2,12 @@ from geoips_driver.interfaces.module_based.data_monitors import File
 from geoips_driver.interfaces.module_based.job_queuers import JobGroup, JobReady
 from geoips_driver.interfaces.module_based.service import setup_logging
 
-logger = setup_logging("JoberGroup")
+logger = setup_logging("OVERCAST-Job-Queuer")
 
 
-class JoberGroup(JobGroup):
+class OVERCASTJobGroup(JobGroup):
     def __init__(self, config) -> None:
-        super().__init__("DummyJober", config)
+        super().__init__("OVERCAST-Job-Group", config)
 
     def file_is_relevant(self, file):
         return True
@@ -16,8 +16,8 @@ class JoberGroup(JobGroup):
         return super().get_job_id_from_file(file)
 
 
-class JoberQueuer(JobReady):
-    name = "Dummy-Jober"
+class OVERCASTJobQueuer(JobReady):
+    name = "OVERCAST-Job-Queuer"
     version = "-1"
 
     def __init__(self, service):
@@ -25,8 +25,9 @@ class JoberQueuer(JobReady):
         logger.debug("Starting job queuer init function")
 
     def initialize(self, config):
+        super().initialize(config)
         self.config = config
-        self.job_groups = [JoberGroup(config)]
+        self.job_groups = [OVERCASTJobGroup(config)]
 
     def is_healthy(self):
         return True
