@@ -1,5 +1,5 @@
 interface: controller_configs
-name: cfg_revised
+name: goes19_full_disk_infrared
 family: standard
 docstring: |
   The StitchedInfrared controller_configs default plugin.

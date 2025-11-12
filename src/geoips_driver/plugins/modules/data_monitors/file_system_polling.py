@@ -10,6 +10,9 @@ from geoips_driver.interfaces.module_based.service import setup_logging
 logger = setup_logging("FSPolling")
 
 
+interface = None
+
+
 class FileSystemPoller(DataMonitor):
     name = "FileSystemPoller-Watchdog"
     version = "-1"

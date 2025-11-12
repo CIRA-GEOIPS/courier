@@ -4,6 +4,8 @@ from geoips_driver.interfaces.module_based.service import setup_logging
 
 logger = setup_logging("OVERCAST-Job-Queuer")
 
+interface = None
+
 
 class OVERCASTJobGroup(JobGroup):
     def __init__(self, config) -> None:

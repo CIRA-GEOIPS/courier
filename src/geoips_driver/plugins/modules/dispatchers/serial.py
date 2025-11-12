@@ -10,6 +10,8 @@ from geoips_driver.utils.generate_workflow import generate_workflow_from_steps
 
 logger = setup_logging()
 
+interface = None
+
 
 class SerialDispatcher(Dispatcher):
     name = "Serial-Dispatcher"

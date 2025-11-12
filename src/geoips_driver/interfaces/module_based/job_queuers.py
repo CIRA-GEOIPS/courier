@@ -10,6 +10,7 @@ import dateparser
 from jinja2 import Template
 
 # import geoips.interfaces.base as GeoIPSPlugin # TODO: actually.... import the class lol
+from geoips_driver.interfaces import monitor_configs
 from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE, File
 from geoips_driver.interfaces.module_based.service import (
     ServicePlugin,
@@ -284,11 +285,9 @@ class JobReady(ServicePlugin):
             for mcfg in monitor_cfgs
         }
         # Load all of the monitor config plugins
-        # TODO: implement interface logic for monitor configs
-        mcfg_plgs = []
-        # mcfg_plgs = [
-        #     monitor_configs.get_plugin(mcfg.get("name")) for mcfg in monitor_cfgs
-        # ]
+        mcfg_plgs = [
+            monitor_configs.get_plugin(mcfg.get("name")) for mcfg in monitor_cfgs
+        ]
         mcfg_obs_areas = []
         idx = 0
         # Grab only the observation areas requested

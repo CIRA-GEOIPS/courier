@@ -16,5 +16,6 @@
 # from geoips_driver import interfaces
 
 from ._version import __version__, __version_tuple__
+from geoips_driver import interfaces
 
 __all__ = ["__version__", "__version_tuple__", "interfaces"]
