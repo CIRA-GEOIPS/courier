@@ -1,3 +1,5 @@
 __pycache__
 registered_plugins.json
 registered_plugins.yaml
+
+**/fake_files/*
