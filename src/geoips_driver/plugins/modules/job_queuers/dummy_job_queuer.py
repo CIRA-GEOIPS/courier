@@ -28,7 +28,7 @@ class OVERCASTJobQueuer(JobReady):
 
     def initialize(self, config):
         super().initialize(config)
-        self.config = config["plugin_config"]
+        self.config = config
         self.job_groups = [OVERCASTJobGroup(self.config)]
 
     def is_healthy(self):

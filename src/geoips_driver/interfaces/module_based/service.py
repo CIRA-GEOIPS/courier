@@ -182,9 +182,6 @@ class ServiceConfig:
             os.environ.get("PLUGIN_HEALTH_CHECK_INTERVAL", "2"),
         ),
     )
-    plugin_config: dict = field(
-        default=interfaces.controller_configs.get_plugin("goes19_full_disk_infrared"),
-    )
 
 
 def setup_logging(name: str | None = None) -> logging.Logger:
@@ -1405,12 +1402,13 @@ def parse_driver_args():
     """
     parser = argparse.ArgumentParser(prog="geoips_nrt")
     parser.add_argument(
-        "controller-config",
-        default="goes19_full_disk_infrared",
+        "-cfg",
+        "--config",
         choices=[plg.name for plg in interfaces.controller_configs.get_plugins()],
+        default="goes19_full_disk_infrared",
         type=str,
         help="The name of the controller config plugin you want to use.",
-        required=True,
+        required=False,
     )
     return parser.parse_args()
 
@@ -1434,11 +1432,9 @@ def main() -> None:
     """
     try:
         ARGS = parse_driver_args()
+        plugin_config = interfaces.controller_configs.get_plugin(ARGS.config)
         config = ServiceConfig(
             rabbitmq_url="amqp://admin:admin_test@localhost:5672/",
-            plugin_config=interfaces.controller_configs.get_plugin(
-                ARGS.controller_config
-            ),
         )
 
         from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
@@ -1452,9 +1448,9 @@ def main() -> None:
         )
 
         plugins = [
-            (FileSystemPoller, {}),
-            (OVERCASTJobQueuer, {}),
-            (SerialDispatcher, {}),
+            (FileSystemPoller, plugin_config),
+            (OVERCASTJobQueuer, plugin_config),
+            (SerialDispatcher, plugin_config),
         ]
 
         service = create_service_with_plugins(config, plugins)

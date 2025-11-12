@@ -36,13 +36,24 @@ class SerialDispatcher(Dispatcher):
             - The path to the directory which contains 'template'. If None, this
             defaults to $GEOIPS_PACKAGES_DIR/geoips_driver/geoips_driver/templates
         """
-        self.config = config["plugin_config"]
+        self.config = config
         self.template = (
-            self.config.get("dispatcher", {}).get("arguments", {}).get("template")
+            self.config.get("spec", {})
+            .get("dispatcher", {})
+            .get("arguments", {})
+            .get("template", "order_based_template")
         )
-        self.template_dir = self.config.get("template_dir", None)
+        self.template_dir = (
+            self.config.get("spec", {})
+            .get("dispatcher", {})
+            .get("arguments", {})
+            .get("template_dir", None)
+        )
         self.steps = (
-            self.config.get("dispatcher", {}).get("arguments", {}).get("steps", {})
+            self.config.get("spec", {})
+            .get("dispatcher", {})
+            .get("arguments", {})
+            .get("steps", {})
         )
 
         # NOTE: UNCOMMENT CODE ABOVE ONCE READY TO DYNAMICALLY LOAD CONFIG FILE
