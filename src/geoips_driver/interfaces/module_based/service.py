@@ -3,6 +3,7 @@
 Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
 """
 
+import argparse
 import logging
 import os
 import signal
@@ -22,6 +23,8 @@ from typing import Any, Protocol, TypeVar
 import pika
 import prometheus_client
 from pika.exceptions import AMQPConnectionError
+
+from geoips_driver import interfaces
 
 # Type variables for generic type hints
 T = TypeVar("T")
@@ -178,6 +181,9 @@ class ServiceConfig:
         default_factory=lambda: int(
             os.environ.get("PLUGIN_HEALTH_CHECK_INTERVAL", "2"),
         ),
+    )
+    plugin_config: dict = field(
+        default=interfaces.controller_configs.get_plugin("goes19_full_disk_infrared"),
     )
 
 
@@ -1391,6 +1397,24 @@ def create_service_with_plugins(
     return service
 
 
+def parse_driver_args():
+    """Parse arguments needed to start up microservices for NRT GeoIPS driving.
+
+    Currently only has one argument, the name of the controller config plugin we'll
+    use to drive GeoIPS-based processing. We may add more in the future.
+    """
+    parser = argparse.ArgumentParser(prog="geoips_nrt")
+    parser.add_argument(
+        "controller-config",
+        default="goes19_full_disk_infrared",
+        choices=[plg.name for plg in interfaces.controller_configs.get_plugins()],
+        type=str,
+        help="The name of the controller config plugin you want to use.",
+        required=True,
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     """Application entry point with error handling and logging.
 
@@ -1409,8 +1433,12 @@ def main() -> None:
     >>> pass  # Placeholder for doctest
     """
     try:
+        ARGS = parse_driver_args()
         config = ServiceConfig(
             rabbitmq_url="amqp://admin:admin_test@localhost:5672/",
+            plugin_config=interfaces.controller_configs.get_plugin(
+                ARGS.controller_config
+            ),
         )
 
         from geoips_driver.plugins.modules.data_monitors.file_system_polling import (

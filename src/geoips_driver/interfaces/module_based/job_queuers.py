@@ -344,12 +344,12 @@ class JobReady(ServicePlugin):
         """
         # Set initial parameters to correctly generate file paths that adhere to a
         # single datetime
-        self.config = config
-        self.start_time = config.get("spec", {}).get("start_time")
-        self.end_time = config.get("spec", {}).get("end_time")
-        self.cadence = config.get("spec", {}).get("cadence")
-        self.offset = config.get("spec", {}).get("offset")
-        self.timeout = config.get("spec", {}).get("timeout")
+        self.config = config["plugin_config"]
+        self.start_time = self.config.get("spec", {}).get("start_time")
+        self.end_time = self.config.get("spec", {}).get("end_time")
+        self.cadence = self.config.get("spec", {}).get("cadence")
+        self.offset = self.config.get("spec", {}).get("offset")
+        self.timeout = self.config.get("spec", {}).get("timeout")
         self.cadence_td = self.parse_timedelta(self.cadence)
         self.offset_td = self.parse_timedelta(self.offset)
         self.timeout_td = self.parse_timedelta(self.timeout)
