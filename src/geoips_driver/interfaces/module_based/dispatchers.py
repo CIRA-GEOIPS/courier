@@ -1,15 +1,14 @@
 """Python class for the data_monitors geoips_driver interface."""
 
+import threading
+from collections.abc import Generator
 from dataclasses import dataclass
 
-from typing import Generator
 from geoips_driver.interfaces.module_based.service import (
     ServicePlugin,
     log_execution,
     setup_logging,
 )
-import threading
-
 
 logger = setup_logging()
 

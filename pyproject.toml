@@ -25,6 +25,7 @@ rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
 geoips = "^1.16.1"
+prometheus-client = "*"
 
 # Optional dependencies for extras
 sphinx = { version = "*", optional = true }

@@ -6,11 +6,11 @@ Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
 import argparse
 import logging
 import os
+import pickle
 import signal
 import threading
 import time
 import uuid
-import pickle
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
@@ -564,7 +564,6 @@ class PluginManager(ServiceManager):
                             or (now - plugin_info.last_health_check).seconds
                             >= self._config.plugin_health_check_interval
                         ):
-
                             plugin_info.last_health_check = now
 
                             # Check health
@@ -1437,11 +1436,12 @@ def main() -> None:
             rabbitmq_url="amqp://admin:admin_test@localhost:5672/",
         )
 
-        from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
-            FileSystemPoller,
-        )
         from geoips_driver.plugins.modules.job_queuers.dummy_job_queuer import (
             OVERCASTJobQueuer,
+        )
+
+        from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
+            FileSystemPoller,
         )
         from geoips_driver.plugins.modules.dispatchers.serial import (
             SerialDispatcher,
