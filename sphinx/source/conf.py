@@ -7,10 +7,10 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.abspath("../../geoips_driver"))
+sys.path.insert(0, str(Path("../../geoips_driver").resolve()))
 
 project = "geoips_driver"
 author = "Gwyn Uttmark"
@@ -27,7 +27,7 @@ extensions = [
     "sphinxcontrib.runcmd",
 ]
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns: list[str] = []
 
 
 # -- Options for HTML output -------------------------------------------------
