@@ -7,20 +7,16 @@ jinja2 templates that spawn GeoIPS processing based on the provided inputs.
 
 import bz2
 import logging
-from importlib import resources
 import os
 import subprocess
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 from glob import glob
+from importlib import resources
 from multiprocessing import Pool
-import os
 from pathlib import Path
-import subprocess
-import tempfile
 from types import SimpleNamespace
-from typing import Optional, Sequence
-
 
 import xarray
 from jinja2 import Environment, FileSystemLoader
@@ -789,7 +785,7 @@ class ProcessSpawner(Templater, FileOperator):
     def run_temp_script(
         self,
         script_text: str,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         capture_output: bool = False,
     ) -> subprocess.CompletedProcess:
         """
@@ -814,7 +810,7 @@ class ProcessSpawner(Templater, FileOperator):
         try:
             # create a unique temp file (not auto-deleted)
             tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".sh", delete=False, encoding="utf-8"
+                mode="w", suffix=".sh", delete=False, encoding="utf-8",
             )
             tmp_path = tmp.name
             # write script content (include shebang)
@@ -830,7 +826,7 @@ class ProcessSpawner(Templater, FileOperator):
             # Execute without shell to avoid shell injection risks
             cmd = [tmp_path]
             result = subprocess.run(
-                cmd, timeout=timeout, capture_output=capture_output, text=True
+                cmd, check=False, timeout=timeout, capture_output=capture_output, text=True,
             )  # text=True returns str for stdout/stderr
             return result
 

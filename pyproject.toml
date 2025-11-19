@@ -27,6 +27,7 @@ watchdog = "*" # Required to listen for data (used by daemon)
 geoips = "^1.16.1"
 prometheus-client = "*"
 pydantic = "*"
+pika = "*"
 
 # Optional dependencies for extras
 sphinx = { version = "*", optional = true }
@@ -68,6 +69,7 @@ lint = [
     "prettier",                  # YAML, JSON linting
     "ruff",                      # Python linting
     "mypy",                      # Type checking
+    "types-pika",                # Type hints for pika
 ]
 
 test = [

@@ -87,3 +87,8 @@ class Dispatcher(ServicePlugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
+
+def call() -> None:
+    """Raise error if called directly."""
+    raise NotImplementedError("You cannot call this plugin directly.")

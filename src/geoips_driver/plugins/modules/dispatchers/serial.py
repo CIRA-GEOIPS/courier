@@ -1,8 +1,7 @@
 import json
-from typing import Generator
+from collections.abc import Generator
 
-from geoips_driver.interfaces.module_based.dispatchers import Dispatcher
-from geoips_driver.interfaces.module_based.dispatchers import ExecutionLog
+from geoips_driver.interfaces.module_based.dispatchers import Dispatcher, ExecutionLog
 from geoips_driver.interfaces.module_based.job_queuers import JOB_READY_QUEUE
 from geoips_driver.interfaces.module_based.service import setup_logging
 from geoips_driver.utils.driver_components import process_utils, template_utils
@@ -80,16 +79,17 @@ class SerialDispatcher(Dispatcher):
         """
         Listens for messages from DataMonitor plugins and queries the GeoIPS db.
 
-        Yields:
+        Yields
+        ------
             log: The log results of executing a GeoIPS processing workflow.
         """
         template = template_utils.get_template(
-            self.template, template_dir=self.template_dir
+            self.template, template_dir=self.template_dir,
         )
         generated_workflow = generate_workflow_from_steps(self.steps)
 
         message_generator = self.parent_service.consume(JOB_READY_QUEUE)
-        logger.info(f"Listening for RabbitMQ messages from the Database Data Monitor.")
+        logger.info("Listening for RabbitMQ messages from the Database Data Monitor.")
 
         try:
             while True:
@@ -110,7 +110,7 @@ class SerialDispatcher(Dispatcher):
 
                         raw_workflow = json.dumps(generated_workflow)
                         bash_script = template.render(
-                            {"filepaths": " ".join(fpaths), "generated": raw_workflow}
+                            {"filepaths": " ".join(fpaths), "generated": raw_workflow},
                         )
                         try:
                             result = process_utils.run_temp_script(bash_script)
@@ -125,7 +125,7 @@ class SerialDispatcher(Dispatcher):
 
         except KeyboardInterrupt:
             logger.warning(
-                "[Serial Dispatcher]: Keyboard Interrupt occurred. Stopping..."
+                "[Serial Dispatcher]: Keyboard Interrupt occurred. Stopping...",
             )
             self.stop()
         finally:

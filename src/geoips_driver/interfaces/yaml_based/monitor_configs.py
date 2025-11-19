@@ -1,6 +1,7 @@
 """Python class for the monitor_configs geoips_driver interface."""
 
 from geoips.interfaces.base import BaseYamlInterface
+
 from geoips_driver.pydantic.monitor_configs import MonitorConfigPlugin
 
 

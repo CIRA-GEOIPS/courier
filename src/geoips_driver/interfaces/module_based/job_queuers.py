@@ -1,10 +1,10 @@
 """Python class for the job_queuers geoips_driver interface."""
 
-from datetime import datetime, timedelta
 import fnmatch
-from glob import glob
 import threading
 import time
+from datetime import datetime, timedelta
+from glob import glob
 
 import dateparser
 from jinja2 import Template
@@ -57,7 +57,7 @@ class JobGroup:
         return True
 
     def _replace_monitor_configs_with_datetime(
-        self, monitor_configs: list[dict], source_names: list[str], dt: datetime
+        self, monitor_configs: list[dict], source_names: list[str], dt: datetime,
     ) -> dict:
         """Replace the template paths from monitor configs with the correct datetime.
 
@@ -190,7 +190,7 @@ class JobReady(ServicePlugin):
         return base - parsed
 
     def get_aligned_time(
-        self, now: datetime, cadence: timedelta, offset: timedelta
+        self, now: datetime, cadence: timedelta, offset: timedelta,
     ) -> datetime:
         """Return the nearest start time ≤ now given cadence and offset.
 
@@ -316,7 +316,7 @@ class JobReady(ServicePlugin):
         """
         if self.start_time is None and search_time is None:
             self.search_time = self.get_aligned_time(
-                datetime.now(), self.cadence_td, self.offset_td
+                datetime.now(), self.cadence_td, self.offset_td,
             )
         elif self.start_time is None:
             self.search_time = self.start_time
@@ -325,7 +325,7 @@ class JobReady(ServicePlugin):
 
         if self.end_time and self.search_time > self.end_time:
             logger.debug(
-                "The search time is greater than the end time. Ending this process."
+                "The search time is greater than the end time. Ending this process.",
             )
             self.stop()
 
@@ -365,10 +365,10 @@ class JobReady(ServicePlugin):
 
         for job_group in self.job_groups:
             query_dict = job_group._replace_monitor_configs_with_datetime(
-                self.monitor_configs, None, self.search_time
+                self.monitor_configs, None, self.search_time,
             )
             for sat_sensor, filepaths in query_dict.get(
-                "sensor_filepath_mapping", {}
+                "sensor_filepath_mapping", {},
             ).items():
                 job_group.num_expected_files += len(filepaths)
                 job_group.expected_files += filepaths
@@ -393,7 +393,7 @@ class JobReady(ServicePlugin):
                 elif job_group.is_old():
                     self.job_groups.remove(job_group)
                     self.initialize(
-                        self.config, search_time=self.search_time + self.cadence_td
+                        self.config, search_time=self.search_time + self.cadence_td,
                     )
                     self.job_groups.append(job_group)
 

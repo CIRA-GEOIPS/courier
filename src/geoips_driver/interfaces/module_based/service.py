@@ -152,6 +152,12 @@ class ServiceConfig:
             f"watcher-service-{uuid.uuid4().hex[:8]}",
         ),
     )
+    service_namespace: str = field(
+        default_factory=lambda: os.environ.get(
+            "SERVICE_NAMESPACE",
+            "default",
+        ),
+    )
     database_url: str = field(
         default_factory=lambda: os.environ.get(
             "DATABASE_URL",
@@ -300,7 +306,7 @@ def log_execution(func: Callable) -> Callable:
     """
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: list[Any], **kwargs: dict[str, Any]) -> Any:
         logger.debug(f"Executing {func.__name__}")
         try:
             result = func(*args, **kwargs)
@@ -435,7 +441,8 @@ class PluginManager(ServiceManager):
     True
     """
 
-    def __init__(self, config: ServiceConfig, parent_service):
+    def __init__(self, config: ServiceConfig, parent_service: Service) -> None:
+        """Initialize plugin manager with configuration and parent service."""
         self._config = config
         self._plugins: dict[str, PluginStateInfo] = {}
         self._lock = threading.RLock()
@@ -495,7 +502,7 @@ class PluginManager(ServiceManager):
     def _start_plugin(self, plugin_info: PluginStateInfo) -> None:
         """Start a plugin in a separate thread."""
 
-        def run_plugin():
+        def run_plugin() -> None:
             try:
                 plugin_info.state = PluginRunState.STARTING
                 logger.info(f"Starting plugin: {plugin_info.plugin.name}")
@@ -579,7 +586,7 @@ class PluginManager(ServiceManager):
                                     self._handle_failed_plugin(plugin_info)
 
                             # Check if thread is alive
-                            elif plugin_info.state == PluginRunState.RUNNING and (
+                            elif (plugin_info.state == PluginRunState.RUNNING) and (
                                 not plugin_info.thread
                                 or not plugin_info.thread.is_alive()
                             ):
@@ -877,6 +884,7 @@ class RabbitMQManager(ServiceManager):
         self._connection: pika.BlockingConnection | None = None
         self._channel: pika.channel.Channel | None = None
         self._queues: dict[str, dict[str, Any]] = {}
+        self._namespace = config.service_namespace
 
     @retry_with_backoff(exceptions=(AMQPConnectionError,))
     def _establish_connection(
@@ -907,7 +915,7 @@ class RabbitMQManager(ServiceManager):
         >>> # True
         """
         logger.debug(
-            "Attempting to connect to RabbitMQ at url %s" % self._config.rabbitmq_url,
+            f"Attempting to connect to RabbitMQ at url {self._config.rabbitmq_url}",
         )
         parameters = pika.URLParameters(self._config.rabbitmq_url)
         connection = pika.BlockingConnection(parameters)
@@ -998,7 +1006,11 @@ class RabbitMQManager(ServiceManager):
             if connection and not connection.is_closed:
                 connection.close()
 
-    def add_queue(self, queue_name: str, **queue_config) -> None:
+    def get_queue_name(self, base_name: str) -> str:
+        """Generate full queue name with service namespace prefix."""
+        return f"{self._namespace}-{base_name}"
+
+    def add_queue(self, queue_name: str, **queue_config: Any) -> None:
         """Register queue configuration for automatic declaration on connections.
 
         Stores queue configuration that will be applied when establishing
@@ -1021,7 +1033,11 @@ class RabbitMQManager(ServiceManager):
         >>> manager._queues["my_queue"]["durable"]
         True
         """
-        self._queues[queue_name] = queue_config
+        new_queue_name = self.get_queue_name(queue_name)
+        if new_queue_name not in self._queues:
+            self._queues[new_queue_name] = queue_config
+        else:
+            logger.debug(f"Queue {new_queue_name} is already registered")
 
 
 class SignalHandler:
@@ -1039,7 +1055,7 @@ class SignalHandler:
     >>> # which is not suitable for doctest
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._shutdown_requested = False
         self._setup_signal_handlers()
 
@@ -1052,14 +1068,14 @@ class SignalHandler:
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         signal.signal(signal.SIGINT, self._handle_shutdown_signal)
 
-    def _handle_shutdown_signal(self, signal_num: int, frame) -> None:
+    def _handle_shutdown_signal(self, signal_num: int, frame: Any) -> None:
         """Handle received shutdown signals by setting shutdown flag.
 
         Parameters
         ----------
         signal_num : int
             Signal number that was received.
-        frame
+        frame : Any
             Current stack frame (unused but required by signal handler interface).
         """
         logger.info(f"Received signal {signal_num}, requesting graceful shutdown...")
@@ -1118,20 +1134,18 @@ class Service:
             self._rabbitmq_manager,
             self._plugin_manager,
         ]
+        self.namespace = "default"
 
     @log_execution
-    def emit(self, queue, message):
-        if queue not in self._rabbitmq_manager._queues:
-            self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
+    def emit(self, queue: str, message: str) -> None:
+        """Publish a message to a message broker queue."""
+        self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
-            # Pickle the message before publishing it. Consuming function will unpickle
-            # so we can handle the 'object' as expected.
-            body = pickle.dumps(message)
-            channel.basic_publish(exchange="", routing_key=queue, body=body)
+            channel.basic_publish(exchange="", routing_key=queue, body=message)
 
     # @log_execution
-    def consume(self, queue):
-        """Generator that yields messages from a message broker queue.
+    def consume(self, queue: str) -> Generator[bytes, None, None]:
+        """Yield messages from a message broker queue.
 
         This returns a generator that yields messages from the specified queue.
         It handles message acknowledgment on successful processing and
@@ -1281,7 +1295,7 @@ class Service:
         return all(manager.is_healthy() for manager in self._managers)
 
     def _run_heartbeat_loop(self) -> None:
-        """Execute main heartbeat loop with interruptible sleep intervals.
+        """Execute main heartbeat loop with interruptable sleep intervals.
 
         Runs continuous loop sending heartbeat metrics at configured intervals
         while checking for shutdown signals. Uses fractional sleep intervals
@@ -1393,7 +1407,7 @@ def create_service_with_plugins(
     return service
 
 
-def parse_driver_args():
+def parse_driver_args() -> argparse.Namespace:
     """Parse arguments needed to start up microservices for NRT GeoIPS driving.
 
     Currently only has one argument, the name of the controller config plugin we'll
