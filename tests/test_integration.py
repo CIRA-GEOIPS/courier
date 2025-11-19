@@ -1,2 +1,2 @@
-def test_always_pass():
-    pass
+def test_always_pass() -> None:
+    return
