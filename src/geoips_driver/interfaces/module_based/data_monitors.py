@@ -5,8 +5,8 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
-# import geoips.interfaces.base as GeoIPSPlugin # TODO Fix this to .... be runnable..
 from geoips_driver.interfaces.module_based.service import (
+    Service,
     ServicePlugin,
     log_execution,
     setup_logging,
@@ -19,24 +19,24 @@ FILE_FOUND_QUEUE = "FilesFoundQueue"
 
 @dataclass
 class File:
-    """File dataclass"""
+    """File dataclass."""
 
     frozen = True
-    file: Path
-    hostname: str
+    file: Path | None
+    hostname: str | None
 
 
 class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
     """Base data monitor plugin."""
 
-    def __init__(self, service):
+    def __init__(self, service: Service) -> None:
         self.parent_service = service
         self.queue = FILE_FOUND_QUEUE
         self.message_template = "file: '{file}', hostname: '{hostname}'"
         self._running = False
 
     def find_file(self) -> Generator[File, None, None]:
-        """Generator that yields Files"""
+        """Yield File objects."""
         yield File(file=None, hostname=None)
 
     def emit(self, file: File) -> None:
@@ -44,13 +44,14 @@ class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
         self.parent_service.emit(queue=self.queue, message=message)
 
     def find_and_emit_files(self) -> None:
-        """Find file and put in file queue"""
+        """Find file and put in file queue."""
         for file in self.find_file():
             logger.info(f"Found file: {file}")
             self.emit(file)
 
     @log_execution
     def start(self) -> None:
+        """Start main thread."""
         if self._running:
             return
         else:
@@ -71,5 +72,6 @@ class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
             self._main_thread.join(timeout=5)
 
 
-def call():
+def call() -> None:
+    """Raise error if called directly."""
     raise NotImplementedError("You cannot call this plugin directly.")
