@@ -1,0 +1,28 @@
+apiVersion: geoips/driver/v1
+kind: Service
+name: testing_spec_not_complete
+docstring: |
+description: This is for testing! Not a complete spec.
+spec:
+  service_namespace: example_service1
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: admin
+    password: admin_test
+  run:
+    - file_watching_service:
+        kind: data_monitor
+        name: file_system_polling # this is the plugin name
+        config:
+          path: /path/to/watch
+    - this_builds_jobs:
+        kind: job_builder
+        name: dummy_job_builder
+        config: null # just using defaults
+    - dispatch_those_jobs:
+        kind: dispatcher
+        name: serial_bash
+        config:
+          bash_script: |
+           echo {file}

@@ -1,0 +1,16 @@
+"""Python class for the service geoips_driver interface."""
+
+from geoips.interfaces.base import BaseYamlInterface
+
+from geoips_driver.pydantic.service_config import ServiceConfigModel
+
+
+class ServiceConfigInterface(BaseYamlInterface):
+    """Configuration protocol for controlling GeoIPS NRT processing."""
+
+    name = "service"
+    apiVersion = "geoips/driver/v1"  # noqa: N815
+    validator = ServiceConfigModel
+
+
+controller_configs = ServiceConfigInterface()

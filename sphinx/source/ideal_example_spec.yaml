@@ -1,4 +1,4 @@
-apiVersion: geoips/nrtp/v1
+apiVersion: geoips/driver/v1
 kind: Service
 name: example-for-spec
 docstring: |
