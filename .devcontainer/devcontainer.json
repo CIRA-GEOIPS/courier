@@ -9,6 +9,10 @@
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],
 	"containerEnv": {"GEOIPS_OUTDIRS": "/geoips_outdir"},
+	"runArgs": [
+		"--network=geoips_driver_testing"
+	],
+	"initializeCommand": "docker network create geoips_driver_testing 2>/dev/null || true",
 	"customizations": {
 		"vscode": {
 			"extensions": [

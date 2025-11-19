@@ -1,0 +1,19 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    hostname: rabbitmqhost
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin_test
+    networks:
+      - geoips_driver_testing
+    stdin_open: true
+    tty: true
+
+networks:
+  geoips_driver_testing:
+    external: true
