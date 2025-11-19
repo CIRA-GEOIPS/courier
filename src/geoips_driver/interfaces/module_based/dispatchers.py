@@ -5,6 +5,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 
 from geoips_driver.interfaces.module_based.service import (
+    Service,
     ServicePlugin,
     log_execution,
     setup_logging,
@@ -18,18 +19,21 @@ class ExecutionLog:
     """Execution log DataClass."""
 
     frozen = True
-    return_code: int
-    stdout: str
-    stderr: str
-    hostname: str
+    return_code: int | None
+    stdout: str | None
+    stderr: str | None
+    hostname: str | None
 
 
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""
 
-    name = "dispatcher"
+    @property
+    def name(self) -> str:
+        """Service name."""
+        return "dispatcher"
 
-    def __init__(self, service):
+    def __init__(self, service: Service) -> None:
         self.parent_service = service
         self.queue = "Dispatcher"
         self.message_template = (
@@ -39,10 +43,11 @@ class Dispatcher(ServicePlugin):
         self._running = False
 
     def yield_execution_log(self) -> Generator[ExecutionLog, None, None]:
-        """Generator that yields ExecutionLogs."""
+        """Yield ExecutionLogs."""
         yield ExecutionLog(return_code=None, stdout=None, stderr=None, hostname=None)
 
     def emit(self, execution_log: ExecutionLog) -> None:
+        """Emit execution log to parent service."""
         message = self.message_template.format(
             return_code=execution_log.return_code,
             stdout=execution_log.stdout,
@@ -63,6 +68,7 @@ class Dispatcher(ServicePlugin):
 
     @log_execution
     def start(self) -> None:
+        """Start main thread."""
         if self._running:
             return
         else:
