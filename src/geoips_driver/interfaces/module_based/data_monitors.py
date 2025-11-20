@@ -17,13 +17,41 @@ logger = setup_logging()
 FILE_FOUND_QUEUE = "FilesFoundQueue"
 
 
-@dataclass
+import json
+
+
+@dataclass(frozen=True)
 class File:
     """File dataclass."""
 
-    frozen = True
-    file: Path | None
-    hostname: str | None
+    file: Path | None = None
+    hostname: str | None = None
+
+    def __str__(self) -> str:
+        """Convert File to JSON string."""
+        return json.dumps(
+            {
+                "file": str(self.file) if self.file else None,
+                "hostname": self.hostname,
+            },
+        )
+
+    @classmethod
+    def from_string(cls, s: str) -> "File":
+        """Initialize File from JSON string.
+
+        Args:
+            s: JSON string representation of File
+
+        Returns
+        -------
+            File instance
+        """
+        data = json.loads(s)
+        return cls(
+            file=Path(data["file"]) if data.get("file") else None,
+            hostname=data.get("hostname"),
+        )
 
 
 class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):

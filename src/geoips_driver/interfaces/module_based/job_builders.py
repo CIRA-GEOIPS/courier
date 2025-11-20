@@ -1,5 +1,6 @@
 """Python class for the data_filter geoips_driver interface."""
 
+import json
 import threading
 import time
 from typing import Any
@@ -20,13 +21,55 @@ JOB_READY_QUEUE = "JobReadyQueue"
 class Job:
     """Job class."""
 
-    def __init__(self, job_name: str, jid: str, config: Any) -> None:
-        self.name = job_name
-        self.identifier = jid
+    def __init__(
+        self,
+        name: str,
+        identifier: str,
+        config: Any,
+        files: frozenset[File] = frozenset(),
+        last_modified: float | None = None,
+        timeout: float = 60 * 60 * 24,
+    ) -> None:
+        self.name = name
+        self.identifier = identifier
         self.config = config
-        self.files: set[File] = set()
-        self.last_modified = time.time()
-        self.timeout = 60 * 60 * 24  # 24 hours
+        self.files = files
+        self.last_modified = last_modified if last_modified is not None else time.time()
+        self.timeout = timeout
+
+    def __str__(self) -> str:
+        """Convert Job to JSON string."""
+        return json.dumps(
+            {
+                "name": self.name,
+                "identifier": self.identifier,
+                "config": self.config,
+                "files": [str(f) for f in self.files],
+                "last_modified": self.last_modified,
+                "timeout": self.timeout,
+            },
+        )
+
+    @classmethod
+    def from_string(cls, s: str) -> "Job":
+        """Initialize Job from JSON string.
+
+        Args:
+            s: JSON string representation of Job
+
+        Returns
+        -------
+            Job instance
+        """
+        data = json.loads(s)
+        return cls(
+            name=data["name"],
+            identifier=data["identifier"],
+            config=data["config"],
+            files=frozenset(File.from_string(f) for f in data.get("files", [])),
+            last_modified=data.get("last_modified"),
+            timeout=data.get("timeout", 60 * 60 * 24),
+        )
 
     def ready(self) -> bool:
         """Return true if job is ready to be emitted."""

@@ -13,16 +13,33 @@ from geoips_driver.interfaces.module_based.service import (
 
 logger = setup_logging()
 
+import json
 
-@dataclass
+
+@dataclass(frozen=True)
 class ExecutionLog:
     """Execution log DataClass."""
 
-    frozen = True
-    return_code: int | None
-    stdout: str | None
-    stderr: str | None
-    hostname: str | None
+    return_code: int | None = None
+    stdout: str | None = None
+    stderr: str | None = None
+    hostname: str | None = None
+
+    def __str__(self) -> str:
+        """Convert ExecutionLog to JSON string."""
+        return json.dumps(
+            {
+                "return_code": self.return_code,
+                "stdout": self.stdout,
+                "stderr": self.stderr,
+                "hostname": self.hostname,
+            },
+        )
+
+    @classmethod
+    def from_string(cls, s: str) -> "ExecutionLog":
+        """Initialize ExecutionLog from JSON string."""
+        return cls(**json.loads(s))
 
 
 class Dispatcher(ServicePlugin):
