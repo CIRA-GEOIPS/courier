@@ -137,7 +137,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     def emit(self, job: Job) -> None:
         """Emit job to parent service."""
         message = str(job)
-        logger.info(f"Queueing job with message {message}")
+        logger.info(f"Queueing job: {message}")
         self.parent_service.emit(queue=self.queue, message=message)
 
     def handle_incoming_files(self) -> None:

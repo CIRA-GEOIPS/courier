@@ -60,7 +60,6 @@ class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
     def __init__(self, service: Service) -> None:
         self.parent_service = service
         self.queue = FILE_FOUND_QUEUE
-        self.message_template = "file: '{file}', hostname: '{hostname}'"
         self._running = False
 
     def find_file(self) -> Generator[File, None, None]:
@@ -68,8 +67,9 @@ class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
         yield File(file=None, hostname=None)
 
     def emit(self, file: File) -> None:
-        message = self.message_template.format(file=file.file, hostname=file.hostname)
-        self.parent_service.emit(queue=self.queue, message=message)
+        """Emit file to parent service."""
+        logger.debug(f"Emitting file: {file}")
+        self.parent_service.emit(queue=self.queue, message=str(file))
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""

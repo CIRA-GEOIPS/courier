@@ -53,10 +53,6 @@ class Dispatcher(ServicePlugin):
     def __init__(self, service: Service) -> None:
         self.parent_service = service
         self.queue = "Dispatcher"
-        self.message_template = (
-            "return_code: '{execution_log}', stdout: '{stdout}', stderr: '{stderr}', "
-            "hostname: '{hostname}'"
-        )
         self._running = False
 
     def yield_execution_log(self) -> Generator[ExecutionLog, None, None]:
@@ -65,13 +61,8 @@ class Dispatcher(ServicePlugin):
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
-        message = self.message_template.format(
-            return_code=execution_log.return_code,
-            stdout=execution_log.stdout,
-            stderr=execution_log.stderr,
-            hostname=execution_log.hostname,
-        )
-        self.parent_service.emit(queue=self.queue, message=message)
+        logger.debug(f"Emitting execution log: {execution_log}")
+        self.parent_service.emit(queue=self.queue, message=str(execution_log))
 
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them.
