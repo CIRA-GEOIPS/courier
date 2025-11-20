@@ -7,8 +7,8 @@
 # from geoips_driver.interfaces.module_based.dispatchers import dispatchers
 
 # from geoips_driver.interfaces.module_based.queriers import queriers
-from geoips_driver.interfaces.yaml_based.controller_configs import controller_configs
-from geoips_driver.interfaces.yaml_based.monitor_configs import monitor_configs
+# from geoips_driver.interfaces.yaml_based.controller_configs import controller_configs
+# from geoips_driver.interfaces.yaml_based.monitor_configs import monitor_configs
 
 # These lists are the "master" lists of the interface names.
 # These are used in validating the plugins (ie, so we will catch a typo

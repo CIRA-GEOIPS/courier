@@ -14,9 +14,9 @@ from pydantic import (
 )
 
 __all__ = [
+    "MicroserviceDefinitionModel",
+    "MicroserviceModel",
     "RabbitMQSettings",
-    "RunStepDefinitionModel",
-    "RunStepModel",
     "ServiceConfigModel",
     "ServiceSpecModel",
 ]
@@ -69,11 +69,11 @@ class RabbitMQSettings(FrozenModel):
         return _ensure_non_empty(value, field_name=info.field_name)
 
 
-class RunStepDefinitionModel(FrozenModel):
-    """The concrete configuration for a single service run step."""
+class MicroserviceDefinitionModel(FrozenModel):
+    """Definition of a microservice used within a service."""
 
-    kind: str = Field(..., description="Plugin kind for the service run step.")
-    name: str = Field(..., description="Plugin name for the service run step.")
+    kind: str = Field(..., description="Plugin kind for the microservice.")
+    name: str = Field(..., description="Plugin name for the microservice.")
     config: Any = Field(
         default=None,
         description="Arbitrary configuration passed to the plugin (may be null).",
@@ -86,16 +86,16 @@ class RunStepDefinitionModel(FrozenModel):
         return _ensure_non_empty(value, field_name=info.field_name)
 
 
-class RunStepModel(FrozenModel):
+class MicroserviceModel(FrozenModel):
     """A uniquely identified step within the service `run` sequence."""
 
     identifier: str = Field(
         ...,
         description="Unique identifier for the run step.",
     )
-    spec: RunStepDefinitionModel = Field(
+    spec: MicroserviceDefinitionModel = Field(
         ...,
-        description="Detailed configuration for the run step.",
+        description="Detailed configuration for the microservice.",
     )
 
     @model_validator(mode="before")
@@ -105,12 +105,12 @@ class RunStepModel(FrozenModel):
         if isinstance(data, dict) and "identifier" not in data and "spec" not in data:
             if len(data) != 1:
                 raise ValueError(
-                    "Run step entries must contain exactly one identifier mapping.",
+                    "Microservice entries must contain exactly one identifier mapping.",
                 )
             identifier, spec = next(iter(data.items()))
             if not isinstance(spec, dict):
                 raise TypeError(
-                    f"Run step '{identifier}' must map to an object describing the step.",
+                    f"Microservice '{identifier}' must map to an object describing the microservice.",
                 )
             return {"identifier": identifier, "spec": spec}
         return data
@@ -133,7 +133,7 @@ class ServiceSpecModel(FrozenModel):
         ...,
         description="RabbitMQ connection configuration.",
     )
-    run: list[RunStepModel] = Field(
+    run: list[MicroserviceModel] = Field(
         ...,
         min_length=1,
         description="Ordered collection of steps to execute for the service.",

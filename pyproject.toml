@@ -28,6 +28,8 @@ geoips = "^1.16.1"
 prometheus-client = "*"
 pydantic = "*"
 pika = "*"
+typer = "*"
+pyyaml = "*"
 
 # Optional dependencies for extras
 sphinx = { version = "*", optional = true }

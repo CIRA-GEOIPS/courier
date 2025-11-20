@@ -15,16 +15,20 @@ interface = None
 
 class FileSystemPoller(DataMonitor):
     name = "FileSystemPoller-Watchdog"
-    version = "-1"
+    version = "0.0.0"
 
     def __init__(self, service):
         super().__init__(service)
+        self.health = False
 
     def initialize(self, config):
-        pass
+        logger.debug(config)
+        logger.warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.path_to_watch = config["path"]
+        self.health = True
 
     def is_healthy(self):
-        return True
+        return self.health
 
     def find_file(self) -> Generator[File, None, None]:
         """
@@ -45,7 +49,8 @@ class FileSystemPoller(DataMonitor):
         ------
             str: The path of a newly created file.
         """
-        path = "/home/evan/geoips/geoips_packages/geoips_driver/fake_files"
+        path = self.path_to_watch
+        logger.info(f"Starting to watch directory: {path}")
         file_queue = queue.Queue()
 
         # This handler simply puts the path of any new file into the queue
@@ -58,7 +63,10 @@ class FileSystemPoller(DataMonitor):
         event_handler = NewFileHandler()
         observer = Observer()
         observer.schedule(event_handler, path, recursive=True)
-        observer.start()
+        try:
+            observer.start()
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Directory '{path}' does not exist.") from e
 
         logger.info(f"Watching for new files in '{path}'...")
 

@@ -1,0 +1,8 @@
+Running example1 service with config:
+ServiceConfig(service_id='testing_spec_not_complete', service_namespace='example_service1', database_url='postgresql://admin:admin@localhost:5432/geoips_driver', prometheus_port=8000, rabbitmq_url='amqp://admin:admin_test@rabbitmq:5672/', rabbitmq_max_retries=5, heartbeat_interval=10, plugin_restart_delay=5, plugin_max_restart_attempts=3, plugin_health_check_interval=2)
+
+Available plugins:
+{'filesystempoller-watchdog': <class 'geoips_driver.plugins.modules.data_monitors.file_system_polling.FileSystemPoller'>, 'dummyjobbuilder': <class 'geoips_driver.plugins.modules.job_builders.dummy_job_builder.DummyJobBuilder'>, 'serial_bash_dispatcher': <class 'geoips_driver.plugins.modules.dispatchers.serial_bash.SerialDispatcher'>}
+
+identifier='file_watching_service' spec=MicroserviceDefinitionModel(kind='data_monitor', name='FileSystemPoller-Watchdog', config={'path': '/workspaces/geoips_driver/tests/fake-watch-dir'})
+[(<class 'geoips_driver.plugins.modules.data_monitors.file_system_polling.FileSystemPoller'>, {'path': '/workspaces/geoips_driver/tests/fake-watch-dir'})]

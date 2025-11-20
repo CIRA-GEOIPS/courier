@@ -14,6 +14,8 @@ from geoips_driver.interfaces.module_based.service import (
 
 logger = setup_logging()
 
+JOB_READY_QUEUE = "JobReadyQueue"
+
 
 class Job:
     """Job class."""
@@ -75,7 +77,7 @@ class JobGroup:
         return True
 
 
-class JobReady(ServicePlugin):  # , GeoIPSPlugin):
+class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     """Base data filter plugin."""
 
     def __init__(self, service: Service) -> None:

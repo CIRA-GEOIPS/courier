@@ -1,4 +1,4 @@
-"""Pydantic models for the controller_configs interface.
+'''"""Pydantic models for the controller_configs interface.
 
 Used for validation of controller_config plugins.
 """
@@ -268,3 +268,4 @@ class ControllerConfigPlugin(PluginModel):
         ...,
         description="Specification for the controller_config plugin.",
     )
+'''

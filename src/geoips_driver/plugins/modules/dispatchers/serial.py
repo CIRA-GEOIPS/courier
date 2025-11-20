@@ -2,7 +2,7 @@ import json
 from collections.abc import Generator
 
 from geoips_driver.interfaces.module_based.dispatchers import Dispatcher, ExecutionLog
-from geoips_driver.interfaces.module_based.job_queuers import JOB_READY_QUEUE
+from geoips_driver.interfaces.module_based.job_builders import JOB_READY_QUEUE
 from geoips_driver.interfaces.module_based.service import setup_logging
 from geoips_driver.utils.driver_components import process_utils, template_utils
 from geoips_driver.utils.generate_workflow import generate_workflow_from_steps
@@ -84,7 +84,8 @@ class SerialDispatcher(Dispatcher):
             log: The log results of executing a GeoIPS processing workflow.
         """
         template = template_utils.get_template(
-            self.template, template_dir=self.template_dir,
+            self.template,
+            template_dir=self.template_dir,
         )
         generated_workflow = generate_workflow_from_steps(self.steps)
 

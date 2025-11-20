@@ -3,7 +3,6 @@
 Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
 """
 
-import argparse
 import logging
 import os
 import pickle
@@ -318,6 +317,305 @@ def log_execution(func: Callable) -> Callable:
     return wrapper
 
 
+class ServicePlugin(Protocol):
+    """Protocol defining the interface that all plugins must implement."""
+
+    @property
+    def name(self) -> str:
+        """Return the plugin name."""
+        ...
+
+    @property
+    def version(self) -> str:
+        """Return the plugin version."""
+        ...
+
+    def start(self) -> None:
+        """Start the plugin operations."""
+        ...
+
+    def stop(self) -> None:
+        """Stop the plugin operations."""
+        ...
+
+    def is_healthy(self) -> bool:
+        """Check if the plugin is healthy."""
+        ...
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Return plugin-specific metrics."""
+        ...
+
+
+class Service:
+    """Service class with plugin support.
+
+    Coordinates startup, health monitoring, heartbeat loop, and graceful shutdown
+    of all service components including plugins. Uses dependency injection for
+    manager instances and provides centralized service lifecycle management.
+
+    Parameters
+    ----------
+    config : ServiceConfig, optional
+        Service configuration. If None, creates default ServiceConfig instance.
+
+    Examples
+    --------
+    >>> config = ServiceConfig()
+    >>> service = Service(config)
+    >>> service._config.heartbeat_interval
+    10
+    >>> len(service._managers)
+    3
+    """
+
+    def __init__(self, config: ServiceConfig | None = None):
+        self._config = config or ServiceConfig()
+        self._signal_handler = SignalHandler()
+
+        self._prometheus_manager = PrometheusManager(self._config)
+        self._rabbitmq_manager = RabbitMQManager(self._config)
+        self._plugin_manager = PluginManager(self._config, self)
+
+        self._managers: list[ServiceManager] = [
+            self._prometheus_manager,
+            self._rabbitmq_manager,
+            self._plugin_manager,
+        ]
+        self.namespace = "default"
+
+    @log_execution
+    def emit(self, queue: str, message: str) -> None:
+        """Publish a message to a message broker queue."""
+        self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
+        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
+            channel.basic_publish(exchange="", routing_key=queue, body=message)
+
+    # @log_execution
+    def consume(self, queue: str) -> Generator[bytes, None, None]:
+        """Yield messages from a message broker queue.
+
+        This returns a generator that yields messages from the specified queue.
+        It handles message acknowledgment on successful processing and
+        requeues messages if processing fails or the consumer stops.
+
+        Parameters
+        ----------
+        queue : str
+            The name of the queue to consume messages from. If the queue doesn't
+            exist, it will be created.
+
+        Yields
+        ------
+        bytes
+            The message
+
+        Raises
+        ------
+        GeneratorExit
+            Raised when the generator is explicitly closed. Messages are requeued,
+            generator is closed and exception is re-raised.
+        Exception
+            Messages are requeued and exception is re-raised.
+
+        Examples
+        --------
+        >>> for message in consume('my_queue'):
+        ...     data = json.loads(message)
+        ...     print(f"Processing: {data}")
+        ...     # Message is auto-acked after this
+
+        >>> # Stop consuming after N messages
+        >>> consumer_gen = self.consume('my_queue')
+        >>> for i, message in enumerate(consumer_gen):
+        ...     if i >= 10:
+        ...         consumer_gen.close() # MUST manually close or generator will remain open
+        ...         break
+        ...     do_thing_with_message(message)
+        """
+        if queue not in self._rabbitmq_manager._queues:
+            queue = self._rabbitmq_manager.add_queue(
+                queue,
+                durable=True,
+                exclusive=False,
+            )
+
+        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
+            for method_frame, properties, body in channel.consume(
+                queue,
+                auto_ack=False,
+            ):
+                try:
+                    message = pickle.loads(body)
+                    yield message
+                    # Acknowledge the message after successful processing
+                    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                except GeneratorExit:
+                    # Handle generator cleanup (when consumer stops)
+                    channel.basic_nack(
+                        delivery_tag=method_frame.delivery_tag,
+                        requeue=True,
+                    )
+                    channel.cancel()
+                    raise
+                except Exception:
+                    # If processing fails, reject + requeue message for another day
+                    channel.basic_nack(
+                        delivery_tag=method_frame.delivery_tag,
+                        requeue=True,
+                    )
+                    raise
+
+    def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
+        """Register a plugin with the service.
+
+        Parameters
+        ----------
+        plugin : PluginProtocol
+            Plugin instance to register.
+        config : dict[str, Any]
+            Configuration for the plugin.
+
+        Examples
+        --------
+        >>> from unittest.mock import Mock
+        >>> service = Service()
+        >>> mock_plugin = Mock(spec=PluginProtocol)
+        >>> mock_plugin.name = "test_plugin"
+        >>> service.register_plugin(mock_plugin, {})
+        """
+        self._plugin_manager.register_plugin(plugin, config)
+
+    def _start_managers(self) -> None:
+        """Start all service managers in sequence with error handling.
+
+        Iterates through all managers and starts each one. If any manager
+        fails to start, logs the exception and re-raises to halt service startup.
+
+        Raises
+        ------
+        Exception
+            If any manager fails to start successfully.
+        """
+
+        def start_manager(manager: ServiceManager) -> None:
+            try:
+                manager.start()
+            except Exception:
+                logger.exception(f"Failed to start {manager.__class__.__name__}")
+                raise
+
+        list(map(start_manager, self._managers))
+
+    def _stop_managers(self) -> None:
+        """Stop all managers safely in reverse order.
+
+        Stops managers in reverse order to ensure proper dependency cleanup.
+        Logs warnings for stop failures but continues stopping remaining managers.
+        """
+
+        def stop_manager(manager: ServiceManager) -> None:
+            try:
+                manager.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping {manager.__class__.__name__}: {e}")
+
+        list(map(stop_manager, reversed(self._managers)))
+
+    def _health_check(self) -> bool:
+        """Check health status of all service managers.
+
+        Returns
+        -------
+        bool
+            True if all managers report healthy status, False otherwise.
+
+        Examples
+        --------
+        >>> config = ServiceConfig()
+        >>> service = Service(config)
+        >>> service._health_check()
+        False
+        """
+        logger.debug(
+            "Monitor health checks: "
+            + ", ".join(
+                f"{manager}: {manager.is_healthy()}" for manager in self._managers
+            ),
+        )
+
+        return all(manager.is_healthy() for manager in self._managers)
+
+    def _run_heartbeat_loop(self) -> None:
+        """Execute main heartbeat loop with interruptable sleep intervals.
+
+        Runs continuous loop sending heartbeat metrics at configured intervals
+        while checking for shutdown signals. Uses fractional sleep intervals
+        to ensure responsive shutdown handling.
+        """
+        sleep_time = 1.0
+        sleep_iterations = int(self._config.heartbeat_interval / sleep_time)
+
+        while not self._signal_handler.shutdown_requested:
+            # Functional approach to sleeping in intervals
+            for _ in range(sleep_iterations):
+                if self._signal_handler.shutdown_requested:
+                    break
+                time.sleep(sleep_time)
+
+            if not self._signal_handler.shutdown_requested:
+                self._prometheus_manager.send_heartbeat()
+
+                # Log plugin status periodically
+                plugin_status = self._plugin_manager.get_plugin_status()
+                if plugin_status:
+                    logger.debug(f"Plugin status: {plugin_status}")
+
+    @log_execution
+    def start(self) -> None:
+        """Start service with complete lifecycle management and error handling.
+
+        Orchestrates service startup including manager initialization, health
+        verification, heartbeat loop execution, and graceful shutdown handling.
+        Ensures proper cleanup regardless of how service terminates.
+
+        Raises
+        ------
+        RuntimeError
+            If service health check fails after startup.
+        Exception
+            If service startup fails for any other reason.
+        """
+        logger.info(f"Starting Service {self._config.service_id}")
+
+        try:
+            self._start_managers()
+
+            if not self._health_check():
+                raise RuntimeError("Service health check failed after startup")
+
+            logger.info(f"Service {self._config.service_id} started successfully")
+            self._run_heartbeat_loop()
+
+        except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt")
+        except Exception:
+            logger.exception("Service startup failed")
+            raise
+        finally:
+            self._cleanup()
+
+    def _cleanup(self) -> None:
+        """Perform complete resource cleanup for service shutdown.
+
+        Coordinates cleanup of all managers and logs service termination.
+        Called automatically during service shutdown regardless of termination cause.
+        """
+        logger.info("Cleaning up resources...")
+        self._stop_managers()
+        logger.info(f"Service {self._config.service_id} stopped")
+
+
 class ServiceManager(ABC):
     """Abstract base class defining interface for service component managers.
 
@@ -375,36 +673,6 @@ class ServiceManager(ABC):
             True if component is healthy and operational, False otherwise.
         """
         pass
-
-
-class ServicePlugin(Protocol):
-    """Protocol defining the interface that all plugins must implement."""
-
-    @property
-    def name(self) -> str:
-        """Return the plugin name."""
-        ...
-
-    @property
-    def version(self) -> str:
-        """Return the plugin version."""
-        ...
-
-    def start(self) -> None:
-        """Start the plugin operations."""
-        ...
-
-    def stop(self) -> None:
-        """Stop the plugin operations."""
-        ...
-
-    def is_healthy(self) -> bool:
-        """Check if the plugin is healthy."""
-        ...
-
-    def get_metrics(self) -> dict[str, Any]:
-        """Return plugin-specific metrics."""
-        ...
 
 
 # Plugin management
@@ -1010,7 +1278,7 @@ class RabbitMQManager(ServiceManager):
         """Generate full queue name with service namespace prefix."""
         return f"{self._namespace}-{base_name}"
 
-    def add_queue(self, queue_name: str, **queue_config: Any) -> None:
+    def add_queue(self, queue_name: str, **queue_config: Any) -> str:
         """Register queue configuration for automatic declaration on connections.
 
         Stores queue configuration that will be applied when establishing
@@ -1038,6 +1306,7 @@ class RabbitMQManager(ServiceManager):
             self._queues[new_queue_name] = queue_config
         else:
             logger.debug(f"Queue {new_queue_name} is already registered")
+        return new_queue_name
 
 
 class SignalHandler:
@@ -1099,271 +1368,6 @@ class SignalHandler:
         return self._shutdown_requested
 
 
-class Service:
-    """Service class with plugin support.
-
-    Coordinates startup, health monitoring, heartbeat loop, and graceful shutdown
-    of all service components including plugins. Uses dependency injection for
-    manager instances and provides centralized service lifecycle management.
-
-    Parameters
-    ----------
-    config : ServiceConfig, optional
-        Service configuration. If None, creates default ServiceConfig instance.
-
-    Examples
-    --------
-    >>> config = ServiceConfig()
-    >>> service = Service(config)
-    >>> service._config.heartbeat_interval
-    10
-    >>> len(service._managers)
-    3
-    """
-
-    def __init__(self, config: ServiceConfig | None = None):
-        self._config = config or ServiceConfig()
-        self._signal_handler = SignalHandler()
-
-        self._prometheus_manager = PrometheusManager(self._config)
-        self._rabbitmq_manager = RabbitMQManager(self._config)
-        self._plugin_manager = PluginManager(self._config, self)
-
-        self._managers: list[ServiceManager] = [
-            self._prometheus_manager,
-            self._rabbitmq_manager,
-            self._plugin_manager,
-        ]
-        self.namespace = "default"
-
-    @log_execution
-    def emit(self, queue: str, message: str) -> None:
-        """Publish a message to a message broker queue."""
-        self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
-        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
-            channel.basic_publish(exchange="", routing_key=queue, body=message)
-
-    # @log_execution
-    def consume(self, queue: str) -> Generator[bytes, None, None]:
-        """Yield messages from a message broker queue.
-
-        This returns a generator that yields messages from the specified queue.
-        It handles message acknowledgment on successful processing and
-        requeues messages if processing fails or the consumer stops.
-
-        Parameters
-        ----------
-        queue : str
-            The name of the queue to consume messages from. If the queue doesn't
-            exist, it will be created.
-
-        Yields
-        ------
-        bytes
-            The message
-
-        Raises
-        ------
-        GeneratorExit
-            Raised when the generator is explicitly closed. Messages are requeued,
-            generator is closed and exception is re-raised.
-        Exception
-            Messages are requeued and exception is re-raised.
-
-        Examples
-        --------
-        >>> for message in consume('my_queue'):
-        ...     data = json.loads(message)
-        ...     print(f"Processing: {data}")
-        ...     # Message is auto-acked after this
-
-        >>> # Stop consuming after N messages
-        >>> consumer_gen = self.consume('my_queue')
-        >>> for i, message in enumerate(consumer_gen):
-        ...     if i >= 10:
-        ...         consumer_gen.close() # MUST manually close or generator will remain open
-        ...         break
-        ...     do_thing_with_message(message)
-        """
-        if queue not in self._rabbitmq_manager._queues:
-            self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
-
-        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
-            for method_frame, properties, body in channel.consume(
-                queue,
-                auto_ack=False,
-            ):
-                try:
-                    message = pickle.loads(body)
-                    yield message
-                    # Acknowledge the message after successful processing
-                    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-                except GeneratorExit:
-                    # Handle generator cleanup (when consumer stops)
-                    channel.basic_nack(
-                        delivery_tag=method_frame.delivery_tag,
-                        requeue=True,
-                    )
-                    channel.cancel()
-                    raise
-                except Exception:
-                    # If processing fails, reject + requeue message for another day
-                    channel.basic_nack(
-                        delivery_tag=method_frame.delivery_tag,
-                        requeue=True,
-                    )
-                    raise
-
-    def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
-        """Register a plugin with the service.
-
-        Parameters
-        ----------
-        plugin : PluginProtocol
-            Plugin instance to register.
-        config : dict[str, Any]
-            Configuration for the plugin.
-
-        Examples
-        --------
-        >>> from unittest.mock import Mock
-        >>> service = Service()
-        >>> mock_plugin = Mock(spec=PluginProtocol)
-        >>> mock_plugin.name = "test_plugin"
-        >>> service.register_plugin(mock_plugin, {})
-        """
-        self._plugin_manager.register_plugin(plugin, config)
-
-    def _start_managers(self) -> None:
-        """Start all service managers in sequence with error handling.
-
-        Iterates through all managers and starts each one. If any manager
-        fails to start, logs the exception and re-raises to halt service startup.
-
-        Raises
-        ------
-        Exception
-            If any manager fails to start successfully.
-        """
-
-        def start_manager(manager: ServiceManager) -> None:
-            try:
-                manager.start()
-            except Exception:
-                logger.exception(f"Failed to start {manager.__class__.__name__}")
-                raise
-
-        list(map(start_manager, self._managers))
-
-    def _stop_managers(self) -> None:
-        """Stop all managers safely in reverse order.
-
-        Stops managers in reverse order to ensure proper dependency cleanup.
-        Logs warnings for stop failures but continues stopping remaining managers.
-        """
-
-        def stop_manager(manager: ServiceManager) -> None:
-            try:
-                manager.stop()
-            except Exception as e:
-                logger.warning(f"Error stopping {manager.__class__.__name__}: {e}")
-
-        list(map(stop_manager, reversed(self._managers)))
-
-    def _health_check(self) -> bool:
-        """Check health status of all service managers.
-
-        Returns
-        -------
-        bool
-            True if all managers report healthy status, False otherwise.
-
-        Examples
-        --------
-        >>> config = ServiceConfig()
-        >>> service = Service(config)
-        >>> service._health_check()
-        False
-        """
-        logger.debug(
-            "Monitor health checks: "
-            + ", ".join(
-                f"{manager}: {manager.is_healthy()}" for manager in self._managers
-            ),
-        )
-
-        return all(manager.is_healthy() for manager in self._managers)
-
-    def _run_heartbeat_loop(self) -> None:
-        """Execute main heartbeat loop with interruptable sleep intervals.
-
-        Runs continuous loop sending heartbeat metrics at configured intervals
-        while checking for shutdown signals. Uses fractional sleep intervals
-        to ensure responsive shutdown handling.
-        """
-        sleep_time = 1.0
-        sleep_iterations = int(self._config.heartbeat_interval / sleep_time)
-
-        while not self._signal_handler.shutdown_requested:
-            # Functional approach to sleeping in intervals
-            for _ in range(sleep_iterations):
-                if self._signal_handler.shutdown_requested:
-                    break
-                time.sleep(sleep_time)
-
-            if not self._signal_handler.shutdown_requested:
-                self._prometheus_manager.send_heartbeat()
-
-                # Log plugin status periodically
-                plugin_status = self._plugin_manager.get_plugin_status()
-                if plugin_status:
-                    logger.debug(f"Plugin status: {plugin_status}")
-
-    @log_execution
-    def start(self) -> None:
-        """Start service with complete lifecycle management and error handling.
-
-        Orchestrates service startup including manager initialization, health
-        verification, heartbeat loop execution, and graceful shutdown handling.
-        Ensures proper cleanup regardless of how service terminates.
-
-        Raises
-        ------
-        RuntimeError
-            If service health check fails after startup.
-        Exception
-            If service startup fails for any other reason.
-        """
-        logger.info(f"Starting Service {self._config.service_id}")
-
-        try:
-            self._start_managers()
-
-            if not self._health_check():
-                raise RuntimeError("Service health check failed after startup")
-
-            logger.info(f"Service {self._config.service_id} started successfully")
-            self._run_heartbeat_loop()
-
-        except KeyboardInterrupt:
-            logger.info("Received keyboard interrupt")
-        except Exception:
-            logger.exception("Service startup failed")
-            raise
-        finally:
-            self._cleanup()
-
-    def _cleanup(self) -> None:
-        """Perform complete resource cleanup for service shutdown.
-
-        Coordinates cleanup of all managers and logs service termination.
-        Called automatically during service shutdown regardless of termination cause.
-        """
-        logger.info("Cleaning up resources...")
-        self._stop_managers()
-        logger.info(f"Service {self._config.service_id} stopped")
-
-
 def create_service_with_plugins(
     config: ServiceConfig | None = None,
     plugins: list[tuple[ServicePlugin, dict[str, Any]]] | None = None,
@@ -1405,25 +1409,6 @@ def create_service_with_plugins(
         list(map(register_plugin_partial, plugins))
 
     return service
-
-
-def parse_driver_args() -> argparse.Namespace:
-    """Parse arguments needed to start up microservices for NRT GeoIPS driving.
-
-    Currently only has one argument, the name of the controller config plugin we'll
-    use to drive GeoIPS-based processing. We may add more in the future.
-    """
-    parser = argparse.ArgumentParser(prog="geoips_nrt")
-    parser.add_argument(
-        "-cfg",
-        "--config",
-        choices=[plg.name for plg in interfaces.controller_configs.get_plugins()],
-        default="goes19_full_disk_infrared",
-        type=str,
-        help="The name of the controller config plugin you want to use.",
-        required=False,
-    )
-    return parser.parse_args()
 
 
 def main() -> None:
