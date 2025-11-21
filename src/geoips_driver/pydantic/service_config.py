@@ -129,6 +129,10 @@ class ServiceSpecModel(FrozenModel):
         ...,
         description="Namespace used to group related service assets.",
     )
+    heartbeat_interval: int = Field(
+        ...,
+        description="Interval in seconds between service heartbeat messages.",
+    )
     rabbitmq: RabbitMQSettings = Field(
         ...,
         description="RabbitMQ connection configuration.",

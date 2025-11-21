@@ -1,60 +1,105 @@
-from collections.abc import Generator
+import socket
+import subprocess
+import tempfile
+from pathlib import Path
 
 from geoips_driver.interfaces.module_based.dispatchers import Dispatcher, ExecutionLog
-from geoips_driver.interfaces.module_based.job_builders import JOB_READY_QUEUE
-from geoips_driver.interfaces.module_based.service import setup_logging
+from geoips_driver.interfaces.module_based.job_builders import Job
+from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging()
 
 interface = None
 
 
-class SerialDispatcher(Dispatcher):
-    name = "serial_bash_dispatcher"
+class SerialBashDispatcher(Dispatcher):
+    """Serial Bash Dispatcher Plugin."""
+
     interface = "dispatchers"
-    version = "-1"
 
-    def __init__(self, service):
-        super().__init__(service)
+    name = "serial_bash_dispatcher"
 
-    def initialize(self, config):
-        """Initialize the starting arguments for the serial dispatcher..
+    @property
+    def version(self) -> str:
+        """Service version."""
+        return "-1"
 
-        Parameters
-        ----------
-        template: str
-            - The name of the template we are going to use to produce GeoIPS bash
-            scripts
-        steps: SimpleNamespace
-            - A SimpleNamespace object representing an ordered dictionary which depicts
-            the order of operations needed to produce the correct output
-        template_dir: str, default=None
-            - The path to the directory which contains 'template'. If None, this
-            defaults to $GEOIPS_PACKAGES_DIR/geoips_driver/geoips_driver/templates
-        """
+    def __init__(self, service: Service, config: dict) -> None:
+        super().__init__(service, config)
         self.config = config
+        self.bash_script = config["bash_script"]
+        logger.debug(f"Initialized SerialBashDispatcher with config: {self.config}")
 
-    def is_healthy(self):
+    def is_healthy(self) -> bool:
+        """Check if the dispatcher is healthy."""
         return True
 
-    def yield_execution_log(self) -> Generator[ExecutionLog, None, None]:
-        """
-        Listens for messages from DataMonitor plugins and queries the GeoIPS db.
+    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+        """Execute jobs serially as a subprocess and yield execution logs.
 
-        Yields
-        ------
-            log: The log results of executing a GeoIPS processing workflow.
+        Returns
+        -------
+            The log results of executing a GeoIPS processing workflow. Returns as a
+            list of ExecutionLog objects.
         """
-        message_generator = self.parent_service.consume(JOB_READY_QUEUE)
+        logger.info(f"Executing job: {job}")
+
+        # Create a temporary file for the bash script
+        script_content = self.bash_script.format(file=list(job.files)[0].file)
+        logger.debug(f"Generated script content:\n{script_content}")
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".sh",
+            delete=False,
+        ) as script_file:
+            script_file.write(script_content)
+            script_path = script_file.name
 
         try:
-            while True:
-                for message in message_generator:
-                    yield ExecutionLog(
-                        return_code=-1,
-                        stdout="stdout",
-                        stderr="stderr",
-                        hostname="localhost",
-                    )
+            # Make the script executable
+            Path(script_path).chmod(0o755)
+
+            # Execute the bash script
+            result = subprocess.run(
+                ["/bin/bash", script_path],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3600,  # 1 hour timeout, adjust as needed
+            )
+
+            return [
+                ExecutionLog(
+                    return_code=result.returncode,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    hostname=socket.gethostname(),
+                ),
+            ]
+
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Script execution timed out: {e}")
+            return [
+                ExecutionLog(
+                    return_code=-1,
+                    stdout=e.stdout.decode() if e.stdout else "",
+                    stderr=f"Script execution timed out: {e!s}",
+                    hostname=socket.gethostname(),
+                ),
+            ]
+        except Exception as e:
+            logger.error(f"Error executing script: {e}")
+            return [
+                ExecutionLog(
+                    return_code=-1,
+                    stdout="",
+                    stderr=f"Error executing script: {e!s}",
+                    hostname=socket.gethostname(),
+                ),
+            ]
         finally:
-            message_generator.close()
+            # Clean up the temporary script file
+            try:
+                Path(script_path).unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete temporary script file: {e}")

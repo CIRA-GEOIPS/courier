@@ -5,7 +5,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from geoips_driver.interfaces.module_based.data_monitors import DataMonitor, File
-from geoips_driver.interfaces.module_based.service import setup_logging
+from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging("FSPolling")
 
@@ -17,17 +17,12 @@ class FileSystemPoller(DataMonitor):
     name = "FileSystemPoller-Watchdog"
     version = "0.0.0"
 
-    def __init__(self, service):
-        super().__init__(service)
+    def __init__(self, service: Service, config: dict) -> None:
+        super().__init__(service, config)
         self.health = False
-
-    def initialize(self, config):
-        logger.debug(config)
-        logger.warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         self.path_to_watch = config["path"]
-        self.health = True
 
-    def is_healthy(self):
+    def is_healthy(self) -> bool:
         return self.health
 
     def find_file(self) -> Generator[File, None, None]:
@@ -71,6 +66,7 @@ class FileSystemPoller(DataMonitor):
         logger.info(f"Watching for new files in '{path}'...")
 
         try:
+            self.health = True
             while True:
                 yield File(file=file_queue.get(), hostname="localhost")
         finally:

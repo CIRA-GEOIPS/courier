@@ -57,7 +57,7 @@ class File:
 class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
     """Base data monitor plugin."""
 
-    def __init__(self, service: Service) -> None:
+    def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
         self.queue = FILE_FOUND_QUEUE
         self._running = False

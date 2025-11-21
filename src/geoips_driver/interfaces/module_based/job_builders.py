@@ -26,7 +26,7 @@ class Job:
         name: str,
         identifier: str,
         config: Any,
-        files: frozenset[File] = frozenset(),
+        files: set[File] = set(),
         last_modified: float | None = None,
         timeout: float = 60 * 60 * 24,
     ) -> None:
@@ -66,7 +66,7 @@ class Job:
             name=data["name"],
             identifier=data["identifier"],
             config=data["config"],
-            files=frozenset(File.from_string(f) for f in data.get("files", [])),
+            files=set(File.from_string(f) for f in data.get("files", [])),
             last_modified=data.get("last_modified"),
             timeout=data.get("timeout", 60 * 60 * 24),
         )
@@ -82,7 +82,7 @@ class Job:
 
     def is_old(self) -> bool:
         """Return true if job is old and ready to be discarded."""
-        return time.time() - self.timeout < self.last_modified
+        return time.time() - self.last_modified > self.timeout
 
 
 class JobGroup:
@@ -92,6 +92,7 @@ class JobGroup:
         self.name = job_name
         self.config = config
         self.jobs: dict[str, Job] = {}
+        self.job = Job
 
     def ready_jobs(self) -> list[Job]:
         """Return list of ready jobs."""
@@ -116,18 +117,20 @@ class JobGroup:
         if jid in self.jobs:
             self.jobs[jid].add_file(file)
         else:
-            self.jobs[jid] = Job(self.name, jid, self.config)
+            self.jobs[jid] = self.job(self.name, jid, self.config)
+            self.jobs[jid].add_file(file)
         return True
 
 
 class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     """Base data filter plugin."""
 
-    def __init__(self, service: Service) -> None:
+    def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
-        self.queue = "JobReady"
+        self.queue = JOB_READY_QUEUE
         self._running = False
         self.job_groups: list[JobGroup] = []
+        self.config = config
 
     @property
     def name(self) -> str:
@@ -143,15 +146,21 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
         logger.debug("Starting to handle incoming files")
-        for file in self.parent_service.consume(FILE_FOUND_QUEUE):
-            logger.debug(f"Received file {file} from file queue")
+        for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
+            logger.debug(f"Received file {file_string} from file queue")
+            file = File.from_string(str(file_string))
             for job_group in self.job_groups:
+                logger.debug(f"Processing file {file} in job group {job_group.name}")
                 if job_group.add_file(file):  # aka file added
+                    logger.debug(f"File {file} added to job group {job_group.name}")
                     for ready_job in job_group.ready_jobs():
+                        logger.info(f"Job {ready_job.identifier} is ready; emitting")
                         self.emit(ready_job)
                 for job in job_group.jobs.values():  # Clean up old jobs
                     if job.is_old():
+                        logger.info(f"Discarding old job {job.identifier}")
                         del job
+        logger.error("Exiting handle_incoming_files loop unexpectedly")
 
     @log_execution
     def start(self) -> None:

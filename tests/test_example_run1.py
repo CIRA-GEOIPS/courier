@@ -7,7 +7,8 @@ def run_service(config: dict)-> None:
     service_config = ServiceConfig(
     rabbitmq_url=f"amqp://{config.spec.rabbitmq.username}:{config.spec.rabbitmq.password}@{config.spec.rabbitmq.host}:{config.spec.rabbitmq.port}/",
     service_namespace=config.spec.service_namespace,
-    service_id=config.name
+    service_id=config.name,
+    heartbeat_interval = config.spec.heartbeat_interval,
     )
     print(service_config)
     print()
@@ -15,11 +16,11 @@ def run_service(config: dict)-> None:
 
     import geoips_driver.plugins.modules.data_monitors.file_system_polling as file_system_polling
     import geoips_driver.plugins.modules.job_builders.dummy_job_builder as dummy_job_builder
-    import geoips_driver.plugins.modules.dispatchers.serial_bash as serial_dispatcher
+    import geoips_driver.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
     available_plugins = {
         file_system_polling.FileSystemPoller.name.lower(): file_system_polling.FileSystemPoller,
         dummy_job_builder.DummyJobBuilder.name.lower(): dummy_job_builder.DummyJobBuilder,
-        serial_dispatcher.SerialDispatcher.name.lower(): serial_dispatcher.SerialDispatcher,
+        serial_bash_dispatcher.SerialBashDispatcher.name.lower(): serial_bash_dispatcher.SerialBashDispatcher,
     }
     print("Available plugins:")
     print(available_plugins)

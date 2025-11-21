@@ -1,9 +1,10 @@
 """Python class for the data_monitors geoips_driver interface."""
 
+import json
 import threading
-from collections.abc import Generator
 from dataclasses import dataclass
 
+from geoips_driver.interfaces.module_based.job_builders import JOB_READY_QUEUE, Job
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
@@ -12,8 +13,6 @@ from geoips_driver.interfaces.module_based.service import (
 )
 
 logger = setup_logging()
-
-import json
 
 
 @dataclass(frozen=True)
@@ -50,14 +49,16 @@ class Dispatcher(ServicePlugin):
         """Service name."""
         return "dispatcher"
 
-    def __init__(self, service: Service) -> None:
+    def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
         self.queue = "Dispatcher"
         self._running = False
+        self.config = config
 
-    def yield_execution_log(self) -> Generator[ExecutionLog, None, None]:
+    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
-        yield ExecutionLog(return_code=None, stdout=None, stderr=None, hostname=None)
+        logger.debug(f"Yielding execution log for job: {job}")
+        return [ExecutionLog(return_code=None, stdout=None, stderr=None, hostname=None)]
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
@@ -70,9 +71,12 @@ class Dispatcher(ServicePlugin):
         Once a job is complete, yield the result of its execution to a downstream
         service.
         """
-        for ex_log in self.yield_execution_log():
-            logger.info(f"Found file: {ex_log}")
-            self.emit(ex_log)
+        while True:
+            for job_string in self.parent_service.consume(JOB_READY_QUEUE):
+                job = Job.from_string(str(job_string))
+                logger.debug(f"Received Job: {job}")
+                for ex_log in self.get_execution_log(job):
+                    self.emit(ex_log)
 
     @log_execution
     def start(self) -> None:

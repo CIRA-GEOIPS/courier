@@ -5,7 +5,6 @@ Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
 
 import logging
 import os
-import pickle
 import signal
 import threading
 import time
@@ -22,6 +21,7 @@ from typing import Any, Protocol, TypeVar
 import pika
 import prometheus_client
 from pika.exceptions import AMQPConnectionError
+from rich.logging import RichHandler
 
 from geoips_driver import interfaces
 
@@ -192,8 +192,8 @@ class ServiceConfig:
 def setup_logging(name: str | None = None) -> logging.Logger:
     """Configure logger with standardized formatting and return module logger.
 
-    Sets up basic logging configuration with INFO level and timestamp formatting
-    for the entire application, then returns a logger instance.
+    Sets up logging configuration with Rich formatting for colorized output,
+    then returns a logger instance.
 
     Returns
     -------
@@ -208,11 +208,20 @@ def setup_logging(name: str | None = None) -> logging.Logger:
     >>> isinstance(logger, logging.Logger)
     True
     """
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    return logging.getLogger(name if name else __name__)
+    logger = logging.getLogger(name if name else __name__)
+
+    # Only configure if not already configured
+    if not logger.handlers:
+        handler = RichHandler(rich_tracebacks=True)
+        formatter = logging.Formatter(
+            "%(message)s",
+            datefmt="[%X]",
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+
+    return logger
 
 
 logger = setup_logging()
@@ -320,6 +329,9 @@ def log_execution(func: Callable) -> Callable:
 class ServicePlugin(Protocol):
     """Protocol defining the interface that all plugins must implement."""
 
+    def __init__(self, service: Any, config: dict) -> None:
+        super().__init__()
+
     @property
     def name(self) -> str:
         """Return the plugin name."""
@@ -387,12 +399,17 @@ class Service:
     @log_execution
     def emit(self, queue: str, message: str) -> None:
         """Publish a message to a message broker queue."""
-        self._rabbitmq_manager.add_queue(queue, durable=True, exclusive=False)
+        queue = self._rabbitmq_manager.add_queue(
+            queue,
+            durable=True,
+            exclusive=False,
+        )
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
+            logger.debug(f"Emitting message to queue '{queue}': {message}")
             channel.basic_publish(exchange="", routing_key=queue, body=message)
 
     # @log_execution
-    def consume(self, queue: str) -> Generator[bytes, None, None]:
+    def consume(self, queue: str) -> Generator[str, None, None]:
         """Yield messages from a message broker queue.
 
         This returns a generator that yields messages from the specified queue.
@@ -433,12 +450,13 @@ class Service:
         ...         break
         ...     do_thing_with_message(message)
         """
-        if queue not in self._rabbitmq_manager._queues:
-            queue = self._rabbitmq_manager.add_queue(
-                queue,
-                durable=True,
-                exclusive=False,
-            )
+        queue = self._rabbitmq_manager.add_queue(
+            queue,
+            durable=True,
+            exclusive=False,
+        )
+
+        logger.debug(f"Consuming from queue: {queue}")
 
         with self._rabbitmq_manager.get_connection_context() as (connection, channel):
             for method_frame, properties, body in channel.consume(
@@ -446,8 +464,9 @@ class Service:
                 auto_ack=False,
             ):
                 try:
-                    message = pickle.loads(body)
+                    message = body.decode("utf-8")
                     yield message
+                    logger.debug(f"Received message from queue '{queue}': {message}")
                     # Acknowledge the message after successful processing
                     channel.basic_ack(delivery_tag=method_frame.delivery_tag)
                 except GeneratorExit:
@@ -757,11 +776,10 @@ class PluginManager(ServiceManager):
         True
         """
         with self._lock:
-            plugin = plugin(self._service)
+            plugin = plugin(self._service, config)
             if plugin.name in self._plugins:
                 raise ValueError(f"Plugin {plugin.name} already registered")
 
-            plugin.initialize(config)
             logger.info(plugin)
             logger.info(plugin.name)
             self._plugins[plugin] = PluginStateInfo(plugin=plugin)
@@ -1152,6 +1170,7 @@ class RabbitMQManager(ServiceManager):
         self._connection: pika.BlockingConnection | None = None
         self._channel: pika.channel.Channel | None = None
         self._queues: dict[str, dict[str, Any]] = {}
+        self._created_queues: set[str] = set()
         self._namespace = config.service_namespace
 
     @retry_with_backoff(exceptions=(AMQPConnectionError,))
@@ -1266,8 +1285,10 @@ class RabbitMQManager(ServiceManager):
 
             # Declare existing queues on new connection
             for queue_name, config in self._queues.items():
-                logger.debug(f"Creating queue {queue_name} with config {config}")
-                channel.queue_declare(queue=queue_name, **config)
+                if queue_name not in self._created_queues:
+                    logger.debug(f"Creating queue {queue_name} with config {config}")
+                    channel.queue_declare(queue=queue_name, **config)
+                    self._created_queues.add(queue_name)
 
             yield connection, channel
         finally:
@@ -1304,8 +1325,6 @@ class RabbitMQManager(ServiceManager):
         new_queue_name = self.get_queue_name(queue_name)
         if new_queue_name not in self._queues:
             self._queues[new_queue_name] = queue_config
-        else:
-            logger.debug(f"Queue {new_queue_name} is already registered")
         return new_queue_name
 
 

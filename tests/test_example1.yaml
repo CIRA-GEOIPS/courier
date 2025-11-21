@@ -5,6 +5,7 @@ docstring: |
 description: This is for testing! Not a complete spec.
 spec:
   service_namespace: example_service1
+  heartbeat_interval: 1000
   rabbitmq:
     host: rabbitmq
     port: 5672
@@ -25,4 +26,6 @@ spec:
         name: serial_bash_dispatcher
         config:
           bash_script: |
+           echo "This is a test! A Script! A ~SCRIPTTT~"
            echo {file}
+           python3 -c "print('this is arbitrary python')"
