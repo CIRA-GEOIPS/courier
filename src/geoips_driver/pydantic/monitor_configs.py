@@ -6,7 +6,7 @@ Used for validation of monitor_config plugins.
 from pathlib import Path
 from typing import Any, ClassVar
 
-from geoips.pydantic_models.v1.bases import (  # type: ignore
+from geoips.pydantic.bases import (  # type: ignore
     FrozenModel,
     PermissiveFrozenModel,
     PluginModel,
