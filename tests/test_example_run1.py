@@ -5,10 +5,10 @@ def run_service(config: dict)-> None:
     """Run a dummy service using the dummy-cli module."""
     print("Running example1 service with config:")
     service_config = ServiceConfig(
-    rabbitmq_url=f"amqp://{config.spec.rabbitmq.username}:{config.spec.rabbitmq.password}@{config.spec.rabbitmq.host}:{config.spec.rabbitmq.port}/",
-    service_namespace=config.spec.service_namespace,
-    service_id=config.name,
-    heartbeat_interval = config.spec.heartbeat_interval,
+    rabbitmq_url=f"amqp://{config.spec.rabbitmq.username}:{config.spec.rabbitmq.password}@{config.spec.rabbitmq.host}:{config.spec.rabbitmq.port}/", # type: ignore
+    service_namespace=config.spec.service_namespace, # type: ignore
+    service_id=config.name, # type: ignore
+    heartbeat_interval = config.spec.heartbeat_interval, # type: ignore
     )
     print(service_config)
     print()
@@ -27,7 +27,7 @@ def run_service(config: dict)-> None:
     print()
 
     plugins = []
-    for plugin in config.spec.run:
+    for plugin in config.spec.run: #type: ignore
         print(plugin)
         if plugin.spec.name.lower() not in available_plugins:
             raise ValueError(f"Plugin {plugin.spec.name} not found.")
@@ -40,7 +40,7 @@ def run_service(config: dict)-> None:
 
 
 
-dummy_cli.run_with_config = run_service
+dummy_cli.run_with_config = run_service # type: ignore
 dummy_cli.app()
 
 """

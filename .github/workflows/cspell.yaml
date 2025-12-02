@@ -1,0 +1,15 @@
+name: CSpell
+on:
+  - push
+jobs:
+  cspell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: streetsidesoftware/cspell-ci-action@v1
+        with:
+          files: ./src
+words:
+  - jpetrucciani
+  - Mypy
+  - Pytest

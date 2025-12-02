@@ -4,12 +4,15 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - CIRA
   - commitizen
   - dateparser
   - geoips
+  - IODC
   - isort
   - kwargs
   - mccabe
+  - meteosat
   - mypy
   - NOAA
   - norecursedirs
@@ -26,6 +29,7 @@ words:
   - pyupgrade
   - pyyaml
   - rabbitmq
+  - seviri
   - tryceratops
   - typer
   - Uttmark

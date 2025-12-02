@@ -1,8 +1,9 @@
+"""Python Pydantic models for GeoIPS service configuration validation."""
+
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import (
     BaseModel,
@@ -12,6 +13,9 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 __all__ = [
     "MicroserviceDefinitionModel",
@@ -100,7 +104,7 @@ class MicroserviceModel(FrozenModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _coerce_from_singleton_mapping(cls, data: Any) -> dict[str, Any]:
+    def _coerce_from_singleton_mapping(cls, data: Any) -> Any:
         """Adapt `{identifier: {...}}` mappings into the canonical model form."""
         if isinstance(data, dict) and "identifier" not in data and "spec" not in data:
             if len(data) != 1:
@@ -110,7 +114,8 @@ class MicroserviceModel(FrozenModel):
             identifier, spec = next(iter(data.items()))
             if not isinstance(spec, dict):
                 raise TypeError(
-                    f"Microservice '{identifier}' must map to an object describing the microservice.",
+                    f"Microservice '{identifier}' "
+                    "must map to an object describing the microservice.",
                 )
             return {"identifier": identifier, "spec": spec}
         return data
@@ -162,7 +167,7 @@ class ServiceSpecModel(FrozenModel):
 class ServiceConfigModel(FrozenModel):
     """Top-level validation model for GeoIPS service configuration files."""
 
-    apiVersion: str = Field(..., description="API version of the service document.")
+    apiVersion: str = Field(..., description="API version of the service document.")  # noqa: N815
     kind: str = Field(..., description="Resource kind; expected to be 'Service'.")
     name: str = Field(..., description="Unique service name.")
     description: str = Field(..., description="Concise description of the service.")
