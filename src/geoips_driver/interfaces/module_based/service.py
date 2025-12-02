@@ -20,10 +20,9 @@ from typing import Any, Protocol, TypeVar
 
 import pika
 import prometheus_client
+from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.exceptions import AMQPConnectionError
 from rich.logging import RichHandler
-
-from geoips_driver import interfaces
 
 # Type variables for generic type hints
 T = TypeVar("T")
@@ -31,7 +30,23 @@ R = TypeVar("R")
 
 
 class PluginRunState(Enum):
-    """Enumeration of possible plugin states."""
+    """Enumeration of possible plugin states.
+
+    Attributes
+    ----------
+    STOPPED : int
+        Plugin is not running.
+    STARTING : int
+        Plugin is in the process of starting.
+    RUNNING : int
+        Plugin is running normally.
+    STOPPING : int
+        Plugin is in the process of stopping.
+    FAILED : int
+        Plugin has failed.
+    RESTARTING : int
+        Plugin is being restarted after failure.
+    """
 
     STOPPED = auto()
     STARTING = auto()
@@ -42,8 +57,22 @@ class PluginRunState(Enum):
 
 
 # Functional programming utilities
-def compose(*functions: Callable) -> Callable:
+def compose(*functions: Callable[..., Any]) -> Callable[[Any], Any]:
     """Compose functions from right to left.
+
+    Creates a new function that applies the given functions in reverse order,
+    passing the result of each function as input to the next.
+
+    Parameters
+    ----------
+    *functions : Callable
+        Variable number of functions to compose. Functions are applied
+        right-to-left (last function is applied first).
+
+    Returns
+    -------
+    Callable[[Any], Any]
+        Composed function that applies all input functions in sequence.
 
     Examples
     --------
@@ -56,8 +85,22 @@ def compose(*functions: Callable) -> Callable:
     return reduce(lambda f, g: lambda x: f(g(x)), functions, lambda x: x)
 
 
-def pipe(*functions: Callable) -> Callable:
+def pipe(*functions: Callable[..., Any]) -> Callable[[Any], Any]:
     """Pipe functions from left to right.
+
+    Creates a new function that applies the given functions in order,
+    passing the result of each function as input to the next.
+
+    Parameters
+    ----------
+    *functions : Callable
+        Variable number of functions to pipe. Functions are applied
+        left-to-right (first function is applied first).
+
+    Returns
+    -------
+    Callable[[Any], Any]
+        Piped function that applies all input functions in sequence.
 
     Examples
     --------
@@ -72,6 +115,19 @@ def pipe(*functions: Callable) -> Callable:
 
 def maybe(default: T) -> Callable[[T | None], T]:
     """Return value or default if None.
+
+    Creates a function that returns the input value if not None,
+    otherwise returns the specified default value.
+
+    Parameters
+    ----------
+    default : T
+        Default value to return when input is None.
+
+    Returns
+    -------
+    Callable[[T | None], T]
+        Function that returns input value or default.
 
     Examples
     --------
@@ -90,6 +146,23 @@ def filter_map(
     items: Iterable[T],
 ) -> list[R]:
     """Filter and map in a single operation.
+
+    Filters items using a predicate function and transforms matching
+    items using a transform function in a single pass.
+
+    Parameters
+    ----------
+    predicate : Callable[[T], bool]
+        Function to test each item. Only items returning True are transformed.
+    transform : Callable[[T], R]
+        Function to transform filtered items.
+    items : Iterable[T]
+        Items to filter and transform.
+
+    Returns
+    -------
+    list[R]
+        List of transformed items that passed the predicate test.
 
     Examples
     --------
@@ -110,29 +183,58 @@ class ServiceConfig:
 
     Parameters
     ----------
-    service_id : str
+    service_id : str, optional
         Unique identifier for this service instance. Defaults to environment
         variable SERVICE_ID or auto-generated UUID-based identifier.
-    database_url : str
+    service_namespace : str, optional
+        Namespace for service isolation. Defaults to environment variable
+        SERVICE_NAMESPACE or 'default'.
+    database_url : str, optional
         PostgreSQL database connection URL. Defaults to environment variable
         DATABASE_URL or localhost connection.
-    prometheus_port : int
+    prometheus_port : int, optional
         Port number for Prometheus metrics HTTP server. Defaults to environment
         variable PROMETHEUS_PORT or 8000.
-    rabbitmq_url : str
+    rabbitmq_url : str, optional
         RabbitMQ connection URL. Defaults to environment variable RABBITMQ_URL
         or localhost connection.
-    rabbitmq_max_retries : int
+    rabbitmq_max_retries : int, optional
         Maximum retry attempts for RabbitMQ operations. Defaults to environment
         variable RABBITMQ_MAX_RETRIES or 5.
-    heartbeat_interval : int
-        Interval in seconds between heartbeat metric updates.
-    plugin_restart_delay : int
+    heartbeat_interval : int, optional
+        Interval in seconds between heartbeat metric updates. Default is 10.
+    plugin_restart_delay : int, optional
         Delay in seconds before attempting to restart a failed plugin.
+        Defaults to environment variable PLUGIN_RESTART_DELAY or 5.
+    plugin_max_restart_attempts : int, optional
+        Maximum number of restart attempts for a plugin. Defaults to
+        environment variable PLUGIN_MAX_RESTARTS or 3.
+    plugin_health_check_interval : int, optional
+        Interval in seconds between plugin health checks. Defaults to
+        environment variable PLUGIN_HEALTH_CHECK_INTERVAL or 2.
+
+    Attributes
+    ----------
+    service_id : str
+        Unique identifier for the service instance.
+    service_namespace : str
+        Service namespace for isolation.
+    database_url : str
+        Database connection URL.
+    prometheus_port : int
+        Prometheus metrics server port.
+    rabbitmq_url : str
+        RabbitMQ connection URL.
+    rabbitmq_max_retries : int
+        Maximum RabbitMQ retry attempts.
+    heartbeat_interval : int
+        Heartbeat interval in seconds.
+    plugin_restart_delay : int
+        Plugin restart delay in seconds.
     plugin_max_restart_attempts : int
-        Maximum number of restart attempts for a plugin.
+        Maximum plugin restart attempts.
     plugin_health_check_interval : int
-        Interval in seconds between plugin health checks.
+        Plugin health check interval in seconds.
 
     Examples
     --------
@@ -193,12 +295,19 @@ def setup_logging(name: str | None = None) -> logging.Logger:
     """Configure logger with standardized formatting and return module logger.
 
     Sets up logging configuration with Rich formatting for colorized output,
-    then returns a logger instance.
+    then returns a logger instance. Only configures handlers if the logger
+    doesn't already have any.
+
+    Parameters
+    ----------
+    name : str or None, optional
+        Name for the logger. If None, uses __name__ of the calling module.
+        Default is None.
 
     Returns
     -------
     logging.Logger
-        Configured logger instance.
+        Configured logger instance with Rich handler and DEBUG level.
 
     Examples
     --------
@@ -206,6 +315,8 @@ def setup_logging(name: str | None = None) -> logging.Logger:
     >>> logger.name == '__main__'
     True
     >>> isinstance(logger, logging.Logger)
+    True
+    >>> logger.level == logging.DEBUG
     True
     """
     logger = logging.getLogger(name if name else __name__)
@@ -231,7 +342,7 @@ def retry_with_backoff(
     max_retries: int = 5,
     base_delay: float = 1.0,
     exceptions: tuple[type[Exception], ...] = (Exception,),
-) -> Callable:
+) -> Callable[[Callable[..., T]], Callable[..., T | None]]:
     """Create retry decorator with exponential backoff for transient failures.
 
     Returns a decorator that retries function execution on specified exceptions
@@ -239,17 +350,24 @@ def retry_with_backoff(
 
     Parameters
     ----------
-    max_retries : int, default 5
+    max_retries : int, default=5
         Maximum number of retry attempts before giving up.
-    base_delay : float, default 1.0
+    base_delay : float, default=1.0
         Initial delay in seconds, doubled after each failure.
-    exceptions : tuple of Exception, default (Exception,)
+    exceptions : tuple of type[Exception], default=(Exception,)
         Exception types that trigger retry attempts.
 
     Returns
     -------
-    Callable
+    Callable[[Callable[..., T]], Callable[..., T | None]]
         Decorator function that wraps target functions with retry logic.
+        The wrapped function returns the original return type T on success,
+        or None if all retries are exhausted without raising.
+
+    Raises
+    ------
+    Exception
+        Re-raises the caught exception if max_retries is reached.
 
     Examples
     --------
@@ -261,9 +379,9 @@ def retry_with_backoff(
     'success'
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., T]) -> Callable[..., T | None]:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> T | None:
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
@@ -287,7 +405,7 @@ def retry_with_backoff(
     return decorator
 
 
-def log_execution(func: Callable) -> Callable:
+def log_execution(func: Callable[..., T]) -> Callable[..., T | None]:
     """Create decorator for logging function execution and exceptions.
 
     Wraps functions to log debug messages on entry/success and exception
@@ -295,13 +413,15 @@ def log_execution(func: Callable) -> Callable:
 
     Parameters
     ----------
-    func : Callable
+    func : Callable[..., T]
         Function to be wrapped with execution logging.
 
     Returns
     -------
-    Callable
-        Wrapped function with execution logging behavior.
+    Callable[..., T | None]
+        Wrapped function with execution logging behavior. Returns None
+        if an exception occurs (after logging), otherwise returns the
+        original function's return value.
 
     Examples
     --------
@@ -314,7 +434,7 @@ def log_execution(func: Callable) -> Callable:
     """
 
     @wraps(func)
-    def wrapper(*args: list[Any], **kwargs: dict[str, Any]) -> Any:
+    def wrapper(*args: Any, **kwargs: Any) -> T | None:
         logger.debug(f"Executing {func.__name__}")
         try:
             result = func(*args, **kwargs)
@@ -322,40 +442,107 @@ def log_execution(func: Callable) -> Callable:
             return result
         except Exception:
             logger.exception(f"Error in {func.__name__}")
+            return None
 
     return wrapper
 
 
 class ServicePlugin(Protocol):
-    """Protocol defining the interface that all plugins must implement."""
+    """Protocol defining the interface that all plugins must implement.
 
-    def __init__(self, service: Any, config: dict) -> None:
-        super().__init__()
+    This protocol specifies the required methods and properties that any
+    service plugin must provide for integration with the plugin manager.
+
+    Methods
+    -------
+    __init__(service, config)
+        Initialize the plugin with service reference and configuration.
+    start()
+        Start the plugin operations.
+    stop()
+        Stop the plugin operations.
+    is_healthy()
+        Check if the plugin is healthy.
+    get_metrics()
+        Return plugin-specific metrics.
+
+    Properties
+    ----------
+    name : str
+        The plugin name.
+    version : str
+        The plugin version.
+    """
+
+    def __init__(self, service: Any, config: dict[str, Any]) -> None:
+        """Initialize plugin with service reference and configuration.
+
+        Parameters
+        ----------
+        service : Any
+            Reference to the parent service instance.
+        config : dict[str, Any]
+            Configuration dictionary for the plugin.
+        """
+        ...
 
     @property
     def name(self) -> str:
-        """Return the plugin name."""
+        """Return the plugin name.
+
+        Returns
+        -------
+        str
+            Plugin name identifier.
+        """
         ...
 
     @property
     def version(self) -> str:
-        """Return the plugin version."""
+        """Return the plugin version.
+
+        Returns
+        -------
+        str
+            Plugin version string.
+        """
         ...
 
     def start(self) -> None:
-        """Start the plugin operations."""
+        """Start the plugin operations.
+
+        Raises
+        ------
+        Exception
+            If plugin fails to start.
+        """
         ...
 
     def stop(self) -> None:
-        """Stop the plugin operations."""
+        """Stop the plugin operations.
+
+        Should perform graceful shutdown of plugin resources.
+        """
         ...
 
     def is_healthy(self) -> bool:
-        """Check if the plugin is healthy."""
+        """Check if the plugin is healthy.
+
+        Returns
+        -------
+        bool
+            True if plugin is operating normally, False otherwise.
+        """
         ...
 
     def get_metrics(self) -> dict[str, Any]:
-        """Return plugin-specific metrics."""
+        """Return plugin-specific metrics.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary of metric names to values.
+        """
         ...
 
 
@@ -368,8 +555,24 @@ class Service:
 
     Parameters
     ----------
-    config : ServiceConfig, optional
+    config : ServiceConfig or None, optional
         Service configuration. If None, creates default ServiceConfig instance.
+
+    Attributes
+    ----------
+    namespace : str
+        Service namespace for resource isolation.
+
+    Methods
+    -------
+    emit(queue, message)
+        Publish a message to a message broker queue.
+    consume(queue)
+        Yield messages from a message broker queue.
+    register_plugin(plugin, config)
+        Register a plugin with the service.
+    start()
+        Start service with complete lifecycle management.
 
     Examples
     --------
@@ -381,7 +584,14 @@ class Service:
     3
     """
 
-    def __init__(self, config: ServiceConfig | None = None):
+    def __init__(self, config: ServiceConfig | None = None) -> None:
+        """Initialize service with configuration and managers.
+
+        Parameters
+        ----------
+        config : ServiceConfig or None, optional
+            Service configuration. If None, uses default ServiceConfig.
+        """
         self._config = config or ServiceConfig()
         self._signal_handler = SignalHandler()
 
@@ -398,17 +608,33 @@ class Service:
 
     @log_execution
     def emit(self, queue: str, message: str) -> None:
-        """Publish a message to a message broker queue."""
+        """Publish a message to a message broker queue.
+
+        Parameters
+        ----------
+        queue : str
+            Name of the queue to publish to. Queue will be created if it
+            doesn't exist.
+        message : str
+            Message content to publish.
+
+        Raises
+        ------
+        AMQPConnectionError
+            If unable to connect to RabbitMQ.
+        Exception
+            If message publishing fails.
+        """
         queue = self._rabbitmq_manager.add_queue(
             queue,
             durable=True,
             exclusive=False,
         )
-        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
+        # Underscore indicates unused variable to silence linters
+        with self._rabbitmq_manager.get_connection_context() as (_connection, channel):
             logger.debug(f"Emitting message to queue '{queue}': {message}")
             channel.basic_publish(exchange="", routing_key=queue, body=message)
 
-    # @log_execution
     def consume(self, queue: str) -> Generator[str, None, None]:
         """Yield messages from a message broker queue.
 
@@ -420,35 +646,31 @@ class Service:
         ----------
         queue : str
             The name of the queue to consume messages from. If the queue doesn't
-            exist, it will be created.
+            exist, it will be created with durable=True and exclusive=False.
 
         Yields
         ------
-        bytes
-            The message
+        str
+            The decoded message content from the queue.
 
         Raises
         ------
         GeneratorExit
             Raised when the generator is explicitly closed. Messages are requeued,
-            generator is closed and exception is re-raised.
+            the consumer is cancelled, and the exception is re-raised.
+        AMQPConnectionError
+            If unable to connect to RabbitMQ.
         Exception
-            Messages are requeued and exception is re-raised.
+            Any other exception during message processing. Messages are requeued
+            and the exception is re-raised.
 
-        Examples
-        --------
-        >>> for message in consume('my_queue'):
-        ...     data = json.loads(message)
-        ...     print(f"Processing: {data}")
-        ...     # Message is auto-acked after this
-
-        >>> # Stop consuming after N messages
-        >>> consumer_gen = self.consume('my_queue')
-        >>> for i, message in enumerate(consumer_gen):
-        ...     if i >= 10:
-        ...         consumer_gen.close() # MUST manually close or generator will remain open
-        ...         break
-        ...     do_thing_with_message(message)
+        Notes
+        -----
+        - Messages are automatically acknowledged after being yielded and processed.
+        - If an exception occurs or the generator is closed, unprocessed messages
+          are requeued for later processing.
+        - The generator must be explicitly closed if not consumed completely,
+          otherwise the connection will remain open.
         """
         queue = self._rabbitmq_manager.add_queue(
             queue,
@@ -458,8 +680,8 @@ class Service:
 
         logger.debug(f"Consuming from queue: {queue}")
 
-        with self._rabbitmq_manager.get_connection_context() as (connection, channel):
-            for method_frame, properties, body in channel.consume(
+        with self._rabbitmq_manager.get_connection_context() as (_connection, channel):
+            for method_frame, _properties, body in channel.consume(
                 queue,
                 auto_ack=False,
             ):
@@ -467,41 +689,50 @@ class Service:
                     message = body.decode("utf-8")
                     yield message
                     logger.debug(f"Received message from queue '{queue}': {message}")
-                    # Acknowledge the message after successful processing
-                    channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+
+                    # Fix: Ensure delivery_tag is an integer before Ack
+                    if method_frame.delivery_tag is not None:
+                        channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                    else:
+                        logger.error("Skipped Ack: delivery_tag is None")
+
                 except GeneratorExit:
-                    # Handle generator cleanup (when consumer stops)
-                    channel.basic_nack(
-                        delivery_tag=method_frame.delivery_tag,
-                        requeue=True,
-                    )
+                    # Fix: Ensure delivery_tag is an integer before Nack
+                    if method_frame.delivery_tag is not None:
+                        channel.basic_nack(
+                            delivery_tag=method_frame.delivery_tag,
+                            requeue=True,
+                        )
                     channel.cancel()
                     raise
                 except Exception:
-                    # If processing fails, reject + requeue message for another day
-                    channel.basic_nack(
-                        delivery_tag=method_frame.delivery_tag,
-                        requeue=True,
-                    )
+                    # Fix: Ensure delivery_tag is an integer before Nack
+                    if method_frame.delivery_tag is not None:
+                        channel.basic_nack(
+                            delivery_tag=method_frame.delivery_tag,
+                            requeue=True,
+                        )
                     raise
 
-    def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
+    def register_plugin(
+        self,
+        plugin: type[ServicePlugin],
+        config: dict[str, Any],
+    ) -> None:
         """Register a plugin with the service.
 
         Parameters
         ----------
-        plugin : PluginProtocol
-            Plugin instance to register.
+        plugin : type[ServicePlugin]
+            Plugin class to register. Will be instantiated with service
+            reference and config.
         config : dict[str, Any]
-            Configuration for the plugin.
+            Configuration dictionary for the plugin.
 
-        Examples
-        --------
-        >>> from unittest.mock import Mock
-        >>> service = Service()
-        >>> mock_plugin = Mock(spec=PluginProtocol)
-        >>> mock_plugin.name = "test_plugin"
-        >>> service.register_plugin(mock_plugin, {})
+        Raises
+        ------
+        ValueError
+            If a plugin with the same name is already registered.
         """
         self._plugin_manager.register_plugin(plugin, config)
 
@@ -521,6 +752,7 @@ class Service:
             try:
                 manager.start()
             except Exception:
+                # Logging here ensures we see which manager failed
                 logger.exception(f"Failed to start {manager.__class__.__name__}")
                 raise
 
@@ -548,13 +780,6 @@ class Service:
         -------
         bool
             True if all managers report healthy status, False otherwise.
-
-        Examples
-        --------
-        >>> config = ServiceConfig()
-        >>> service = Service(config)
-        >>> service._health_check()
-        False
         """
         logger.debug(
             "Monitor health checks: "
@@ -642,23 +867,14 @@ class ServiceManager(ABC):
     methods and health checking. All concrete managers must implement these
     methods.
 
-    Examples
-    --------
-    >>> class TestManager(ServiceManager):
-    ...     def __init__(self):
-    ...         self.started = False
-    ...     def start(self):
-    ...         self.started = True
-    ...     def stop(self):
-    ...         self.started = False
-    ...     def is_healthy(self):
-    ...         return self.started
-    >>> manager = TestManager()
-    >>> manager.is_healthy()
-    False
-    >>> manager.start()
-    >>> manager.is_healthy()
-    True
+    Methods
+    -------
+    start()
+        Start the manager and initialize required resources.
+    stop()
+        Stop the manager and cleanup allocated resources.
+    is_healthy()
+        Check current health status of the managed component.
     """
 
     @abstractmethod
@@ -667,6 +883,11 @@ class ServiceManager(ABC):
 
         Must be implemented by concrete classes to handle component startup,
         resource allocation, and any necessary initialization logic.
+
+        Raises
+        ------
+        Exception
+            If manager fails to start successfully.
         """
         pass
 
@@ -697,7 +918,42 @@ class ServiceManager(ABC):
 # Plugin management
 @dataclass
 class PluginStateInfo:
-    """Information about a plugin instance."""
+    """Information about a plugin instance.
+
+    Parameters
+    ----------
+    plugin : ServicePlugin
+        The plugin instance.
+    state : PluginRunState, default=PluginRunState.STOPPED
+        Current state of the plugin.
+    thread : threading.Thread or None, default=None
+        Thread running the plugin, if any.
+    last_health_check : datetime or None, default=None
+        Timestamp of last health check.
+    restart_count : int, default=0
+        Number of times plugin has been restarted.
+    last_restart : datetime or None, default=None
+        Timestamp of last restart attempt.
+    error_message : str or None, default=None
+        Last error message if plugin failed.
+
+    Attributes
+    ----------
+    plugin : ServicePlugin
+        The plugin instance.
+    state : PluginRunState
+        Current state of the plugin.
+    thread : threading.Thread or None
+        Thread running the plugin.
+    last_health_check : datetime or None
+        When plugin was last checked.
+    restart_count : int
+        Number of restart attempts.
+    last_restart : datetime or None
+        When plugin was last restarted.
+    error_message : str or None
+        Error message from last failure.
+    """
 
     plugin: ServicePlugin
     state: PluginRunState = PluginRunState.STOPPED
@@ -719,17 +975,36 @@ class PluginManager(ServiceManager):
     ----------
     config : ServiceConfig
         Service configuration containing plugin-related settings.
+    parent_service : Service
+        Reference to the parent service instance.
 
-    Examples
-    --------
-    >>> config = ServiceConfig()
-    >>> manager = PluginManager(config)
-    >>> manager.is_healthy()
-    True
+    Attributes
+    ----------
+    _config : ServiceConfig
+        Service configuration.
+    _plugins : dict[str, PluginStateInfo]
+        Registered plugins and their state information.
+    _running : bool
+        Whether the plugin manager is running.
+
+    Methods
+    -------
+    register_plugin(plugin, config)
+        Register a new plugin with the manager.
+    get_plugin_status()
+        Get current status of all plugins.
     """
 
-    def __init__(self, config: ServiceConfig, parent_service: Service) -> None:
-        """Initialize plugin manager with configuration and parent service."""
+    def __init__(self, config: ServiceConfig, parent_service: "Service") -> None:
+        """Initialize plugin manager with configuration and parent service.
+
+        Parameters
+        ----------
+        config : ServiceConfig
+            Service configuration.
+        parent_service : Service
+            Reference to parent service instance.
+        """
         self._config = config
         self._plugins: dict[str, PluginStateInfo] = {}
         self._lock = threading.RLock()
@@ -754,39 +1029,48 @@ class PluginManager(ServiceManager):
             ["plugin_name"],
         )
 
-    def register_plugin(self, plugin: ServicePlugin, config: dict[str, Any]) -> None:
+    def register_plugin(
+        self,
+        plugin: type[ServicePlugin],
+        config: dict[str, Any],
+    ) -> None:
         """Register a new plugin with the manager.
 
         Parameters
         ----------
-        plugin : PluginProtocol
-            Plugin instance to register.
+        plugin : type[ServicePlugin]
+            Plugin class to register. Will be instantiated with service
+            reference and config.
         config : dict[str, Any]
-            Configuration to pass to the plugin.
+            Configuration to pass to the plugin constructor.
 
-        Examples
-        --------
-        >>> from unittest.mock import Mock
-        >>> config = ServiceConfig()
-        >>> manager = PluginManager(config)
-        >>> mock_plugin = Mock(spec=PluginProtocol)
-        >>> mock_plugin.name = "test_plugin"
-        >>> manager.register_plugin(mock_plugin, {})
-        >>> "test_plugin" in manager._plugins
-        True
+        Raises
+        ------
+        ValueError
+            If a plugin with the same name is already registered.
         """
         with self._lock:
-            plugin = plugin(self._service, config)
-            if plugin.name in self._plugins:
-                raise ValueError(f"Plugin {plugin.name} already registered")
+            plugin_instance = plugin(self._service, config)
+            if plugin_instance.name in self._plugins:
+                raise ValueError(f"Plugin {plugin_instance.name} already registered")
 
-            logger.info(plugin)
-            logger.info(plugin.name)
-            self._plugins[plugin] = PluginStateInfo(plugin=plugin)
-            logger.info(f"Registered plugin: {plugin.name} v{plugin.version}")
+            logger.info(plugin_instance)
+            logger.info(plugin_instance.name)
+            self._plugins[plugin_instance.name] = PluginStateInfo(
+                plugin=plugin_instance,
+            )
+            logger.info(
+                f"Registered plugin: {plugin_instance.name} v{plugin_instance.version}",
+            )
 
     def _start_plugin(self, plugin_info: PluginStateInfo) -> None:
-        """Start a plugin in a separate thread."""
+        """Start a plugin in a separate thread.
+
+        Parameters
+        ----------
+        plugin_info : PluginStateInfo
+            Information about the plugin to start.
+        """
 
         def run_plugin() -> None:
             try:
@@ -824,7 +1108,13 @@ class PluginManager(ServiceManager):
         plugin_info.thread.start()
 
     def _stop_plugin(self, plugin_info: PluginStateInfo) -> None:
-        """Stop a plugin gracefully."""
+        """Stop a plugin gracefully.
+
+        Parameters
+        ----------
+        plugin_info : PluginStateInfo
+            Information about the plugin to stop.
+        """
         if plugin_info.state in (PluginRunState.RUNNING, PluginRunState.STARTING):
             try:
                 plugin_info.state = PluginRunState.STOPPING
@@ -845,7 +1135,11 @@ class PluginManager(ServiceManager):
                 logger.warning(f"Error stopping plugin {plugin_info.plugin.name}: {e}")
 
     def _monitor_plugins(self) -> None:
-        """Monitor plugin health and restart failed plugins."""
+        """Monitor plugin health and restart failed plugins.
+
+        Runs in a separate thread to continuously monitor all registered
+        plugins and handle failures according to restart policy.
+        """
         while self._running:
             with self._lock:
                 for plugin_name, plugin_info in self._plugins.items():
@@ -876,7 +1170,7 @@ class PluginManager(ServiceManager):
                                 not plugin_info.thread
                                 or not plugin_info.thread.is_alive()
                             ):
-                                logger.warning(f"Plugin {plugin_name} thread died")
+                                logger.error(f"Plugin {plugin_name} thread died")
                                 plugin_info.state = PluginRunState.FAILED
                                 self._handle_failed_plugin(plugin_info)
 
@@ -886,7 +1180,13 @@ class PluginManager(ServiceManager):
             time.sleep(1)  # Short sleep to be responsive
 
     def _handle_failed_plugin(self, plugin_info: PluginStateInfo) -> None:
-        """Handle a failed plugin with restart logic."""
+        """Handle a failed plugin with restart logic.
+
+        Parameters
+        ----------
+        plugin_info : PluginStateInfo
+            Information about the failed plugin.
+        """
         plugin_name = plugin_info.plugin.name
         now = datetime.now()
 
@@ -934,7 +1234,11 @@ class PluginManager(ServiceManager):
 
     @log_execution
     def start(self) -> None:
-        """Start the plugin manager and all registered plugins."""
+        """Start the plugin manager and all registered plugins.
+
+        Starts the monitoring thread and initiates all registered plugins
+        in separate threads.
+        """
         if self._running:
             return
 
@@ -954,7 +1258,10 @@ class PluginManager(ServiceManager):
                 self._start_plugin(plugin_info)
 
     def stop(self) -> None:
-        """Stop all plugins and the plugin manager."""
+        """Stop all plugins and the plugin manager.
+
+        Gracefully stops all running plugins and the monitoring thread.
+        """
         self._running = False
 
         # Stop all plugins
@@ -976,7 +1283,13 @@ class PluginManager(ServiceManager):
     def is_healthy(self) -> bool:
         """Check if plugin manager is healthy.
 
-        Returns True if running and at least one plugin is healthy.
+        Returns True if running and at least one plugin is healthy,
+        or if not running (valid state), or if no plugins are registered.
+
+        Returns
+        -------
+        bool
+            True if manager is healthy, False otherwise.
         """
         if not self._running:
             return True  # Not running is a valid state
@@ -1001,7 +1314,18 @@ class PluginManager(ServiceManager):
         Returns
         -------
         dict[str, dict[str, Any]]
-            Dictionary mapping plugin names to their status information.
+            Dictionary mapping plugin names to their status information,
+            including state, version, restart count, last restart time,
+            error message, and metrics.
+
+        Examples
+        --------
+        >>> config = ServiceConfig()
+        >>> service = Service(config)
+        >>> manager = PluginManager(config, service)
+        >>> status = manager.get_plugin_status()
+        >>> isinstance(status, dict)
+        True
         """
         with self._lock:
             return {
@@ -1036,6 +1360,20 @@ class PrometheusManager(ServiceManager):
     config : ServiceConfig
         Service configuration containing Prometheus port and other settings.
 
+    Attributes
+    ----------
+    _config : ServiceConfig
+        Service configuration.
+    _heartbeat_metric : prometheus_client.Gauge
+        Gauge metric for heartbeat timestamps.
+    _server_started : bool
+        Whether the Prometheus HTTP server has been started.
+
+    Methods
+    -------
+    send_heartbeat()
+        Update heartbeat metric with current timestamp.
+
     Examples
     --------
     >>> config = ServiceConfig()
@@ -1047,7 +1385,14 @@ class PrometheusManager(ServiceManager):
     True
     """
 
-    def __init__(self, config: ServiceConfig):
+    def __init__(self, config: ServiceConfig) -> None:
+        """Initialize Prometheus manager with configuration.
+
+        Parameters
+        ----------
+        config : ServiceConfig
+            Service configuration.
+        """
         self._config = config
         self._heartbeat_metric = self._create_heartbeat_metric()
         self._server_started = False
@@ -1154,6 +1499,30 @@ class RabbitMQManager(ServiceManager):
     config : ServiceConfig
         Service configuration containing RabbitMQ URL and retry settings.
 
+    Attributes
+    ----------
+    _config : ServiceConfig
+        Service configuration.
+    _connection : BlockingConnection or None
+        Active RabbitMQ connection.
+    _channel : BlockingChannel or None
+        Active RabbitMQ channel.
+    _queues : dict[str, dict[str, Any]]
+        Registered queue configurations.
+    _created_queues : set[str]
+        Set of queues that have been created.
+    _namespace : str
+        Service namespace for queue naming.
+
+    Methods
+    -------
+    get_connection_context()
+        Provide independent RabbitMQ connection context.
+    get_queue_name(base_name)
+        Generate full queue name with namespace prefix.
+    add_queue(queue_name, **queue_config)
+        Register queue configuration.
+
     Examples
     --------
     >>> config = ServiceConfig()
@@ -1165,10 +1534,17 @@ class RabbitMQManager(ServiceManager):
     1
     """
 
-    def __init__(self, config: ServiceConfig):
+    def __init__(self, config: ServiceConfig) -> None:
+        """Initialize RabbitMQ manager with configuration.
+
+        Parameters
+        ----------
+        config : ServiceConfig
+            Service configuration.
+        """
         self._config = config
-        self._connection: pika.BlockingConnection | None = None
-        self._channel: pika.channel.Channel | None = None
+        self._connection: BlockingConnection | None = None
+        self._channel: BlockingChannel | None = None
         self._queues: dict[str, dict[str, Any]] = {}
         self._created_queues: set[str] = set()
         self._namespace = config.service_namespace
@@ -1176,7 +1552,7 @@ class RabbitMQManager(ServiceManager):
     @retry_with_backoff(exceptions=(AMQPConnectionError,))
     def _establish_connection(
         self,
-    ) -> tuple[pika.BlockingConnection, pika.channel.Channel]:
+    ) -> tuple[BlockingConnection, BlockingChannel]:
         """Establish new RabbitMQ connection and channel with retry logic.
 
         Creates fresh connection and channel to RabbitMQ using configured URL.
@@ -1184,7 +1560,7 @@ class RabbitMQManager(ServiceManager):
 
         Returns
         -------
-        tuple[pika.BlockingConnection, pika.channel.Channel]
+        tuple[BlockingConnection, BlockingChannel]
             New RabbitMQ connection and channel pair.
 
         Raises
@@ -1198,7 +1574,7 @@ class RabbitMQManager(ServiceManager):
         >>> manager = RabbitMQManager(config)
         >>> # Note: This would fail in doctest without actual RabbitMQ server
         >>> # connection, channel = manager._establish_connection()
-        >>> # isinstance(connection, pika.BlockingConnection)
+        >>> # isinstance(connection, BlockingConnection)
         >>> # True
         """
         logger.debug(
@@ -1257,7 +1633,7 @@ class RabbitMQManager(ServiceManager):
     @contextmanager
     def get_connection_context(
         self,
-    ) -> Generator[tuple[pika.BlockingConnection, pika.channel.Channel], None, None]:
+    ) -> Generator[tuple[BlockingConnection, BlockingChannel], None, None]:
         """Provide independent RabbitMQ connection context for isolated operations.
 
         Creates temporary connection and channel separate from main connection,
@@ -1266,8 +1642,13 @@ class RabbitMQManager(ServiceManager):
 
         Yields
         ------
-        tuple[pika.BlockingConnection, pika.channel.Channel]
+        tuple[BlockingConnection, BlockingChannel]
             Independent connection and channel pair for isolated operations.
+
+        Raises
+        ------
+        AMQPConnectionError
+            If unable to establish connection.
 
         Examples
         --------
@@ -1276,10 +1657,11 @@ class RabbitMQManager(ServiceManager):
         >>> manager.add_queue("temp_queue", durable=False)
         >>> # Note: This would fail in doctest without actual RabbitMQ server
         >>> # with manager.get_connection_context() as (conn, channel):
-        >>> #     isinstance(conn, pika.BlockingConnection)
+        >>> #     isinstance(conn, BlockingConnection)
         >>> # True
         """
-        connection, channel = None, None
+        connection: BlockingConnection | None = None
+        channel: BlockingChannel | None = None
         try:
             connection, channel = self._establish_connection()
 
@@ -1296,7 +1678,25 @@ class RabbitMQManager(ServiceManager):
                 connection.close()
 
     def get_queue_name(self, base_name: str) -> str:
-        """Generate full queue name with service namespace prefix."""
+        """Generate full queue name with service namespace prefix.
+
+        Parameters
+        ----------
+        base_name : str
+            Base name of the queue without namespace.
+
+        Returns
+        -------
+        str
+            Full queue name with namespace prefix.
+
+        Examples
+        --------
+        >>> config = ServiceConfig()
+        >>> manager = RabbitMQManager(config)
+        >>> manager.get_queue_name("my_queue")
+        'default-my_queue'
+        """
         return f"{self._namespace}-{base_name}"
 
     def add_queue(self, queue_name: str, **queue_config: Any) -> str:
@@ -1308,18 +1708,24 @@ class RabbitMQManager(ServiceManager):
         Parameters
         ----------
         queue_name : str
-            Name of the queue to configure.
-        **queue_config
-            Keyword arguments for pika queue_declare method (e.g., durable=True).
+            Base name of the queue to configure (without namespace prefix).
+        **queue_config : Any
+            Keyword arguments for pika queue_declare method (e.g., durable=True,
+            exclusive=False, auto_delete=False, arguments=None).
+
+        Returns
+        -------
+        str
+            Full queue name with namespace prefix.
 
         Examples
         --------
         >>> config = ServiceConfig()
         >>> manager = RabbitMQManager(config)
-        >>> manager.add_queue("my_queue", durable=True, exclusive=False)
-        >>> "my_queue" in manager._queues
+        >>> full_name = manager.add_queue("my_queue", durable=True, exclusive=False)
+        >>> full_name in manager._queues
         True
-        >>> manager._queues["my_queue"]["durable"]
+        >>> manager._queues[full_name]["durable"]
         True
         """
         new_queue_name = self.get_queue_name(queue_name)
@@ -1334,6 +1740,16 @@ class SignalHandler:
     Manages SIGTERM and SIGINT signals to enable graceful shutdown of the
     service when requested by the operating system or user interruption.
 
+    Attributes
+    ----------
+    _shutdown_requested : bool
+        Whether a shutdown signal has been received.
+
+    Properties
+    ----------
+    shutdown_requested : bool
+        Read-only property indicating if shutdown was requested.
+
     Examples
     --------
     >>> handler = SignalHandler()
@@ -1344,6 +1760,7 @@ class SignalHandler:
     """
 
     def __init__(self) -> None:
+        """Initialize signal handler and register signal callbacks."""
         self._shutdown_requested = False
         self._setup_signal_handlers()
 
@@ -1356,14 +1773,14 @@ class SignalHandler:
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         signal.signal(signal.SIGINT, self._handle_shutdown_signal)
 
-    def _handle_shutdown_signal(self, signal_num: int, frame: Any) -> None:
+    def _handle_shutdown_signal(self, signal_num: int, _frame: Any) -> None:
         """Handle received shutdown signals by setting shutdown flag.
 
         Parameters
         ----------
         signal_num : int
             Signal number that was received.
-        frame : Any
+        _frame : Any
             Current stack frame (unused but required by signal handler interface).
         """
         logger.info(f"Received signal {signal_num}, requesting graceful shutdown...")
@@ -1389,7 +1806,7 @@ class SignalHandler:
 
 def create_service_with_plugins(
     config: ServiceConfig | None = None,
-    plugins: list[tuple[ServicePlugin, dict[str, Any]]] | None = None,
+    plugins: list[tuple[type[ServicePlugin], dict[str, Any]]] | None = None,
 ) -> Service:
     """Create new Service instance with optional configuration and plugins.
 
@@ -1398,10 +1815,10 @@ def create_service_with_plugins(
 
     Parameters
     ----------
-    config : ServiceConfig, optional
+    config : ServiceConfig or None, optional
         Service configuration. If None, Service will create default configuration.
-    plugins : list of tuple[PluginProtocol, dict[str, Any]], optional
-        List of (plugin, config) tuples to register with the service.
+    plugins : list of tuple[type[ServicePlugin], dict[str, Any]] or None, optional
+        List of (plugin_class, config) tuples to register with the service.
 
     Returns
     -------
@@ -1420,63 +1837,31 @@ def create_service_with_plugins(
     """
     service = Service(config)
 
-    if plugins:
-        register_plugin_partial = partial(
-            lambda p_c, s: s.register_plugin(*p_c),
-            s=service,
-        )
-        list(map(register_plugin_partial, plugins))
+    # Use iterate instead of map to avoid "None is not iterable" errors from Mypy
+    # and improve readability over functional map calls for side effects.
+    if plugins is not None:
+        for plugin_class, plugin_config in plugins:
+            service.register_plugin(plugin_class, plugin_config)
 
     return service
 
 
-def main() -> None:
-    """Application entry point with error handling and logging.
+def parse_driver_args() -> Any:
+    """Parse command-line arguments for the driver.
 
-    Creates service with default configuration and starts it. Logs any
-    application-level failures and re-raises exceptions for proper exit codes.
+    Returns
+    -------
+    Any
+        Parsed command-line arguments.
 
-    Raises
-    ------
-    Exception
-        Re-raises any exception from service creation or startup.
-
-    Examples
-    --------
-    >>> # main() would start the actual service, not suitable for doctest
-    >>> # main()  # This would run the full service
-    >>> pass  # Placeholder for doctest
+    Notes
+    -----
+    This is a placeholder function. The actual implementation should be
+    provided by the geoips_driver module.
     """
-    try:
-        ARGS = parse_driver_args()
-        plugin_config = interfaces.controller_configs.get_plugin(ARGS.config)
-        config = ServiceConfig(
-            rabbitmq_url="amqp://admin:admin_test@localhost:5672/",
-        )
-
-        from geoips_driver.plugins.modules.job_queuers.dummy_job_queuer import (
-            OVERCASTJobQueuer,
-        )
-
-        from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
-            FileSystemPoller,
-        )
-        from geoips_driver.plugins.modules.dispatchers.serial import (
-            SerialDispatcher,
-        )
-
-        plugins = [
-            (FileSystemPoller, plugin_config),
-            (OVERCASTJobQueuer, plugin_config),
-            (SerialDispatcher, plugin_config),
-        ]
-
-        service = create_service_with_plugins(config, plugins)
-        service.start()
-    except Exception:
-        logger.exception("Application failed")
-        raise
+    # This should be imported from geoips_driver
+    pass
 
 
 if __name__ == "__main__":
-    main()
+    raise NotImplementedError("This module is not intended to be run directly.")

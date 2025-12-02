@@ -25,6 +25,7 @@ words:
   - pythonpath
   - pyupgrade
   - pyyaml
+  - rabbitmq
   - tryceratops
   - typer
   - Uttmark
