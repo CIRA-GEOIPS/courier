@@ -1,5 +1,6 @@
 """Python class for the data_monitors geoips_driver interface."""
 
+import json
 import threading
 from collections.abc import Generator
 from dataclasses import dataclass
@@ -15,9 +16,6 @@ from geoips_driver.interfaces.module_based.service import (
 logger = setup_logging()
 
 FILE_FOUND_QUEUE = "FilesFoundQueue"
-
-
-import json
 
 
 @dataclass(frozen=True)
@@ -61,6 +59,7 @@ class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
         self.parent_service = service
         self.queue = FILE_FOUND_QUEUE
         self._running = False
+        self.config = config
 
     def find_file(self) -> Generator[File, None, None]:
         """Yield File objects."""

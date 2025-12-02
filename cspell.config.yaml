@@ -4,16 +4,23 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - charliermarsh
   - CIRA
   - commitizen
   - dateparser
+  - docstrings
+  - esbenp
   - geoips
+  - gethostname
   - IODC
   - isort
   - kwargs
+  - lextudio
+  - matangover
   - mccabe
   - meteosat
   - mypy
+  - njpwerner
   - NOAA
   - norecursedirs
   - numpy
@@ -30,9 +37,15 @@ words:
   - pyyaml
   - rabbitmq
   - seviri
+  - snekvik
+  - sphinxarg
+  - tamasfe
+  - trond
   - tryceratops
   - typer
   - Uttmark
+  - venv
+  - viewcode
   - xarray
 ignoreWords:
   - outdirs

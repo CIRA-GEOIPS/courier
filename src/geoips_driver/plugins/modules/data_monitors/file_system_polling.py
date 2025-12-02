@@ -1,3 +1,5 @@
+"""File System Polling Data Monitor Plugin for GeoIPS Driver."""
+
 import queue
 from collections.abc import Generator
 from pathlib import Path
@@ -15,6 +17,8 @@ interface: None | str = None
 
 
 class FileSystemPoller(DataMonitor):
+    """File System Polling Data Monitor Plugin."""
+
     name = "FileSystemPoller-Watchdog"
     version = "0.0.0"
 
@@ -24,6 +28,7 @@ class FileSystemPoller(DataMonitor):
         self.path_to_watch = config["path"]
 
     def is_healthy(self) -> bool:
+        """Check if the data monitor is healthy."""
         return self.health
 
     def find_file(self) -> Generator[File, None, None]:
@@ -34,7 +39,7 @@ class FileSystemPoller(DataMonitor):
         a directory. It yields the absolute path of a new file as soon as it's
         created.
 
-        Uses a simple queue to communicate between the watchdog thread and the main thread.
+        Uses a simple queue to communicate between the watchdog thread and main thread.
         The event handler is a simple, nested class.
         The observer is started and stopped cleanly within the generator's life cycle.
 
@@ -62,7 +67,7 @@ class FileSystemPoller(DataMonitor):
         try:
             observer.start()
         except FileNotFoundError as e:
-            raise RuntimeError(f"Directory '{path}' does not exist.") from e
+            raise RuntimeError(f"Directory '{path}' does not exist.") from e  # noqa: TRY003
 
         logger.info(f"Watching for new files in '{path}'...")
 

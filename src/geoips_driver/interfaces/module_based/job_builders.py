@@ -3,7 +3,7 @@
 import json
 import threading
 import time
-from typing import Any
+from typing import Any, Never
 
 from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE, File
 from geoips_driver.interfaces.module_based.service import (
@@ -21,12 +21,12 @@ JOB_READY_QUEUE = "JobReadyQueue"
 class Job:
     """Job class."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         name: str,
         identifier: str,
         config: Any,
-        files: set[File] = set(),
+        files: set[File] | frozenset[Never] = frozenset(),
         last_modified: float | None = None,
         timeout: float = 60 * 60 * 24,
     ) -> None:
@@ -36,6 +36,8 @@ class Job:
         self.files = files
         self.last_modified = last_modified if last_modified is not None else time.time()
         self.timeout = timeout
+        if self.files == {}:
+            self.files = set()
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
@@ -77,7 +79,9 @@ class Job:
 
     def add_file(self, file: File) -> None:
         """Add file to job."""
-        self.files.add(file)
+        # ignore type because self.files is initialized as frozenset by default
+        # but..... is set in init anyways if empty
+        self.files.add(file)  # type: ignore
         self.last_modified = time.time()
 
     def is_old(self) -> bool:
@@ -98,7 +102,7 @@ class JobGroup:
         """Return list of ready jobs."""
         return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
 
-    def file_is_relevant(self, file: File) -> bool:
+    def file_is_relevant(self, file: File) -> bool:  # noqa: ARG002
         """Return true if file is relevant to this job group."""
         return False
 

@@ -10,7 +10,7 @@ from geoips.pydantic_models.v1.bases import (  # type: ignore
     FrozenModel,
     PermissiveFrozenModel,
     PluginModel,
-)  # type: ignore
+)
 from pydantic import Field, model_validator
 
 

@@ -1,3 +1,5 @@
+"""Serial Bash Dispatcher Plugin for GeoIPS Driver."""
+
 import socket
 import subprocess
 import tempfile
@@ -41,7 +43,7 @@ class SerialBashDispatcher(Dispatcher):
         logger.info(f"Executing job: {job}")
 
         # Create a temporary file for the bash script
-        script_content = self.bash_script.format(file=list(job.files)[0].file)
+        script_content = self.bash_script.format(file=next(iter(job.files)).file)
         logger.debug(f"Generated script content:\n{script_content}")
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -56,7 +58,7 @@ class SerialBashDispatcher(Dispatcher):
             Path(script_path).chmod(0o755)
 
             # Execute the bash script
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 ["/bin/bash", script_path],
                 check=False,
                 capture_output=True,
@@ -74,7 +76,7 @@ class SerialBashDispatcher(Dispatcher):
             ]
 
         except subprocess.TimeoutExpired as e:
-            logger.error(f"Script execution timed out: {e}")
+            logger.exception("Script execution timed out")
             return [
                 ExecutionLog(
                     return_code=-1,
@@ -84,7 +86,7 @@ class SerialBashDispatcher(Dispatcher):
                 ),
             ]
         except Exception as e:
-            logger.error(f"Error executing script: {e}")
+            logger.exception("Error executing script")
             return [
                 ExecutionLog(
                     return_code=-1,
