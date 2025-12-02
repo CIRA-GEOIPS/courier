@@ -26,7 +26,10 @@
 				"ms-azuretools.vscode-docker",
 				"njpwerner.autodocstring",
 				"esbenp.prettier-vscode",
-				"ms-vscode.live-server"
+				"ms-vscode.live-server",
+				"ms-python.black-formatter",
+				"ms-python.flake8",
+				"trond-snekvik.simple-rst"
 			],
 			"settings": {
 				"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",

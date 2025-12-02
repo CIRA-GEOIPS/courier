@@ -6,12 +6,28 @@ words:
   - argparse
   - commitizen
   - geoips
+  - isort
   - kwargs
+  - mccabe
   - mypy
   - NOAA
+  - norecursedirs
+  - numpy
+  - pathlib
   - pinkrst
+  - pycodestyle
+  - pydantic
+  - pydocstyle
+  - Pyflakes
+  - Pylint
   - pytest
+  - pythonpath
+  - pyupgrade
+  - pyyaml
+  - tryceratops
+  - typer
   - Uttmark
+  - xarray
 ignoreWords:
   - outdirs
   - retval
