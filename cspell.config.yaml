@@ -5,6 +5,7 @@ dictionaries: []
 words:
   - argparse
   - commitizen
+  - dateparser
   - geoips
   - isort
   - kwargs

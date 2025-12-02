@@ -51,6 +51,7 @@ pytest = { version = "*", optional = true }
 pytest-cov = { version = "*", optional = true }
 pytest-xdist = { version = "*", optional = true }
 types-pika = { version = "*", optional = true }
+types-dateparser = { version = "*", optional = true }
 commitizen = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
@@ -79,6 +80,7 @@ lint = [
     "mypy",                      # Type checking
     "types-pika",                # Type hints for pika
     "types-PyYAML",              # Type hints for pyyaml
+    "types-dateparser",          # Type hints for dateparser
 ]
 
 test = [
