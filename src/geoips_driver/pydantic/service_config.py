@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-def _ensure_non_empty(value: str, *, field_name: str) -> str:
+def _ensure_non_empty(value: str | None, *, field_name: str | None) -> str:
     """Guarantee that a string value is non-empty after trimming whitespace."""
     if not isinstance(value, str):
         raise TypeError(f"Field '{field_name}' must be a string.")

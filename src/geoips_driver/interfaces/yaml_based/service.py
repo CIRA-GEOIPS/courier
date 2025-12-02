@@ -1,6 +1,6 @@
 """Python class for the service geoips_driver interface."""
 
-from geoips.interfaces.base import BaseYamlInterface
+from geoips.interfaces.base import BaseYamlInterface  # type: ignore
 
 from geoips_driver.pydantic.service_config import ServiceConfigModel
 
