@@ -474,6 +474,9 @@ class ServicePlugin(Protocol):
         The plugin version.
     """
 
+    name: str
+    version: str = "0.0.0"
+
     def __init__(self, service: Any, config: dict[str, Any]) -> None:
         """Initialize plugin with service reference and configuration.
 
@@ -483,28 +486,6 @@ class ServicePlugin(Protocol):
             Reference to the parent service instance.
         config : dict[str, Any]
             Configuration dictionary for the plugin.
-        """
-        ...
-
-    @property
-    def name(self) -> str:
-        """Return the plugin name.
-
-        Returns
-        -------
-        str
-            Plugin name identifier.
-        """
-        ...
-
-    @property
-    def version(self) -> str:
-        """Return the plugin version.
-
-        Returns
-        -------
-        str
-            Plugin version string.
         """
         ...
 

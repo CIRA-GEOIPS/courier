@@ -66,7 +66,7 @@ class Job:
             name=data["name"],
             identifier=data["identifier"],
             config=data["config"],
-            files=set(File.from_string(f) for f in data.get("files", [])),
+            files={File.from_string(f) for f in data.get("files", [])},
             last_modified=data.get("last_modified"),
             timeout=data.get("timeout", 60 * 60 * 24),
         )
@@ -132,10 +132,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self.job_groups: list[JobGroup] = []
         self.config = config
 
-    @property
-    def name(self) -> str:
-        """Service name."""
-        return "JobBuilder"
+    name = "JobBuilder"
 
     def emit(self, job: Job) -> None:
         """Emit job to parent service."""

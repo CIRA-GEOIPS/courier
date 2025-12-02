@@ -1,7 +1,8 @@
 import queue
 from collections.abc import Generator
+from pathlib import Path
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from geoips_driver.interfaces.module_based.data_monitors import DataMonitor, File
@@ -10,7 +11,7 @@ from geoips_driver.interfaces.module_based.service import Service, setup_logging
 logger = setup_logging("FSPolling")
 
 
-interface = None
+interface: None | str = None
 
 
 class FileSystemPoller(DataMonitor):
@@ -46,11 +47,11 @@ class FileSystemPoller(DataMonitor):
         """
         path = self.path_to_watch
         logger.info(f"Starting to watch directory: {path}")
-        file_queue = queue.Queue()
+        file_queue: queue.Queue[str | bytes] = queue.Queue()
 
         # This handler simply puts the path of any new file into the queue
         class NewFileHandler(FileSystemEventHandler):
-            def on_created(self, event):
+            def on_created(self, event: DirCreatedEvent | FileCreatedEvent) -> None:
                 if not event.is_directory:
                     file_queue.put(event.src_path)
 
@@ -68,7 +69,7 @@ class FileSystemPoller(DataMonitor):
         try:
             self.health = True
             while True:
-                yield File(file=file_queue.get(), hostname="localhost")
+                yield File(file=Path(str(file_queue.get())), hostname="localhost")
         finally:
             observer.stop()
             observer.join()

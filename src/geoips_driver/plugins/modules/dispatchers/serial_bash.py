@@ -9,7 +9,7 @@ from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging()
 
-interface = None
+interface: str | None = None
 
 
 class SerialBashDispatcher(Dispatcher):
@@ -18,11 +18,7 @@ class SerialBashDispatcher(Dispatcher):
     interface = "dispatchers"
 
     name = "serial_bash_dispatcher"
-
-    @property
-    def version(self) -> str:
-        """Service version."""
-        return "-1"
+    version = "-1"
 
     def __init__(self, service: Service, config: dict) -> None:
         super().__init__(service, config)

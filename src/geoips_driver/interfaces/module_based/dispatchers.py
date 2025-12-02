@@ -44,10 +44,7 @@ class ExecutionLog:
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""
 
-    @property
-    def name(self) -> str:
-        """Service name."""
-        return "dispatcher"
+    name = "dispatcher"
 
     def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
