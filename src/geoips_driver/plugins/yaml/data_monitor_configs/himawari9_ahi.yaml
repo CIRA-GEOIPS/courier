@@ -1,21 +1,27 @@
-interface: monitor_configs
-family: standard
+apiVersion: geoips/driver/v1
+kind: data_monitor_config
 name: himawari9_ahi
-docstring: |
-  Information necessary to monitor for Himawari9 AHI L1B data.
+description: Information necessary to add metadata to Himawari-9 AHI L1B data files.
 spec:
-  Full-Disk:
-    parent_dir: "/mnt/sat/ahi-unzip/himawari9/{{ YYYY }}{{ MM }}{{ DD }}"
-    patterns:
-      - "*{{ YYYY }}{{ MM }}{{ DD }}_{{ HH }}{{ NN }}*_FLDK_*_S[01][0-9]10*"
-    num_expected: 160
-  Japan:
-    parent_dir: "/mnt/sat/ahi-unzip/himawari9/{{ YYYY }}{{ MM }}{{ DD }}"
-    patterns:
-      - "*{{ YYYY }}{{ MM }}{{ DD }}_{{ HH }}{{ NN }}*_JP0[1-4]_*_S0101*"
-    num_expected: 40
-  Meso1:
-    parent_dir: "/mnt/sat/ahi-unzip/himawari9/{{ YYYY }}{{ MM }}{{ DD }}"
-    patterns:
-      - "*{{ YYYY }}{{ MM }}{{ DD }}_{{ HH }}{{ NN }}*_R30[1-4]_*_S0101*"
-    num_expected: 40
+  file-metadata:
+    himawari9_ahi_l1b:
+      platform: himawari9
+      sensor: ahi
+      level: L1B
+      num_expected: 160
+      match:
+        - "*\d{4}\d{2}\d{2}_\d{2}\d{2}*_FLDK_*_S[01][0-9]10.*"
+    full-disk:
+      sector: Full-Disk
+      match:
+        - "*\d{4}\d{2}\d{2}_\d{2}\d{2}*_FLDK_*_S[01][0-9]10.*"
+    japan:
+      sector: Japan
+      num_expected: 40
+      match:
+        - "*\d{4}\d{2}\d{2}_\d{2}\d{2}*_JP0[1-4]_*_S0101.*"
+    meso1:
+      sector: Meso1
+      num_expected: 40
+      match:
+        - "*\d{4}\d{2}\d{2}_\d{2}\d{2}*_R30[1-4]_*_S0101.*"

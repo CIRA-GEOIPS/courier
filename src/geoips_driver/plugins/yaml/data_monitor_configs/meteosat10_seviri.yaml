@@ -1,15 +1,18 @@
-interface: monitor_configs
-family: standard
-name: meteosat9_seviri
-docstring: |
-  Information necessary to monitor for Meteosat9 SEVIRI L1B data files at CIRA.
+apiVersion: geoips/driver/v1
+kind: data_monitor_config
+name: meteosat10_seviri
+description: Information necessary to add metadata to Meteosat-10 SEVIRI L1B data files.
 spec:
-  Full-Disk:
-    parent_dir: "/mnt/sat/meteosat/meteosat-09/{{ YYYY }}{{ MM }}{{ DD }}/MSG2"
-    patterns:
-      - "H-000-MSG2__-MSG2_IODC___-_________-EPI______-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-__"
-      - "H-000-MSG2__-MSG2_IODC___-_________-PRO______-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-__"
-      - "H-000-MSG2__-MSG2_IODC___-IR*___-00000[1-8]___-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-C_"
-      - "H-000-MSG2__-MSG2_IODC___-VIS*___-00000[1-8]___-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-C_"
-      - "H-000-MSG2__-MSG2_IODC___-WV*___-00000[1-8]___-{{ YYYY }}{{ MM }}{{ DD }}{{ HH }}{{ NN }}-C_"
-    num_expected: 90
+  file-metadata:
+    meteosat10_seviri:
+      platform: meteosat10
+      sensor: seviri
+      level: L1B
+      sector: Full-Disk
+      num_expected: 90
+      match:
+        - "H-000-MSG3__-MSG3________-_________-EPI______-\d{4}\d{2}\d{2}\d{2}\d{2}-__"
+        - "H-000-MSG3__-MSG3________-_________-PRO______-\d{4}\d{2}\d{2}\d{2}\d{2}-__"
+        - "H-000-MSG3__-MSG3________-IR*___-00000[1-8]___-\d{4}\d{2}\d{2}\d{2}\d{2}-C_"
+        - "H-000-MSG3__-MSG3________-VIS*___-00000[1-8]___-\d{4}\d{2}\d{2}\d{2}\d{2}-C_"
+        - "H-000-MSG3__-MSG3________-WV*___-00000[1-8]___-\d{4}\d{2}\d{2}\d{2}\d{2}-C_"
