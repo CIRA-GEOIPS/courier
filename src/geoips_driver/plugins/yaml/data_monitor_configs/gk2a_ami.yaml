@@ -9,6 +9,7 @@ spec:
       sensor: ami
       level: L1B
       num_expected: 16
+      date: "gk2a_ami_le1b_(?P<YYYY>\d{4})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<NN>\d{2})"
       match:
           - "gk2a_ami_le1b_*gk2a_ami_le1b_\d{4}\d{2}\d{2}\d{2}\d{2}.*"
     full-disk:

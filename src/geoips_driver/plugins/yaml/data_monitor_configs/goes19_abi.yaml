@@ -10,6 +10,7 @@ spec:
         sensor: abi
         level: L1B
         num_expected: 16
+        date: "s(?P<YYYY>\d{4})(?P<JJJ>\d{3})(?P<HH>\d{2})(?P<NN>\d{2})"
       match:
         - "*M6C[01][1-6]*s{{ YYYY }}{{ JJJ }}{{ HH }}{{ NN }}*"
     Full-Disk:

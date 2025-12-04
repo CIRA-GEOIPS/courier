@@ -10,6 +10,7 @@ spec:
       level: L1B
       sector: Full-Disk
       num_expected: 90
+      date: "H-000-MSG3__-MSG3________-.*-(?P<YYYY>\d{4})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<NN>\d{2})-"
       match:
         - "H-000-MSG3__-MSG3________-_________-EPI______-\d{4}\d{2}\d{2}\d{2}\d{2}-__"
         - "H-000-MSG3__-MSG3________-_________-PRO______-\d{4}\d{2}\d{2}\d{2}\d{2}-__"
