@@ -25,7 +25,7 @@ include = [
 ]
 
 [tool.poetry.dependencies] # must download to run
-python = ">=3.11,<4.0"  # Specify upper bound to prevent Python 4 compatibility issues (lol, it'll be fun when python 4 comes out)
+python = ">=3.11,<3.14" # dependencies - namely geoips do not support python 3.14
 rich = "*"
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
