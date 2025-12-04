@@ -113,7 +113,9 @@ def pipe(*functions: Callable[..., Any]) -> Callable[[Any], Any]:
     return reduce(lambda f, g: lambda x: g(f(x)), functions, lambda x: x)
 
 
-def maybe(default: T) -> Callable[[T | None], T]:
+# ignore on this line because the return type is a Callable that takes T | None
+# which is not best practice in 3.12 but required to support 3.11+
+def maybe(default: T) -> Callable[[T | None], T]:  # noqa: UP047
     """Return value or default if None.
 
     Creates a function that returns the input value if not None,
@@ -405,7 +407,9 @@ def retry_with_backoff(
     return decorator
 
 
-def log_execution(func: Callable[..., T]) -> Callable[..., T | None]:
+# ignore on this line because the return type is a Callable that takes T | None
+# which is not best practice in 3.12 but required to support 3.11+
+def log_execution(func: Callable[..., T]) -> Callable[..., T | None]:  # noqa: UP047
     """Create decorator for logging function execution and exceptions.
 
     Wraps functions to log debug messages on entry/success and exception
