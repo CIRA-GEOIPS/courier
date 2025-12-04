@@ -9,6 +9,7 @@ words:
   - commitizen
   - dateparser
   - docstrings
+  - Dunder
   - esbenp
   - geoips
   - gethostname
@@ -36,6 +37,7 @@ words:
   - pyupgrade
   - pyyaml
   - rabbitmq
+  - rabbitmqhost
   - seviri
   - snekvik
   - sphinxarg

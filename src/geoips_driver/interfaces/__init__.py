@@ -23,4 +23,4 @@ yaml_based_interfaces = [
 # not recognize the above imports as being used.  F401 ignored via
 # per-file ignore in geoips/.config/flake8 config.  See comment above
 # for more information.
-__all__ = module_based_interfaces + yaml_based_interfaces  # type: ignore # noqa: PLE0605
+__all__ = module_based_interfaces + yaml_based_interfaces  # noqa: PLE0605

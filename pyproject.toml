@@ -102,7 +102,7 @@ Issues = "https://github.com/biosafetylvl5/geoips_driver/issues"
 Documentation = "https://biosafetylvl5.github.io/geoips_driver/"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -155,7 +155,7 @@ skips = ["B101"]  # Skip assert warnings
 
 [tool.ruff]
 # Target Python version
-target-version = "py311"
+target-version = "py312"
 line-length = 88
 exclude = [
     "tests",
