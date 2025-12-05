@@ -1,5 +1,7 @@
 from geoips_driver import dummy_cli
-from geoips_driver.interfaces.module_based.service import create_service_with_plugins, ServiceConfig
+from geoips_driver.interfaces.module_based.service import (
+    ServiceConfig, create_service_with_plugins)
+
 
 def run_service(config: dict)-> None:
     """Run a dummy service using the dummy-cli module."""
@@ -15,8 +17,8 @@ def run_service(config: dict)-> None:
 
 
     import geoips_driver.plugins.modules.data_monitors.file_system_polling as file_system_polling
-    import geoips_driver.plugins.modules.job_builders.dummy_job_builder as dummy_job_builder
     import geoips_driver.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
+    import geoips_driver.plugins.modules.job_builders.dummy_job_builder as dummy_job_builder
     available_plugins = {
         file_system_polling.FileSystemPoller.name.lower(): file_system_polling.FileSystemPoller,
         dummy_job_builder.DummyJobBuilder.name.lower(): dummy_job_builder.DummyJobBuilder,

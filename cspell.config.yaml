@@ -13,6 +13,8 @@ words:
   - esbenp
   - geoips
   - gethostname
+  - groupindex
+  - himawari
   - IODC
   - isort
   - kwargs

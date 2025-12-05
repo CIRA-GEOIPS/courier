@@ -2,7 +2,7 @@
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
 
-from geoips_driver.pydantic.monitor_configs import MonitorConfigPlugin
+from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
 
 
 class DataMonitorConfigsInterface(BaseYamlInterface):
@@ -10,7 +10,7 @@ class DataMonitorConfigsInterface(BaseYamlInterface):
 
     name = "data_monitor_configs"
     apiVersion = "geoips_driver/v1"  # noqa: N815
-    validator = MonitorConfigPlugin
+    validator = DataMonitorConfig
 
 
 monitor_configs = DataMonitorConfigsInterface()
