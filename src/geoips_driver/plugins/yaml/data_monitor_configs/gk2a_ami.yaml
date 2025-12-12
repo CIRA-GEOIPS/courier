@@ -1,4 +1,4 @@
-apiVersion: geoips/driver/v1
+apiVersion: geoips_driver/v1
 kind: data_monitor_configs
 interface: data_monitor_configs
 family: standard

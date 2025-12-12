@@ -3,6 +3,7 @@
 from typing import ClassVar
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
+from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
 
 
 class DataMonitorConfigsInterface(BaseYamlInterface):
@@ -14,8 +15,8 @@ class DataMonitorConfigsInterface(BaseYamlInterface):
     apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
     # required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
     # required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # validator = DataMonitorConfig
-    use_pydantic = False
+    validator = DataMonitorConfig
+    # use_pydantic = False
 
 
 data_monitor_configs = DataMonitorConfigsInterface()

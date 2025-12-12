@@ -111,11 +111,14 @@ class DataMonitorInterface(BaseModuleInterface):
     """Interface for creating GeoIPS formatted titles."""
 
     name: ClassVar[str] = "data_monitors"
-    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
-    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
+    apiVersion = "geoips_driver/v1"
+    required_args = {"standard": []}
+    required_kwargs = {"standard": []}
+    # required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
+    # required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
+    # apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
 
 
 data_monitors = DataMonitorInterface()
