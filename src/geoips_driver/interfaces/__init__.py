@@ -1,19 +1,25 @@
 """GeoIPS Driver Interface Module."""
 
-from geoips_driver.interfaces.module_based.data_monitors import DataMonitor
-from geoips_driver.interfaces.module_based.dispatchers import Dispatcher
-from geoips_driver.interfaces.module_based.job_builders import JobBuilder
-from geoips_driver.interfaces.yaml_based.data_monitor_configs import (
-    DataMonitorConfigsInterface,
+from geoips_driver.interfaces.module_based.data_monitors_base_plugin import (
+    data_monitors,
 )
+from geoips_driver.interfaces.yaml_based.data_monitor_configs import (
+    data_monitor_configs,
+)
+
+# from geoips_driver.interfaces.module_based.dispatchers_base_plugin import Dispatcher
+# from geoips_driver.interfaces.module_based.job_builders_base_plugin import JobBuilder
+# from geoips_driver.interfaces.yaml_based.data_monitor_configs import (
+#    DataMonitorConfigsInterface,
+# )
 
 # These lists are the "master" lists of the interface names.
 # These are used in validating the plugins (ie, so we will catch a typo
 # in an interface name)
 module_based_interfaces = [
     "data_monitors",
-    "dispatchers",
-    "job_builders",
+    #    "dispatchers",
+    #    "job_builders",
 ]
 yaml_based_interfaces = [
     "data_monitor_configs",

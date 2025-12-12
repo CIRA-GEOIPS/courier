@@ -159,7 +159,7 @@ class File:
         return replace(self, **kwargs)
 
     # This is a reasonable number of parameters for this function, ignoring ruff here.
-    def merge_metadata(
+    def merge_metadata(  # noqa: PLR0913
         self,
         *,
         platform: str | None = None,

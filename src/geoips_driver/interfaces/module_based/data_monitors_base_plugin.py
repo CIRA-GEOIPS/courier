@@ -6,6 +6,8 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
+from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
@@ -52,7 +54,7 @@ class File:
         )
 
 
-class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
+class DataMonitorBasePlugin(ServicePlugin):
     """Base data monitor plugin."""
 
     def __init__(self, service: Service, config: dict) -> None:
@@ -102,3 +104,14 @@ class DataMonitor(ServicePlugin):  # , GeoIPSPlugin):
 def call() -> None:
     """Raise error if called directly."""
     raise NotImplementedError("You cannot call this plugin directly.")
+
+
+class DataMonitorInterface(BaseModuleInterface):
+    """Interface for creating GeoIPS formatted titles."""
+
+    name = "data_monitors"
+    required_args: dict[str, str] = {}  # noqa: RUF012
+    required_kwargs: dict[str, str] = {}  # noqa: RUF012
+
+
+data_monitors = DataMonitorInterface()

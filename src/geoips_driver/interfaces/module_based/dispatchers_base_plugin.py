@@ -4,7 +4,10 @@ import json
 import threading
 from dataclasses import dataclass
 
-from geoips_driver.interfaces.module_based.job_builders import JOB_READY_QUEUE, Job
+from geoips_driver.interfaces.module_based.job_builders_base_plugin import (
+    JOB_READY_QUEUE,
+    Job,
+)
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,

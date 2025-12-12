@@ -1,7 +1,11 @@
 """Dummy job builder module for testing and demonstration purposes."""
 
-from geoips_driver.interfaces.module_based.data_monitors import File
-from geoips_driver.interfaces.module_based.job_builders import Job, JobBuilder, JobGroup
+from geoips_driver.interfaces.module_based.data_monitors_base_plugin import File
+from geoips_driver.interfaces.module_based.job_builders_base_plugin import (
+    Job,
+    JobBuilder,
+    JobGroup,
+)
 from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging("dummy_job_builder")

@@ -7,16 +7,21 @@ from pathlib import Path
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from geoips_driver.interfaces.module_based.data_monitors import DataMonitor, File
+from geoips_driver.interfaces.module_based.data_monitors_base_plugin import (
+    DataMonitorBasePlugin,
+    File,
+)
 from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging("FSPolling")
 
 
-interface: None | str = None
+interface: str = "data_monitors"
+family: str = "standard"
+name: str = "FileSystemPoller-Watchdog"
 
 
-class FileSystemPoller(DataMonitor):
+class FileSystemPoller(DataMonitorBasePlugin):
     """File System Polling Data Monitor Plugin."""
 
     name = "FileSystemPoller-Watchdog"
@@ -78,3 +83,8 @@ class FileSystemPoller(DataMonitor):
         finally:
             observer.stop()
             observer.join()
+
+
+def call() -> None:
+    """Raise error if called directly."""
+    raise NotImplementedError("You cannot call this plugin directly.")

@@ -5,7 +5,10 @@ import threading
 import time
 from typing import Any, Never
 
-from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE, File
+from geoips_driver.interfaces.module_based.data_monitors_base_plugin import (
+    FILE_FOUND_QUEUE,
+    File,
+)
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
