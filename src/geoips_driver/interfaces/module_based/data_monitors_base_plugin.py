@@ -5,6 +5,7 @@ import threading
 from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 
@@ -109,9 +110,12 @@ def call() -> None:
 class DataMonitorInterface(BaseModuleInterface):
     """Interface for creating GeoIPS formatted titles."""
 
-    name = "data_monitors"
-    required_args: dict[str, str] = {}  # noqa: RUF012
-    required_kwargs: dict[str, str] = {}  # noqa: RUF012
+    name: ClassVar[str] = "data_monitors"
+    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
+    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
+    # ignoring odd capitalization to match existing code style in GeoIPS
+    # which itself is matching Kubernetes conventions
+    apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
 
 
 data_monitors = DataMonitorInterface()
