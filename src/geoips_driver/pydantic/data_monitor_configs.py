@@ -160,7 +160,7 @@ class Metadata(BaseModel):
     hh: Annotated[str | None, Field(default=None, alias="HH")] = None
     nn: Annotated[str | None, Field(default=None, alias="NN")] = None
 
-    @field_validator("platform", "sensor", "level", "sector", mode="after")
+    @field_validator("platform", "sensor", "level", mode="after")
     @classmethod
     def lowercase_string_fields(cls, value: str | None) -> str | None:
         """Convert string fields to lowercase.
@@ -179,8 +179,8 @@ class Metadata(BaseModel):
 
     @field_validator("sector", mode="after")
     @classmethod
-    def validate_sector_non_empty(cls, value: str | None) -> str | None:
-        """Validate sector is non-empty if provided.
+    def uppercase_and_validate_sector(cls, value: str | None) -> str | None:
+        """Convert sector to uppercase and validate it's non-empty if provided.
 
         Parameters
         ----------
@@ -190,17 +190,19 @@ class Metadata(BaseModel):
         Returns
         -------
         str | None
-            The validated sector value.
+            The validated, uppercased sector value.
 
         Raises
         ------
         ValueError
             If sector is empty string.
         """
-        if value is not None and not value:
-            msg = "sector must be a non-empty string"
-            raise ValueError(msg)
-        return value
+        if value is not None:
+            if not value:
+                msg = "sector must be a non-empty string"
+                raise ValueError(msg)
+            return value.upper()
+        return None
 
     @model_validator(mode="after")
     def validate_has_at_least_one_field(self) -> Self:
@@ -459,12 +461,18 @@ class DataMonitorConfig(BaseModel):
     ----------
     api_version : str
         API version string, must be 'geoips_driver/v1'.
+    interface : str
+        Interface identifier, must be 'data_monitor_configs'.
+    family : str
+        Configuration family, must be 'standard'.
     kind : str
         Configuration kind, must be 'data_monitor_config'.
     name : str
         Configuration name identifier.
     description : str
         Human-readable description.
+    docstring : str
+        Optional documentation string, can be empty.
     spec : Spec
         The specification section containing file metadata.
     """
@@ -479,9 +487,14 @@ class DataMonitorConfig(BaseModel):
         str,
         Field(alias="apiVersion", pattern=r"^geoips_driver/v1$"),
     ]
-    kind: Annotated[str, Field(pattern=r"^data_monitor_config$")]
+    interface: Annotated[str, Field(pattern=r"^data_monitor_configs$")]
+    family: Annotated[str, Field(pattern=r"^standard$")]
+    kind: Annotated[str, Field(pattern=r"^data_monitor_config$")] = (
+        "data_monitor_config"
+    )
     name: str
     description: str
+    docstring: str
     spec: Spec
 
     @field_validator("name", mode="after")
