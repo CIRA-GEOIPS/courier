@@ -1,4 +1,4 @@
-apiVersion: geoips/driver/v1
+apiVersion: geoips_driver/v1
 kind: data_monitor_config
 name: himawari9_ahi
 interface: data_monitor_configs

@@ -458,7 +458,7 @@ class DataMonitorConfig(BaseModel):
     Attributes
     ----------
     api_version : str
-        API version string, must be 'geoips/driver/v1'.
+        API version string, must be 'geoips_driver/v1'.
     kind : str
         Configuration kind, must be 'data_monitor_config'.
     name : str
@@ -477,7 +477,7 @@ class DataMonitorConfig(BaseModel):
 
     api_version: Annotated[
         str,
-        Field(alias="apiVersion", pattern=r"^geoips/driver/v1$"),
+        Field(alias="apiVersion", pattern=r"^geoips_driver/v1$"),
     ]
     kind: Annotated[str, Field(pattern=r"^data_monitor_config$")]
     name: str

@@ -9,7 +9,7 @@ class ServiceConfigInterface(BaseYamlInterface):
     """Configuration protocol for controlling GeoIPS NRT processing."""
 
     name = "service"
-    apiVersion = "geoips/driver/v1"  # noqa: N815
+    apiVersion = "geoips_driver/v1"  # noqa: N815
     validator = ServiceConfigModel
 
 
