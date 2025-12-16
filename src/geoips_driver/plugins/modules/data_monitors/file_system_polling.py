@@ -7,7 +7,7 @@ from pathlib import Path
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from geoips_driver.interfaces.module_based.data_monitors_base_plugin import (
+from geoips_driver.interfaces.module_based.data_monitors import (
     DataMonitorBasePlugin,
     File,
 )

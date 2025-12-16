@@ -3,9 +3,11 @@
 import json
 import threading
 import time
-from typing import Any, Never
+from typing import Any, ClassVar, Never
 
-from geoips_driver.interfaces.module_based.data_monitors_base_plugin import (
+from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+
+from geoips_driver.interfaces.module_based.data_monitors import (
     FILE_FOUND_QUEUE,
     File,
 )
@@ -192,3 +194,17 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
 def call() -> None:
     """Raise error if called directly."""
     raise NotImplementedError("You cannot call this plugin directly.")
+
+
+class JobBuilderInterface(BaseModuleInterface):
+    """Interface for creating GeoIPS formatted titles."""
+
+    name: ClassVar[str] = "job_builders"
+    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
+    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
+    # ignoring odd capitalization to match existing code style in GeoIPS
+    # which itself is matching Kubernetes conventions
+    apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
+
+
+job_builders = JobBuilderInterface()

@@ -3,8 +3,11 @@
 import json
 import threading
 from dataclasses import dataclass
+from typing import ClassVar
 
-from geoips_driver.interfaces.module_based.job_builders_base_plugin import (
+from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+
+from geoips_driver.interfaces.module_based.job_builders import (
     JOB_READY_QUEUE,
     Job,
 )
@@ -104,3 +107,17 @@ class Dispatcher(ServicePlugin):
 def call() -> None:
     """Raise error if called directly."""
     raise NotImplementedError("You cannot call this plugin directly.")
+
+
+class DispatcherInterface(BaseModuleInterface):
+    """Interface for creating GeoIPS formatted titles."""
+
+    name: ClassVar[str] = "dispatchers"
+    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
+    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
+    # ignoring odd capitalization to match existing code style in GeoIPS
+    # which itself is matching Kubernetes conventions
+    apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
+
+
+dispatchers = DispatcherInterface()

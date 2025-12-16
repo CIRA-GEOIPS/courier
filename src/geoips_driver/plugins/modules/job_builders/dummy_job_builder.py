@@ -1,7 +1,7 @@
 """Dummy job builder module for testing and demonstration purposes."""
 
-from geoips_driver.interfaces.module_based.data_monitors_base_plugin import File
-from geoips_driver.interfaces.module_based.job_builders_base_plugin import (
+from geoips_driver.interfaces.module_based.data_monitors import File
+from geoips_driver.interfaces.module_based.job_builders import (
     Job,
     JobBuilder,
     JobGroup,
@@ -10,7 +10,9 @@ from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging("dummy_job_builder")
 
-interface: str | None = None
+interface: str = "job_builders"
+family: str = "standard"
+name: str = "dummy_job_builder"
 
 
 class DummyJob(Job):
@@ -168,3 +170,8 @@ class DummyJobBuilder(JobBuilder):
         """
         logger.debug("DummyJobBuilder handling incoming files")
         return super().handle_incoming_files()
+
+
+def call() -> None:
+    """Raise error if called directly."""
+    raise NotImplementedError("You cannot call this plugin directly.")

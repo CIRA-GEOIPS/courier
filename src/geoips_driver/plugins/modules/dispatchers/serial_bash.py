@@ -5,16 +5,18 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from geoips_driver.interfaces.module_based.dispatchers_base_plugin import (
+from geoips_driver.interfaces.module_based.dispatchers import (
     Dispatcher,
     ExecutionLog,
 )
-from geoips_driver.interfaces.module_based.job_builders_base_plugin import Job
+from geoips_driver.interfaces.module_based.job_builders import Job
 from geoips_driver.interfaces.module_based.service import Service, setup_logging
 
 logger = setup_logging()
 
-interface: str | None = None
+interface: str = "dispatchers"
+family: str = "standard"
+name = "serlial_bash_dispatcher"
 
 
 class SerialBashDispatcher(Dispatcher):
@@ -104,3 +106,8 @@ class SerialBashDispatcher(Dispatcher):
                 Path(script_path).unlink()
             except Exception as e:
                 logger.warning(f"Failed to delete temporary script file: {e}")
+
+
+def call() -> None:
+    """Raise error if called directly."""
+    raise NotImplementedError("You cannot call this plugin directly.")
