@@ -5,6 +5,8 @@ from typing import ClassVar
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
 from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
 
+from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
+
 
 class DataMonitorConfigsInterface(BaseYamlInterface):
     """Templated file paths used for searching file systems."""
@@ -16,7 +18,7 @@ class DataMonitorConfigsInterface(BaseYamlInterface):
     # required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
     # required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     validator = DataMonitorConfig
-    # use_pydantic = False
+    use_pydantic = False
 
 
 data_monitor_configs = DataMonitorConfigsInterface()

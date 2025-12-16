@@ -458,7 +458,7 @@ class DataMonitorConfig(BaseModel):
     Attributes
     ----------
     api_version : str
-        API version string, must be 'geoips/driver/v1'.
+        API version string, must be 'geoips_driver/v1'.
     kind : str
         Configuration kind, must be 'data_monitor_config'.
     name : str
