@@ -112,8 +112,8 @@ def _validate_template_variables(text: str, field_name: str) -> str:
     return text
 
 
-class Metadata(BaseModel):
-    """Metadata configuration for file matching entries.
+class FileMetadataEntry(BaseModel):
+    """A single entry in the file-metadata configuration.
 
     Attributes
     ----------
@@ -139,6 +139,10 @@ class Metadata(BaseModel):
         Manual hour specification.
     nn : str | None
         Manual minute specification.
+    date : str | None
+        Regex pattern for extracting date components from filenames.
+    match : list[str]
+        List of regex patterns for matching files.
     """
 
     model_config = ConfigDict(
@@ -159,6 +163,9 @@ class Metadata(BaseModel):
     jjj: Annotated[str | None, Field(default=None, alias="JJJ")] = None
     hh: Annotated[str | None, Field(default=None, alias="HH")] = None
     nn: Annotated[str | None, Field(default=None, alias="NN")] = None
+
+    date: Annotated[str | None, Field(default=None)] = None
+    match: Annotated[list[str], Field(min_length=1)]
 
     @field_validator("platform", "sensor", "level", mode="after")
     @classmethod
@@ -203,88 +210,6 @@ class Metadata(BaseModel):
                 raise ValueError(msg)
             return value.upper()
         return None
-
-    @model_validator(mode="after")
-    def validate_has_at_least_one_field(self) -> Self:
-        """Validate that metadata has at least one non-default field set.
-
-        Returns
-        -------
-        Self
-            The validated model.
-
-        Raises
-        ------
-        ValueError
-            If no fields are set.
-        """
-        non_default_fields = [
-            self.platform,
-            self.sensor,
-            self.level,
-            self.sector,
-            self.yyyy,
-            self.mm,
-            self.dd,
-            self.jjj,
-            self.hh,
-            self.nn,
-        ]
-        # num_expected has a default, so we check if any other field is set
-        # or if num_expected differs from default
-        has_content = any(f is not None for f in non_default_fields)
-        has_non_default_num = self.num_expected != 1
-
-        if not has_content and not has_non_default_num:
-            msg = "metadata must have at least one field set"
-            raise ValueError(msg)
-        return self
-
-    def get_manual_date_components(self) -> frozenset[str]:
-        """Get the set of manually specified date components.
-
-        Returns
-        -------
-        frozenset[str]
-            Set of date component names that are manually specified.
-        """
-        components: set[str] = set()
-        if self.yyyy is not None:
-            components.add("YYYY")
-        if self.mm is not None:
-            components.add("MM")
-        if self.dd is not None:
-            components.add("DD")
-        if self.jjj is not None:
-            components.add("JJJ")
-        if self.hh is not None:
-            components.add("HH")
-        if self.nn is not None:
-            components.add("NN")
-        return frozenset(components)
-
-
-class FileMetadataEntry(BaseModel):
-    """A single entry in the file-metadata configuration.
-
-    Attributes
-    ----------
-    metadata : Metadata
-        The metadata configuration for this entry.
-    date : str | None
-        Regex pattern for extracting date components from filenames.
-    match : list[str]
-        List of regex patterns for matching files.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        str_strip_whitespace=True,
-    )
-
-    metadata: Metadata
-    date: Annotated[str | None, Field(default=None)] = None
-    match: Annotated[list[str], Field(min_length=1)]
 
     @field_validator("date", mode="after")
     @classmethod
@@ -332,6 +257,65 @@ class FileMetadataEntry(BaseModel):
         """
         return [_validate_regex_pattern(pattern) for pattern in value]
 
+    @model_validator(mode="after")
+    def validate_has_at_least_one_field(self) -> Self:
+        """Validate that entry has at least one non-default field set.
+
+        Returns
+        -------
+        Self
+            The validated model.
+
+        Raises
+        ------
+        ValueError
+            If no fields are set.
+        """
+        non_default_fields = [
+            self.platform,
+            self.sensor,
+            self.level,
+            self.sector,
+            self.yyyy,
+            self.mm,
+            self.dd,
+            self.jjj,
+            self.hh,
+            self.nn,
+        ]
+        # num_expected has a default, so we check if any other field is set
+        # or if num_expected differs from default
+        has_content = any(f is not None for f in non_default_fields)
+        has_non_default_num = self.num_expected != 1
+
+        if not has_content and not has_non_default_num:
+            msg = "file-metadata entry must have at least one metadata field set"
+            raise ValueError(msg)
+        return self
+
+    def get_manual_date_components(self) -> frozenset[str]:
+        """Get the set of manually specified date components.
+
+        Returns
+        -------
+        frozenset[str]
+            Set of date component names that are manually specified.
+        """
+        components: set[str] = set()
+        if self.yyyy is not None:
+            components.add("YYYY")
+        if self.mm is not None:
+            components.add("MM")
+        if self.dd is not None:
+            components.add("DD")
+        if self.jjj is not None:
+            components.add("JJJ")
+        if self.hh is not None:
+            components.add("HH")
+        if self.nn is not None:
+            components.add("NN")
+        return frozenset(components)
+
     def _get_regex_date_components(self) -> frozenset[str]:
         """Extract date components from the date regex pattern.
 
@@ -354,7 +338,7 @@ class FileMetadataEntry(BaseModel):
         bool
             True if sufficient date information is available.
         """
-        manual_components = self.metadata.get_manual_date_components()
+        manual_components = self.get_manual_date_components()
         regex_components = self._get_regex_date_components()
         all_components = manual_components | regex_components
 
@@ -368,6 +352,8 @@ class FileMetadataEntry(BaseModel):
     def validate_date_requirements(self) -> Self:
         """Validate date regex and manual components provide sufficient info.
 
+        Only applies to entries with platform specified (main entries).
+
         Returns
         -------
         Self
@@ -376,14 +362,16 @@ class FileMetadataEntry(BaseModel):
         Raises
         ------
         ValueError
-            If insufficient date information is provided.
+            If insufficient date information is provided for a main entry.
         """
-        if not self._has_sufficient_date_info():
-            manual = self.metadata.get_manual_date_components()
+        # Only validate date requirements for entries with a platform
+        # (sector-only entries don't need date information)
+        if self.platform is not None and not self._has_sufficient_date_info():
+            manual = self.get_manual_date_components()
             regex = self._get_regex_date_components()
             all_comps = manual | regex
             msg = (
-                f"Insufficient date information. "
+                f"Insufficient date information for entry with platform '{self.platform}'. "
                 f"Requires YYYY and (MM + DD or JJJ). "
                 f"Found: {sorted(all_comps)}"
             )
@@ -446,7 +434,7 @@ class Spec(BaseModel):
             If no entry has platform specified.
         """
         has_platform = any(
-            entry.metadata.platform is not None for entry in self.file_metadata.values()
+            entry.platform is not None for entry in self.file_metadata.values()
         )
         if not has_platform:
             msg = "At least one file-metadata entry must have 'platform' specified"
@@ -478,7 +466,7 @@ class DataMonitorConfig(BaseModel):
     """
 
     model_config = ConfigDict(
-        extra="forbid",
+        extra="allow",
         str_strip_whitespace=True,
         populate_by_name=True,
     )

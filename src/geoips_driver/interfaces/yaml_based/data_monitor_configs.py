@@ -15,7 +15,7 @@ class DataMonitorConfigsInterface(BaseYamlInterface):
     # which itself is matching Kubernetes conventions
     apiVersion: ClassVar[str] = "geoips_driver/v1"  # noqa: N815
     validator = DataMonitorConfig
-    use_pydantic = True
+    # use_pydantic = True
 
 
 data_monitor_configs = DataMonitorConfigsInterface()

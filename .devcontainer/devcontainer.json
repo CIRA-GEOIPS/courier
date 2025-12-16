@@ -4,11 +4,11 @@
 {
 	"name": "geoips_driver Devcontainer",
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
-	"postCreateCommand": "pip install -e .[doc,lint,test]",
+	"postCreateCommand": "pip install -e .[doc,lint,test] && geoips config create-reg -n geoips_driver.plugin_packages",
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],
-	"containerEnv": {"GEOIPS_OUTDIRS": "/geoips_outdir"},
+	"containerEnv": {"GEOIPS_OUTDIRS": "/geoips_outdir", "GEOIPS_REBUILD_REGISTRIES": "0"},
 	"runArgs": [
 		"--network=geoips_driver_testing"
 	],
