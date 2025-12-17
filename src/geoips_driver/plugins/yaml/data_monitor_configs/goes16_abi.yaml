@@ -1,29 +1,36 @@
 apiVersion: geoips_driver/v1
-kind: data_monitor_config
+name: goes16_abi
 interface: data_monitor_configs
 family: standard
-name: goes16_abi
-description: Information necessary to add metadata GOES16 ABI L1B to data files.
-docstring: ""
+description: Information necessary to add metadata to GOES-16 ABI L1B data files.
+docstring: |
+  Information necessary to monitor for GOES16 ABI L1B data files at CIRA.
 spec:
   file-metadata:
     goes16_abi_l1b:
       platform: goes16
       sensor: abi
       level: L1B
-      num_expected: 16
-      date: 's(?P<YYYY>\d{4})(?P<JJJ>\d{3})(?P<HH>\d{2})(?P<NN>\d{2})'
+      date: '.*s(?P<YYYY>\d{4})(?P<JJJ>\d{3})(?P<HH>\d{2})(?P<NN>\d{2}).*'
       match:
-        - '*M6C[01][1-6]*s{{ YYYY }}{{ JJJ }}{{ HH }}{{ NN }}*'
+        - '.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     full-disk:
       sector: Full-Disk
-      parent_dir: '/mnt/sat/grb/goes16/{{ YYYY }}/{{ YYYY }}_{{ MM }}_{{ DD }}_{{ JJJ }}/abi/L1b/RadF'
+      num_expected: 16
+      match:
+        - '.*RadF.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     conus:
       sector: CONUS
-      parent_dir: '/mnt/sat/grb/goes16/{{ YYYY }}/{{ YYYY }}_{{ MM }}_{{ DD }}_{{ JJJ }}/abi/L1b/RadC'
+      num_expected: 16
+      match:
+        - '.*RadC.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     meso1:
       sector: Meso1
-      parent_dir: '/mnt/sat/grb/goes16/{{ YYYY }}/{{ YYYY }}_{{ MM }}_{{ DD }}_{{ JJJ }}/abi/L1b/RadM1'
+      num_expected: 16
+      match:
+        - '.*RadM1.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     meso2:
       sector: Meso2
-      parent_dir: '/mnt/sat/grb/goes16/{{ YYYY }}/{{ YYYY }}_{{ MM }}_{{ DD }}_{{ JJJ }}/abi/L1b/RadM2'
+      num_expected: 16
+      match:
+        - '.*RadM2.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
