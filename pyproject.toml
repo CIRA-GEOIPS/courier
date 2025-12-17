@@ -17,11 +17,13 @@ classifiers = [
     "Operating System :: OS Independent",
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Typing :: Typed",
 ]
 
 include = [
     "src/geoips_driver/plugins/**/*.yaml",
     "src/geoips_driver/plugins/**/*.txt",
+    "src/geoips_driver/py.typed",
 ]
 
 [tool.poetry.dependencies] # must download to run
