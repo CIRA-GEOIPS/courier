@@ -14,9 +14,15 @@ spec:
   run:
     - file_watching_service:
         kind: data_monitor
-        name: FileSystemPoller-Watchdog # this is the plugin name
+        name: file_system_poller_watchdog # this is the plugin name
         config:
           path: /workspaces/geoips_driver/tests/fake-watch-dir
+          metadata-tools:
+              - goes16_abi
+              - goes18_abi
+              - himawari9_ahi
+              - meteosat9_seviri
+              - meteosat10_seviri
     - this_builds_jobs:
         kind: job_builder
         name: DummyJobBuilder
@@ -27,5 +33,5 @@ spec:
         config:
           bash_script: |
            echo "This is a test! A Script! A ~SCRIPTTT~"
-           echo {file}
+           echo {file} # this is a templated field
            python3 -c "print('this is arbitrary python')"
