@@ -32,6 +32,6 @@ spec:
         name: serial_bash_dispatcher
         config:
           bash_script: |
-           echo "This is a test! A Script! A ~SCRIPTTT~"
+           echo "This is a test! A Script! A ~SCRIPT~"
            echo {file} # this is a templated field
            python3 -c "print('this is arbitrary python')"

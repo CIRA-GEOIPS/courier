@@ -388,7 +388,7 @@ def apply_metadata_from_configs(
     """
     filename = file_obj.file.resolve() if file_obj.file is not None else None
     if not filename:
-        raise ValueError("File object must have a valid 'file' path set.")
+        raise ValueError
     date_components: dict[str, str] = {}
     matched_entries: list[str] = []
     configs_checked: list[str] = [c.name for c in configs]

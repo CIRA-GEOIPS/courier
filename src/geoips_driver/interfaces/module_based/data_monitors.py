@@ -29,7 +29,7 @@ class DataMonitorBasePlugin(ServicePlugin):
         self._running = False
         self.config = config
         # importing here to prevent circular import
-        from geoips_driver.interfaces import data_monitor_configs
+        from geoips_driver.interfaces import data_monitor_configs  # noqa: PLC0415
 
         self.metadata_matchers = [
             data_monitor_configs.get_plugin(tool)
