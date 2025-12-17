@@ -19,7 +19,7 @@ spec:
           path: /workspaces/geoips_driver/tests/fake-watch-dir
           metadata-tools:
               - goes16_abi
-              - goes18_abi
+              #- goes18_abi
               - himawari9_ahi
               - meteosat9_seviri
               - meteosat10_seviri
@@ -29,7 +29,7 @@ spec:
         config: null # just using defaults
     - dispatch_those_jobs:
         kind: dispatcher
-        name: serial_bash_dispatcher
+        name: serial_bash
         config:
           bash_script: |
            echo "This is a test! A Script! A ~SCRIPT~"

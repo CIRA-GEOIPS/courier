@@ -386,7 +386,7 @@ def apply_metadata_from_configs(
     >>> print(f.platform)
     goes16
     """
-    filename = file_obj.file.resolve() if file_obj.file is not None else None
+    filename = str(file_obj.file.resolve()) if file_obj.file is not None else None
     if not filename:
         raise ValueError
     date_components: dict[str, str] = {}

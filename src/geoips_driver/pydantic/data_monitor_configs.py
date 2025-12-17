@@ -146,7 +146,7 @@ class FileMetadataEntry(BaseModel):
     """
 
     model_config = ConfigDict(
-        extra="forbid",
+        extra="allow",
         str_strip_whitespace=True,
     )
 

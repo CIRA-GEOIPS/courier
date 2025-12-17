@@ -6,7 +6,7 @@ from geoips_driver.interfaces.module_based.job_builders import (
     JobGroup,
 )
 from geoips_driver.interfaces.module_based.service import Service, setup_logging
-from geoips_driver.types.file import File
+from geoips_driver.types.file import File, FrozenFile
 
 logger = setup_logging("dummy_job_builder")
 
@@ -31,7 +31,7 @@ class DummyJob(Job):
         """
         return True  # if len(self.files) > 0 else False
 
-    def add_file(self, file: File) -> None:
+    def add_file(self, file: File | FrozenFile) -> None:
         """Add a file to the job with a maximum limit of one file.
 
         Parameters
@@ -81,7 +81,7 @@ class DummyJobGroup(JobGroup):
         super().__init__("DummyJob", config)
         self.job = DummyJob
 
-    def file_is_relevant(self, file: File) -> bool:  # noqa: ARG002
+    def file_is_relevant(self, file: File | FrozenFile) -> bool:  # noqa: ARG002
         """Determine if a file is relevant to this job group.
 
         Parameters
@@ -96,7 +96,7 @@ class DummyJobGroup(JobGroup):
         """
         return True
 
-    def get_job_id_from_file(self, file: File) -> str:
+    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
         """Get the job ID associated with a file.
 
         Parameters
@@ -109,7 +109,7 @@ class DummyJobGroup(JobGroup):
         str
             The job ID associated with the file.
         """
-        return super().get_job_id_from_file(file)
+        return super().get_job_ids_from_file(file)
 
 
 class DummyJobBuilder(JobBuilder):

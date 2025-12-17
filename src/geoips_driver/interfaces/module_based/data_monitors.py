@@ -12,6 +12,7 @@ from geoips_driver.interfaces.module_based.service import (
     log_execution,
     setup_logging,
 )
+from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
 from geoips_driver.types.file import File
 from geoips_driver.utils.metadata import apply_metadata_from_configs
 
@@ -32,7 +33,7 @@ class DataMonitorBasePlugin(ServicePlugin):
         from geoips_driver.interfaces import data_monitor_configs  # noqa: PLC0415
 
         self.metadata_matchers = [
-            data_monitor_configs.get_plugin(tool)
+            DataMonitorConfig(**data_monitor_configs.get_plugin(tool))
             for tool in config.get("metadata-tools", [])
         ]
 
@@ -55,9 +56,10 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""
-        for file in self.find_file():
-            logger.info(f"Found file: {file}")
-            self.emit(file)
+        for incoming_file in self.find_file():
+            file_with_metadata = self.add_metadata_to_file(incoming_file)
+            logger.info(f"Found file: {file_with_metadata}")
+            self.emit(file_with_metadata)
 
     @log_execution
     def start(self) -> None:

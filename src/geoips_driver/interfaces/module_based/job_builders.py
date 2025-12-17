@@ -41,7 +41,7 @@ class Job:
         self.files = files
         self.last_modified = last_modified if last_modified is not None else time.time()
         self.timeout = timeout
-        if self.files == {}:
+        if self.files == frozenset():
             self.files = set()
 
     def __str__(self) -> str:
@@ -73,7 +73,7 @@ class Job:
             name=data["name"],
             identifier=data["identifier"],
             config=data["config"],
-            files={File.from_string(f).freeze() for f in data.get("files", [])},
+            files={FrozenFile.from_string(f) for f in data.get("files", [])},
             last_modified=data.get("last_modified"),
             timeout=data.get("timeout", 60 * 60 * 24),
         )
@@ -82,7 +82,7 @@ class Job:
         """Return true if job is ready to be emitted."""
         return False
 
-    def add_file(self, file: File) -> None:
+    def add_file(self, file: File | FrozenFile) -> None:
         """Add file to job."""
         # ignore type because self.files is initialized as frozenset by default
         # but..... is set in init anyways if empty
@@ -107,27 +107,28 @@ class JobGroup:
         """Return list of ready jobs."""
         return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
 
-    def file_is_relevant(self, file: File) -> bool:  # noqa: ARG002
+    def file_is_relevant(self, file: File | FrozenFile) -> bool:  # noqa: ARG002
         """Return true if file is relevant to this job group."""
         return False
 
-    def get_job_id_from_file(self, file: File) -> str:
+    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
         """Return job ID from file."""
-        return str(file.file)
+        return [str(file.file)]
 
-    def add_file(self, file: File) -> bool:
+    def add_file(self, file: File | FrozenFile) -> bool:
         """Add file to appropriate job in job group.
 
         Return true if file was added to a job, false otherwise.
         """
         if not self.file_is_relevant(file):
             return False
-        jid = self.get_job_id_from_file(file)
-        if jid in self.jobs:
-            self.jobs[jid].add_file(file)
-        else:
-            self.jobs[jid] = self.job(self.name, jid, self.config)
-            self.jobs[jid].add_file(file)
+        job_ids = self.get_job_ids_from_file(file)
+        for job_id in job_ids:
+            if job_id in self.jobs:
+                self.jobs[job_id].add_file(file)
+            else:
+                self.jobs[job_id] = self.job(self.name, job_id, self.config)
+                self.jobs[job_id].add_file(file)
         return True
 
 
@@ -154,7 +155,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         logger.debug("Starting to handle incoming files")
         for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
             logger.debug(f"Received file {file_string} from file queue")
-            file = File.from_string(str(file_string))
+            file = FrozenFile.from_string(str(file_string))
             for job_group in self.job_groups:
                 logger.debug(f"Processing file {file} in job group {job_group.name}")
                 if job_group.add_file(file):  # aka file added

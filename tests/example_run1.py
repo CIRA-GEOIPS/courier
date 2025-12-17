@@ -44,25 +44,3 @@ def run_service(config: dict)-> None:
 
 dummy_cli.run_with_config = run_service # type: ignore
 dummy_cli.app()
-
-"""
-
-from geoips_driver.plugins.modules.job_queuers.dummy_job_queuer import (
-OVERCASTJobQueuer,
-)
-
-from geoips_driver.plugins.modules.data_monitors.file_system_polling import (
-FileSystemPoller,
-)
-from geoips_driver.plugins.modules.dispatchers.serial import (
-SerialDispatcher,
-)
-
-plugins = [
-(FileSystemPoller, plugin_config),
-(OVERCASTJobQueuer, plugin_config),
-(SerialDispatcher, plugin_config),
-]
-
-
-"""
