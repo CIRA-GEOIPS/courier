@@ -197,7 +197,7 @@ class FileMetadataEntry(BaseModel):
         Returns
         -------
         str | None
-            The validated, uppercased sector value.
+            The validated, uppercase sector value.
 
         Raises
         ------

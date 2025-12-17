@@ -9,7 +9,6 @@ from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-un
 
 from geoips_driver.interfaces.module_based.data_monitors import (
     FILE_FOUND_QUEUE,
-    File,
 )
 from geoips_driver.interfaces.module_based.service import (
     Service,
@@ -17,6 +16,7 @@ from geoips_driver.interfaces.module_based.service import (
     log_execution,
     setup_logging,
 )
+from geoips_driver.types.file import File, FrozenFile
 
 logger = setup_logging()
 
@@ -31,7 +31,7 @@ class Job:
         name: str,
         identifier: str,
         config: Any,
-        files: set[File] | frozenset[Never] = frozenset(),
+        files: set[File | FrozenFile] | frozenset[Never] = frozenset(),
         last_modified: float | None = None,
         timeout: float = 60 * 60 * 24,
     ) -> None:
@@ -73,7 +73,7 @@ class Job:
             name=data["name"],
             identifier=data["identifier"],
             config=data["config"],
-            files={File.from_string(f) for f in data.get("files", [])},
+            files={File.from_string(f).freeze() for f in data.get("files", [])},
             last_modified=data.get("last_modified"),
             timeout=data.get("timeout", 60 * 60 * 24),
         )

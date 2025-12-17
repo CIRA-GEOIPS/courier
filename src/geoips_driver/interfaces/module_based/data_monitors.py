@@ -1,10 +1,7 @@
 """Python class for the data_monitors geoips_driver interface."""
 
-import json
 import threading
 from collections.abc import Generator
-from dataclasses import dataclass
-from pathlib import Path
 from typing import ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
@@ -15,44 +12,11 @@ from geoips_driver.interfaces.module_based.service import (
     log_execution,
     setup_logging,
 )
+from geoips_driver.types.file import File
 
 logger = setup_logging()
 
 FILE_FOUND_QUEUE = "FilesFoundQueue"
-
-
-@dataclass(frozen=True)
-class File:
-    """File dataclass."""
-
-    file: Path | None = None
-    hostname: str | None = None
-
-    def __str__(self) -> str:
-        """Convert File to JSON string."""
-        return json.dumps(
-            {
-                "file": str(self.file) if self.file else None,
-                "hostname": self.hostname,
-            },
-        )
-
-    @classmethod
-    def from_string(cls, s: str) -> "File":
-        """Initialize File from JSON string.
-
-        Args:
-            s: JSON string representation of File
-
-        Returns
-        -------
-            File instance
-        """
-        data = json.loads(s)
-        return cls(
-            file=Path(data["file"]) if data.get("file") else None,
-            hostname=data.get("hostname"),
-        )
 
 
 class DataMonitorBasePlugin(ServicePlugin):

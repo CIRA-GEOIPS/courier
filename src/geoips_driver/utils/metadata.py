@@ -13,7 +13,6 @@ from typing import Any
 from geoips_driver.pydantic.data_monitor_configs import (
     DataMonitorConfig,
     FileMetadataEntry,
-    Metadata,
 )
 from geoips_driver.types.file import File, build_timestamp_from_components
 
@@ -143,13 +142,13 @@ def _extract_date_components_from_regex(
     return components
 
 
-def _get_manual_date_components(metadata: Metadata) -> dict[str, str]:
-    """Extract manually specified date components from metadata.
+def _get_manual_date_components(entry: FileMetadataEntry) -> dict[str, str]:
+    """Extract manually specified date components from entry.
 
     Parameters
     ----------
-    metadata : Metadata
-        The metadata object to extract from.
+    entry : FileMetadataEntry
+        The entry to extract from.
 
     Returns
     -------
@@ -158,18 +157,18 @@ def _get_manual_date_components(metadata: Metadata) -> dict[str, str]:
     """
     components: dict[str, str] = {}
 
-    if metadata.yyyy is not None:
-        components["YYYY"] = metadata.yyyy
-    if metadata.mm is not None:
-        components["MM"] = metadata.mm
-    if metadata.dd is not None:
-        components["DD"] = metadata.dd
-    if metadata.jjj is not None:
-        components["JJJ"] = metadata.jjj
-    if metadata.hh is not None:
-        components["HH"] = metadata.hh
-    if metadata.nn is not None:
-        components["NN"] = metadata.nn
+    if entry.yyyy is not None:
+        components["YYYY"] = entry.yyyy
+    if entry.mm is not None:
+        components["MM"] = entry.mm
+    if entry.dd is not None:
+        components["DD"] = entry.dd
+    if entry.jjj is not None:
+        components["JJJ"] = entry.jjj
+    if entry.hh is not None:
+        components["HH"] = entry.hh
+    if entry.nn is not None:
+        components["NN"] = entry.nn
 
     return components
 
@@ -197,8 +196,8 @@ def _build_timestamp_from_entry(
     """
     components = dict(accumulated_components)
 
-    # Add manual components from metadata
-    manual = _get_manual_date_components(entry.metadata)
+    # Add manual components from entry
+    manual = _get_manual_date_components(entry)
     components.update(manual)
 
     # Extract components from regex if date pattern exists
@@ -298,16 +297,14 @@ def _apply_metadata_from_entry(
     MetadataConflictError
         If metadata values conflict.
     """
-    metadata = entry.metadata
+    # Apply simple metadata fields directly from entry
+    _check_and_set_field(file_obj, "platform", entry.platform, entry_name)
+    _check_and_set_field(file_obj, "sensor", entry.sensor, entry_name)
+    _check_and_set_field(file_obj, "level", entry.level, entry_name)
+    _check_and_set_field(file_obj, "sector", entry.sector, entry_name)
+    _check_and_set_field(file_obj, "num_expected", entry.num_expected, entry_name)
 
-    # Apply simple metadata fields
-    _check_and_set_field(file_obj, "platform", metadata.platform, entry_name)
-    _check_and_set_field(file_obj, "sensor", metadata.sensor, entry_name)
-    _check_and_set_field(file_obj, "level", metadata.level, entry_name)
-    _check_and_set_field(file_obj, "sector", metadata.sector, entry_name)
-    _check_and_set_field(file_obj, "num_expected", metadata.num_expected, entry_name)
-
-    # Build and apply datetime
+    # Build and apply timestamp
     dt, updated_components = _build_timestamp_from_entry(
         entry,
         filename,
@@ -315,7 +312,7 @@ def _apply_metadata_from_entry(
     )
 
     if dt is not None:
-        _check_and_set_field(file_obj, "datetime", dt, entry_name)
+        _check_and_set_field(file_obj, "timestamp", dt, entry_name)
 
     return updated_components
 

@@ -1,7 +1,6 @@
-"""File dataclass with metadata support for satellite data files.
+"""File dataclass with metadata support for geo-related data files.
 
-This module provides a File class that stores file information along with
-metadata extracted from satellite data configuration files.
+This module provides a File class that stores file information along with metadata.
 """
 
 import json

@@ -9,9 +9,9 @@ from watchdog.observers import Observer
 
 from geoips_driver.interfaces.module_based.data_monitors import (
     DataMonitorBasePlugin,
-    File,
 )
 from geoips_driver.interfaces.module_based.service import Service, setup_logging
+from geoips_driver.types.file import File
 
 logger = setup_logging("FSPolling")
 
