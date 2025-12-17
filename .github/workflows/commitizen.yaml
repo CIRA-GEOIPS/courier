@@ -6,29 +6,21 @@ permissions:
   contents: read
 
 jobs:
-  commitlint:
+  commitizen:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Setup node
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          node-version: lts/*
-      - name: Install commitlint
-        run: npm install -D @commitlint/cli @commitlint/config-conventional
-      - name: Print versions
-        run: |
-          git --version
-          node --version
-          npm --version
-          npx commitlint --version
-
-      - name: Validate current commit (last commit) with commitlint
+          python-version: '3.x'
+      - name: Install Commitizen
+        run: pip install commitizen
+      - name: Check commit messages
         if: github.event_name == 'push'
-        run: npx commitlint --last --verbose
-
-      - name: Validate PR commits with commitlint
+        run: cz check --rev-range HEAD
+      - name: Check PR commit messages
         if: github.event_name == 'pull_request'
-        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+        run: cz check --rev-range ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
