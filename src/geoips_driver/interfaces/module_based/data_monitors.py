@@ -13,6 +13,7 @@ from geoips_driver.interfaces.module_based.service import (
     setup_logging,
 )
 from geoips_driver.types.file import File
+from geoips_driver.utils.metadata import apply_metadata_from_configs
 
 logger = setup_logging()
 
@@ -27,6 +28,13 @@ class DataMonitorBasePlugin(ServicePlugin):
         self.queue = FILE_FOUND_QUEUE
         self._running = False
         self.config = config
+        # importing here to prevent circular import
+        from geoips_driver.interfaces import data_monitor_configs
+
+        self.metadata_matchers = [
+            data_monitor_configs.get_plugin(tool)
+            for tool in config.get("metadata-tools", [])
+        ]
 
     def find_file(self) -> Generator[File, None, None]:
         """Yield File objects."""
@@ -36,6 +44,14 @@ class DataMonitorBasePlugin(ServicePlugin):
         """Emit file to parent service."""
         logger.debug(f"Emitting file: {file}")
         self.parent_service.emit(queue=self.queue, message=str(file))
+
+    def add_metadata_to_file(self, file: File) -> File:
+        """Add metadata to file before emitting."""
+        return apply_metadata_from_configs(
+            file_obj=file,
+            configs=self.metadata_matchers,
+            require_match=False,
+        )
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""

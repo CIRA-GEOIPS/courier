@@ -16,7 +16,7 @@ def run_service(config: dict)-> None:
     print()
 
 
-    import geoips_driver.plugins.modules.data_monitors.file_system_polling as file_system_polling
+    import geoips_driver.plugins.modules.data_monitors.file_system_poller_watchdog as file_system_polling
     import geoips_driver.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
     import geoips_driver.plugins.modules.job_builders.dummy_job_builder as dummy_job_builder
     available_plugins = {

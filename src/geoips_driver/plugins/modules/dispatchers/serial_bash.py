@@ -16,7 +16,7 @@ logger = setup_logging()
 
 interface: str = "dispatchers"
 family: str = "standard"
-name = "serlial_bash_dispatcher"
+name = "serial_bash"
 
 
 class SerialBashDispatcher(Dispatcher):
@@ -24,7 +24,7 @@ class SerialBashDispatcher(Dispatcher):
 
     interface = "dispatchers"
 
-    name = "serial_bash_dispatcher"
+    name = "serial_bash"
     version = "-1"
 
     def __init__(self, service: Service, config: dict) -> None:

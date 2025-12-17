@@ -18,13 +18,13 @@ logger = setup_logging("FSPolling")
 
 interface: str = "data_monitors"
 family: str = "standard"
-name: str = "FileSystemPoller-Watchdog"
+name: str = "file_system_poller_watchdog"
 
 
 class FileSystemPoller(DataMonitorBasePlugin):
     """File System Polling Data Monitor Plugin."""
 
-    name = "FileSystemPoller-Watchdog"
+    name = "file_system_poller_watchdog"
     version = "0.0.0"
 
     def __init__(self, service: Service, config: dict) -> None:

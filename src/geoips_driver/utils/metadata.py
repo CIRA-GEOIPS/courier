@@ -347,8 +347,6 @@ def _find_matching_entries(
 def apply_metadata_from_configs(
     configs: Sequence[DataMonitorConfig],
     file_obj: File,
-    filename: str,
-    *,
     require_match: bool = True,
 ) -> File:
     """Apply metadata from matching config entries to a File object.
@@ -364,8 +362,6 @@ def apply_metadata_from_configs(
         Sequence of validated config models to search.
     file_obj : File
         The File object to update with metadata.
-    filename : str
-        The filename to match against config patterns.
     require_match : bool
         If True, raise NoMatchError if no entries match. Default True.
 
@@ -390,6 +386,9 @@ def apply_metadata_from_configs(
     >>> print(f.platform)
     goes16
     """
+    filename = file_obj.file.resolve() if file_obj.file is not None else None
+    if not filename:
+        raise ValueError("File object must have a valid 'file' path set.")
     date_components: dict[str, str] = {}
     matched_entries: list[str] = []
     configs_checked: list[str] = [c.name for c in configs]
@@ -415,69 +414,10 @@ def apply_metadata_from_configs(
     return file_obj
 
 
-def apply_metadata_from_configs_safe(
-    configs: Sequence[DataMonitorConfig],
-    file_obj: File,
-    filename: str,
-    *,
-    require_match: bool = True,
-) -> tuple[File, list[str], Exception | None]:
-    """Apply metadata from configs with error capture instead of raising.
-
-    Like apply_metadata_from_configs but captures exceptions instead of
-    raising them. Useful for batch processing where you want to continue
-    processing other files even if some fail.
-
-    Parameters
-    ----------
-    configs : Sequence[DataMonitorConfig]
-        Sequence of validated config models to search.
-    file_obj : File
-        The File object to update with metadata.
-    filename : str
-        The filename to match against config patterns.
-    require_match : bool
-        If True, return NoMatchError if no entries match. Default True.
-
-    Returns
-    -------
-    tuple[File, list[str], Exception | None]
-        Tuple of (file_obj, matched_entry_names, error_or_none).
-    """
-    date_components: dict[str, str] = {}
-    matched_entries: list[str] = []
-    configs_checked: list[str] = [c.name for c in configs]
-
-    try:
-        for config in configs:
-            matching = _find_matching_entries(config, filename)
-
-            for entry_name, entry in matching:
-                full_entry_name = f"{config.name}/{entry_name}"
-                matched_entries.append(full_entry_name)
-
-                date_components = _apply_metadata_from_entry(
-                    file_obj=file_obj,
-                    entry=entry,
-                    entry_name=full_entry_name,
-                    filename=filename,
-                    date_components=date_components,
-                )
-
-        if require_match and not matched_entries:
-            return file_obj, matched_entries, NoMatchError(filename, configs_checked)
-
-    except MetadataConflictError as e:
-        return file_obj, matched_entries, e
-
-    return file_obj, matched_entries, None
-
-
 def create_file_with_metadata(
     configs: Sequence[DataMonitorConfig],
     filename: str,
     *,
-    file_path: str | None = None,
     hostname: str | None = None,
     require_match: bool = True,
 ) -> File:
@@ -491,9 +431,7 @@ def create_file_with_metadata(
     configs : Sequence[DataMonitorConfig]
         Sequence of validated config models to search.
     filename : str
-        The filename to match against config patterns.
-    file_path : str | None
-        Optional full path to the file.
+        The filename (and path) to match against config patterns.
     hostname : str | None
         Optional hostname where file is located.
     require_match : bool
@@ -512,50 +450,12 @@ def create_file_with_metadata(
         If require_match is True and no config entries match.
     """
     file_obj = File(
-        file=Path(file_path) if file_path else None,
+        file=Path(filename),
         hostname=hostname,
     )
 
     return apply_metadata_from_configs(
         configs=configs,
         file_obj=file_obj,
-        filename=filename,
         require_match=require_match,
     )
-
-
-def batch_apply_metadata(
-    configs: Sequence[DataMonitorConfig],
-    filenames: Sequence[str],
-    *,
-    require_match: bool = False,
-) -> dict[str, tuple[File, list[str], Exception | None]]:
-    """Apply metadata to multiple files in batch.
-
-    Parameters
-    ----------
-    configs : Sequence[DataMonitorConfig]
-        Sequence of validated config models to search.
-    filenames : Sequence[str]
-        Sequence of filenames to process.
-    require_match : bool
-        If True, include NoMatchError for unmatched files. Default False.
-
-    Returns
-    -------
-    dict[str, tuple[File, list[str], Exception | None]]
-        Dictionary mapping filenames to (File, matched_entries, error) tuples.
-    """
-    results: dict[str, tuple[File, list[str], Exception | None]] = {}
-
-    for filename in filenames:
-        file_obj = File(file=Path(filename))
-        result = apply_metadata_from_configs_safe(
-            configs=configs,
-            file_obj=file_obj,
-            filename=filename,
-            require_match=require_match,
-        )
-        results[filename] = result
-
-    return results
