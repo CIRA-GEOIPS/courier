@@ -371,7 +371,8 @@ class FileMetadataEntry(BaseModel):
             regex = self._get_regex_date_components()
             all_comps = manual | regex
             msg = (
-                f"Insufficient date information for entry with platform '{self.platform}'. "
+                f"Insufficient date information for entry "
+                f"with platform '{self.platform}'. "
                 f"Requires YYYY and (MM + DD or JJJ). "
                 f"Found: {sorted(all_comps)}"
             )
