@@ -1,28 +1,30 @@
 apiVersion: geoips/driver/v1
 kind: Service
 name: testing_spec_not_complete
+description: This is for testing a basic workflow! Not a complete spec.
 docstring: |
-description: This is for testing! Not a complete spec.
+  This is for testing. Uses a file watcher, a "dummy" job builder that takes *any*
+  file and makes a single job out of it and a bash script job dispatcher that
+  just echos out the filename as a proof of concept.
 spec:
-  service_namespace: example_service1
-  heartbeat_interval: 1000
+  service_namespace: example_service1 # in case you wanted an "alpha" and "beta" and whatever else
+  heartbeat_interval: 1000 # for prometheus and loki
   rabbitmq:
     host: rabbitmq
     port: 5672
-    username: admin
+    username: admin # these could be secrets
     password: admin_test
   run:
     - file_watching_service:
         kind: data_monitor
         name: file_system_poller_watchdog # this is the plugin name
         config:
-          path: /workspaces/geoips_driver/tests/fake-watch-dir
+          path: /workspaces/geoips_driver/tests/fake-watch-dir # where to watch
           metadata-tools:
-              - goes16_abi
-              #- goes18_abi
-              - himawari9_ahi
-              - meteosat9_seviri
-              - meteosat10_seviri
+              - goes16_abi # This looks for filenames that look like goes16 files
+              - himawari9_ahi # In the future these could also be module based plugins
+              - meteosat9_seviri # But for now they are "just" YAML plugins
+              - meteosat10_seviri # A few are defined by default in the core rt package
     - this_builds_jobs:
         kind: job_builder
         name: DummyJobBuilder
@@ -32,6 +34,6 @@ spec:
         name: serial_bash
         config:
           bash_script: |
-           echo "This is a test! A Script! A ~SCRIPT~"
+           echo "This is a test! A Script! A ~SCRIPT~ that does !!~TESTING~!!"
            echo {file} # this is a templated field
-           python3 -c "print('this is arbitrary python')"
+           python3 -c "print('this is arbitrary python talking about the file {file}')"

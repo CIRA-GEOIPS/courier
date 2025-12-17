@@ -135,7 +135,7 @@ dmypy.json
 Thumbs.db
 
 # Test artifacts
-tests/fake-watch-dir/
+tests/fake-watch-dir/*
 tests/multiprocessing/temp_scripts/
 
 
