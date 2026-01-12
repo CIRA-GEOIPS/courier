@@ -5,6 +5,7 @@ from collections.abc import Generator
 from typing import ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+from prometheus_client import Counter
 
 from geoips_driver.interfaces.module_based.service import (
     Service,
@@ -37,6 +38,14 @@ class DataMonitorBasePlugin(ServicePlugin):
             for tool in config.get("metadata-tools", [])
         ]
 
+        self.files_processed = Counter(
+            f"files_processed_{self.name}",
+            f"Total number of files processed by {self.name} data monitor",
+            [
+                "status",
+            ],  # Labels for prometheus metric
+        )
+
     def find_file(self) -> Generator[File, None, None]:
         """Yield File objects."""
         yield File(file=None, hostname=None)
@@ -57,9 +66,14 @@ class DataMonitorBasePlugin(ServicePlugin):
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""
         for incoming_file in self.find_file():
-            file_with_metadata = self.add_metadata_to_file(incoming_file)
-            logger.info(f"Found file: {file_with_metadata}")
-            self.emit(file_with_metadata)
+            try:
+                file_with_metadata = self.add_metadata_to_file(incoming_file)
+                logger.info(f"Found file: {file_with_metadata}")
+                self.emit(file_with_metadata)
+                self.files_processed.labels(status="success").inc()
+            except Exception:
+                self.files_processed.labels(status="failure").inc()
+                logger.exception(f"Error processing file {incoming_file}")
 
     @log_execution
     def start(self) -> None:

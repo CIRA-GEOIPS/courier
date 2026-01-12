@@ -4,6 +4,7 @@ import queue
 from collections.abc import Generator
 from pathlib import Path
 
+from prometheus_client import Gauge
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -31,6 +32,12 @@ class FileSystemPoller(DataMonitorBasePlugin):
         super().__init__(service, config)
         self.health = False
         self.path_to_watch = config["path"]
+        # Gauge that stores the Unix timestamp of last processing
+        # more as a demonstration than for actual use here
+        self.last_file_processed_timestamp = Gauge(
+            f"last_file_emitted_timestamp_seconds_{self.name}",
+            "Unix timestamp when the last file was processed",
+        )
 
     def is_healthy(self) -> bool:
         """Check if the data monitor is healthy."""
@@ -80,6 +87,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
             self.health = True
             while True:
                 yield File(file=Path(str(file_queue.get())), hostname="localhost")
+                self.last_file_processed_timestamp.set_to_current_time()
         finally:
             observer.stop()
             observer.join()
