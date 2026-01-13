@@ -7,17 +7,15 @@ from typing import ClassVar
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter
 
+from geoips_driver.interfaces.module_based.logging import get_logger
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
     log_execution,
-    setup_logging,
 )
 from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
 from geoips_driver.types.file import File
 from geoips_driver.utils.metadata import apply_metadata_from_configs
-
-logger = setup_logging()
 
 FILE_FOUND_QUEUE = "FilesFoundQueue"
 
@@ -27,6 +25,7 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
+        self._logger = get_logger("plugin", self.name, service._config)
         self.queue = FILE_FOUND_QUEUE
         self._running = False
         self.config = config
@@ -52,7 +51,7 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def emit(self, file: File) -> None:
         """Emit file to parent service."""
-        logger.debug(f"Emitting file: {file}")
+        self._logger.debug(f"Emitting file: {file}")
         self.parent_service.emit(queue=self.queue, message=str(file))
 
     def add_metadata_to_file(self, file: File) -> File:
@@ -68,12 +67,12 @@ class DataMonitorBasePlugin(ServicePlugin):
         for incoming_file in self.find_file():
             try:
                 file_with_metadata = self.add_metadata_to_file(incoming_file)
-                logger.info(f"Found file: {file_with_metadata}")
+                self._logger.info(f"Found file: {file_with_metadata}")
                 self.emit(file_with_metadata)
                 self.files_processed.labels(status="success").inc()
             except Exception:
                 self.files_processed.labels(status="failure").inc()
-                logger.exception(f"Error processing file {incoming_file}")
+                self._logger.exception(f"Error processing file {incoming_file}")
 
     @log_execution
     def start(self) -> None:

@@ -11,10 +11,8 @@ from watchdog.observers import Observer
 from geoips_driver.interfaces.module_based.data_monitors import (
     DataMonitorBasePlugin,
 )
-from geoips_driver.interfaces.module_based.service import Service, setup_logging
+from geoips_driver.interfaces.module_based.service import Service
 from geoips_driver.types.file import File
-
-logger = setup_logging("FSPolling")
 
 
 interface: str = "data_monitors"
@@ -63,7 +61,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
             str: The path of a newly created file.
         """
         path = self.path_to_watch
-        logger.info(f"Starting to watch directory: {path}")
+        self._logger.info(f"Starting to watch directory: {path}")
         file_queue: queue.Queue[str | bytes] = queue.Queue()
 
         # This handler simply puts the path of any new file into the queue

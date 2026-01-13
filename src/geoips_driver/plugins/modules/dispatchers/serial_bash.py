@@ -10,9 +10,7 @@ from geoips_driver.interfaces.module_based.dispatchers import (
     ExecutionLog,
 )
 from geoips_driver.interfaces.module_based.job_builders import Job
-from geoips_driver.interfaces.module_based.service import Service, setup_logging
-
-logger = setup_logging()
+from geoips_driver.interfaces.module_based.service import Service
 
 interface: str = "dispatchers"
 family: str = "standard"
@@ -31,7 +29,7 @@ class SerialBashDispatcher(Dispatcher):
         super().__init__(service, config)
         self.config = config
         self.bash_script = config["bash_script"]
-        logger.debug(f"Initialized SerialBashDispatcher with config: {self.config}")
+        self._logger.debug(f"Initialized SerialBashDispatcher with config: {self.config}")
 
     def is_healthy(self) -> bool:
         """Check if the dispatcher is healthy."""
@@ -45,11 +43,11 @@ class SerialBashDispatcher(Dispatcher):
             The log results of executing a GeoIPS processing workflow. Returns as a
             list of ExecutionLog objects.
         """
-        logger.info(f"Executing job: {job}")
+        self._logger.info(f"Executing job: {job}")
 
         # Create a temporary file for the bash script
         script_content = self.bash_script.format(file=next(iter(job.files)).file)
-        logger.debug(f"Generated script content:\n{script_content}")
+        self._logger.debug(f"Generated script content:\n{script_content}")
         with tempfile.NamedTemporaryFile(
             mode="w",
             suffix=".sh",
@@ -81,7 +79,7 @@ class SerialBashDispatcher(Dispatcher):
             ]
 
         except subprocess.TimeoutExpired as e:
-            logger.exception("Script execution timed out")
+            self._logger.exception("Script execution timed out")
             return [
                 ExecutionLog(
                     return_code=-1,
@@ -91,7 +89,7 @@ class SerialBashDispatcher(Dispatcher):
                 ),
             ]
         except Exception as e:
-            logger.exception("Error executing script")
+            self._logger.exception("Error executing script")
             return [
                 ExecutionLog(
                     return_code=-1,
@@ -105,7 +103,7 @@ class SerialBashDispatcher(Dispatcher):
             try:
                 Path(script_path).unlink()
             except Exception as e:
-                logger.warning(f"Failed to delete temporary script file: {e}")
+                self._logger.warning(f"Failed to delete temporary script file: {e}")
 
 
 def call() -> None:
