@@ -122,7 +122,7 @@ class Dispatcher(ServicePlugin):
                     ).inc()
 
                 except Exception:
-                    slef._logger.exception(f"Error processing job {job_id}")
+                    self._logger.exception(f"Error processing job {job_id}")
                     self.jobs_processed.labels(
                         status="failure",
                         dispatcher_name=self.name,
