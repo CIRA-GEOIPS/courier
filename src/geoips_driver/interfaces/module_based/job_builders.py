@@ -6,6 +6,7 @@ import time
 from typing import Any, ClassVar, Never
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+from prometheus_client import Counter, Gauge, Histogram
 
 from geoips_driver.interfaces.module_based.data_monitors import (
     FILE_FOUND_QUEUE,
@@ -133,6 +134,8 @@ class JobGroup:
 class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     """Base data filter plugin."""
 
+    name = "JobBuilder"
+
     def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service._config)
@@ -141,7 +144,33 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self.job_groups: list[JobGroup] = []
         self.config = config
 
-    name = "JobBuilder"
+        # Prometheus metrics
+        self.files_received = Counter(
+            f"job_builder_files_received_total_{self.name}",
+            f"Total number of files received by {self.name} job builder",
+            ["job_builder_name"],
+        )
+        self.jobs_built = Counter(
+            f"job_builder_jobs_built_total_{self.name}",
+            f"Total number of jobs built by {self.name} job builder",
+            ["status", "job_builder_name"],
+        )
+        self.active_job_groups = Gauge(
+            f"job_builder_active_job_groups_{self.name}",
+            f"Number of currently active job groups for {self.name} job builder",
+            ["job_builder_name"],
+        )
+        self.jobs_discarded = Counter(
+            f"job_builder_jobs_discarded_total_{self.name}",
+            f"Total number of old jobs discarded by {self.name} job builder",
+            ["job_builder_name"],
+        )
+        self.file_processing_duration = Histogram(
+            f"job_builder_file_processing_duration_seconds_{self.name}",
+            f"File processing duration in seconds for {self.name} job builder",
+            ["job_builder_name"],
+            buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0),
+        )
 
     def emit(self, job: Job) -> None:
         """Emit job to parent service."""
@@ -153,19 +182,61 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         """Listen to incoming files and mark job as ready when appropriate."""
         self._logger.debug("Starting to handle incoming files")
         for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
+            start_time = time.time()
+
+            # Record file received
+            self.files_received.labels(job_builder_name=self.name).inc()
             self._logger.debug(f"Received file {file_string} from file queue")
+
             file = FrozenFile.from_string(str(file_string))
+
             for job_group in self.job_groups:
-                self._logger.debug(f"Processing file {file} in job group {job_group.name}")
+                self._logger.debug(
+                    f"Processing file {file} in job group {job_group.name}",
+                )
+
                 if job_group.add_file(file):  # aka file added
-                    self._logger.debug(f"File {file} added to job group {job_group.name}")
+                    self._logger.debug(
+                        f"File {file} added to job group {job_group.name}",
+                    )
+
                     for ready_job in job_group.ready_jobs():
-                        self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
+                        self._logger.info(
+                            f"Job {ready_job.identifier} is ready; emitting",
+                        )
                         self.emit(ready_job)
-                for job in job_group.jobs.values():  # Clean up old jobs
+                        self.jobs_built.labels(
+                            status="ready",
+                            job_builder_name=self.name,
+                        ).inc()
+
+                # Clean up old jobs
+                jobs_to_delete = []
+                for job_id, job in job_group.jobs.items():
                     if job.is_old():
                         self._logger.info(f"Discarding old job {job.identifier}")
-                        del job
+                        self.jobs_discarded.labels(job_builder_name=self.name).inc()
+                        self.jobs_built.labels(
+                            status="old",
+                            job_builder_name=self.name,
+                        ).inc()
+                        jobs_to_delete.append(job_id)
+
+                # Delete old jobs after iteration
+                for job_id in jobs_to_delete:
+                    del job_group.jobs[job_id]
+
+            # Record file processing duration
+            processing_time = time.time() - start_time
+            self.file_processing_duration.labels(job_builder_name=self.name).observe(
+                processing_time,
+            )
+
+            # Update active job groups count
+            self.active_job_groups.labels(job_builder_name=self.name).set(
+                len(self.job_groups),
+            )
+
         self._logger.error("Exiting handle_incoming_files loop unexpectedly")
 
     @log_execution

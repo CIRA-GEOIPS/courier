@@ -323,8 +323,7 @@ class ServiceConfig:
         default_factory=lambda: os.environ.get("LOG_LEVEL", "DEBUG"),
     )
     production_mode: bool = field(
-        default_factory=lambda: os.environ.get("PRODUCTION", "false").lower()
-        == "true",
+        default_factory=lambda: os.environ.get("PRODUCTION", "false").lower() == "true",
     )
 
 
@@ -643,6 +642,17 @@ class Service:
             self._plugin_manager,
         ]
         self.namespace = "default"
+        self._start_time = time.time()
+
+        # Service-level Prometheus metrics
+        self._service_uptime_metric = prometheus_client.Gauge(
+            "service_uptime_seconds",
+            "Service uptime in seconds",
+        )
+        self._service_health_metric = prometheus_client.Gauge(
+            "service_health",
+            "Overall service health status (1 = healthy, 0 = unhealthy)",
+        )
 
     @log_execution
     def emit(self, queue: str, message: str) -> None:
@@ -726,7 +736,9 @@ class Service:
                 try:
                     message = body.decode("utf-8")
                     yield message
-                    self._logger.debug(f"Received message from queue '{queue}': {message}")
+                    self._logger.debug(
+                        f"Received message from queue '{queue}': {message}",
+                    )
 
                     # Fix: Ensure delivery_tag is an integer before Ack
                     if method_frame.delivery_tag is not None:
@@ -807,7 +819,9 @@ class Service:
             try:
                 manager.stop()
             except Exception as e:
-                self._logger.warning(f"Error stopping {manager.__class__.__name__}: {e}")
+                self._logger.warning(
+                    f"Error stopping {manager.__class__.__name__}: {e}",
+                )
 
         list(map(stop_manager, reversed(self._managers)))
 
@@ -847,6 +861,10 @@ class Service:
 
             if not self._signal_handler.shutdown_requested:
                 self._prometheus_manager.send_heartbeat()
+
+                # Update service-level metrics
+                self._service_uptime_metric.set(time.time() - self._start_time)
+                self._service_health_metric.set(1 if self._health_check() else 0)
 
                 # Log plugin status periodically
                 plugin_status = self._plugin_manager.get_plugin_status()
@@ -1125,7 +1143,9 @@ class PluginManager(ServiceManager):
                     plugin_name=plugin_info.plugin.name,
                 ).set(plugin_info.state.value)
 
-                self._logger.info(f"Plugin started successfully: {plugin_info.plugin.name}")
+                self._logger.info(
+                    f"Plugin started successfully: {plugin_info.plugin.name}",
+                )
 
                 # Keep thread alive while plugin is running
                 while self._running and plugin_info.state == PluginRunState.RUNNING:
@@ -1171,7 +1191,9 @@ class PluginManager(ServiceManager):
 
                 self._logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
             except Exception as e:
-                self._logger.warning(f"Error stopping plugin {plugin_info.plugin.name}: {e}")
+                self._logger.warning(
+                    f"Error stopping plugin {plugin_info.plugin.name}: {e}",
+                )
 
     def _monitor_plugins(self) -> None:
         """Monitor plugin health and restart failed plugins.
@@ -1200,7 +1222,9 @@ class PluginManager(ServiceManager):
                                 ).set(1 if is_healthy else 0)
 
                                 if not is_healthy:
-                                    self._logger.warning(f"Plugin {plugin_name} is unhealthy")
+                                    self._logger.warning(
+                                        f"Plugin {plugin_name} is unhealthy",
+                                    )
                                     plugin_info.state = PluginRunState.FAILED
                                     self._handle_failed_plugin(plugin_info)
 
@@ -1592,6 +1616,23 @@ class RabbitMQManager(ServiceManager):
         self._created_queues: set[str] = set()
         self._namespace = config.service_namespace
 
+        # Prometheus metrics for RabbitMQ
+        self._rabbitmq_connections_total = prometheus_client.Counter(
+            "rabbitmq_connections_total",
+            "Total number of RabbitMQ connection attempts",
+            ["status"],
+        )
+        self._rabbitmq_messages_sent_total = prometheus_client.Counter(
+            "rabbitmq_messages_sent_total",
+            "Total number of messages sent to RabbitMQ queues",
+            ["queue_name"],
+        )
+        self._rabbitmq_messages_received_total = prometheus_client.Counter(
+            "rabbitmq_messages_received_total",
+            "Total number of messages received from RabbitMQ queues",
+            ["queue_name"],
+        )
+
     @retry_with_backoff(exceptions=(AMQPConnectionError,))
     def _establish_connection(
         self,
@@ -1623,11 +1664,18 @@ class RabbitMQManager(ServiceManager):
         self._logger.debug(
             f"Attempting to connect to RabbitMQ at url {self._config.rabbitmq_url}",
         )
-        parameters = pika.URLParameters(self._config.rabbitmq_url)
-        connection = pika.BlockingConnection(parameters)
-        channel = connection.channel()
-        self._logger.debug("Successfully connected to RabbitMQ")
-        return connection, channel
+        try:
+            parameters = pika.URLParameters(self._config.rabbitmq_url)
+            connection = pika.BlockingConnection(parameters)
+            channel = connection.channel()
+            logger.debug("Successfully connected to RabbitMQ")
+            self._rabbitmq_connections_total.labels(status="success").inc()
+        except AMQPConnectionError:
+            self._rabbitmq_connections_total.labels(status="failure").inc()
+            self._logger.exception("Failed to connect to RabbitMQ")
+            raise
+        else:
+            return connection, channel
 
     @log_execution
     def start(self) -> None:
@@ -1711,7 +1759,9 @@ class RabbitMQManager(ServiceManager):
             # Declare existing queues on new connection
             for queue_name, config in self._queues.items():
                 if queue_name not in self._created_queues:
-                    self._logger.debug(f"Creating queue {queue_name} with config {config}")
+                    self._logger.debug(
+                        f"Creating queue {queue_name} with config {config}",
+                    )
                     channel.queue_declare(queue=queue_name, **config)
                     self._created_queues.add(queue_name)
 

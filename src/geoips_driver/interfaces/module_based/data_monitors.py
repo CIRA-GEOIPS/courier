@@ -2,7 +2,7 @@
 
 import threading
 from collections.abc import Generator
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter
@@ -103,6 +103,27 @@ class DataMonitorBasePlugin(ServicePlugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
+    def is_healthy(self) -> bool:
+        """Check if plugin is healthy."""
+        return self._running
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Return plugin-specific metrics."""
+        from prometheus_client import generate_latest
+        from io import BytesIO
+
+        # Extract metrics from the prometheus counters
+        metrics_dict = {}
+        # Get the counter value by collecting all samples
+        for sample in self.files_processed.collect():
+            for sample in sample.samples:
+                if sample.name == self.files_processed._name:
+                    metrics_dict[f"{self.name}_files_processed"] = {
+                        "value": sample.value,
+                        "labels": sample.labels
+                    }
+        return metrics_dict
 
 
 def call() -> None:
