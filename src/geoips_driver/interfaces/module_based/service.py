@@ -23,7 +23,7 @@ import prometheus_client
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.exceptions import AMQPConnectionError
 
-from geoips_driver.interfaces.module_based.logging import get_logger
+from geoips_driver.utils.logging import get_logger
 
 # Type variables for generic type hints
 T = TypeVar("T")

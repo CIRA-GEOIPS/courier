@@ -8,12 +8,9 @@ from prometheus_client import Gauge
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from geoips_driver.interfaces.module_based.data_monitors import (
-    DataMonitorBasePlugin,
-)
+from geoips_driver.interfaces.module_based.data_monitors import DataMonitorBasePlugin
 from geoips_driver.interfaces.module_based.service import Service
 from geoips_driver.types.file import File
-
 
 interface: str = "data_monitors"
 family: str = "standard"
@@ -79,7 +76,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
         except FileNotFoundError as e:
             raise RuntimeError(f"Directory '{path}' does not exist.") from e  # noqa: TRY003
 
-        logger.info(f"Watching for new files in '{path}'...")
+        self._logger.info(f"Watching for new files in '{path}'...")
 
         try:
             self.health = True

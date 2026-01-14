@@ -9,16 +9,13 @@ from typing import Any, ClassVar
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter, Gauge, Histogram
 
-from geoips_driver.interfaces.module_based.job_builders import (
-    JOB_READY_QUEUE,
-    Job,
-)
-from geoips_driver.interfaces.module_based.logging import get_logger
+from geoips_driver.interfaces.module_based.job_builders import JOB_READY_QUEUE, Job
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
     log_execution,
 )
+from geoips_driver.utils.logging import get_logger
 
 
 @dataclass(frozen=True)

@@ -2,11 +2,7 @@
 
 import logging
 
-from geoips_driver.interfaces.module_based.job_builders import (
-    Job,
-    JobBuilder,
-    JobGroup,
-)
+from geoips_driver.interfaces.module_based.job_builders import Job, JobBuilder, JobGroup
 from geoips_driver.interfaces.module_based.service import Service
 from geoips_driver.types.file import File, FrozenFile
 

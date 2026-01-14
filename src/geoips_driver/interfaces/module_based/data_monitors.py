@@ -7,7 +7,6 @@ from typing import Any, ClassVar
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter
 
-from geoips_driver.interfaces.module_based.logging import get_logger
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
@@ -15,6 +14,7 @@ from geoips_driver.interfaces.module_based.service import (
 )
 from geoips_driver.pydantic.data_monitor_configs import DataMonitorConfig
 from geoips_driver.types.file import File
+from geoips_driver.utils.logging import get_logger
 from geoips_driver.utils.metadata import apply_metadata_from_configs
 
 FILE_FOUND_QUEUE = "FilesFoundQueue"

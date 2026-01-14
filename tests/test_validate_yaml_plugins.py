@@ -2,16 +2,13 @@
 
 import pathlib
 from typing import Iterator
-from geoips.interfaces.base import BaseModuleInterface, BaseYamlInterface  # type: ignore[import-untyped]
 
 import pytest
+from geoips.interfaces.base import (  # type: ignore[import-untyped]
+    BaseModuleInterface, BaseYamlInterface)
 
-from geoips_driver.interfaces import (
-    data_monitor_configs,
-    data_monitors,
-    dispatchers,
-    job_builders,
-)
+from geoips_driver.interfaces import (data_monitor_configs, data_monitors,
+                                      dispatchers, job_builders)
 
 PLUGIN_REGISTRIES: dict[str, BaseYamlInterface | BaseModuleInterface] = {
     "data_monitor_configs": data_monitor_configs,

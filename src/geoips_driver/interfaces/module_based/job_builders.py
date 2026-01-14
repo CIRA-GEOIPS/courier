@@ -8,16 +8,14 @@ from typing import Any, ClassVar, Never
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter, Gauge, Histogram
 
-from geoips_driver.interfaces.module_based.data_monitors import (
-    FILE_FOUND_QUEUE,
-)
-from geoips_driver.interfaces.module_based.logging import get_logger
+from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
     log_execution,
 )
 from geoips_driver.types.file import File, FrozenFile
+from geoips_driver.utils.logging import get_logger
 
 JOB_READY_QUEUE = "JobReadyQueue"
 
@@ -194,12 +192,18 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 self._logger.debug(
                     f"Processing file {file} in job group {job_group.name}",
                 )
+<<<<<<< HEAD
 
+=======
+>>>>>>> e21c62e (style(logging-and-modules-that-log): ruff and mypy compliance)
                 if job_group.add_file(file):  # aka file added
                     self._logger.debug(
                         f"File {file} added to job group {job_group.name}",
                     )
+<<<<<<< HEAD
 
+=======
+>>>>>>> e21c62e (style(logging-and-modules-that-log): ruff and mypy compliance)
                     for ready_job in job_group.ready_jobs():
                         self._logger.info(
                             f"Job {ready_job.identifier} is ready; emitting",
