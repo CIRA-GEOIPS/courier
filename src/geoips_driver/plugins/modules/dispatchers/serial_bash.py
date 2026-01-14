@@ -5,10 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from geoips_driver.interfaces.module_based.dispatchers import (
-    Dispatcher,
-    ExecutionLog,
-)
+from geoips_driver.interfaces.module_based.dispatchers import Dispatcher, ExecutionLog
 from geoips_driver.interfaces.module_based.job_builders import Job
 from geoips_driver.interfaces.module_based.service import Service
 
