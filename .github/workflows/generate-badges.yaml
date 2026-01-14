@@ -64,8 +64,6 @@ jobs:
         continue-on-error: true
         run: |
           coverage run -m pytest --junitxml=reports/junit.xml
-          coverage xml -o reports/coverage.xml
-          coverage report
 
       - name: Generate pytest badge
         run: |
@@ -81,8 +79,8 @@ jobs:
 
       - name: Generate coverage badge
         run: |
-          if [ -f reports/coverage.xml ]; then
-            genbadge coverage -i reports/coverage.xml -o .github/badges/coverage-badge.svg -n "coverage"
+          if [ -f coverage.xml ]; then
+            genbadge coverage -i coverage.xml -o .github/badges/coverage-badge.svg -n "coverage"
           else
             python -c "
           from genbadge import Badge
