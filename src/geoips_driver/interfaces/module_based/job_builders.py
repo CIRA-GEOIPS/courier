@@ -7,16 +7,14 @@ from typing import Any, ClassVar, Never
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 
-from geoips_driver.interfaces.module_based.data_monitors import (
-    FILE_FOUND_QUEUE,
-)
-from geoips_driver.interfaces.module_based.logging import get_logger
+from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
     log_execution,
 )
 from geoips_driver.types.file import File, FrozenFile
+from geoips_driver.utils.logging import get_logger
 
 JOB_READY_QUEUE = "JobReadyQueue"
 
@@ -156,11 +154,17 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
             self._logger.debug(f"Received file {file_string} from file queue")
             file = FrozenFile.from_string(str(file_string))
             for job_group in self.job_groups:
-                self._logger.debug(f"Processing file {file} in job group {job_group.name}")
+                self._logger.debug(
+                    f"Processing file {file} in job group {job_group.name}",
+                )
                 if job_group.add_file(file):  # aka file added
-                    self._logger.debug(f"File {file} added to job group {job_group.name}")
+                    self._logger.debug(
+                        f"File {file} added to job group {job_group.name}",
+                    )
                     for ready_job in job_group.ready_jobs():
-                        self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
+                        self._logger.info(
+                            f"Job {ready_job.identifier} is ready; emitting",
+                        )
                         self.emit(ready_job)
                 for job in job_group.jobs.values():  # Clean up old jobs
                     if job.is_old():

@@ -23,7 +23,7 @@ import prometheus_client
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.exceptions import AMQPConnectionError
 
-from geoips_driver.interfaces.module_based.logging import get_logger
+from geoips_driver.utils.logging import get_logger
 
 # Type variables for generic type hints
 T = TypeVar("T")
@@ -323,8 +323,7 @@ class ServiceConfig:
         default_factory=lambda: os.environ.get("LOG_LEVEL", "DEBUG"),
     )
     production_mode: bool = field(
-        default_factory=lambda: os.environ.get("PRODUCTION", "false").lower()
-        == "true",
+        default_factory=lambda: os.environ.get("PRODUCTION", "false").lower() == "true",
     )
 
 
@@ -726,7 +725,9 @@ class Service:
                 try:
                     message = body.decode("utf-8")
                     yield message
-                    self._logger.debug(f"Received message from queue '{queue}': {message}")
+                    self._logger.debug(
+                        f"Received message from queue '{queue}': {message}",
+                    )
 
                     # Fix: Ensure delivery_tag is an integer before Ack
                     if method_frame.delivery_tag is not None:
@@ -807,7 +808,9 @@ class Service:
             try:
                 manager.stop()
             except Exception as e:
-                self._logger.warning(f"Error stopping {manager.__class__.__name__}: {e}")
+                self._logger.warning(
+                    f"Error stopping {manager.__class__.__name__}: {e}",
+                )
 
         list(map(stop_manager, reversed(self._managers)))
 
@@ -1125,7 +1128,9 @@ class PluginManager(ServiceManager):
                     plugin_name=plugin_info.plugin.name,
                 ).set(plugin_info.state.value)
 
-                self._logger.info(f"Plugin started successfully: {plugin_info.plugin.name}")
+                self._logger.info(
+                    f"Plugin started successfully: {plugin_info.plugin.name}",
+                )
 
                 # Keep thread alive while plugin is running
                 while self._running and plugin_info.state == PluginRunState.RUNNING:
@@ -1171,7 +1176,9 @@ class PluginManager(ServiceManager):
 
                 self._logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
             except Exception as e:
-                self._logger.warning(f"Error stopping plugin {plugin_info.plugin.name}: {e}")
+                self._logger.warning(
+                    f"Error stopping plugin {plugin_info.plugin.name}: {e}",
+                )
 
     def _monitor_plugins(self) -> None:
         """Monitor plugin health and restart failed plugins.
@@ -1200,7 +1207,9 @@ class PluginManager(ServiceManager):
                                 ).set(1 if is_healthy else 0)
 
                                 if not is_healthy:
-                                    self._logger.warning(f"Plugin {plugin_name} is unhealthy")
+                                    self._logger.warning(
+                                        f"Plugin {plugin_name} is unhealthy",
+                                    )
                                     plugin_info.state = PluginRunState.FAILED
                                     self._handle_failed_plugin(plugin_info)
 
@@ -1711,7 +1720,9 @@ class RabbitMQManager(ServiceManager):
             # Declare existing queues on new connection
             for queue_name, config in self._queues.items():
                 if queue_name not in self._created_queues:
-                    self._logger.debug(f"Creating queue {queue_name} with config {config}")
+                    self._logger.debug(
+                        f"Creating queue {queue_name} with config {config}",
+                    )
                     channel.queue_declare(queue=queue_name, **config)
                     self._created_queues.add(queue_name)
 

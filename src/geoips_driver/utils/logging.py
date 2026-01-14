@@ -15,7 +15,6 @@ setup_logging
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING, Any
 
 from rich.logging import RichHandler
@@ -71,7 +70,8 @@ class ContextAdapter(logging.LoggerAdapter):
     Examples
     --------
     >>> base_logger = logging.getLogger("my.logger")
-    >>> adapter = ContextAdapter(base_logger, {"source_type": "service", "source_name": "my-svc"})
+    >>> adapter = ContextAdapter(base_logger,
+                                {"source_type": "service", "source_name": "my-svc"})
     >>> adapter.info("Starting")  # Logs: [Service: my-svc] Starting
     """
 
@@ -101,7 +101,10 @@ class ContextAdapter(logging.LoggerAdapter):
         source_name = str(self.extra.get("source_name", "unknown"))
         # Capitalize first letter of source_type for display
         source_type_display = source_type.capitalize()
-        return f"[{source_type_display}: {source_name}] {msg}", kwargs if isinstance(kwargs, dict) else {}
+        return f"[{source_type_display}: {source_name}] {msg}", kwargs if isinstance(
+            kwargs,
+            dict,
+        ) else {}
 
 
 def _create_loki_handler(
@@ -128,20 +131,20 @@ def _create_loki_handler(
     Examples
     --------
     >>> logger = logging.getLogger("fallback")
-    >>> handler = _create_loki_handler("http://localhost:3100/loki/api/v1/push", {"service": "test"}, logger)
+    >>> handler = _create_loki_handler("http://localhost:3100/loki/api/v1/push",
+                                       {"service": "test"}, logger)
     """
     try:
-        import logging_loki  # type: ignore
+        import logging_loki  # type: ignore  # noqa: PLC0415
 
-        # Set level tag to 'level' for Grafana compatibility
-        logging_loki.emitter.LokiEmitter.level_tag = "level"  # type: ignore
+        # Set level tag to 'level' for Grafana
+        logging_loki.emitter.LokiEmitter.level_tag = "level"
 
         handler = logging_loki.LokiHandler(
             url=url,
             version="1",
             tags=tags,
         )
-        return handler
     except ImportError:
         fallback_logger.warning(
             "python-logging-loki not installed. Falling back to console-only logging. "
@@ -160,6 +163,8 @@ def _create_loki_handler(
             "Falling back to console-only logging.",
         )
         return None
+    else:
+        return handler
 
 
 def get_logger(
@@ -195,7 +200,7 @@ def get_logger(
     >>> from geoips_driver.interfaces.module_based.service import ServiceConfig
     >>> config = ServiceConfig()
     >>> logger = get_logger("service", "my-service-id", config)
-    >>> logger.info("Service starting")  # Logs: [Service: my-service-id] Service starting
+    >>> logger.info("Service start")  # Logs: [Service: my-service-id] Service start
 
     >>> # Without config (console-only, DEBUG level)
     >>> logger = get_logger("module", "my_module")
