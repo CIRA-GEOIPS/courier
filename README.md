@@ -1,5 +1,11 @@
 # geoips_driver
 
+![Tests](https://github.com/CIRA_GEOIPS/geoips-rt/blob/main/.github/badges/tests-badge.svg)
+![Mypy](https://github.com/CIRA_GEOIPS/geoips-rt/blob/main/.github/badges/mypy-badge.svg)
+![Ruff](https://github.com/CIRA_GEOIPS/geoips-rt/blob/main/.github/badges/ruff-badge.svg)
+![Install](https://github.com/CIRA_GEOIPS/geoips-rt/blob/main/.github/badges/install-badge.svg)
+![CSpell](https://github.com/CIRA_GEOIPS/geoips-rt/blob/main/.github/badges/cspell-badge.svg)
+![Commitizen](https://github.com/CIRA_GEOIPS/geoips-rt/blob/main/.github/badges/commitizen-badge.svg)
 
 ## Contributing
 
