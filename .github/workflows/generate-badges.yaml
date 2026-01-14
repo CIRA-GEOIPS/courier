@@ -63,7 +63,10 @@ jobs:
         id: pytest
         continue-on-error: true
         run: |
-          python -m pytest --junitxml=reports/junit.xml
+          python -m pip install coverage
+          coverage run -m pytest --junitxml=reports/junit.xml
+          coverage xml -o reports/coverage.xml
+          coverage report
 
       - name: Generate pytest badge
         run: |
