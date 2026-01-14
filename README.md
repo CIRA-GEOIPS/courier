@@ -8,7 +8,7 @@
 ![CSpell](.github/badges/cspell-badge.svg)
 ![Commitizen](.github/badges/commitizen-badge.svg)
 
-[![GitHub stars](https://img.shields.io/github/stars/CIRA_GEOIPS/geoips-rt.svg)](https://github.com/CIRA_GEOIPS/geoips-rt/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/CIRA-GEOIPS/geoips-rt.svg)](https://github.com/CIRA-GEOIPS/geoips-rt/stargazers)
 
 
 ## Contributing
