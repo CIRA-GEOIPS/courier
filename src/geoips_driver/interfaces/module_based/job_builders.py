@@ -192,18 +192,10 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 self._logger.debug(
                     f"Processing file {file} in job group {job_group.name}",
                 )
-<<<<<<< HEAD
-
-=======
->>>>>>> e21c62e (style(logging-and-modules-that-log): ruff and mypy compliance)
                 if job_group.add_file(file):  # aka file added
                     self._logger.debug(
                         f"File {file} added to job group {job_group.name}",
                     )
-<<<<<<< HEAD
-
-=======
->>>>>>> e21c62e (style(logging-and-modules-that-log): ruff and mypy compliance)
                     for ready_job in job_group.ready_jobs():
                         self._logger.info(
                             f"Job {ready_job.identifier} is ready; emitting",

@@ -67,20 +67,12 @@ class DataMonitorBasePlugin(ServicePlugin):
         for incoming_file in self.find_file():
             try:
                 file_with_metadata = self.add_metadata_to_file(incoming_file)
-<<<<<<< HEAD
                 self._logger.info(f"Found file: {file_with_metadata}")
-=======
-                logger.info(f"Found file: {file_with_metadata}")
->>>>>>> 99294a2 (Add example prometheus metrics)
                 self.emit(file_with_metadata)
                 self.files_processed.labels(status="success").inc()
             except Exception:
                 self.files_processed.labels(status="failure").inc()
-<<<<<<< HEAD
                 self._logger.exception(f"Error processing file {incoming_file}")
-=======
-                logger.exception(f"Error processing file {incoming_file}")
->>>>>>> 99294a2 (Add example prometheus metrics)
 
     @log_execution
     def start(self) -> None:
