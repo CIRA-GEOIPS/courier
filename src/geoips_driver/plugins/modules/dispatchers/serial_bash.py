@@ -26,7 +26,9 @@ class SerialBashDispatcher(Dispatcher):
         super().__init__(service, config)
         self.config = config
         self.bash_script = config["bash_script"]
-        self._logger.debug(f"Initialized SerialBashDispatcher with config: {self.config}")
+        self._logger.debug(
+            f"Initialized SerialBashDispatcher with config: {self.config}",
+        )
 
     def is_healthy(self) -> bool:
         """Check if the dispatcher is healthy."""
