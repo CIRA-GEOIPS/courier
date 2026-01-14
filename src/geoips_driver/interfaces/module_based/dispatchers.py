@@ -2,10 +2,12 @@
 
 import json
 import threading
+import time
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+from prometheus_client import Counter, Gauge, Histogram
 
 from geoips_driver.interfaces.module_based.job_builders import (
     JOB_READY_QUEUE,
@@ -58,6 +60,30 @@ class Dispatcher(ServicePlugin):
         self._running = False
         self.config = config
 
+        # Prometheus metrics
+        self.jobs_processed = Counter(
+            f"dispatcher_jobs_processed_total_{self.name}",
+            f"Total number of jobs processed by {self.name} dispatcher",
+            ["status", "dispatcher_name"],
+        )
+        self.job_execution_duration = Histogram(
+            f"dispatcher_job_execution_duration_seconds_{self.name}",
+            f"Job execution duration in seconds for {self.name} dispatcher",
+            ["dispatcher_name"],
+            buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
+        )
+        self.active_jobs = Gauge(
+            f"dispatcher_active_jobs_{self.name}",
+            f"Number of currently active jobs for {self.name} dispatcher",
+            ["dispatcher_name"],
+        )
+        self.execution_logs_emitted = Counter(
+            f"dispatcher_execution_logs_emitted_total_{self.name}",
+            f"Total number of execution logs emitted by {self.name} dispatcher",
+            ["dispatcher_name"],
+        )
+        self.active_job_timestamps = {}
+
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
         logger.debug(f"Yielding execution log for job: {job}")
@@ -78,8 +104,33 @@ class Dispatcher(ServicePlugin):
             for job_string in self.parent_service.consume(JOB_READY_QUEUE):
                 job = Job.from_string(str(job_string))
                 logger.debug(f"Received Job: {job}")
-                for ex_log in self.get_execution_log(job):
-                    self.emit(ex_log)
+
+                # Track job start time
+                start_time = time.time()
+                job_id = job.identifier
+                self.active_job_timestamps[job_id] = start_time
+                self.active_jobs.labels(dispatcher_name=self.name).inc()
+
+                try:
+                    execution_logs = self.get_execution_log(job)
+                    for ex_log in execution_logs:
+                        self.emit(ex_log)
+                        self.execution_logs_emitted.labels(dispatcher_name=self.name).inc()
+
+                    # Record successful processing
+                    self.jobs_processed.labels(status="success", dispatcher_name=self.name).inc()
+
+                except Exception as e:
+                    logger.exception(f"Error processing job {job_id}: {e}")
+                    self.jobs_processed.labels(status="failure", dispatcher_name=self.name).inc()
+
+                finally:
+                    # Track job execution duration
+                    if job_id in self.active_job_timestamps:
+                        execution_time = time.time() - self.active_job_timestamps[job_id]
+                        self.job_execution_duration.labels(dispatcher_name=self.name).observe(execution_time)
+                        del self.active_job_timestamps[job_id]
+                        self.active_jobs.labels(dispatcher_name=self.name).dec()
 
     @log_execution
     def start(self) -> None:
@@ -102,6 +153,52 @@ class Dispatcher(ServicePlugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
+    def is_healthy(self) -> bool:
+        """Check if plugin is healthy."""
+        return self._running
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Return plugin-specific metrics."""
+        metrics_dict = {}
+
+        # Collect jobs_processed metrics
+        for sample in self.jobs_processed.collect():
+            for s in sample.samples:
+                if s.name == self.jobs_processed._name:
+                    metrics_dict[f"{self.name}_jobs_processed"] = {
+                        "value": s.value,
+                        "labels": s.labels
+                    }
+
+        # Collect job_execution_duration metrics (histogram)
+        for sample in self.job_execution_duration.collect():
+            for s in sample.samples:
+                if s.name == self.job_execution_duration._name:
+                    metrics_dict[f"{self.name}_job_execution_duration"] = {
+                        "value": s.value,
+                        "labels": s.labels
+                    }
+
+        # Collect active_jobs metrics
+        for sample in self.active_jobs.collect():
+            for s in sample.samples:
+                if s.name == self.active_jobs._name:
+                    metrics_dict[f"{self.name}_active_jobs"] = {
+                        "value": s.value,
+                        "labels": s.labels
+                    }
+
+        # Collect execution_logs_emitted metrics
+        for sample in self.execution_logs_emitted.collect():
+            for s in sample.samples:
+                if s.name == self.execution_logs_emitted._name:
+                    metrics_dict[f"{self.name}_execution_logs_emitted"] = {
+                        "value": s.value,
+                        "labels": s.labels
+                    }
+
+        return metrics_dict
 
 
 def call() -> None:

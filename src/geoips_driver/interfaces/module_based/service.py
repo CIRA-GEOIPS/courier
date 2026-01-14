@@ -590,6 +590,17 @@ class Service:
             self._plugin_manager,
         ]
         self.namespace = "default"
+        self._start_time = time.time()
+
+        # Service-level Prometheus metrics
+        self._service_uptime_metric = prometheus_client.Gauge(
+            "service_uptime_seconds",
+            "Service uptime in seconds",
+        )
+        self._service_health_metric = prometheus_client.Gauge(
+            "service_health",
+            "Overall service health status (1 = healthy, 0 = unhealthy)",
+        )
 
     @log_execution
     def emit(self, queue: str, message: str) -> None:
@@ -794,6 +805,10 @@ class Service:
 
             if not self._signal_handler.shutdown_requested:
                 self._prometheus_manager.send_heartbeat()
+
+                # Update service-level metrics
+                self._service_uptime_metric.set(time.time() - self._start_time)
+                self._service_health_metric.set(1 if self._health_check() else 0)
 
                 # Log plugin status periodically
                 plugin_status = self._plugin_manager.get_plugin_status()
@@ -1536,6 +1551,23 @@ class RabbitMQManager(ServiceManager):
         self._created_queues: set[str] = set()
         self._namespace = config.service_namespace
 
+        # Prometheus metrics for RabbitMQ
+        self._rabbitmq_connections_total = prometheus_client.Counter(
+            "rabbitmq_connections_total",
+            "Total number of RabbitMQ connection attempts",
+            ["status"],
+        )
+        self._rabbitmq_messages_sent_total = prometheus_client.Counter(
+            "rabbitmq_messages_sent_total",
+            "Total number of messages sent to RabbitMQ queues",
+            ["queue_name"],
+        )
+        self._rabbitmq_messages_received_total = prometheus_client.Counter(
+            "rabbitmq_messages_received_total",
+            "Total number of messages received from RabbitMQ queues",
+            ["queue_name"],
+        )
+
     @retry_with_backoff(exceptions=(AMQPConnectionError,))
     def _establish_connection(
         self,
@@ -1567,11 +1599,17 @@ class RabbitMQManager(ServiceManager):
         logger.debug(
             f"Attempting to connect to RabbitMQ at url {self._config.rabbitmq_url}",
         )
-        parameters = pika.URLParameters(self._config.rabbitmq_url)
-        connection = pika.BlockingConnection(parameters)
-        channel = connection.channel()
-        logger.debug("Successfully connected to RabbitMQ")
-        return connection, channel
+        try:
+            parameters = pika.URLParameters(self._config.rabbitmq_url)
+            connection = pika.BlockingConnection(parameters)
+            channel = connection.channel()
+            logger.debug("Successfully connected to RabbitMQ")
+            self._rabbitmq_connections_total.labels(status="success").inc()
+            return connection, channel
+        except AMQPConnectionError as e:
+            self._rabbitmq_connections_total.labels(status="failure").inc()
+            logger.error(f"Failed to connect to RabbitMQ: {e}")
+            raise
 
     @log_execution
     def start(self) -> None:
