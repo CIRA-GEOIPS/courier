@@ -110,18 +110,15 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def get_metrics(self) -> dict[str, Any]:
         """Return plugin-specific metrics."""
-        from prometheus_client import generate_latest
-        from io import BytesIO
-
         # Extract metrics from the prometheus counters
         metrics_dict = {}
         # Get the counter value by collecting all samples
-        for sample in self.files_processed.collect():
-            for sample in sample.samples:
+        for item in self.files_processed.collect():
+            for sample in item.samples:
                 if sample.name == self.files_processed._name:
                     metrics_dict[f"{self.name}_files_processed"] = {
                         "value": sample.value,
-                        "labels": sample.labels
+                        "labels": sample.labels,
                     }
         return metrics_dict
 
