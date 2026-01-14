@@ -77,6 +77,18 @@ jobs:
           "
           fi
 
+      - name: Generate coverage badge
+        run: |
+          if [ -f reports/coverage.xml ]; then
+            genbadge coverage -i reports/coverage.xml -o .github/badges/coverage-badge.svg -n "coverage"
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='coverage', right_txt='error', color='red')
+          b.write_to('.github/badges/coverage-badge.svg', use_shields=False)
+          "
+          fi
+
       - name: Run mypy
         id: mypy
         continue-on-error: true
@@ -235,6 +247,7 @@ jobs:
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Pytest | ${{ steps.pytest.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${{ steps.coverage.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Mypy | ${{ steps.mypy.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Ruff | ${{ steps.ruff.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Install | ${{ steps.install.outcome }} |" >> $GITHUB_STEP_SUMMARY
