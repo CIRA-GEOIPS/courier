@@ -8,14 +8,9 @@ from prometheus_client import Gauge
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from geoips_driver.interfaces.module_based.data_monitors import (
-    DataMonitorBasePlugin,
-)
-from geoips_driver.interfaces.module_based.service import Service, setup_logging
+from geoips_driver.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from geoips_driver.interfaces.module_based.service import Service
 from geoips_driver.types.file import File
-
-logger = setup_logging("FSPolling")
-
 
 interface: str = "data_monitors"
 family: str = "standard"
@@ -63,7 +58,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
             str: The path of a newly created file.
         """
         path = self.path_to_watch
-        logger.info(f"Starting to watch directory: {path}")
+        self._logger.info(f"Starting to watch directory: {path}")
         file_queue: queue.Queue[str | bytes] = queue.Queue()
 
         # This handler simply puts the path of any new file into the queue
@@ -81,7 +76,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
         except FileNotFoundError as e:
             raise RuntimeError(f"Directory '{path}' does not exist.") from e  # noqa: TRY003
 
-        logger.info(f"Watching for new files in '{path}'...")
+        self._logger.info(f"Watching for new files in '{path}'...")
 
         try:
             self.health = True

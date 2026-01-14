@@ -1,14 +1,13 @@
 """Dummy job builder module for testing and demonstration purposes."""
 
-from geoips_driver.interfaces.module_based.job_builders import (
-    Job,
-    JobBuilder,
-    JobGroup,
-)
-from geoips_driver.interfaces.module_based.service import Service, setup_logging
+import logging
+
+from geoips_driver.interfaces.module_based.job_builders import Job, JobBuilder, JobGroup
+from geoips_driver.interfaces.module_based.service import Service
 from geoips_driver.types.file import File, FrozenFile
 
-logger = setup_logging("dummy_job_builder")
+# Module-level logger for DummyJob class (which doesn't inherit from ServicePlugin)
+_module_logger = logging.getLogger(__name__)
 
 interface: str = "job_builders"
 family: str = "standard"
@@ -49,7 +48,7 @@ class DummyJob(Job):
         file is not added.
         """
         if len(self.files) >= 1:
-            logger.warning(
+            _module_logger.warning(
                 "DummyJob: Maximum number of files reached; cannot add more.",
             )
             return
@@ -144,7 +143,7 @@ class DummyJobBuilder(JobBuilder):
             Configuration dictionary for the builder.
         """
         super().__init__(service, config)
-        logger.debug(f"Initializing DummyJobBuilder with config {config}")
+        self._logger.debug(f"Initializing DummyJobBuilder with config {config}")
         self.config = config
         self.job_groups = [DummyJobGroup(self.config)]
 
@@ -168,7 +167,7 @@ class DummyJobBuilder(JobBuilder):
         -------
         None
         """
-        logger.debug("DummyJobBuilder handling incoming files")
+        self._logger.debug("DummyJobBuilder handling incoming files")
         return super().handle_incoming_files()
 
 

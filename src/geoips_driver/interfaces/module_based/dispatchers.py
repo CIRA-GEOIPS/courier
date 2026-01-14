@@ -9,18 +9,13 @@ from typing import Any, ClassVar
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter, Gauge, Histogram
 
-from geoips_driver.interfaces.module_based.job_builders import (
-    JOB_READY_QUEUE,
-    Job,
-)
+from geoips_driver.interfaces.module_based.job_builders import JOB_READY_QUEUE, Job
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
     log_execution,
-    setup_logging,
 )
-
-logger = setup_logging()
+from geoips_driver.utils.logging import get_logger
 
 
 @dataclass(frozen=True)
@@ -56,6 +51,7 @@ class Dispatcher(ServicePlugin):
 
     def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
+        self._logger = get_logger("plugin", self.name, service._config)
         self.queue = "Dispatcher"
         self._running = False
         self.config = config
@@ -86,12 +82,12 @@ class Dispatcher(ServicePlugin):
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
-        logger.debug(f"Yielding execution log for job: {job}")
+        self._logger.debug(f"Yielding execution log for job: {job}")
         return [ExecutionLog(return_code=None, stdout=None, stderr=None, hostname=None)]
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
-        logger.debug(f"Emitting execution log: {execution_log}")
+        self._logger.debug(f"Emitting execution log: {execution_log}")
         self.parent_service.emit(queue=self.queue, message=str(execution_log))
 
     def handle_incoming_jobs(self) -> None:
@@ -103,7 +99,7 @@ class Dispatcher(ServicePlugin):
         while True:
             for job_string in self.parent_service.consume(JOB_READY_QUEUE):
                 job = Job.from_string(str(job_string))
-                logger.debug(f"Received Job: {job}")
+                self._logger.debug(f"Received Job: {job}")
 
                 # Track job start time
                 start_time = time.time()
@@ -126,7 +122,7 @@ class Dispatcher(ServicePlugin):
                     ).inc()
 
                 except Exception:
-                    logger.exception(f"Error processing job {job_id}")
+                    slef._logger.exception(f"Error processing job {job_id}")
                     self.jobs_processed.labels(
                         status="failure",
                         dispatcher_name=self.name,

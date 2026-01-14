@@ -26,7 +26,6 @@ words:
   - mypy
   - njpwerner
   - NOAA
-  - norecursedirs
   - numpy
   - pathlib
   - pinkrst
@@ -49,11 +48,20 @@ words:
   - tryceratops
   - typer
   - Uttmark
-  - venv
   - viewcode
   - xarray
+  - COMMITIZEN
+  - Mypy
+  - Pytest
 ignoreWords:
+  - norecursedirs
+  - venv
+  - brightgreen
+  - genbadge
+  - jpetrucciani
+  - junitxml
   - outdirs
+  - oneline
   - retval
   - addopts
   - repr

@@ -8,18 +8,14 @@ from typing import Any, ClassVar, Never
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter, Gauge, Histogram
 
-from geoips_driver.interfaces.module_based.data_monitors import (
-    FILE_FOUND_QUEUE,
-)
+from geoips_driver.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE
 from geoips_driver.interfaces.module_based.service import (
     Service,
     ServicePlugin,
     log_execution,
-    setup_logging,
 )
 from geoips_driver.types.file import File, FrozenFile
-
-logger = setup_logging()
+from geoips_driver.utils.logging import get_logger
 
 JOB_READY_QUEUE = "JobReadyQueue"
 
@@ -140,6 +136,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
 
     def __init__(self, service: Service, config: dict) -> None:
         self.parent_service = service
+        self._logger = get_logger("plugin", self.name, service._config)
         self.queue = JOB_READY_QUEUE
         self._running = False
         self.job_groups: list[JobGroup] = []
@@ -176,29 +173,33 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     def emit(self, job: Job) -> None:
         """Emit job to parent service."""
         message = str(job)
-        logger.info(f"Queueing job: {message}")
+        self._logger.info(f"Queueing job: {message}")
         self.parent_service.emit(queue=self.queue, message=message)
 
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
-        logger.debug("Starting to handle incoming files")
+        self._logger.debug("Starting to handle incoming files")
         for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
             start_time = time.time()
 
             # Record file received
             self.files_received.labels(job_builder_name=self.name).inc()
-            logger.debug(f"Received file {file_string} from file queue")
+            self._logger.debug(f"Received file {file_string} from file queue")
 
             file = FrozenFile.from_string(str(file_string))
 
             for job_group in self.job_groups:
-                logger.debug(f"Processing file {file} in job group {job_group.name}")
-
+                self._logger.debug(
+                    f"Processing file {file} in job group {job_group.name}",
+                )
                 if job_group.add_file(file):  # aka file added
-                    logger.debug(f"File {file} added to job group {job_group.name}")
-
+                    self._logger.debug(
+                        f"File {file} added to job group {job_group.name}",
+                    )
                     for ready_job in job_group.ready_jobs():
-                        logger.info(f"Job {ready_job.identifier} is ready; emitting")
+                        self._logger.info(
+                            f"Job {ready_job.identifier} is ready; emitting",
+                        )
                         self.emit(ready_job)
                         self.jobs_built.labels(
                             status="ready",
@@ -209,7 +210,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 jobs_to_delete = []
                 for job_id, job in job_group.jobs.items():
                     if job.is_old():
-                        logger.info(f"Discarding old job {job.identifier}")
+                        self._logger.info(f"Discarding old job {job.identifier}")
                         self.jobs_discarded.labels(job_builder_name=self.name).inc()
                         self.jobs_built.labels(
                             status="old",
@@ -232,7 +233,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 len(self.job_groups),
             )
 
-        logger.error("Exiting handle_incoming_files loop unexpectedly")
+        self._logger.error("Exiting handle_incoming_files loop unexpectedly")
 
     @log_execution
     def start(self) -> None:

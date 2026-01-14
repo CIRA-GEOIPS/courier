@@ -9,8 +9,3 @@ jobs:
       - uses: streetsidesoftware/cspell-ci-action@v1
         with:
           files: ./src
-words:
-  - COMMITIZEN
-  - jpetrucciani
-  - Mypy
-  - Pytest

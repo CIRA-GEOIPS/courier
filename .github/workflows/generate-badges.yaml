@@ -1,0 +1,257 @@
+name: Nightly Badge Generation
+
+on:
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  check-commits:
+    runs-on: ubuntu-latest
+    outputs:
+      has_new_commits: ${{ steps.check.outputs.has_new_commits }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for new commits in last 24 hours
+        id: check
+        run: |
+          # Get commits in the last 25 hours (buffer for schedule variance)
+          COMMITS=$(git log --oneline --since="25 hours ago" --no-merges | grep -v "\[skip ci\]" | wc -l)
+          if [ "$COMMITS" -gt 0 ]; then
+            echo "has_new_commits=true" >> $GITHUB_OUTPUT
+            echo "Found $COMMITS new commits in the last 25 hours"
+          else
+            echo "has_new_commits=false" >> $GITHUB_OUTPUT
+            echo "No new commits in the last 25 hours"
+          fi
+
+  generate-badges:
+    needs: check-commits
+    if: needs.check-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[doc,lint,test]
+          python -m pip install pytest mypy ruff commitizen genbadge[all]
+
+      - name: Create directories
+        run: |
+          mkdir -p .github/badges
+          mkdir -p reports
+
+      - name: Run pytest
+        id: pytest
+        continue-on-error: true
+        run: |
+          python -m pytest --junitxml=reports/junit.xml
+
+      - name: Generate pytest badge
+        run: |
+          if [ -f reports/junit.xml ]; then
+            genbadge tests -i reports/junit.xml -o .github/badges/tests-badge.svg -n "tests"
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='tests', right_txt='error', color='red')
+          b.write_to('.github/badges/tests-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Generate coverage badge
+        run: |
+          if [ -f reports/coverage.xml ]; then
+            genbadge coverage -i reports/coverage.xml -o .github/badges/coverage-badge.svg -n "coverage"
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='coverage', right_txt='error', color='red')
+          b.write_to('.github/badges/coverage-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Run mypy
+        id: mypy
+        continue-on-error: true
+        run: |
+          mypy ./src --junit-xml reports/mypy.xml || true
+
+      - name: Generate mypy badge
+        run: |
+          if [ -f reports/mypy.xml ]; then
+            genbadge tests -i reports/mypy.xml -o .github/badges/mypy-badge.svg -n "mypy"
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='mypy', right_txt='passing', color='brightgreen')
+          b.write_to('.github/badges/mypy-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Run ruff
+        id: ruff
+        continue-on-error: true
+        run: |
+          ruff check ./src --output-format=junit -o reports/ruff.xml || true
+
+      - name: Generate ruff badge
+        run: |
+          if [ -f reports/ruff.xml ] && [ -s reports/ruff.xml ]; then
+            # Check if there are any testcase elements (i.e., failures)
+            if grep -q "<testcase" reports/ruff.xml; then
+              genbadge tests -i reports/ruff.xml -o .github/badges/ruff-badge.svg -n "ruff"
+            else
+              python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='ruff', right_txt='passing', color='brightgreen')
+          b.write_to('.github/badges/ruff-badge.svg', use_shields=False)
+          "
+            fi
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='ruff', right_txt='passing', color='brightgreen')
+          b.write_to('.github/badges/ruff-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Test install
+        id: install
+        continue-on-error: true
+        run: |
+          python -m pip install -e . --force-reinstall
+
+      - name: Generate install badge
+        run: |
+          if [ "${{ steps.install.outcome }}" == "success" ]; then
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='install', right_txt='passing', color='brightgreen')
+          b.write_to('.github/badges/install-badge.svg', use_shields=False)
+          "
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='install', right_txt='failing', color='red')
+          b.write_to('.github/badges/install-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run cspell
+        id: cspell
+        continue-on-error: true
+        run: |
+          npx cspell "./src/**/*" --no-progress
+
+      - name: Generate cspell badge
+        run: |
+          if [ "${{ steps.cspell.outcome }}" == "success" ]; then
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='cspell', right_txt='passing', color='brightgreen')
+          b.write_to('.github/badges/cspell-badge.svg', use_shields=False)
+          "
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='cspell', right_txt='failing', color='red')
+          b.write_to('.github/badges/cspell-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Check commitizen
+        id: commitizen
+        continue-on-error: true
+        env:
+          COMMITIZEN_START_REV: "9d83e6984277ccbe6c5f6713f65b75a90e7c7e40"
+        run: |
+          cz check --rev-range ${{ env.COMMITIZEN_START_REV }}..HEAD
+
+      - name: Generate commitizen badge
+        run: |
+          if [ "${{ steps.commitizen.outcome }}" == "success" ]; then
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='commitizen', right_txt='passing', color='brightgreen')
+          b.write_to('.github/badges/commitizen-badge.svg', use_shields=False)
+          "
+          else
+            python -c "
+          from genbadge import Badge
+          b = Badge(left_txt='commitizen', right_txt='failing', color='red')
+          b.write_to('.github/badges/commitizen-badge.svg', use_shields=False)
+          "
+          fi
+
+      - name: Check for badge changes
+        id: badge_changes
+        run: |
+          # Stage all badge files (including new ones)
+          git add .github/badges/*.svg
+
+          # Check if there are any changes (modified or new files)
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No badge changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Badge changes detected:"
+            echo ""
+
+            # Show what changed
+            echo "### Modified or new files:"
+            git diff --cached --name-status .github/badges/
+
+            echo ""
+            echo "### Detailed changes:"
+            # For existing files, show if content changed
+            git diff --cached --stat .github/badges/
+          fi
+
+      - name: Commit and push badges
+        if: steps.badge_changes.outputs.has_changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git commit -m "chore: update badges [skip ci]"
+          git push
+
+      - name: Generate summary
+        run: |
+          echo "## Badge Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Pytest | ${{ steps.pytest.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${{ steps.coverage.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mypy | ${{ steps.mypy.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ruff | ${{ steps.ruff.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Install | ${{ steps.install.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CSpell | ${{ steps.cspell.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commitizen | ${{ steps.commitizen.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Badges committed: ${{ steps.badge_changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY

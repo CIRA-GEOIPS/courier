@@ -22,7 +22,8 @@ import pika
 import prometheus_client
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.exceptions import AMQPConnectionError
-from rich.logging import RichHandler
+
+from geoips_driver.utils.logging import get_logger
 
 # Type variables for generic type hints
 T = TypeVar("T")
@@ -214,6 +215,18 @@ class ServiceConfig:
     plugin_health_check_interval : int, optional
         Interval in seconds between plugin health checks. Defaults to
         environment variable PLUGIN_HEALTH_CHECK_INTERVAL or 2.
+    loki_url : str, optional
+        Grafana Loki push API URL for log shipping. Defaults to environment
+        variable LOKI_URL or empty string (Loki disabled).
+    loki_enabled : bool, optional
+        Enable log shipping to Grafana Loki. Defaults to environment variable
+        LOKI_ENABLED or False.
+    log_level : str, optional
+        Logging level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL). Defaults
+        to environment variable LOG_LEVEL or 'DEBUG'.
+    production_mode : bool, optional
+        Enable production mode with enforced minimum INFO log level. Defaults
+        to environment variable PRODUCTION or False.
 
     Attributes
     ----------
@@ -237,6 +250,14 @@ class ServiceConfig:
         Maximum plugin restart attempts.
     plugin_health_check_interval : int
         Plugin health check interval in seconds.
+    loki_url : str
+        Grafana Loki push API URL.
+    loki_enabled : bool
+        Whether Loki log shipping is enabled.
+    log_level : str
+        Configured logging level.
+    production_mode : bool
+        Whether production mode is enabled.
 
     Examples
     --------
@@ -291,10 +312,27 @@ class ServiceConfig:
             os.environ.get("PLUGIN_HEALTH_CHECK_INTERVAL", "2"),
         ),
     )
+    loki_url: str = field(
+        default_factory=lambda: os.environ.get("LOKI_URL", ""),
+    )
+    loki_enabled: bool = field(
+        default_factory=lambda: os.environ.get("LOKI_ENABLED", "false").lower()
+        == "true",
+    )
+    log_level: str = field(
+        default_factory=lambda: os.environ.get("LOG_LEVEL", "DEBUG"),
+    )
+    production_mode: bool = field(
+        default_factory=lambda: os.environ.get("PRODUCTION", "false").lower() == "true",
+    )
 
 
 def setup_logging(name: str | None = None) -> logging.Logger:
     """Configure logger with standardized formatting and return module logger.
+
+    This function provides backward compatibility with the legacy logging
+    interface. New code should prefer get_logger() for better context
+    management and Loki integration.
 
     Sets up logging configuration with Rich formatting for colorized output,
     then returns a logger instance. Only configures handlers if the logger
@@ -320,21 +358,14 @@ def setup_logging(name: str | None = None) -> logging.Logger:
     True
     >>> logger.level == logging.DEBUG
     True
+
+    Notes
+    -----
+    This function is maintained for backward compatibility. New code should
+    use get_logger() instead for proper context management.
     """
-    logger = logging.getLogger(name if name else __name__)
-
-    # Only configure if not already configured
-    if not logger.handlers:
-        handler = RichHandler(rich_tracebacks=True)
-        formatter = logging.Formatter(
-            "%(message)s",
-            datefmt="[%X]",
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
-
-    return logger
+    module_name = name if name else "__main__"
+    return get_logger("module", module_name, None)
 
 
 logger = setup_logging()
@@ -439,13 +470,17 @@ def log_execution(func: Callable[..., T]) -> Callable[..., T | None]:  # noqa: U
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> T | None:
-        logger.debug(f"Executing {func.__name__}")
+        # Try to get instance logger from self if available
+        instance_logger = getattr(args[0], "_logger", None) if args else None
+        active_logger = instance_logger or logger
+
+        active_logger.debug(f"Executing {func.__name__}")
         try:
             result = func(*args, **kwargs)
-            logger.debug(f"Successfully executed {func.__name__}")
+            active_logger.debug(f"Successfully executed {func.__name__}")
             return result  # noqa: TRY300
         except Exception:
-            logger.exception(f"Error in {func.__name__}")
+            active_logger.exception(f"Error in {func.__name__}")
             return None
 
     return wrapper
@@ -456,6 +491,12 @@ class ServicePlugin(Protocol):
 
     This protocol specifies the required methods and properties that any
     service plugin must provide for integration with the plugin manager.
+
+    Plugins should create an instance logger in __init__ using:
+        self._logger = get_logger("plugin", self.name, service._config)
+
+    This ensures all plugin log messages include proper source identification
+    and integrate with the service's Loki logging if enabled.
 
     Methods
     -------
@@ -476,6 +517,16 @@ class ServicePlugin(Protocol):
         The plugin name.
     version : str
         The plugin version.
+
+    Examples
+    --------
+    >>> from geoips_driver.interfaces.module_based.logging import get_logger
+    >>> class MyPlugin:
+    ...     name = "my-plugin"
+    ...     version = "1.0.0"
+    ...     def __init__(self, service, config):
+    ...         self._logger = get_logger("plugin", self.name, service._config)
+    ...         self._logger.info("Plugin initialized")
     """
 
     name: str
@@ -578,6 +629,7 @@ class Service:
             Service configuration. If None, uses default ServiceConfig.
         """
         self._config = config or ServiceConfig()
+        self._logger = get_logger("service", self._config.service_id, self._config)
         self._signal_handler = SignalHandler()
 
         self._prometheus_manager = PrometheusManager(self._config)
@@ -628,7 +680,7 @@ class Service:
         )
         # Underscore indicates unused variable to silence linters
         with self._rabbitmq_manager.get_connection_context() as (_connection, channel):
-            logger.debug(f"Emitting message to queue '{queue}': {message}")
+            self._logger.debug(f"Emitting message to queue '{queue}': {message}")
             channel.basic_publish(exchange="", routing_key=queue, body=message)
 
     def consume(self, queue: str) -> Generator[str, None, None]:
@@ -674,7 +726,7 @@ class Service:
             exclusive=False,
         )
 
-        logger.debug(f"Consuming from queue: {queue}")
+        self._logger.debug(f"Consuming from queue: {queue}")
 
         with self._rabbitmq_manager.get_connection_context() as (_connection, channel):
             for method_frame, _properties, body in channel.consume(
@@ -684,13 +736,15 @@ class Service:
                 try:
                     message = body.decode("utf-8")
                     yield message
-                    logger.debug(f"Received message from queue '{queue}': {message}")
+                    self._logger.debug(
+                        f"Received message from queue '{queue}': {message}",
+                    )
 
                     # Fix: Ensure delivery_tag is an integer before Ack
                     if method_frame.delivery_tag is not None:
                         channel.basic_ack(delivery_tag=method_frame.delivery_tag)
                     else:
-                        logger.error("Skipped Ack: delivery_tag is None")
+                        self._logger.error("Skipped Ack: delivery_tag is None")
 
                 except GeneratorExit:
                     # Fix: Ensure delivery_tag is an integer before Nack
@@ -749,7 +803,7 @@ class Service:
                 manager.start()
             except Exception:
                 # Logging here ensures we see which manager failed
-                logger.exception(f"Failed to start {manager.__class__.__name__}")
+                self._logger.exception(f"Failed to start {manager.__class__.__name__}")
                 raise
 
         list(map(start_manager, self._managers))
@@ -765,7 +819,9 @@ class Service:
             try:
                 manager.stop()
             except Exception as e:
-                logger.warning(f"Error stopping {manager.__class__.__name__}: {e}")
+                self._logger.warning(
+                    f"Error stopping {manager.__class__.__name__}: {e}",
+                )
 
         list(map(stop_manager, reversed(self._managers)))
 
@@ -777,7 +833,7 @@ class Service:
         bool
             True if all managers report healthy status, False otherwise.
         """
-        logger.debug(
+        self._logger.debug(
             "Monitor health checks: "
             + ", ".join(
                 f"{manager}: {manager.is_healthy()}" for manager in self._managers
@@ -813,7 +869,7 @@ class Service:
                 # Log plugin status periodically
                 plugin_status = self._plugin_manager.get_plugin_status()
                 if plugin_status:
-                    logger.debug(f"Plugin status: {plugin_status}")
+                    self._logger.debug(f"Plugin status: {plugin_status}")
 
     @log_execution
     def start(self) -> None:
@@ -830,7 +886,7 @@ class Service:
         Exception
             If service startup fails for any other reason.
         """
-        logger.info(f"Starting Service {self._config.service_id}")
+        self._logger.info(f"Starting Service {self._config.service_id}")
 
         try:
             self._start_managers()
@@ -838,13 +894,13 @@ class Service:
             if not self._health_check():
                 raise RuntimeError("Service health check failed after startup")  # noqa: TRY003, TRY301
 
-            logger.info(f"Service {self._config.service_id} started successfully")
+            self._logger.info(f"Service {self._config.service_id} started successfully")
             self._run_heartbeat_loop()
 
         except KeyboardInterrupt:
-            logger.info("Received keyboard interrupt")
+            self._logger.info("Received keyboard interrupt")
         except Exception:
-            logger.exception("Service startup failed")
+            self._logger.exception("Service startup failed")
             raise
         finally:
             self._cleanup()
@@ -855,9 +911,9 @@ class Service:
         Coordinates cleanup of all managers and logs service termination.
         Called automatically during service shutdown regardless of termination cause.
         """
-        logger.info("Cleaning up resources...")
+        self._logger.info("Cleaning up resources...")
         self._stop_managers()
-        logger.info(f"Service {self._config.service_id} stopped")
+        self._logger.info(f"Service {self._config.service_id} stopped")
 
 
 class ServiceManager(ABC):
@@ -1006,6 +1062,7 @@ class PluginManager(ServiceManager):
             Reference to parent service instance.
         """
         self._config = config
+        self._logger = get_logger("manager", "PluginManager", config)
         self._plugins: dict[str, PluginStateInfo] = {}
         self._lock = threading.RLock()
         self._running = False
@@ -1054,12 +1111,12 @@ class PluginManager(ServiceManager):
             if plugin_instance.name in self._plugins:
                 raise ValueError(f"Plugin {plugin_instance.name} already registered")  # noqa: TRY003
 
-            logger.info(plugin_instance)
-            logger.info(plugin_instance.name)
+            self._logger.info(plugin_instance)
+            self._logger.info(plugin_instance.name)
             self._plugins[plugin_instance.name] = PluginStateInfo(
                 plugin=plugin_instance,
             )
-            logger.info(
+            self._logger.info(
                 f"Registered plugin: {plugin_instance.name} v{plugin_instance.version}",
             )
 
@@ -1075,7 +1132,7 @@ class PluginManager(ServiceManager):
         def run_plugin() -> None:
             try:
                 plugin_info.state = PluginRunState.STARTING
-                logger.info(f"Starting plugin: {plugin_info.plugin.name}")
+                self._logger.info(f"Starting plugin: {plugin_info.plugin.name}")
 
                 plugin_info.plugin.start()
                 plugin_info.state = PluginRunState.RUNNING
@@ -1086,7 +1143,9 @@ class PluginManager(ServiceManager):
                     plugin_name=plugin_info.plugin.name,
                 ).set(plugin_info.state.value)
 
-                logger.info(f"Plugin started successfully: {plugin_info.plugin.name}")
+                self._logger.info(
+                    f"Plugin started successfully: {plugin_info.plugin.name}",
+                )
 
                 # Keep thread alive while plugin is running
                 while self._running and plugin_info.state == PluginRunState.RUNNING:
@@ -1095,7 +1154,7 @@ class PluginManager(ServiceManager):
             except Exception as e:
                 plugin_info.state = PluginRunState.FAILED
                 plugin_info.error_message = str(e)
-                logger.exception(f"Plugin {plugin_info.plugin.name} failed")
+                self._logger.exception(f"Plugin {plugin_info.plugin.name} failed")
                 self._plugin_state_metric.labels(
                     plugin_name=plugin_info.plugin.name,
                 ).set(plugin_info.state.value)
@@ -1130,9 +1189,11 @@ class PluginManager(ServiceManager):
                     plugin_name=plugin_info.plugin.name,
                 ).set(plugin_info.state.value)
 
-                logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
+                self._logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
             except Exception as e:
-                logger.warning(f"Error stopping plugin {plugin_info.plugin.name}: {e}")
+                self._logger.warning(
+                    f"Error stopping plugin {plugin_info.plugin.name}: {e}",
+                )
 
     def _monitor_plugins(self) -> None:
         """Monitor plugin health and restart failed plugins.
@@ -1161,7 +1222,9 @@ class PluginManager(ServiceManager):
                                 ).set(1 if is_healthy else 0)
 
                                 if not is_healthy:
-                                    logger.warning(f"Plugin {plugin_name} is unhealthy")
+                                    self._logger.warning(
+                                        f"Plugin {plugin_name} is unhealthy",
+                                    )
                                     plugin_info.state = PluginRunState.FAILED
                                     self._handle_failed_plugin(plugin_info)
 
@@ -1172,12 +1235,12 @@ class PluginManager(ServiceManager):
                                 not plugin_info.thread  # type: ignore
                                 or not plugin_info.thread.is_alive()
                             ):
-                                logger.error(f"Plugin {plugin_name} thread died")  # type: ignore
+                                self._logger.error(f"Plugin {plugin_name} thread died")  # type: ignore
                                 plugin_info.state = PluginRunState.FAILED
                                 self._handle_failed_plugin(plugin_info)
 
                     except Exception:
-                        logger.exception(f"Error monitoring plugin {plugin_name}")
+                        self._logger.exception(f"Error monitoring plugin {plugin_name}")
 
             time.sleep(1)  # Short sleep to be responsive
 
@@ -1204,7 +1267,7 @@ class PluginManager(ServiceManager):
                 can_restart = False
 
         if can_restart:
-            logger.info(
+            self._logger.info(
                 f"Attempting to restart plugin {plugin_name} "
                 f"(attempt {plugin_info.restart_count + 1}/"
                 f"{self._config.plugin_max_restart_attempts})",
@@ -1225,7 +1288,7 @@ class PluginManager(ServiceManager):
             # Start the plugin again
             self._start_plugin(plugin_info)
         else:
-            logger.error(
+            self._logger.error(
                 f"Plugin {plugin_name} failed and cannot be restarted "
                 f"(max attempts reached or too soon)",
             )
@@ -1280,7 +1343,7 @@ class PluginManager(ServiceManager):
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=5)
 
-        logger.info("Plugin manager stopped")
+        self._logger.info("Plugin manager stopped")
 
     def is_healthy(self) -> bool:
         """Check if plugin manager is healthy.
@@ -1301,7 +1364,7 @@ class PluginManager(ServiceManager):
                 f"{info.plugin.name} is {info.state} and {info.plugin.is_healthy()}"
                 for info in self._plugins.values()
             ]
-            logger.debug(", ".join(health))
+            self._logger.debug(", ".join(health))
             healthy_plugins = filter_map(
                 lambda info: info.state
                 in [PluginRunState.RUNNING, PluginRunState.STARTING],
@@ -1396,6 +1459,7 @@ class PrometheusManager(ServiceManager):
             Service configuration.
         """
         self._config = config
+        self._logger = get_logger("manager", "PrometheusManager", config)
         self._heartbeat_metric = self._create_heartbeat_metric()
         self._server_started = False
 
@@ -1432,7 +1496,7 @@ class PrometheusManager(ServiceManager):
         server is already running.
         """
         if not self._server_started:
-            logger.info(
+            self._logger.info(
                 f"Starting Prometheus server on port {self._config.prometheus_port}",
             )
             prometheus_client.start_http_server(self._config.prometheus_port)
@@ -1445,7 +1509,7 @@ class PrometheusManager(ServiceManager):
         by process termination since prometheus_client doesn't provide
         explicit server stop functionality.
         """
-        logger.info("Prometheus manager stopped")
+        self._logger.info("Prometheus manager stopped")
 
     def is_healthy(self) -> bool:
         """Check if Prometheus HTTP server is running.
@@ -1485,7 +1549,7 @@ class PrometheusManager(ServiceManager):
         """
         current_time = time.time()
         self._heartbeat_metric.set(current_time)
-        logger.debug(f"Heartbeat sent at {current_time}")
+        self._logger.debug(f"Heartbeat sent at {current_time}")
 
 
 # RabbitMQ Manager
@@ -1545,6 +1609,7 @@ class RabbitMQManager(ServiceManager):
             Service configuration.
         """
         self._config = config
+        self._logger = get_logger("manager", "RabbitMQManager", config)
         self._connection: BlockingConnection | None = None
         self._channel: BlockingChannel | None = None
         self._queues: dict[str, dict[str, Any]] = {}
@@ -1596,18 +1661,18 @@ class RabbitMQManager(ServiceManager):
         >>> # isinstance(connection, BlockingConnection)
         >>> # True
         """
-        logger.debug(
+        self._logger.debug(
             f"Attempting to connect to RabbitMQ at url {self._config.rabbitmq_url}",
         )
         try:
             parameters = pika.URLParameters(self._config.rabbitmq_url)
             connection = pika.BlockingConnection(parameters)
             channel = connection.channel()
-            logger.debug("Successfully connected to RabbitMQ")
+            self._logger.debug("Successfully connected to RabbitMQ")
             self._rabbitmq_connections_total.labels(status="success").inc()
         except AMQPConnectionError:
             self._rabbitmq_connections_total.labels(status="failure").inc()
-            logger.exception("Failed to connect to RabbitMQ")
+            self._logger.exception("Failed to connect to RabbitMQ")
             raise
         else:
             return connection, channel
@@ -1632,9 +1697,9 @@ class RabbitMQManager(ServiceManager):
         if self._connection and not self._connection.is_closed:
             try:
                 self._connection.close()
-                logger.info("RabbitMQ connection closed")
+                self._logger.info("RabbitMQ connection closed")
             except Exception as e:
-                logger.warning(f"Error closing RabbitMQ connection: {e}")
+                self._logger.warning(f"Error closing RabbitMQ connection: {e}")
 
         self._connection = None
         self._channel = None
@@ -1694,7 +1759,9 @@ class RabbitMQManager(ServiceManager):
             # Declare existing queues on new connection
             for queue_name, config in self._queues.items():
                 if queue_name not in self._created_queues:
-                    logger.debug(f"Creating queue {queue_name} with config {config}")
+                    self._logger.debug(
+                        f"Creating queue {queue_name} with config {config}",
+                    )
                     channel.queue_declare(queue=queue_name, **config)
                     self._created_queues.add(queue_name)
 
