@@ -19,10 +19,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for new commits in last ~24 hours
+      - name: Check for new commits in last 24 hours
         id: check
         run: |
-          # Get commits in the last 25 hours
+          # Get commits in the last 25 hours (buffer for schedule variance)
           COMMITS=$(git log --oneline --since="25 hours ago" --no-merges | grep -v "\[skip ci\]" | wc -l)
           if [ "$COMMITS" -gt 0 ]; then
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
@@ -59,7 +59,6 @@ jobs:
           mkdir -p .github/badges
           mkdir -p reports
 
-      # ==================== PYTEST ====================
       - name: Run pytest
         id: pytest
         continue-on-error: true
@@ -78,7 +77,6 @@ jobs:
           "
           fi
 
-      # ==================== MYPY ====================
       - name: Run mypy
         id: mypy
         continue-on-error: true
@@ -97,7 +95,6 @@ jobs:
           "
           fi
 
-      # ==================== RUFF ====================
       - name: Run ruff
         id: ruff
         continue-on-error: true
@@ -125,7 +122,6 @@ jobs:
           "
           fi
 
-      # ==================== INSTALL CHECK ====================
       - name: Test install
         id: install
         continue-on-error: true
@@ -148,7 +144,6 @@ jobs:
           "
           fi
 
-      # ==================== CSPELL ====================
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -176,7 +171,6 @@ jobs:
           "
           fi
 
-      # ==================== COMMITIZEN ====================
       - name: Check commitizen
         id: commitizen
         continue-on-error: true
@@ -201,17 +195,29 @@ jobs:
           "
           fi
 
-      # ==================== COMMIT BADGES ====================
       - name: Check for badge changes
         id: badge_changes
         run: |
-          if git diff --quiet .github/badges/; then
+          # Stage all badge files (including new ones)
+          git add .github/badges/*.svg
+
+          # Check if there are any changes (modified or new files)
+          if git diff --cached --quiet; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "No badge changes detected"
           else
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "Badge changes detected"
-            git diff --stat .github/badges/
+            echo "Badge changes detected:"
+            echo ""
+
+            # Show what changed
+            echo "### Modified or new files:"
+            git diff --cached --name-status .github/badges/
+
+            echo ""
+            echo "### Detailed changes:"
+            # For existing files, show if content changed
+            git diff --cached --stat .github/badges/
           fi
 
       - name: Commit and push badges
@@ -219,11 +225,9 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add .github/badges/*.svg
           git commit -m "chore: update badges [skip ci]"
           git push
 
-      # ==================== SUMMARY ====================
       - name: Generate summary
         run: |
           echo "## Badge Generation Summary" >> $GITHUB_STEP_SUMMARY
