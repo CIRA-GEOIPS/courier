@@ -1605,11 +1605,12 @@ class RabbitMQManager(ServiceManager):
             channel = connection.channel()
             logger.debug("Successfully connected to RabbitMQ")
             self._rabbitmq_connections_total.labels(status="success").inc()
-            return connection, channel
-        except AMQPConnectionError as e:
+        except AMQPConnectionError:
             self._rabbitmq_connections_total.labels(status="failure").inc()
-            logger.error(f"Failed to connect to RabbitMQ: {e}")
+            logger.exception("Failed to connect to RabbitMQ")
             raise
+        else:
+            return connection, channel
 
     @log_execution
     def start(self) -> None:

@@ -82,7 +82,7 @@ class Dispatcher(ServicePlugin):
             f"Total number of execution logs emitted by {self.name} dispatcher",
             ["dispatcher_name"],
         )
-        self.active_job_timestamps = {}
+        self.active_job_timestamps = {}  # type: dict[str, float]
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
@@ -115,20 +115,32 @@ class Dispatcher(ServicePlugin):
                     execution_logs = self.get_execution_log(job)
                     for ex_log in execution_logs:
                         self.emit(ex_log)
-                        self.execution_logs_emitted.labels(dispatcher_name=self.name).inc()
+                        self.execution_logs_emitted.labels(
+                            dispatcher_name=self.name,
+                        ).inc()
 
                     # Record successful processing
-                    self.jobs_processed.labels(status="success", dispatcher_name=self.name).inc()
+                    self.jobs_processed.labels(
+                        status="success",
+                        dispatcher_name=self.name,
+                    ).inc()
 
-                except Exception as e:
-                    logger.exception(f"Error processing job {job_id}: {e}")
-                    self.jobs_processed.labels(status="failure", dispatcher_name=self.name).inc()
+                except Exception:
+                    logger.exception(f"Error processing job {job_id}")
+                    self.jobs_processed.labels(
+                        status="failure",
+                        dispatcher_name=self.name,
+                    ).inc()
 
                 finally:
                     # Track job execution duration
                     if job_id in self.active_job_timestamps:
-                        execution_time = time.time() - self.active_job_timestamps[job_id]
-                        self.job_execution_duration.labels(dispatcher_name=self.name).observe(execution_time)
+                        execution_time = (
+                            time.time() - self.active_job_timestamps[job_id]
+                        )
+                        self.job_execution_duration.labels(
+                            dispatcher_name=self.name,
+                        ).observe(execution_time)
                         del self.active_job_timestamps[job_id]
                         self.active_jobs.labels(dispatcher_name=self.name).dec()
 
@@ -168,7 +180,7 @@ class Dispatcher(ServicePlugin):
                 if s.name == self.jobs_processed._name:
                     metrics_dict[f"{self.name}_jobs_processed"] = {
                         "value": s.value,
-                        "labels": s.labels
+                        "labels": s.labels,
                     }
 
         # Collect job_execution_duration metrics (histogram)
@@ -177,7 +189,7 @@ class Dispatcher(ServicePlugin):
                 if s.name == self.job_execution_duration._name:
                     metrics_dict[f"{self.name}_job_execution_duration"] = {
                         "value": s.value,
-                        "labels": s.labels
+                        "labels": s.labels,
                     }
 
         # Collect active_jobs metrics
@@ -186,7 +198,7 @@ class Dispatcher(ServicePlugin):
                 if s.name == self.active_jobs._name:
                     metrics_dict[f"{self.name}_active_jobs"] = {
                         "value": s.value,
-                        "labels": s.labels
+                        "labels": s.labels,
                     }
 
         # Collect execution_logs_emitted metrics
@@ -195,7 +207,7 @@ class Dispatcher(ServicePlugin):
                 if s.name == self.execution_logs_emitted._name:
                     metrics_dict[f"{self.name}_execution_logs_emitted"] = {
                         "value": s.value,
-                        "labels": s.labels
+                        "labels": s.labels,
                     }
 
         return metrics_dict

@@ -200,7 +200,10 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                     for ready_job in job_group.ready_jobs():
                         logger.info(f"Job {ready_job.identifier} is ready; emitting")
                         self.emit(ready_job)
-                        self.jobs_built.labels(status="ready", job_builder_name=self.name).inc()
+                        self.jobs_built.labels(
+                            status="ready",
+                            job_builder_name=self.name,
+                        ).inc()
 
                 # Clean up old jobs
                 jobs_to_delete = []
@@ -208,7 +211,10 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                     if job.is_old():
                         logger.info(f"Discarding old job {job.identifier}")
                         self.jobs_discarded.labels(job_builder_name=self.name).inc()
-                        self.jobs_built.labels(status="old", job_builder_name=self.name).inc()
+                        self.jobs_built.labels(
+                            status="old",
+                            job_builder_name=self.name,
+                        ).inc()
                         jobs_to_delete.append(job_id)
 
                 # Delete old jobs after iteration
@@ -217,10 +223,14 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
 
             # Record file processing duration
             processing_time = time.time() - start_time
-            self.file_processing_duration.labels(job_builder_name=self.name).observe(processing_time)
+            self.file_processing_duration.labels(job_builder_name=self.name).observe(
+                processing_time,
+            )
 
             # Update active job groups count
-            self.active_job_groups.labels(job_builder_name=self.name).set(len(self.job_groups))
+            self.active_job_groups.labels(job_builder_name=self.name).set(
+                len(self.job_groups),
+            )
 
         logger.error("Exiting handle_incoming_files loop unexpectedly")
 
