@@ -121,13 +121,8 @@ class Dispatcher(ServicePlugin):
                         dispatcher_name=self.name,
                     ).inc()
 
-<<<<<<< HEAD
-                except Exception as e:
-                    self._logger.exception(f"Error processing job {job_id}: {e}")
-=======
                 except Exception:
-                    logger.exception(f"Error processing job {job_id}")
->>>>>>> 9e27286 (style(prometheus-metric-changes): updated for mypy and ruff compliance)
+                    self._logger.exception(f"Error processing job {job_id}")
                     self.jobs_processed.labels(
                         status="failure",
                         dispatcher_name=self.name,
