@@ -1,6 +1,8 @@
 from geoips_driver import dummy_cli
 from geoips_driver.interfaces.module_based.service import (
-    ServiceConfig, create_service_with_plugins)
+    ServiceConfig,
+    create_service_with_plugins,
+)
 
 
 def run_service(config: dict)-> None:
@@ -18,7 +20,7 @@ def run_service(config: dict)-> None:
 
     import geoips_driver.plugins.modules.data_monitors.file_system_poller_watchdog as file_system_polling
     import geoips_driver.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
-    import geoips_driver.plugins.modules.job_builders.dummy_job_builder as dummy_job_builder
+    from geoips_driver.plugins.modules.job_builders import dummy_job_builder
     available_plugins = {
         file_system_polling.FileSystemPoller.name.lower(): file_system_polling.FileSystemPoller,
         dummy_job_builder.DummyJobBuilder.name.lower(): dummy_job_builder.DummyJobBuilder,
@@ -38,7 +40,6 @@ def run_service(config: dict)-> None:
     print(plugins)
     service = create_service_with_plugins(service_config, plugins)
     service.start()
-    return
 
 
 

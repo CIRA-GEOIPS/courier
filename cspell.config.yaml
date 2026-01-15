@@ -7,6 +7,7 @@ words:
   - charliermarsh
   - CIRA
   - commitizen
+  - COMMITIZEN
   - dateparser
   - docstrings
   - Dunder
@@ -24,6 +25,9 @@ words:
   - Meso
   - meteosat
   - mypy
+  - Mypy
+  - newhost
+  - newplatform
   - njpwerner
   - NOAA
   - numpy
@@ -35,6 +39,7 @@ words:
   - Pyflakes
   - Pylint
   - pytest
+  - Pytest
   - pythonpath
   - pyupgrade
   - pyyaml
@@ -44,15 +49,14 @@ words:
   - snekvik
   - sphinxarg
   - tamasfe
+  - testhost
   - trond
   - tryceratops
   - typer
   - Uttmark
   - viewcode
   - xarray
-  - COMMITIZEN
-  - Mypy
-  - Pytest
+  - yday
 ignoreWords:
   - norecursedirs
   - venv

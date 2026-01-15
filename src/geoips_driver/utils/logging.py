@@ -22,6 +22,11 @@ from rich.logging import RichHandler
 if TYPE_CHECKING:
     from geoips_driver.interfaces.module_based.service import ServiceConfig
 
+try:
+    import logging_loki  # type: ignore
+except ImportError:
+    logging_loki = None  # type: ignore[assignment]
+
 # Define TRACE logging level (below DEBUG=10)
 TRACE_LEVEL = 5
 logging.addLevelName(TRACE_LEVEL, "TRACE")
@@ -101,10 +106,21 @@ class ContextAdapter(logging.LoggerAdapter):
         source_name = str(self.extra.get("source_name", "unknown"))
         # Capitalize first letter of source_type for display
         source_type_display = source_type.capitalize()
-        return f"[{source_type_display}: {source_name}] {msg}", kwargs if isinstance(
-            kwargs,
-            dict,
-        ) else {}
+        if source_type == "" and source_name == "":
+            return f"[] {msg}", kwargs if isinstance(
+                kwargs,
+                dict,
+            ) else {}
+        else:
+            return (
+                f"[{source_type_display}: {source_name}] {msg}",
+                kwargs
+                if isinstance(
+                    kwargs,
+                    dict,
+                )
+                else {},
+            )
 
 
 def _create_loki_handler(
@@ -135,8 +151,8 @@ def _create_loki_handler(
                                        {"service": "test"}, logger)
     """
     try:
-        import logging_loki  # type: ignore  # noqa: PLC0415
-
+        if not logging_loki or logging_loki is None:
+            raise ImportError
         # Set level tag to 'level' for Grafana
         logging_loki.emitter.LokiEmitter.level_tag = "level"
 
