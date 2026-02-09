@@ -42,9 +42,11 @@ python-logging-loki = ">=0.3.1"
 
 # Optional dependencies for extras
 sphinx = { version = "*", optional = true }
-sphinxcontrib-runcmd = { version = "*", optional = true }
-sphinxcontrib-napoleon = { version = "*", optional = true }
+sphinx-rtd-theme = { version = "*", optional = true }
 sphinx-argparse = { version = "*", optional = true }
+sphinx-copybutton = { version = "*", optional = true }
+sphinx-autodoc-typehints = { version = "*", optional = true }
+sphinx-contrib-mermaid = { version = "*", optional = true }
 pinkrst = { version = "*", optional = true }
 doc8 = { version = "*", optional = true }
 prettier = { version = "*", optional = true }
@@ -68,8 +70,10 @@ commitizen = "*"
 [tool.poetry.extras]
 doc = [
     "sphinx",                    # for docs building
-    "sphinxcontrib-runcmd",      # for docs building
-    "sphinxcontrib-napoleon",    # for docs building
+    "sphinx-rtd-theme",          # for docs building
+    "sphinx-copybutton",         # for docs building
+    "sphinx-autodoc-typehints",  # for docs building
+    "sphinx-contrib-mermaid",    # for docs building
     "sphinx-argparse",           # for docs building
     "pinkrst",                   # for rst formatting
     "doc8",                      # for rst linting
