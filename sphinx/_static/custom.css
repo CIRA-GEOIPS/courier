@@ -1,0 +1,81 @@
+/* Custom CSS for GeoIPS Driver documentation */
+
+/* Make code blocks more readable */
+.highlight {
+    background: #f8f8f8;
+    border-left: 3px solid #2980b9;
+    padding: 10px;
+    margin: 10px 0;
+}
+
+/* Improve admonition styling */
+.admonition {
+    padding: 15px;
+    margin: 20px 0;
+    border-left: 5px solid #6ab0de;
+    background: #e7f2fa;
+}
+
+.admonition.note {
+    border-color: #6ab0de;
+    background: #e7f2fa;
+}
+
+.admonition.warning {
+    border-color: #f0b37e;
+    background: #ffedcc;
+}
+
+.admonition.tip {
+    border-color: #1abc9c;
+    background: #dbfaf0;
+}
+
+/* Better table styling */
+table.docutils {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px 0;
+}
+
+table.docutils th {
+    background: #2980b9;
+    color: white;
+    padding: 10px;
+    text-align: left;
+}
+
+table.docutils td {
+    padding: 8px;
+    border: 1px solid #ddd;
+}
+
+table.docutils tr:nth-child(even) {
+    background: #f8f8f8;
+}
+
+/* Code inline */
+code {
+    background: #f0f0f0;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* Improve heading anchors */
+h1, h2, h3, h4, h5, h6 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+/* Better link styling */
+a.reference.internal {
+    color: #2980b9;
+}
+
+a.reference.internal:hover {
+    color: #3091d1;
+    text-decoration: underline;
+}
