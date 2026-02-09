@@ -14,4 +14,5 @@ jobs:
           pip install .[doc,lint,test]
       - name: Build docs
         run: |
+          cd sphinx
           make html
