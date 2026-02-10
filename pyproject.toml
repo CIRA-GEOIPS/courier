@@ -47,6 +47,7 @@ sphinx-argparse = { version = "*", optional = true }
 sphinx-copybutton = { version = "*", optional = true }
 sphinx-autodoc-typehints = { version = "*", optional = true }
 sphinxcontrib-mermaid = { version = "*", optional = true }
+myst-parser = { version = "*", optional = true }
 pinkrst = { version = "*", optional = true }
 doc8 = { version = "*", optional = true }
 prettier = { version = "*", optional = true }
@@ -70,10 +71,11 @@ commitizen = "*"
 [tool.poetry.extras]
 doc = [
     "sphinx",                    # for docs building
+    "myst-parser",
     "sphinx-rtd-theme",          # for docs building
     "sphinx-copybutton",         # for docs building
     "sphinx-autodoc-typehints",  # for docs building
-    "sphinxcontrib-mermaid",    # for docs building
+    "sphinxcontribmermaid",    # for docs building
     "sphinx-argparse",           # for docs building
     "pinkrst",                   # for rst formatting
     "doc8",                      # for rst linting
