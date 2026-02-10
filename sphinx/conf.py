@@ -15,6 +15,7 @@ version = '1.0'
 
 # -- General configuration ---------------------------------------------------
 extensions = [
+    'myst_parser',
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
@@ -27,8 +28,19 @@ extensions = [
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
-source_suffix = '.md'
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
 master_doc = 'index'
+
+# -- Options for MyST parser -------------------------------------------------
+myst_enable_extensions = [
+    'colon_fence',
+    'deflist',
+    'fieldlist',
+]
+myst_heading_anchors = 3
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = 'sphinx_rtd_theme'

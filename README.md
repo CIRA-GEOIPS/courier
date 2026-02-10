@@ -1,183 +1,283 @@
-# geoips_driver
+# GeoIPS Driver Documentation Setup
 
-![Tests](.github/badges/tests-badge.svg)
-![Coverage](.github/badges/coverage-badge.svg)
-![Mypy](.github/badges/mypy-badge.svg)
-![Ruff](.github/badges/ruff-badge.svg)
-![Install](.github/badges/install-badge.svg)
-![CSpell](.github/badges/cspell-badge.svg)
-![Commitizen](.github/badges/commitizen-badge.svg)
+This directory contains the complete documentation for GeoIPS Driver,
+written in **reStructuredText (RST)** and rendered using **Sphinx**.
 
-[![GitHub stars](https://img.shields.io/github/stars/CIRA-GEOIPS/geoips-rt.svg)](https://github.com/CIRA-GEOIPS/geoips-rt/stargazers)
+## Quick Start
 
+### Prerequisites
+
+-   Python 3.11 or later
+-   pip or poetry
+
+### Installation
+
+    # Install dependencies
+    cd docs
+    pip install -r requirements.txt
+
+    # Or with make
+    make install
+
+### Build Documentation
+
+    # Build HTML documentation
+    make html
+
+    # View in browser
+    open _build/html/index.html
+
+    # Or on Linux
+    xdg-open _build/html/index.html
+
+### Development
+
+    # Clean build directory
+    make clean
+
+    # Rebuild
+    make html
+
+    # Auto-rebuild on changes (requires sphinx-autobuild)
+    pip install sphinx-autobuild
+    make watch
+
+## Documentation Structure
+
+    docs/
+    ├── conf.py                          # Sphinx configuration
+    ├── index.rst                        # Main documentation page
+    ├── requirements.txt                 # Python dependencies
+    ├── Makefile                         # Build commands
+    │
+    ├── getting-started/                 # Getting started guide
+    │   ├── installation.rst
+    │   ├── quick-start.rst
+    │   ├── configuration-basics.rst
+    │   └── concepts.rst
+    │
+    ├── tutorials/                       # Step-by-step tutorials
+    │   ├── 01-simple-file-watcher.rst
+    │   ├── 02-adding-metadata.rst
+    │   ├── 03-custom-job-builder.rst
+    │   ├── 04-bash-dispatcher.rst
+    │   ├── 05-geoips-workflow-dispatcher.rst
+    │   ├── 06-multi-satellite-monitor.rst
+    │   ├── 07-monitoring-with-prometheus.rst
+    │   ├── 08-production-deployment.rst
+    │   ├── 09-error-handling.rst
+    │   └── 10-testing-plugins.rst
+    │
+    ├── user-guide/                      # User documentation
+    │   ├── architecture.rst
+    │   ├── services.rst
+    │   ├── plugins.rst
+    │   ├── configuration.rst
+    │   ├── metadata-matching.rst
+    │   ├── monitoring.rst
+    │   ├── deployment.rst
+    │   └── troubleshooting.rst
+    │
+    ├── developer-guide/                 # Developer documentation
+    │   ├── architecture-deep-dive.rst
+    │   ├── plugin-development.rst
+    │   ├── testing.rst
+    │   ├── contributing.rst
+    │   ├── code-style.rst
+    │   └── extending-interfaces.rst
+    │
+    ├── api-reference/                   # API documentation
+    │   ├── service.rst
+    │   ├── plugins.rst
+    │   ├── types.rst
+    │   ├── utils.rst
+    │   └── interfaces.rst
+    │
+    └── reference/                       # Reference materials
+        ├── configuration-schema.rst
+        ├── plugin-catalog.rst
+        ├── metrics-reference.rst
+        ├── queue-reference.rst
+        └── faq.rst
+
+## Writing Documentation
+
+### reStructuredText Format
+
+All documentation is written in **reStructuredText (RST)**, the standard
+format for Sphinx.
+
+#### Headers
+
+    Title (H1)
+    ==========
+
+    Section (H2)
+    ------------
+
+    Subsection (H3)
+    ~~~~~~~~~~~~~~~
+
+    Subsubsection (H4)
+    ^^^^^^^^^^^^^^^^^^
+
+#### Code Blocks
+
+    .. code-block:: python
+
+       def example():
+           return "Hello, World!"
+
+    .. code-block:: yaml
+
+       apiVersion: geoips_driver/v1
+       kind: Service
+
+#### Admonitions
+
+    .. note::
+
+       This is a note admonition.
+
+    .. warning::
+
+       This is a warning.
+
+    .. tip::
+
+       This is a helpful tip.
+
+#### Cross-References
+
+    :doc:`path/to/document`           # Link to another document
+    :ref:`section-label`              # Link to a section
+
+#### Links
+
+    `Link text <https://example.com>`_
+    :doc:`installation`
+
+#### Lists
+
+    * Unordered item 1
+    * Unordered item 2
+
+    1. Ordered item 1
+    2. Ordered item 2
+
+#### Tables
+
+    +---------+---------+---------+
+    | Header1 | Header2 | Header3 |
+    +=========+=========+=========+
+    | Cell 1  | Cell 2  | Cell 3  |
+    +---------+---------+---------+
+    | Cell 4  | Cell 5  | Cell 6  |
+    +---------+---------+---------+
+
+#### Inline Code
+
+    Use ``inline code`` for commands and variable names.
+
+#### Table of Contents
+
+    .. toctree::
+       :maxdepth: 2
+       :caption: Section Name
+
+       file1
+       file2
+       file3
+
+## Sphinx Theme
+
+This documentation uses the **Read the Docs** theme
+(`sphinx_rtd_theme`).
+
+Theme options are configured in `conf.py`:
+
+    html_theme_options = {
+        'navigation_depth': 4,
+        'collapse_navigation': False,
+        'sticky_navigation': True,
+    }
+
+## Extensions
+
+Installed Sphinx extensions:
+
+-   **sphinx.ext.autodoc** - Auto-generate from docstrings
+-   **sphinx.ext.napoleon** - Google/NumPy style docstrings
+-   **sphinx.ext.viewcode** - Source code links
+-   **sphinx\_copybutton** - Copy buttons on code blocks
+
+## Custom Styling
+
+Custom CSS is in `_static/custom.css` and includes:
+
+-   Enhanced code block styling
+-   Better admonition colors
+-   Improved table formatting
+-   Consistent heading styles
+
+## Building for GitHub Pages
+
+    # Build HTML
+    make html
+
+    # The output is in _build/html/
+
+    # Deploy with ghp-import (install first: pip install ghp-import)
+    ghp-import -n -p _build/html
+
+## Troubleshooting
+
+### Build Errors
+
+**"No module named 'sphinx\_rtd\_theme'"**
+
+    pip install -r requirements.txt
+
+**"WARNING: document isn't included in any toctree"**
+
+Make sure files are referenced in a `toctree` directive somewhere.
+
+### Links Not Working
+
+Make sure cross-references use proper RST syntax:
+
+    :doc:`path/to/file`   # Correct
+
+### Formatting Issues
+
+Run the build with verbose output:
+
+    sphinx-build -v . _build/html
+
+## Best Practices
+
+1.  **Use meaningful file names** - `installation.rst` not `install.rst`
+2.  **Keep line length reasonable** - ~100 characters for better diffs
+3.  **One sentence per line** - Makes diffs cleaner
+4.  **Use relative links** - `` :doc:`relative/path ``\` not absolute
+5.  **Include code examples** - Real, working examples
+6.  **Test code blocks** - Ensure all examples actually work
+7.  **Use admonitions** - Highlight important information
+8.  **Cross-reference liberally** - Link to related documentation
 
 ## Contributing
 
-I welcome contributions to geoips_driver!
+When adding new documentation:
 
-Please follow these general guidelines:
+1.  Create the `.rst` file in the appropriate directory
+2.  Add it to the relevant `toctree` in `index.rst` or parent file
+3.  Build locally to verify: `make html`
+4.  Check for warnings in the build output
+5.  Preview in browser to ensure formatting is correct
 
-1.  **Fork the repository** on GitHub.
-2.  **Create a new branch** for your feature or bug fix. (eg. `git checkout -b feature/your-feature-name` or `fix/issue-number-description`)
-3.  **Make your changes** and **ensure all linters and tests pass** (the CI will also check for you, but it's helpful to run them locally).
-4.  **Commit your changes** using [Conventional Commits](https://www.conventionalcommits.org/) (see "Commit Messages" below).
-5.  **Push your branch** to your fork.
-6.  **Open a Pull Request** against the `main` (or `dev`) branch of the `biosafetylvl5/geoips_driver` repository.
-7.  Clearly describe your changes in the PR. If it fixes an open issue, please link to it (e.g., "Fixes #123").
+## Support
 
-If you're planning a larger contribution, it's a good idea to open an issue first to discuss your ideas so your work isn't duplicated/done in vain.
-
-### Setting up Your Development Environment
-
-This project uses [Poetry](https://python-poetry.org/) for dependency management and packaging.
-
-#### Using Dev Containers (Recommended)
-
-This repository is configured to use [VS Code Dev Containers](https://code.visualstudio.com/docs/devcontainers/containers). This is the recommended way to set up your development environment, as it ensures consistency and comes pre-configured with all necessary tools.
-
-1.  Ensure you have Docker Desktop and the "Dev Containers" extension installed in VS Code.
-2.  Clone the repository: `git clone https://github.com/biosafetylvl5/geoips_driver.git`
-3.  Open the cloned repository folder in VS Code. (You can also do this [without VS code](https://github.com/devcontainers/cli), but that's up to you to figure out.)
-4.  VS Code should prompt you to "Reopen in Container". Click it.
-    *   If it doesn't prompt, open the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and search for "Dev Containers: Reopen in Container".
-5.  The dev container will build (this might take a few minutes the first time). Once built, VS Code will be connected to the containerized environment, with Python, Poetry, and all project dependencies (including development tools and plugins) already installed and configured.
-
-#### Manual Setup
-
-If you prefer not to use Dev Containers:
-
-1.  **Install Python**: Ensure you have Python >=3.11 installed.
-2.  **Install Poetry**: Follow the [official Poetry installation guide](https://python-poetry.org/docs/#installation).
-3.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/biosafetylvl5/geoips_driver.git
-    cd geoips_driver
-    ```
-4.  **Install dependencies**: This command installs the project dependencies and all development tools (linters, test runners, etc.).
-    ```bash
-    poetry install --all-extras
-    ```
-    Alternatively, if you want more granular control, you can install specific groups:
-    ```bash
-    poetry install --with dev,lint,test,doc # For newer Poetry versions
-    ```
-5.  **Activate a virtual environment**:
-    ```bash
-    poetry shell
-    ```
-
-### Linters and Formatters
-
-I use several tools to ensure code quality, consistency, and to catch potential errors early.
-
-*   **Ruff**: An rust-based fast Python linter and formatter. It replaces Flake8, isort, pydocstyle, pyupgrade, and more (like wayy more). It's also used for formatting Python code and is Black-compatible.
-*   **MyPy**: A static type checker for Python.
-*   **Prettier**: For formatting YAML, JSON, and Markdown files.
-*   **doc8 / pinkrst**: For linting and formatting reStructuredText (`.rst`) files for documentation.
-
-#### Pre-commit Hooks (Highly Recommended)
-
-The easiest way to ensure your code meets standards is by using the pre-commit hooks. These hooks will automatically run the linters and formatters on staged files before you make a commit.
-
-1.  **Install pre-commit hooks** (if you're not using the Dev Container, which does this automatically):
-    ```bash
-    poetry run pre-commit install
-    ```
-    Now, `pre-commit` will run automatically on `git commit`. If any linters or formatters make changes, you'll need to `git add` those changes and commit again.
-
-2.  **Run on all files manually** (optional):
-    ```bash
-    poetry run pre-commit run --all-files
-    ```
-
-#### Running Tools Manually
-
-You can also run the tools manually:
-
-*   **Ruff (Linting & Formatting Python)**:
-    *   To format all Python files:
-        ```bash
-        poetry run ruff format .
-        ```
-    *   To check for linting errors (and auto-fix where possible):
-        ```bash
-        poetry run ruff check . --fix
-        ```
-*   **MyPy (Type Checking)**:
-    ```bash
-    poetry run mypy src tests
-    ```
-*   **Prettier (Formatting YAML, JSON, MD, etc.)**:
-    *   To check formatting:
-        ```bash
-        poetry run prettier --check .
-        ```
-    *   To apply formatting:
-        ```bash
-        poetry run prettier --write .
-        ```
-*   **Doc Linting (reStructuredText)**:
-    *   To lint `.rst` files (e.g., in the `docs` directory):
-        ```bash
-        poetry run doc8 docs
-        ```
-    *   To auto-format `.rst` files with `pinkrst` (e.g., in the `docs` directory):
-        ```bash
-        poetry run pinkrst docs
-        ```
-
-### Code Style
-
- *  **Line Length**: 88 characters (Black-compatible).
- *  **Quotes**: Double quotes (`"`) for strings.
- *  **Docstrings**: NumPy style docstrings (enforced by `ruff` via `pydocstyle`).
- *  **Type Hinting**: Please add type hints to your code. MyPy is configured with strict checks.
-
-Refer to the `[tool.ruff]` and `[tool.mypy]` sections in `pyproject.toml` for detailed configurations.
-
-### Running Tests
-
-I use [pytest](https://docs.pytest.org/) for testing.
-
-1.  **Run all tests**:
-    ```bash
-    poetry run pytest
-    ```
-    This will also generate a coverage report in the terminal and an XML report (`coverage.xml`).
-
-2.  **Run tests with specific markers**:
-    For example, to skip slow tests:
-    ```bash
-    poetry run pytest -m "not slow"
-    ```
-
-### Commit Messages
-
-This project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) with the `cz_conventional_commits` style. This helps create a more readable and structured commit history.
-
-* **If using the Dev Container or after `poetry install --all-extras`**:
-    You can use `cz c` or `git cz` (if hooks are set up) to be interactively guided through creating a commit message:
-    ```bash
-    poetry run cz commit
-    # or simply if commitizen is on your PATH / using dev container
-    # cz c
-    ```
-* **Manually**:
-    Ensure your commit messages follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/).
-    Example: `feat: add user authentication endpoint`
-    Common types: `feat`, `fix`, `build`, `chore`, `ci`, `docs`, `style`, `refactor`, `perf`, `test`.
-
-### Documentation
-
-All substantial changes must be accompanied by a changelog release file. These can be created with [`brassy`](https://biosafetylvl5.github.io/brassy/) in `docs/source/release/latest` with `brassy -t $filename` or `brassy -t` to name the file after your current branch.
-
-If your changes affect documentation or add new features that need documenting, please update the other documentation in the `docs/` directory. Documentation is built using Sphinx and brassy.
-
-To build the documentation locally:
-```bash
-poetry install --extras doc # Ensure doc dependencies are installed
-cd docs
-poetry run make html
-```
-
-Then open `docs/_build/html/index.html` in your browser.
+-   **Sphinx Documentation**: <https://www.sphinx-doc.org/>
+-   **RST Primer**:
+    <https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html>
+-   **RST Reference**: <https://docutils.sourceforge.io/rst.html>
