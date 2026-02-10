@@ -1,18 +1,33 @@
 name: Documentation
+
 on: [ push ]
+
 jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install .[doc,lint,test]
+      
       - name: Build docs
         run: |
           cd sphinx
           make html
+        # This will fail the job if make html exits with non-zero status
+        # The Makefile is configured with -W to treat warnings as errors
+      
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if build fails (partial docs can be useful for debugging)
+        with:
+          name: sphinx-docs
+          path: sphinx/_build/html/
+          retention-days: 3
