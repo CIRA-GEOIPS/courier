@@ -6,13 +6,14 @@ operations.
 ## What is a Service?
 
 A **Service** is a running instance of GeoIPS Driver with a configured
-plugin pipeline. Each service:
+plugin workload. Each service:
 
--   Has a unique name and namespace
+-   Has a unique namespace
+-   Has an associated namespace
 -   Runs one or more plugin pipelines
--   Connects to RabbitMQ for message passing
+-   Connects to a message broker for message passing
 -   Exposes Prometheus metrics
--   Can run independently or alongside other services
+-   Can run independently, alongside other services or as part of a networked cluster
 
 ## Service Lifecycle
 
@@ -36,7 +37,7 @@ Services progress through these states:
 
 ### Basic Structure
 
-Every service is defined by a YAML configuration file:
+Every service is defined by a YAML configuration file. For example:
 
     apiVersion: geoips_driver/v1
     kind: Service
@@ -60,10 +61,10 @@ Every service is defined by a YAML configuration file:
 ### Required Fields
 
 -   `apiVersion`: API version (currently `geoips_driver/v1`)
--   `kind`: Must be `Service`
--   `name`: Unique service identifier
+-   `kind`: Must be `Service` (other `kind`s are implemented in GeoIPS, GeoIPS-RT *only* implements `Service`s)
+-   `name`: Unique service identifier set by the user
 -   `description`: Human-readable description
--   `spec.service_namespace`: Namespace for isolation
+-   `spec.service_namespace`: Namespace for isolation or bundling of related services
 -   `spec.rabbitmq`: RabbitMQ connection details
 -   `spec.run`: List of plugins to run
 
@@ -73,6 +74,8 @@ Every service is defined by a YAML configuration file:
 -   `spec.heartbeat_interval`: Health check interval (seconds)
 
 ## Starting a Service
+
+Services can be started via the CLI or from within Python.
 
 ### Command Line
 
@@ -107,7 +110,7 @@ Every service is defined by a YAML configuration file:
     thread = threading.Thread(target=service.start)
     thread.start()
 
-### Docker
+<!--### Docker
 
     docker run -d \
       --name geoips-driver \
@@ -116,6 +119,7 @@ Every service is defined by a YAML configuration file:
       -e RABBITMQ_PASSWORD=secret \
       ghcr.io/your-org/geoips-driver:latest \
       geoips-driver run /config/config.yaml
+
 
 ### Kubernetes
 
@@ -141,7 +145,7 @@ Every service is defined by a YAML configuration file:
             - name: config
               configMap:
                 name: geoips-driver-config
-
+-->
 ## Stopping a Service
 
 ### Graceful Shutdown
@@ -156,6 +160,7 @@ Send SIGINT (Ctrl+C) or SIGTERM:
     =========================
     kill <pid>
 
+<!--
     Docker
     ======
     docker stop geoips-driver
@@ -163,6 +168,7 @@ Send SIGINT (Ctrl+C) or SIGTERM:
     Kubernetes
     ==========
     kubectl delete pod <pod-name>
+-->
 
 **Shutdown sequence:**
 
@@ -204,10 +210,10 @@ Services expose health status via metrics:
 
 -   All managers operational
 -   At least one plugin running
--   RabbitMQ connection active
--   No critical errors
+-   RabbitMQ connection healthy
+-   No critical level errors
 
-### Readiness Checks
+<!--### Readiness Checks
 
 For Kubernetes readiness probes:
 
@@ -229,6 +235,7 @@ For Kubernetes liveness probes:
       initialDelaySeconds: 30
       periodSeconds: 10
       failureThreshold: 3
+-->
 
 ### Heartbeat
 
@@ -263,8 +270,8 @@ Namespaces provide isolation between services:
     service_namespace: staging
     service_namespace: development
 
-    By satellite
-    ============
+    By platform
+    ===========
     service_namespace: goes18_processing
     service_namespace: himawari9_processing
 
@@ -280,7 +287,7 @@ Queues are automatically prefixed with namespace:
     {namespace}-FilesFoundQueue
     {namespace}-JobReadyQueue
 
-    Examples:
+    For example: 
     production-FilesFoundQueue
     development-FilesFoundQueue
 
