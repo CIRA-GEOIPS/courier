@@ -1,5 +1,4 @@
 # Minimal makefile for Sphinx documentation
-
 # You can set these variables from the command line, and also
 # from the environment for the first two.
 SPHINXOPTS    ?=
@@ -22,8 +21,11 @@ clean:
 	rm -rf $(BUILDDIR)
 
 # Build HTML documentation
+# -W: Turn warnings into errors
+# --keep-going: Continue building even after errors to show all issues
+# -n: Run in nit-picky mode (warn about all missing references)
 html:
-	@$(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+	@$(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O) -W --keep-going -n
 
 # Build and open in browser
 serve: html
