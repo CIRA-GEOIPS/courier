@@ -74,7 +74,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
         try:
             observer.start()
         except FileNotFoundError as e:
-            raise RuntimeError(f"Directory '{path}' does not exist.") from e  # noqa: TRY003
+            raise RuntimeError(f"Directory '{path}' does not exist.") from e
 
         self._logger.info(f"Watching for new files in '{path}'...")
 

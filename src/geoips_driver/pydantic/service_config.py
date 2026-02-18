@@ -29,10 +29,10 @@ __all__ = [
 def _ensure_non_empty(value: str | None, *, field_name: str | None) -> str:
     """Guarantee that a string value is non-empty after trimming whitespace."""
     if not isinstance(value, str):
-        raise TypeError(f"Field '{field_name}' must be a string.")  # noqa: TRY003
+        raise TypeError(f"Field '{field_name}' must be a string.")
     stripped = value.strip()
     if not stripped:
-        raise ValueError(f"Field '{field_name}' must be a non-empty string.")  # noqa: TRY003
+        raise ValueError(f"Field '{field_name}' must be a non-empty string.")
     return stripped
 
 
@@ -108,12 +108,12 @@ class MicroserviceModel(FrozenModel):
         """Adapt `{identifier: {...}}` mappings into the canonical model form."""
         if isinstance(data, dict) and "identifier" not in data and "spec" not in data:
             if len(data) != 1:
-                raise ValueError(  # noqa: TRY003
+                raise ValueError(
                     "Microservice entries must contain exactly one identifier mapping.",
                 )
             identifier, spec = next(iter(data.items()))
             if not isinstance(spec, dict):
-                raise TypeError(  # noqa: TRY003
+                raise TypeError(
                     f"Microservice '{identifier}' "
                     "must map to an object describing the microservice.",
                 )
@@ -160,7 +160,7 @@ class ServiceSpecModel(FrozenModel):
         duplicates = _find_duplicate_values(step.identifier for step in self.run)
         if duplicates:
             dupes = ", ".join(sorted(duplicates))
-            raise ValueError(f"Duplicate run step identifiers detected: {dupes}")  # noqa: TRY003
+            raise ValueError(f"Duplicate run step identifiers detected: {dupes}")
         return self
 
 
