@@ -21,10 +21,12 @@ def run_service(config: dict)-> None:
     import geoips_driver.plugins.modules.data_monitors.file_system_poller_watchdog as file_system_polling
     import geoips_driver.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
     from geoips_driver.plugins.modules.job_builders import dummy_job_builder
+    from geoips_driver.plugins.modules.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
     available_plugins = {
         file_system_polling.FileSystemPoller.name.lower(): file_system_polling.FileSystemPoller,
         dummy_job_builder.DummyJobBuilder.name.lower(): dummy_job_builder.DummyJobBuilder,
         serial_bash_dispatcher.SerialBashDispatcher.name.lower(): serial_bash_dispatcher.SerialBashDispatcher,
+        RabbitMQWatcher.name.lower(): RabbitMQWatcher,
     }
     print("Available plugins:")
     print(available_plugins)

@@ -316,8 +316,9 @@ class ServiceConfig:
         default_factory=lambda: os.environ.get("LOKI_URL", ""),
     )
     loki_enabled: bool = field(
-        default_factory=lambda: os.environ.get("LOKI_ENABLED", "false").lower()
-        == "true",
+        default_factory=lambda: (
+            os.environ.get("LOKI_ENABLED", "false").lower() == "true"
+        ),
     )
     log_level: str = field(
         default_factory=lambda: os.environ.get("LOG_LEVEL", "DEBUG"),
@@ -375,11 +376,21 @@ def retry_with_backoff(
     max_retries: int = 5,
     base_delay: float = 1.0,
     exceptions: tuple[type[Exception], ...] = (Exception,),
+    stop_event: threading.Event | None = None,
 ) -> Callable[[Callable[..., T]], Callable[..., T | None]]:
     """Create retry decorator with exponential backoff for transient failures.
 
     Returns a decorator that retries function execution on specified exceptions
     with exponentially increasing delay between attempts.
+
+    The backoff sleep is implemented as a short-polling loop (0.1 s ticks) so
+    that it can be interrupted promptly by either:
+
+    * A ``KeyboardInterrupt`` (Ctrl-C delivered to the main thread while the
+      signal handler has *not* been overridden to suppress it), or
+    * A ``threading.Event`` passed as *stop_event* being set (useful when a
+      custom ``SignalHandler`` absorbs SIGINT/SIGTERM before Python can raise
+      ``KeyboardInterrupt``).
 
     Parameters
     ----------
@@ -389,6 +400,11 @@ def retry_with_backoff(
         Initial delay in seconds, doubled after each failure.
     exceptions : tuple of type[Exception], default=(Exception,)
         Exception types that trigger retry attempts.
+    stop_event : threading.Event or None, default=None
+        Optional event that, when set, causes the backoff sleep to be aborted
+        and the last caught exception to be re-raised immediately.  Pass the
+        same ``Event`` that your signal handler sets on SIGINT/SIGTERM so the
+        retry loop exits as soon as shutdown is requested.
 
     Returns
     -------
@@ -400,7 +416,10 @@ def retry_with_backoff(
     Raises
     ------
     Exception
-        Re-raises the caught exception if max_retries is reached.
+        Re-raises the caught exception if max_retries is reached, or if the
+        stop_event is set during a backoff sleep.
+    KeyboardInterrupt
+        Re-raised immediately if Ctrl-C interrupts a backoff sleep.
 
     Examples
     --------
@@ -415,10 +434,12 @@ def retry_with_backoff(
     def decorator(func: Callable[..., T]) -> Callable[..., T | None]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T | None:
+            last_exc: Exception | None = None
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
                 except exceptions as e:
+                    last_exc = e
                     if attempt == max_retries - 1:
                         logger.exception(
                             f"Max retries ({max_retries}) reached for {func.__name__}",
@@ -430,7 +451,26 @@ def retry_with_backoff(
                         f"Attempt {attempt + 1} failed for {func.__name__}: {e}. "
                         f"Retrying in {wait_time} seconds...",
                     )
-                    time.sleep(wait_time)
+
+                    # Sleep in small increments so we can react quickly to
+                    # either a stop_event being set or a KeyboardInterrupt.
+                    deadline = time.monotonic() + wait_time
+                    try:
+                        while time.monotonic() < deadline:
+                            if stop_event is not None and stop_event.is_set():
+                                logger.info(
+                                    f"Retry aborted for {func.__name__}: "
+                                    "stop event set during backoff.",
+                                )
+                                raise last_exc  # type: ignore[misc]
+                            time.sleep(min(0.1, deadline - time.monotonic()))
+                    except KeyboardInterrupt:
+                        logger.info(
+                            f"Retry backoff interrupted by Ctrl-C for "
+                            f"{func.__name__}, aborting retries.",
+                        )
+                        raise
+
             return None
 
         return wrapper
@@ -633,7 +673,10 @@ class Service:
         self._signal_handler = SignalHandler()
 
         self._prometheus_manager = PrometheusManager(self._config)
-        self._rabbitmq_manager = RabbitMQManager(self._config)
+        self._rabbitmq_manager = RabbitMQManager(
+            self._config,
+            stop_event=self._signal_handler.stop_event,
+        )
         self._plugin_manager = PluginManager(self._config, self)
 
         self._managers: list[ServiceManager] = [
@@ -892,7 +935,7 @@ class Service:
             self._start_managers()
 
             if not self._health_check():
-                raise RuntimeError("Service health check failed after startup")  # noqa: TRY003, TRY301
+                raise RuntimeError("Service health check failed after startup")  # noqa: TRY301
 
             self._logger.info(f"Service {self._config.service_id} started successfully")
             self._run_heartbeat_loop()
@@ -1109,7 +1152,7 @@ class PluginManager(ServiceManager):
         with self._lock:
             plugin_instance = plugin(self._service, config)
             if plugin_instance.name in self._plugins:
-                raise ValueError(f"Plugin {plugin_instance.name} already registered")  # noqa: TRY003
+                raise ValueError(f"Plugin {plugin_instance.name} already registered")
 
             self._logger.info(plugin_instance)
             self._logger.info(plugin_instance.name)
@@ -1366,8 +1409,9 @@ class PluginManager(ServiceManager):
             ]
             self._logger.debug(", ".join(health))
             healthy_plugins = filter_map(
-                lambda info: info.state
-                in [PluginRunState.RUNNING, PluginRunState.STARTING],
+                lambda info: (
+                    info.state in [PluginRunState.RUNNING, PluginRunState.STARTING]
+                ),
                 lambda info: info.plugin.is_healthy(),
                 self._plugins.values(),
             )
@@ -1600,21 +1644,36 @@ class RabbitMQManager(ServiceManager):
     1
     """
 
-    def __init__(self, config: ServiceConfig) -> None:
+    def __init__(
+        self, config: ServiceConfig, stop_event: threading.Event | None = None
+    ) -> None:
         """Initialize RabbitMQ manager with configuration.
 
         Parameters
         ----------
         config : ServiceConfig
             Service configuration.
+        stop_event : threading.Event or None, optional
+            Event that is set when a shutdown signal is received.  Passed to
+            ``retry_with_backoff`` so connection retries are aborted promptly
+            on Ctrl-C / SIGTERM rather than waiting out the full backoff delay.
         """
         self._config = config
+        self._stop_event = stop_event
         self._logger = get_logger("manager", "RabbitMQManager", config)
         self._connection: BlockingConnection | None = None
         self._channel: BlockingChannel | None = None
         self._queues: dict[str, dict[str, Any]] = {}
         self._created_queues: set[str] = set()
         self._namespace = config.service_namespace
+
+        # Bind _establish_connection with the stop_event at init time so the
+        # decorator has access to it (decorators are applied at class definition
+        # time and cannot receive instance state directly).
+        self._establish_connection = retry_with_backoff(
+            exceptions=(AMQPConnectionError,),
+            stop_event=self._stop_event,
+        )(self._establish_connection_impl)
 
         # Prometheus metrics for RabbitMQ
         self._rabbitmq_connections_total = prometheus_client.Counter(
@@ -1633,14 +1692,15 @@ class RabbitMQManager(ServiceManager):
             ["queue_name"],
         )
 
-    @retry_with_backoff(exceptions=(AMQPConnectionError,))
-    def _establish_connection(
+    def _establish_connection_impl(
         self,
     ) -> tuple[BlockingConnection, BlockingChannel]:
-        """Establish new RabbitMQ connection and channel with retry logic.
+        """Establish new RabbitMQ connection and channel.
 
-        Creates fresh connection and channel to RabbitMQ using configured URL.
-        Includes automatic retry on connection failures with exponential backoff.
+        This is the raw implementation.  The retry-with-backoff wrapper is
+        applied in ``__init__`` (rather than via a class-level decorator) so
+        that the ``stop_event`` from the service's ``SignalHandler`` can be
+        injected at construction time.
 
         Returns
         -------
@@ -1650,16 +1710,7 @@ class RabbitMQManager(ServiceManager):
         Raises
         ------
         AMQPConnectionError
-            If connection fails after all retry attempts.
-
-        Examples
-        --------
-        >>> config = ServiceConfig()
-        >>> manager = RabbitMQManager(config)
-        >>> # Note: This would fail in doctest without actual RabbitMQ server
-        >>> # connection, channel = manager._establish_connection()
-        >>> # isinstance(connection, BlockingConnection)
-        >>> # True
+            If connection fails.
         """
         self._logger.debug(
             f"Attempting to connect to RabbitMQ at url {self._config.rabbitmq_url}",
@@ -1837,6 +1888,10 @@ class SignalHandler:
     ----------
     _shutdown_requested : bool
         Whether a shutdown signal has been received.
+    stop_event : threading.Event
+        Event that is set when a shutdown signal is received.  Can be passed
+        to ``retry_with_backoff`` so that long backoff sleeps are interrupted
+        immediately when the user presses Ctrl-C or SIGTERM is received.
 
     Properties
     ----------
@@ -1855,6 +1910,7 @@ class SignalHandler:
     def __init__(self) -> None:
         """Initialize signal handler and register signal callbacks."""
         self._shutdown_requested = False
+        self.stop_event = threading.Event()
         self._setup_signal_handlers()
 
     def _setup_signal_handlers(self) -> None:
@@ -1878,6 +1934,7 @@ class SignalHandler:
         """
         logger.info(f"Received signal {signal_num}, requesting graceful shutdown...")
         self._shutdown_requested = True
+        self.stop_event.set()
 
     @property
     def shutdown_requested(self) -> bool:

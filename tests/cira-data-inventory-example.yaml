@@ -1,0 +1,52 @@
+apiVersion: geoips/driver/v1
+kind: Service
+name: Data Inventory Ingest
+description: Watches for files from a data inventory notification.
+docstring: |
+  This service listens to the nrt_file_notif_queue RabbitMQ queue for incoming
+  files that were ingested by the CIRA data inventory. Each notification
+  is parsed into a File object annotated with platform, sensor, and timestamp
+  metadata. Downstream job builders and dispatchers can filter and act on these
+  files as they arrive.
+spec:
+  service_namespace: data-inventory-ingest
+  heartbeat_interval: 1000  # in milliseconds
+  rabbitmq:
+    host: rabbitmqhost
+    port: 5672
+    username: admin  # could be a secret set by
+    password: admin_test  # kubernetes, docker, etc.
+  run:
+    - clavrx-file-watcher:
+        kind: data_monitor
+        name: rabbit_mq_watcher
+        config:
+          rabbitmq_host: overcast6.cira.colostate.edu
+          rabbitmq_port: 5672
+          rabbitmq_username: guest
+          rabbitmq_password: guest
+
+          rabbitmq_queue: nrt_file_notif_queue # set by the data inventory
+          rabbitmq_prefetch_count: 1  # one message at a time
+
+          # Reconnection policy
+          max_retries: -1             # retry forever on connection loss
+          retry_delay_seconds: 2.0
+          retry_backoff_factor: 1.5
+
+          # Message field mapping — matches the nrt_file_notif_queue schema
+          field_map:
+            location:             location
+            dir_path:             dir_path
+            file_name:            file_name
+            platform:             platform_name
+            sensor:               source_name
+            time_range_key:       time_range
+            time_range_lower_key: lower
+            time_range_start_key: start
+
+          # Location format: "user@hostname:/mount/path"
+          location_format: user_at_host_colon_path
+
+          # Timestamp for file objects
+          timestamp_field: time_range

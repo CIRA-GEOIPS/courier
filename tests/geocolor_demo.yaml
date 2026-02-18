@@ -1,0 +1,45 @@
+apiVersion: geoips/driver/v1
+kind: Service
+name: GeoColor-Demo
+description: This looks for ABI files and then produces GeoColor from them.
+docstring: |
+    This uses a file watcher to look for incoming files.
+    The incoming files are annotated with metadata.
+    Job builders accept any 1 file with ABI as the sensor and full-disk as the sector.
+    They dispatch that to a GeoColor creator job that produces output.
+spec:
+  service_namespace: demo
+  heartbeat_interval: 1000 # in milliseconds
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: admin # these could be secrets set by kubernetes, docker, etc.
+    password: admin_test # and can be set here or in the environment
+  run:
+    - file-poller:
+        kind: data_monitor
+        name: file_system_poller_watchdog # this is the plugin name
+        config:
+          path: /workspaces/geoips_driver/tests/watch-dir # where to watch
+          metadata-tools:
+              - goes16_abi # This adds metadata to files that look like goes16 files
+              - goes18_abi # This adds metadata to files that look like goes18 files
+    - abi-job-builder:
+        kind: job_builder
+        name: filter_pass
+        config:
+          files_per_job: 16 # How many files required dispatch job
+          time_grouping:  # Optionally batch files by time (eg. 2 files in N:00-N:15)
+            start: 2000-01-01 00:00:00 # optional reference time
+            minutes: 15
+          filters: # Metadata to filter on
+            sensor: abi
+            sector: Full-Disk
+    - produce-geocolor-from-abi:
+        kind: dispatcher
+        name: serial_bash
+        config:
+          bash_script: |
+           echo "This is a test! A Script! A ~SCRIPT~ that does !!~TESTING~!!"
+           echo {file} # this is a templated field
+           python3 -c "print('this is arbitrary python talking about the file {file}')"
