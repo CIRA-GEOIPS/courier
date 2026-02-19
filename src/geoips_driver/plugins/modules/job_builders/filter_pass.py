@@ -16,7 +16,7 @@ name: str = "filter_and_group"
 
 def create_job(
     number_of_files: int,
-    time_grouping: dict[str, float | int] | None,
+    time_grouping: dict[str, float | int] | None,  # noqa: ARG001
     filters: dict[str, str],
 ) -> Job:
     """Create a job with specified number of files and time grouping.

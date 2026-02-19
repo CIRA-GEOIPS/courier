@@ -259,7 +259,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 raw = raw.get(part)
 
             # Handle PostgreSQL-style array string:
-            # '["2026-01-29 09:10:00","2026-01-29 09:18:00"]'
+            # eg. "2026-01-29 09:10:00", "2026-01-29 09:18:00"
             if isinstance(raw, str):
                 try:
                     parsed = json.loads(raw)
@@ -397,7 +397,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 file_queue.put(file)
             except Exception:
                 self._logger.exception(
-                    f"Failed to process message; negative acknowledging. Body: {body!r}",
+                    "Failed to process message; negative acknowledging. "
+                    f"Body: {body!r}",
                 )
                 ch.basic_nack(
                     delivery_tag=method.delivery_tag,

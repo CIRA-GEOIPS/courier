@@ -152,7 +152,7 @@ def _create_loki_handler(
     """
     try:
         if not logging_loki or logging_loki is None:
-            raise ImportError
+            raise ImportError  # noqa: TRY301
         # Set level tag to 'level' for Grafana
         logging_loki.emitter.LokiEmitter.level_tag = "level"
 
