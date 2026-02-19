@@ -343,6 +343,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     def _connect_and_consume(self, file_queue: queue.Queue[File]) -> None:
         """Open a single connection+channel and block until consumption ends."""
         params = self._build_connection_params()
+        self._logger.debug(
+            f"Attempting to connect to RabbitMQ at url {params!r}",
+        )
         connection = pika.BlockingConnection(params)
         channel = connection.channel()
         channel.queue_declare(queue=self.rabbitmq_queue, durable=True)
