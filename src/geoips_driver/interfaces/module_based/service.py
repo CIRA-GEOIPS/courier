@@ -1645,7 +1645,9 @@ class RabbitMQManager(ServiceManager):
     """
 
     def __init__(
-        self, config: ServiceConfig, stop_event: threading.Event | None = None,
+        self,
+        config: ServiceConfig,
+        stop_event: threading.Event | None = None,
     ) -> None:
         """Initialize RabbitMQ manager with configuration.
 

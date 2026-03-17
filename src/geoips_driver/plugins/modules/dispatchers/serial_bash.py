@@ -1,4 +1,4 @@
-"""Serial Bash Dispatcher Plugin for GeoIPS Driver."""
+"""Serial Bash Dispatcher Plugin for Lazy Lemon."""
 
 import socket
 import subprocess

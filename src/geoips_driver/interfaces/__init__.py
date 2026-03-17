@@ -1,4 +1,4 @@
-"""GeoIPS Driver Interface Module."""
+"""Lazy Lemon Interface Module."""
 
 from geoips_driver.interfaces.module_based.data_monitors import data_monitors
 from geoips_driver.interfaces.module_based.dispatchers import dispatchers
@@ -10,12 +10,12 @@ from geoips_driver.interfaces.yaml_based.data_monitor_configs import (
 # These lists are the "master" lists of the interface names.
 # These are used in validating the plugins (ie, so we will catch a typo
 # in an interface name)
-module_based_interfaces = [
+module_based_interfaces: list[str] = [
     "data_monitors",
     "dispatchers",
     "job_builders",
 ]
-yaml_based_interfaces = [
+yaml_based_interfaces: list[str] = [
     "data_monitor_configs",
 ]
 # Note due to the fact that we are including all of the imported packages
@@ -23,4 +23,6 @@ yaml_based_interfaces = [
 # not recognize the above imports as being used.  F401 ignored via
 # per-file ignore in geoips/.config/flake8 config.  See comment above
 # for more information.
-__all__ = module_based_interfaces + yaml_based_interfaces  # pyright: ignore[reportUnsupportedDunderAll] # noqa: PLE0605
+# No QA this line because many linters will complain about
+# this not "only containing strings
+__all__ = module_based_interfaces + yaml_based_interfaces  # noqa
