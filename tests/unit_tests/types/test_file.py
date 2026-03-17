@@ -7,12 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from geoips_driver.types.file import (
-    File,
-    FrozenFile,
-    build_timestamp_from_components,
-    extract_datetime_from_regex,
-)
+from geoips_driver.types.file import (File, FrozenFile,
+                                      build_timestamp_from_components,
+                                      extract_datetime_from_regex)
 
 
 # Fixtures for reusable test data

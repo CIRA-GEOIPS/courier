@@ -87,4 +87,6 @@ ignoreWords:
   - autodoc
   - typehints
   - sphinxcontribmermaid
+  - coverlogging
+  - caplog
 import: []

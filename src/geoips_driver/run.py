@@ -6,9 +6,7 @@ from geoips_driver.interfaces.module_based.service import (
     ServiceConfig,
     create_service_with_plugins,
 )
-from geoips_driver.plugins.modules.data_monitors import (
-    file_system_poller_watchdog,
-)
+from geoips_driver.plugins.modules.data_monitors import file_system_poller_watchdog
 from geoips_driver.plugins.modules.data_monitors.rabbit_mq_watcher import (
     RabbitMQWatcher,
 )

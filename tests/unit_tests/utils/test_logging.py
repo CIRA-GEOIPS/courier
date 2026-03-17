@@ -27,16 +27,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from geoips_driver.interfaces.module_based.service import (
-    ServiceConfig,  # For mocking in fixtures
-)
-from geoips_driver.utils.logging import (
-    TRACE_LEVEL,
-    ContextAdapter,
-    _create_loki_handler,
-    get_logger,
-    setup_logging,  # Monkey-patched method on Logger
-)
+from geoips_driver.interfaces.module_based.service import \
+    ServiceConfig  # For mocking in fixtures
+from geoips_driver.utils.logging import \
+    setup_logging  # Monkey-patched method on Logger
+from geoips_driver.utils.logging import (TRACE_LEVEL, ContextAdapter,
+                                         _create_loki_handler, get_logger)
 
 
 # Fixtures
