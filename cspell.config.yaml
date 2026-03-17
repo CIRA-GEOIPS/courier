@@ -89,4 +89,6 @@ ignoreWords:
   - sphinxcontribmermaid
   - coverlogging
   - caplog
+  - labelnames
+  - FLDK
 import: []

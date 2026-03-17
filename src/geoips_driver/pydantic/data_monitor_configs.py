@@ -8,7 +8,14 @@ import re
 from collections.abc import Mapping
 from typing import Annotated, Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # Valid template variables for parent_dir and match patterns
 VALID_TEMPLATE_VARS: frozenset[str] = frozenset(
@@ -117,14 +124,14 @@ class FileMetadataEntry(BaseModel):
 
     Attributes
     ----------
-    platform : str | None
-        Platform identifier (e.g., 'goes16', 'himawari9').
-    sensor : str | None
-        Sensor identifier (e.g., 'abi', 'ahi').
-    level : str | None
-        Data processing level (e.g., 'L1B').
-    sector : str | None
-        Geographic sector identifier.
+    source : str | None
+        Source identifier (e.g., 'goes16', 'himawari9').
+    instrument : str | None
+        Instrument identifier (e.g., 'abi', 'ahi').
+    processing_stage : str | None
+        Data processing stage (e.g., 'L1B').
+    domain : str | None
+        Domain identifier (e.g., 'Full-Disk', 'CONUS').
     num_expected : int
         Expected number of files, defaults to 1.
     yyyy : str | None
@@ -148,12 +155,37 @@ class FileMetadataEntry(BaseModel):
     model_config = ConfigDict(
         extra="allow",
         str_strip_whitespace=True,
+        populate_by_name=True,
     )
 
-    platform: Annotated[str | None, Field(default=None)] = None
-    sensor: Annotated[str | None, Field(default=None)] = None
-    level: Annotated[str | None, Field(default=None)] = None
-    sector: Annotated[str | None, Field(default=None)] = None
+    source: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("source", "platform"),
+        ),
+    ] = None
+    instrument: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("instrument", "sensor"),
+        ),
+    ] = None
+    processing_stage: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("processing_stage", "level"),
+        ),
+    ] = None
+    domain: Annotated[
+        str | None,
+        Field(
+            default=None,
+            validation_alias=AliasChoices("domain", "sector"),
+        ),
+    ] = None
     num_expected: Annotated[int, Field(default=1, gt=0)] = 1
 
     # Manual date components
@@ -167,7 +199,7 @@ class FileMetadataEntry(BaseModel):
     date: Annotated[str | None, Field(default=None)] = None
     match: Annotated[list[str], Field(min_length=1)]
 
-    @field_validator("platform", "sensor", "level", mode="after")
+    @field_validator("source", "instrument", "processing_stage", mode="after")
     @classmethod
     def lowercase_string_fields(cls, value: str | None) -> str | None:
         """Convert string fields to lowercase.
@@ -184,29 +216,29 @@ class FileMetadataEntry(BaseModel):
         """
         return value.lower() if value is not None else None
 
-    @field_validator("sector", mode="after")
+    @field_validator("domain", mode="after")
     @classmethod
-    def uppercase_and_validate_sector(cls, value: str | None) -> str | None:
-        """Convert sector to uppercase and validate it's non-empty if provided.
+    def uppercase_and_validate_domain(cls, value: str | None) -> str | None:
+        """Convert domain to uppercase and validate it's non-empty if provided.
 
         Parameters
         ----------
         value : str | None
-            The sector value.
+            The domain value.
 
         Returns
         -------
         str | None
-            The validated, uppercase sector value.
+            The validated, uppercase domain value.
 
         Raises
         ------
         ValueError
-            If sector is empty string.
+            If domain is empty string.
         """
         if value is not None:
             if not value:
-                msg = "sector must be a non-empty string"
+                msg = "domain must be a non-empty string"
                 raise ValueError(msg)
             return value.upper()
         return None
@@ -272,10 +304,10 @@ class FileMetadataEntry(BaseModel):
             If no fields are set.
         """
         non_default_fields = [
-            self.platform,
-            self.sensor,
-            self.level,
-            self.sector,
+            self.source,
+            self.instrument,
+            self.processing_stage,
+            self.domain,
             self.yyyy,
             self.mm,
             self.dd,
@@ -352,7 +384,7 @@ class FileMetadataEntry(BaseModel):
     def validate_date_requirements(self) -> Self:
         """Validate date regex and manual components provide sufficient info.
 
-        Only applies to entries with platform specified (main entries).
+        Only applies to entries with source specified (main entries).
 
         Returns
         -------
@@ -364,15 +396,15 @@ class FileMetadataEntry(BaseModel):
         ValueError
             If insufficient date information is provided for a main entry.
         """
-        # Only validate date requirements for entries with a platform
-        # (sector-only entries don't need date information)
-        if self.platform is not None and not self._has_sufficient_date_info():
+        # Only validate date requirements for entries with a source
+        # (domain-only entries don't need date information)
+        if self.source is not None and not self._has_sufficient_date_info():
             manual = self.get_manual_date_components()
             regex = self._get_regex_date_components()
             all_comps = manual | regex
             msg = (
                 f"Insufficient date information for entry "
-                f"with platform '{self.platform}'. "
+                f"with source '{self.source}'. "
                 f"Requires YYYY and (MM + DD or JJJ). "
                 f"Found: {sorted(all_comps)}"
             )
@@ -421,8 +453,8 @@ class Spec(BaseModel):
         return {k.lower(): v for k, v in value.items()}
 
     @model_validator(mode="after")
-    def validate_has_platform_entry(self) -> Self:
-        """Validate that at least one entry has a platform specified.
+    def validate_has_source_entry(self) -> Self:
+        """Validate that at least one entry has a source specified.
 
         Returns
         -------
@@ -432,13 +464,13 @@ class Spec(BaseModel):
         Raises
         ------
         ValueError
-            If no entry has platform specified.
+            If no entry has source specified.
         """
-        has_platform = any(
-            entry.platform is not None for entry in self.file_metadata.values()
+        has_source = any(
+            entry.source is not None for entry in self.file_metadata.values()
         )
-        if not has_platform:
-            msg = "At least one file-metadata entry must have 'platform' specified"
+        if not has_source:
+            msg = "At least one file-metadata entry must have 'source' specified"
             raise ValueError(msg)
         return self
 

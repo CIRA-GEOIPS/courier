@@ -42,10 +42,10 @@ def full_file(sample_path: Path, sample_timestamp: datetime) -> File:
     return File(
         file=sample_path,
         hostname="testhost",
-        platform="goes16",
-        sensor="abi",
-        level="l1b",
-        sector="Full-Disk",
+        source="goes16",
+        instrument="abi",
+        processing_stage="l1b",
+        domain="Full-Disk",
         num_expected=16,
         timestamp=sample_timestamp,
     )
@@ -68,10 +68,10 @@ class TestFileCreation:
         f = File()
         assert f.file is None
         assert f.hostname is None
-        assert f.platform is None
-        assert f.sensor is None
-        assert f.level is None
-        assert f.sector is None
+        assert f.source is None
+        assert f.instrument is None
+        assert f.processing_stage is None
+        assert f.domain is None
         assert f.num_expected == 1
         assert f.timestamp is None
 
@@ -92,28 +92,28 @@ class TestFileCreation:
         """Test creating File with all fields populated."""
         assert full_file.file == sample_path
         assert full_file.hostname == "testhost"
-        assert full_file.platform == "goes16"
-        assert full_file.sensor == "abi"
-        assert full_file.level == "l1b"
-        assert full_file.sector == "Full-Disk"
+        assert full_file.source == "goes16"
+        assert full_file.instrument == "abi"
+        assert full_file.processing_stage == "l1b"
+        assert full_file.domain == "Full-Disk"
         assert full_file.num_expected == 16
         assert full_file.timestamp == sample_timestamp
 
     def test_mutability(self, full_file: File) -> None:
         """Confirm File is mutable (unlike FrozenFile)."""
-        full_file.platform = "modified"
-        assert full_file.platform == "modified"
+        full_file.source = "modified"
+        assert full_file.source == "modified"
 
     def test_equality(self, sample_path: Path, sample_timestamp: datetime) -> None:
         """Two Files with identical fields are equal."""
-        f1 = File(file=sample_path, platform="goes16", timestamp=sample_timestamp)
-        f2 = File(file=sample_path, platform="goes16", timestamp=sample_timestamp)
+        f1 = File(file=sample_path, source="goes16", timestamp=sample_timestamp)
+        f2 = File(file=sample_path, source="goes16", timestamp=sample_timestamp)
         assert f1 == f2
 
     def test_inequality(self, sample_path: Path) -> None:
         """Two Files with different fields are not equal."""
-        f1 = File(file=sample_path, platform="goes16")
-        f2 = File(file=sample_path, platform="himawari9")
+        f1 = File(file=sample_path, source="goes16")
+        f2 = File(file=sample_path, source="himawari9")
         assert f1 != f2
 
 
@@ -134,10 +134,10 @@ class TestFileSerialization:
         assert result == {
             "file": str(sample_path),
             "hostname": "testhost",
-            "platform": "goes16",
-            "sensor": "abi",
-            "level": "l1b",
-            "sector": "Full-Disk",
+            "source": "goes16",
+            "instrument": "abi",
+            "processing_stage": "l1b",
+            "domain": "Full-Disk",
             "num_expected": 16,
             "timestamp": sample_timestamp.isoformat(),
         }
@@ -156,10 +156,10 @@ class TestFileSerialization:
         """All optional metadata fields are None."""
         result = minimal_file.to_dict()
         assert result["hostname"] is None
-        assert result["platform"] is None
-        assert result["sensor"] is None
-        assert result["level"] is None
-        assert result["sector"] is None
+        assert result["source"] is None
+        assert result["instrument"] is None
+        assert result["processing_stage"] is None
+        assert result["domain"] is None
 
     def test_str_returns_valid_json(self, full_file: File) -> None:
         """__str__ returns a JSON string matching to_dict."""
@@ -208,20 +208,20 @@ class TestFileSerialization:
         data = {
             "file": "/data/goes16_abi.nc",
             "hostname": "host1",
-            "platform": "goes16",
-            "sensor": "abi",
-            "level": "l1b",
-            "sector": "conus",
+            "source": "goes16",
+            "instrument": "abi",
+            "processing_stage": "l1b",
+            "domain": "conus",
             "num_expected": 10,
             "timestamp": sample_timestamp.isoformat(),
         }
         f = File.from_dict(data)
         assert f.file == Path("/data/goes16_abi.nc")
         assert f.hostname == "host1"
-        assert f.platform == "goes16"
-        assert f.sensor == "abi"
-        assert f.level == "l1b"
-        assert f.sector == "conus"
+        assert f.source == "goes16"
+        assert f.instrument == "abi"
+        assert f.processing_stage == "l1b"
+        assert f.domain == "conus"
         assert f.num_expected == 10
         assert f.timestamp == sample_timestamp
 
@@ -293,6 +293,31 @@ class TestFileSerialization:
         reconstructed = File.from_string(str(minimal_file))
         assert reconstructed == minimal_file
 
+    def test_from_dict_legacy_keys(self) -> None:
+        """from_dict accepts legacy keys (platform, sensor, level, sector)."""
+        data = {
+            "file": "/tmp/test.nc",
+            "platform": "goes16",
+            "sensor": "abi",
+            "level": "l1b",
+            "sector": "conus",
+        }
+        f = File.from_dict(data)
+        assert f.source == "goes16"
+        assert f.instrument == "abi"
+        assert f.processing_stage == "l1b"
+        assert f.domain == "conus"
+
+    def test_from_dict_new_keys_take_precedence(self) -> None:
+        """New keys take precedence over legacy keys in from_dict."""
+        data = {
+            "file": "/tmp/test.nc",
+            "source": "new_source",
+            "platform": "old_platform",
+        }
+        f = File.from_dict(data)
+        assert f.source == "new_source"
+
 
 # ─── File methods ────────────────────────────────────────────────────────────
 
@@ -310,10 +335,10 @@ class TestFileMethods:
         frozen = full_file.freeze()
         assert frozen.file == full_file.file
         assert frozen.hostname == full_file.hostname
-        assert frozen.platform == full_file.platform
-        assert frozen.sensor == full_file.sensor
-        assert frozen.level == full_file.level
-        assert frozen.sector == full_file.sector
+        assert frozen.source == full_file.source
+        assert frozen.instrument == full_file.instrument
+        assert frozen.processing_stage == full_file.processing_stage
+        assert frozen.domain == full_file.domain
         assert frozen.num_expected == full_file.num_expected
         assert frozen.timestamp == full_file.timestamp
 
@@ -335,11 +360,11 @@ class TestFileMethods:
         dt = datetime(2024, 6, 1)
         updated = minimal_file.with_updates(
             hostname="h1",
-            platform="goes16",
+            source="goes16",
             timestamp=dt,
         )
         assert updated.hostname == "h1"
-        assert updated.platform == "goes16"
+        assert updated.source == "goes16"
         assert updated.timestamp == dt
         assert updated.file == minimal_file.file
 
@@ -355,29 +380,29 @@ class TestFileMethods:
         """merge_metadata sets fields that are currently None."""
         f = File(file=Path("/tmp/f.nc"))
         result = f.merge_metadata(
-            platform="goes16",
-            sensor="abi",
-            level="l1b",
-            sector="conus",
+            source="goes16",
+            instrument="abi",
+            processing_stage="l1b",
+            domain="conus",
         )
-        assert result.platform == "goes16"
-        assert result.sensor == "abi"
-        assert result.level == "l1b"
-        assert result.sector == "conus"
+        assert result.source == "goes16"
+        assert result.instrument == "abi"
+        assert result.processing_stage == "l1b"
+        assert result.domain == "conus"
 
     def test_merge_preserves_existing_fields(self, full_file: File) -> None:
         """merge_metadata does not overwrite existing non-None values."""
         result = full_file.merge_metadata(
-            platform="overridden",
-            sensor="overridden",
-            level="overridden",
-            sector="overridden",
+            source="overridden",
+            instrument="overridden",
+            processing_stage="overridden",
+            domain="overridden",
             dt=datetime(1999, 1, 1),
         )
-        assert result.platform == full_file.platform
-        assert result.sensor == full_file.sensor
-        assert result.level == full_file.level
-        assert result.sector == full_file.sector
+        assert result.source == full_file.source
+        assert result.instrument == full_file.instrument
+        assert result.processing_stage == full_file.processing_stage
+        assert result.domain == full_file.domain
         assert result.timestamp == full_file.timestamp
 
     @pytest.mark.parametrize(
@@ -415,16 +440,16 @@ class TestFileMethods:
 
     def test_merge_returns_new_instance(self, minimal_file: File) -> None:
         """merge_metadata returns a new File, not the same one."""
-        result = minimal_file.merge_metadata(platform="goes16")
+        result = minimal_file.merge_metadata(source="goes16")
         assert result is not minimal_file
 
     def test_merge_no_args(self, minimal_file: File) -> None:
         """merge_metadata with no args preserves all fields."""
         result = minimal_file.merge_metadata()
-        assert result.platform is None
-        assert result.sensor is None
-        assert result.level is None
-        assert result.sector is None
+        assert result.source is None
+        assert result.instrument is None
+        assert result.processing_stage is None
+        assert result.domain is None
         assert result.num_expected == 1
         assert result.timestamp is None
 
@@ -440,10 +465,10 @@ class TestFrozenFileCreation:
         ff = FrozenFile()
         assert ff.file is None
         assert ff.hostname is None
-        assert ff.platform is None
-        assert ff.sensor is None
-        assert ff.level is None
-        assert ff.sector is None
+        assert ff.source is None
+        assert ff.instrument is None
+        assert ff.processing_stage is None
+        assert ff.domain is None
         assert ff.num_expected == 1
         assert ff.timestamp is None
 
@@ -454,16 +479,16 @@ class TestFrozenFileCreation:
         ff = FrozenFile(
             file=sample_path,
             hostname="host",
-            platform="goes16",
-            sensor="abi",
-            level="l1b",
-            sector="full-disk",
+            source="goes16",
+            instrument="abi",
+            processing_stage="l1b",
+            domain="full-disk",
             num_expected=16,
             timestamp=sample_timestamp,
         )
         assert ff.file == sample_path
         assert ff.hostname == "host"
-        assert ff.platform == "goes16"
+        assert ff.source == "goes16"
         assert ff.num_expected == 16
         assert ff.timestamp == sample_timestamp
 
@@ -478,9 +503,9 @@ class TestFrozenFileCreation:
 
     def test_usable_in_set(self, sample_path: Path) -> None:
         """Equal FrozenFiles deduplicate in a set."""
-        ff1 = FrozenFile(file=sample_path, platform="goes16")
-        ff2 = FrozenFile(file=sample_path, platform="goes16")
-        ff3 = FrozenFile(file=sample_path, platform="himawari9")
+        ff1 = FrozenFile(file=sample_path, source="goes16")
+        ff2 = FrozenFile(file=sample_path, source="goes16")
+        ff3 = FrozenFile(file=sample_path, source="himawari9")
         assert len({ff1, ff2, ff3}) == 2
 
     def test_usable_as_dict_key(self, frozen_file: FrozenFile) -> None:
@@ -490,14 +515,14 @@ class TestFrozenFileCreation:
 
     def test_equality(self, sample_path: Path) -> None:
         """Two FrozenFiles with identical fields are equal."""
-        ff1 = FrozenFile(file=sample_path, platform="goes16")
-        ff2 = FrozenFile(file=sample_path, platform="goes16")
+        ff1 = FrozenFile(file=sample_path, source="goes16")
+        ff2 = FrozenFile(file=sample_path, source="goes16")
         assert ff1 == ff2
 
     def test_inequality(self, sample_path: Path) -> None:
         """Two FrozenFiles with different fields are not equal."""
-        ff1 = FrozenFile(file=sample_path, platform="goes16")
-        ff2 = FrozenFile(file=sample_path, platform="himawari9")
+        ff1 = FrozenFile(file=sample_path, source="goes16")
+        ff2 = FrozenFile(file=sample_path, source="himawari9")
         assert ff1 != ff2
 
     def test_creation_from_freeze(self, full_file: File) -> None:
@@ -518,10 +543,10 @@ class TestFrozenFileSerialization:
         result = frozen_file.to_dict()
         assert result["file"] == str(frozen_file.file)
         assert result["hostname"] == frozen_file.hostname
-        assert result["platform"] == frozen_file.platform
-        assert result["sensor"] == frozen_file.sensor
-        assert result["level"] == frozen_file.level
-        assert result["sector"] == frozen_file.sector
+        assert result["source"] == frozen_file.source
+        assert result["instrument"] == frozen_file.instrument
+        assert result["processing_stage"] == frozen_file.processing_stage
+        assert result["domain"] == frozen_file.domain
         assert result["num_expected"] == frozen_file.num_expected
         assert result["timestamp"] == frozen_file.timestamp.isoformat()
 
@@ -568,20 +593,20 @@ class TestFrozenFileSerialization:
         data = {
             "file": "/data/test.nc",
             "hostname": "host1",
-            "platform": "himawari9",
-            "sensor": "ahi",
-            "level": "l2",
-            "sector": "full-disk",
+            "source": "himawari9",
+            "instrument": "ahi",
+            "processing_stage": "l2",
+            "domain": "full-disk",
             "num_expected": 5,
             "timestamp": sample_timestamp.isoformat(),
         }
         ff = FrozenFile.from_dict(data)
         assert ff.file == Path("/data/test.nc")
         assert ff.hostname == "host1"
-        assert ff.platform == "himawari9"
-        assert ff.sensor == "ahi"
-        assert ff.level == "l2"
-        assert ff.sector == "full-disk"
+        assert ff.source == "himawari9"
+        assert ff.instrument == "ahi"
+        assert ff.processing_stage == "l2"
+        assert ff.domain == "full-disk"
         assert ff.num_expected == 5
         assert ff.timestamp == sample_timestamp
 
@@ -612,6 +637,21 @@ class TestFrozenFileSerialization:
         reconstructed = FrozenFile.from_dict(frozen_file.to_dict())
         assert reconstructed == frozen_file
 
+    def test_from_dict_legacy_keys(self) -> None:
+        """FrozenFile.from_dict accepts legacy keys."""
+        data = {
+            "file": "/tmp/test.nc",
+            "platform": "goes16",
+            "sensor": "abi",
+            "level": "l1b",
+            "sector": "conus",
+        }
+        ff = FrozenFile.from_dict(data)
+        assert ff.source == "goes16"
+        assert ff.instrument == "abi"
+        assert ff.processing_stage == "l1b"
+        assert ff.domain == "conus"
+
 
 # ─── FrozenFile methods ──────────────────────────────────────────────────────
 
@@ -629,10 +669,10 @@ class TestFrozenFileMethods:
         thawed = frozen_file.thaw()
         assert thawed.file == frozen_file.file
         assert thawed.hostname == frozen_file.hostname
-        assert thawed.platform == frozen_file.platform
-        assert thawed.sensor == frozen_file.sensor
-        assert thawed.level == frozen_file.level
-        assert thawed.sector == frozen_file.sector
+        assert thawed.source == frozen_file.source
+        assert thawed.instrument == frozen_file.instrument
+        assert thawed.processing_stage == frozen_file.processing_stage
+        assert thawed.domain == frozen_file.domain
         assert thawed.num_expected == frozen_file.num_expected
         assert thawed.timestamp == frozen_file.timestamp
 
