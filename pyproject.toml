@@ -91,6 +91,7 @@ lint = [
     "types-pika",                # Type hints for pika
     "types-PyYAML",              # Type hints for pyyaml
     "types-dateparser",          # Type hints for dateparser
+    "pre-commit"                 # For pre-commit hooks
 ]
 
 test = [
