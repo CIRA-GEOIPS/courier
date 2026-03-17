@@ -1,4 +1,4 @@
-"""Metadata matching and application for satellite data files.
+"""Metadata matching and application for data files.
 
 This module provides functions to match filenames against configuration
 patterns and apply metadata to File objects.
@@ -298,10 +298,15 @@ def _apply_metadata_from_entry(
         If metadata values conflict.
     """
     # Apply simple metadata fields directly from entry
-    _check_and_set_field(file_obj, "platform", entry.platform, entry_name)
-    _check_and_set_field(file_obj, "sensor", entry.sensor, entry_name)
-    _check_and_set_field(file_obj, "level", entry.level, entry_name)
-    _check_and_set_field(file_obj, "sector", entry.sector, entry_name)
+    _check_and_set_field(file_obj, "source", entry.source, entry_name)
+    _check_and_set_field(file_obj, "instrument", entry.instrument, entry_name)
+    _check_and_set_field(
+        file_obj,
+        "processing_stage",
+        entry.processing_stage,
+        entry_name,
+    )
+    _check_and_set_field(file_obj, "domain", entry.domain, entry_name)
     _check_and_set_field(file_obj, "num_expected", entry.num_expected, entry_name)
 
     # Build and apply timestamp

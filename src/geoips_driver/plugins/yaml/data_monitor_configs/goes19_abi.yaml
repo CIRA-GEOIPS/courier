@@ -7,29 +7,29 @@ docstring: ""
 spec:
   file-metadata:
     goes19_abi_l1b:
-      platform: goes19
-      sensor: abi
-      level: L1B
+      source: goes19
+      instrument: abi
+      processing_stage: L1B
       date: 's(?P<YYYY>\d{4})(?P<JJJ>\d{3})(?P<HH>\d{2})(?P<NN>\d{2})'
       match:
         - '.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     full-disk:
-      sector: Full-Disk
+      domain: Full-Disk
       num_expected: 16
       match:
         - '.*RadF.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     conus:
-      sector: CONUS
+      domain: CONUS
       num_expected: 16
       match:
         - '.*RadC.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     meso1:
-      sector: Meso1
+      domain: Meso1
       num_expected: 16
       match:
         - '.*RadM1.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
     meso2:
-      sector: Meso2
+      domain: Meso2
       num_expected: 16
       match:
         - '.*RadM2.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
