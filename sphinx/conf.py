@@ -1,17 +1,15 @@
-# Configuration file for the Sphinx documentation builder.
+"""Configuration file for the Sphinx documentation builder."""
 
-import os
 import sys
+from pathlib import Path
 
 # -- Path setup --------------------------------------------------------------
-sys.path.insert(0, os.path.abspath("../src"))
+sys.path.insert(0, str(Path("../src").resolve()))
 
 # -- Project information -----------------------------------------------------
 project = "Lazy Lemon"
-copyright = "2024-2026, CIRA"
-author = "CIRA"
-release = "1.0.0"
-version = "1.0"
+release = "0.1.0"
+version = "0.1"
 
 # -- General configuration ---------------------------------------------------
 extensions = [
