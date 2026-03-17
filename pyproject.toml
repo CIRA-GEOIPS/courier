@@ -42,9 +42,12 @@ python-logging-loki = ">=0.3.1"
 
 # Optional dependencies for extras
 sphinx = { version = "*", optional = true }
-sphinxcontrib-runcmd = { version = "*", optional = true }
-sphinxcontrib-napoleon = { version = "*", optional = true }
+sphinx-rtd-theme = { version = "*", optional = true }
 sphinx-argparse = { version = "*", optional = true }
+sphinx-copybutton = { version = "*", optional = true }
+sphinx-autodoc-typehints = { version = "*", optional = true }
+sphinxcontrib-mermaid = { version = "*", optional = true }
+myst-parser = { version = "*", optional = true }
 pinkrst = { version = "*", optional = true }
 doc8 = { version = "*", optional = true }
 prettier = { version = "*", optional = true }
@@ -68,8 +71,11 @@ commitizen = "*"
 [tool.poetry.extras]
 doc = [
     "sphinx",                    # for docs building
-    "sphinxcontrib-runcmd",      # for docs building
-    "sphinxcontrib-napoleon",    # for docs building
+    "myst-parser",
+    "sphinx-rtd-theme",          # for docs building
+    "sphinx-copybutton",         # for docs building
+    "sphinx-autodoc-typehints",  # for docs building
+    "sphinxcontribmermaid",    # for docs building
     "sphinx-argparse",           # for docs building
     "pinkrst",                   # for rst formatting
     "doc8",                      # for rst linting
@@ -85,6 +91,7 @@ lint = [
     "types-pika",                # Type hints for pika
     "types-PyYAML",              # Type hints for pyyaml
     "types-dateparser",          # Type hints for dateparser
+    "pre-commit"                 # For pre-commit hooks
 ]
 
 test = [
