@@ -145,8 +145,6 @@ class Dispatcher(ServicePlugin):
         """Start main thread."""
         if self._running:
             return
-        else:
-            self._running = False
         self._main_thread = threading.Thread(
             target=self.handle_incoming_jobs,
             name=self.name,

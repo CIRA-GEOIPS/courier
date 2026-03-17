@@ -79,8 +79,6 @@ class DataMonitorBasePlugin(ServicePlugin):
         """Start main thread."""
         if self._running:
             return
-        else:
-            self._running = False
         self._main_thread = threading.Thread(
             target=self.find_and_emit_files,
             name=self.name,
