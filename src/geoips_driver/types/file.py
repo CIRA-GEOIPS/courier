@@ -104,7 +104,7 @@ class File:
         Self
             File instance.
         """
-        dt = data.get("datetime")
+        dt = data.get("timestamp")
         parsed_timestamp: datetime | None = None
         if dt is not None:
             if isinstance(dt, datetime):
