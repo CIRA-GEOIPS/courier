@@ -18,7 +18,7 @@ By the end of this tutorial, you will:
 
 ## Prerequisites
 
--   GeoIPS Driver installed ({doc}\[../getting-started/installation\`)
+-   Lazy Lemon installed ({doc}\[../getting-started/installation\`)
 -   RabbitMQ running on localhost
 -   Basic familiarity with YAML
 -   A sample GOES-18 ABI file (or ability to create a test file)

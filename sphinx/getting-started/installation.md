@@ -1,6 +1,6 @@
 # Installation
 
-This guide covers installing GeoIPS Driver in different environments.
+This guide covers installing Lazy Lemon in different environments.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ This guide covers installing GeoIPS Driver in different environments.
 
 **Python Dependencies:**
 
-GeoIPS Driver depends on:
+Lazy Lemon depends on:
 
 -   GeoIPS &gt;= 1.16.1
 -   RabbitMQ (pika)
@@ -64,7 +64,7 @@ For development work:
 
 ### Using Docker
 
-Run GeoIPS Driver in a container:
+Run Lazy Lemon in a container:
 
     Pull the image
     ==============
@@ -89,7 +89,7 @@ Install the latest development version:
 
 ### RabbitMQ
 
-GeoIPS Driver requires RabbitMQ for message passing between components.
+Lazy Lemon requires RabbitMQ for message passing between components.
 
 **Using Docker (Easiest):**
 
@@ -226,7 +226,7 @@ On Linux, you may need to add your user to the docker group:
 
 **Python Version Issues**
 
-GeoIPS Driver requires Python 3.11+. Check your version:
+Lazy Lemon requires Python 3.11+. Check your version:
 
     python --version
 

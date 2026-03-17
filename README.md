@@ -1,6 +1,6 @@
-# GeoIPS Driver Documentation Setup
+# Lazy Lemon Documentation Setup
 
-This directory contains the complete documentation for GeoIPS Driver,
+This directory contains the complete documentation for Lazy Lemon,
 written in **reStructuredText (RST)** and rendered using **Sphinx**.
 
 ## Quick Start
