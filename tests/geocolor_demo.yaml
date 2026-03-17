@@ -28,18 +28,18 @@ spec:
         kind: job_builder
         name: filter_pass
         config:
-          files_per_job: 16 # How many files required dispatch job
+          files_per_job: 1 # How many files required dispatch job, 1 per clavrx output
           time_grouping:  # Optionally batch files by time (eg. 2 files in N:00-N:15)
             start: 2000-01-01 00:00:00 # optional reference time
             minutes: 15
           filters: # Metadata to filter on
             sensor: abi
             sector: Full-Disk
+            product: CLAVR-x
     - produce-geocolor-from-abi:
         kind: dispatcher
         name: serial_bash
         config:
           bash_script: |
-           echo "This is a test! A Script! A ~SCRIPT~ that does !!~TESTING~!!"
-           echo {file} # this is a templated field
-           python3 -c "print('this is arbitrary python talking about the file {file}')"
+            python3 nar-procflow-overcast.py 
+
