@@ -1,4 +1,4 @@
-"""File dataclass with metadata support for geo-related data files.
+"""File dataclass with metadata support for data files.
 
 This module provides a File class that stores file information along with metadata.
 """
@@ -13,7 +13,7 @@ from typing import Any, Self
 
 @dataclass
 class File:
-    """File dataclass with satellite data metadata.
+    """File dataclass with data metadata.
 
     Attributes
     ----------
@@ -21,14 +21,14 @@ class File:
         Path to the file.
     hostname : str | None
         Hostname where the file is located.
-    platform : str | None
-        Platform identifier (e.g., 'goes16', 'himawari9').
-    sensor : str | None
-        Sensor identifier (e.g., 'abi', 'ahi').
-    level : str | None
-        Data processing level (e.g., 'l1b').
-    sector : str | None
-        Geographic sector identifier (e.g., 'full-disk', 'conus').
+    source : str | None
+        Source identifier (e.g., 'goes16', 'himawari9').
+    instrument : str | None
+        Instrument identifier (e.g., 'abi', 'ahi').
+    processing_stage : str | None
+        Data processing stage (e.g., 'l1b').
+    domain : str | None
+        Domain identifier (e.g., 'full-disk', 'conus').
     num_expected : int
         Expected number of files for this dataset.
     timestamp : datetime | None
@@ -37,10 +37,10 @@ class File:
 
     file: Path | None = None
     hostname: str | None = None
-    platform: str | None = None
-    sensor: str | None = None
-    level: str | None = None
-    sector: str | None = None
+    source: str | None = None
+    instrument: str | None = None
+    processing_stage: str | None = None
+    domain: str | None = None
     num_expected: int = 1
     timestamp: datetime | None = None
 
@@ -65,10 +65,10 @@ class File:
         return {
             "file": str(self.file) if self.file else None,
             "hostname": self.hostname,
-            "platform": self.platform,
-            "sensor": self.sensor,
-            "level": self.level,
-            "sector": self.sector,
+            "source": self.source,
+            "instrument": self.instrument,
+            "processing_stage": self.processing_stage,
+            "domain": self.domain,
             "num_expected": self.num_expected,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }
@@ -94,6 +94,10 @@ class File:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Initialize File from dictionary.
 
+        Supports both new keys (source, instrument, processing_stage, domain)
+        and legacy keys (platform, sensor, level, sector) for backward
+        compatibility.
+
         Parameters
         ----------
         data : dict[str, Any]
@@ -115,10 +119,10 @@ class File:
         return cls(
             file=Path(data["file"]) if data.get("file") else None,
             hostname=data.get("hostname"),
-            platform=data.get("platform"),
-            sensor=data.get("sensor"),
-            level=data.get("level"),
-            sector=data.get("sector"),
+            source=data.get("source", data.get("platform")),
+            instrument=data.get("instrument", data.get("sensor")),
+            processing_stage=data.get("processing_stage", data.get("level")),
+            domain=data.get("domain", data.get("sector")),
             num_expected=data.get("num_expected", 1),
             timestamp=parsed_timestamp,
         )
@@ -134,10 +138,10 @@ class File:
         return FrozenFile(
             file=self.file,
             hostname=self.hostname,
-            platform=self.platform,
-            sensor=self.sensor,
-            level=self.level,
-            sector=self.sector,
+            source=self.source,
+            instrument=self.instrument,
+            processing_stage=self.processing_stage,
+            domain=self.domain,
             num_expected=self.num_expected,
             timestamp=self.timestamp,
         )
@@ -161,10 +165,10 @@ class File:
     def merge_metadata(  # noqa: PLR0913
         self,
         *,
-        platform: str | None = None,
-        sensor: str | None = None,
-        level: str | None = None,
-        sector: str | None = None,
+        source: str | None = None,
+        instrument: str | None = None,
+        processing_stage: str | None = None,
+        domain: str | None = None,
         num_expected: int | None = None,
         dt: datetime | None = None,
     ) -> Self:
@@ -175,14 +179,14 @@ class File:
 
         Parameters
         ----------
-        platform : str | None
-            Platform identifier.
-        sensor : str | None
-            Sensor identifier.
-        level : str | None
-            Data processing level.
-        sector : str | None
-            Geographic sector identifier.
+        source : str | None
+            Source identifier.
+        instrument : str | None
+            Instrument identifier.
+        processing_stage : str | None
+            Data processing stage.
+        domain : str | None
+            Domain identifier.
         num_expected : int | None
             Expected number of files.
         dt : datetime | None
@@ -195,10 +199,14 @@ class File:
         """
         return replace(
             self,
-            platform=self.platform if self.platform is not None else platform,
-            sensor=self.sensor if self.sensor is not None else sensor,
-            level=self.level if self.level is not None else level,
-            sector=self.sector if self.sector is not None else sector,
+            source=self.source if self.source is not None else source,
+            instrument=self.instrument if self.instrument is not None else instrument,
+            processing_stage=(
+                self.processing_stage
+                if self.processing_stage is not None
+                else processing_stage
+            ),
+            domain=self.domain if self.domain is not None else domain,
             num_expected=(
                 self.num_expected if self.num_expected != 1 else (num_expected or 1)
             ),
@@ -208,7 +216,7 @@ class File:
 
 @dataclass(frozen=True)
 class FrozenFile:
-    """Immutable file dataclass with satellite data metadata.
+    """Immutable file dataclass with data metadata.
 
     Attributes
     ----------
@@ -216,14 +224,14 @@ class FrozenFile:
         Path to the file.
     hostname : str | None
         Hostname where the file is located.
-    platform : str | None
-        Platform identifier (e.g., 'goes16', 'himawari9').
-    sensor : str | None
-        Sensor identifier (e.g., 'abi', 'ahi').
-    level : str | None
-        Data processing level (e.g., 'l1b').
-    sector : str | None
-        Geographic sector identifier (e.g., 'full-disk', 'conus').
+    source : str | None
+        Source identifier (e.g., 'goes16', 'himawari9').
+    instrument : str | None
+        Instrument identifier (e.g., 'abi', 'ahi').
+    processing_stage : str | None
+        Data processing stage (e.g., 'l1b').
+    domain : str | None
+        Domain identifier (e.g., 'full-disk', 'conus').
     num_expected : int
         Expected number of files for this dataset.
     timestamp : datetime | None
@@ -232,10 +240,10 @@ class FrozenFile:
 
     file: Path | None = None
     hostname: str | None = None
-    platform: str | None = None
-    sensor: str | None = None
-    level: str | None = None
-    sector: str | None = None
+    source: str | None = None
+    instrument: str | None = None
+    processing_stage: str | None = None
+    domain: str | None = None
     num_expected: int = 1
     timestamp: datetime | None = None
 
@@ -260,10 +268,10 @@ class FrozenFile:
         return {
             "file": str(self.file) if self.file else None,
             "hostname": self.hostname,
-            "platform": self.platform,
-            "sensor": self.sensor,
-            "level": self.level,
-            "sector": self.sector,
+            "source": self.source,
+            "instrument": self.instrument,
+            "processing_stage": self.processing_stage,
+            "domain": self.domain,
             "num_expected": self.num_expected,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }
@@ -289,6 +297,10 @@ class FrozenFile:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Initialize FrozenFile from dictionary.
 
+        Supports both new keys (source, instrument, processing_stage, domain)
+        and legacy keys (platform, sensor, level, sector) for backward
+        compatibility.
+
         Parameters
         ----------
         data : dict[str, Any]
@@ -310,10 +322,10 @@ class FrozenFile:
         return cls(
             file=Path(data["file"]) if data.get("file") else None,
             hostname=data.get("hostname"),
-            platform=data.get("platform"),
-            sensor=data.get("sensor"),
-            level=data.get("level"),
-            sector=data.get("sector"),
+            source=data.get("source", data.get("platform")),
+            instrument=data.get("instrument", data.get("sensor")),
+            processing_stage=data.get("processing_stage", data.get("level")),
+            domain=data.get("domain", data.get("sector")),
             num_expected=data.get("num_expected", 1),
             timestamp=parsed_timestamp,
         )
@@ -329,10 +341,10 @@ class FrozenFile:
         return File(
             file=self.file,
             hostname=self.hostname,
-            platform=self.platform,
-            sensor=self.sensor,
-            level=self.level,
-            sector=self.sector,
+            source=self.source,
+            instrument=self.instrument,
+            processing_stage=self.processing_stage,
+            domain=self.domain,
             num_expected=self.num_expected,
             timestamp=self.timestamp,
         )

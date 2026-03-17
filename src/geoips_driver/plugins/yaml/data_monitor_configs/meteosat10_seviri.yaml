@@ -8,10 +8,10 @@ docstring: ""
 spec:
   file-metadata:
     meteosat10_seviri:
-      platform: meteosat10
-      sensor: seviri
-      level: L1B
-      sector: Full-Disk
+      source: meteosat10
+      instrument: seviri
+      processing_stage: L1B
+      domain: Full-Disk
       num_expected: 90
       date: 'H-000-MSG3__-MSG3________-.*-(?P<YYYY>\d{4})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<NN>\d{2})-'
       match:

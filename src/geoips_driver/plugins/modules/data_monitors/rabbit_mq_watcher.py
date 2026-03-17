@@ -126,7 +126,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         Hostname of the RabbitMQ broker.  Default: ``"localhost"``.
     rabbitmq_port : int
         Port of the RabbitMQ broker.  Default: ``5672``.
-    rabbitmq_vhost : str
+    rabbitmq_virtual_host : str
         Virtual host.  Default: ``"/"``.
     rabbitmq_queue : str
         Queue name to consume from.  Default: ``"file_catalog"``.
@@ -393,8 +393,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 file = File(
                     file=full_path,
                     hostname=hostname,
-                    platform=file_info.get(fm["platform"]),
-                    sensor=file_info.get(fm["sensor"]),
+                    source=file_info.get(fm["platform"]),
+                    instrument=file_info.get(fm["sensor"]),
                     timestamp=timestamp,
                 )
                 file_queue.put(file)
