@@ -1,6 +1,6 @@
 # Quick Start
 
-Get your first GeoIPS Driver service running in 5 minutes! This guide
+Get your first Lazy Lemon service running in 5 minutes! This guide
 walks you through setting up a file watcher for GOES-18 ABI data.
 
 ## What We'll Build
@@ -14,7 +14,7 @@ A service that:
 
 ## Prerequisites
 
--   GeoIPS Driver installed ({doc}\[installation\`)
+-   Lazy Lemon installed ({doc}\[installation\`)
 -   RabbitMQ running on localhost:5672
 -   A directory with GOES-18 ABI files (or the ability to copy them
     there)
@@ -176,7 +176,7 @@ The file will be moved to the `processed` directory.
 
 ## Step 6: Monitor with Prometheus
 
-GeoIPS Driver automatically exposes Prometheus metrics on port 8000.
+Lazy Lemon automatically exposes Prometheus metrics on port 8000.
 
 View metrics in your browser:
 
@@ -215,7 +215,7 @@ Press `Ctrl+C` to gracefully stop the service:
 
 ## What's Next?
 
-Congratulations! You've created your first GeoIPS Driver service. Now
+Congratulations! You've created your first Lazy Lemon service. Now
 you can:
 
 **Learn More:**
