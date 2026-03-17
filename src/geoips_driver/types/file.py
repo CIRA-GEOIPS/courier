@@ -70,7 +70,7 @@ class File:
             "level": self.level,
             "sector": self.sector,
             "num_expected": self.num_expected,
-            "datetime": self.timestamp.isoformat() if self.timestamp else None,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
         }
 
     @classmethod
