@@ -1,4 +1,4 @@
-# Lazy Lemon
+# Lazy Lemon 🍋😴🍋
 
 ![Tests](.github/badges/tests-badge.svg)
 ![Coverage](.github/badges/coverage-badge.svg)
