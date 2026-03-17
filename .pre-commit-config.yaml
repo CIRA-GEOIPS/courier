@@ -1,16 +1,57 @@
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.15.6
-  hooks:
-    # Run the linter.
-    - id: ruff-check
-      types_or: [ python, pyi ]
-      args: [ --fix ]
-    # Run the formatter.
-    - id: ruff-format
-      types_or: [ python, pyi ]
--   repo: https://github.com/adamchainz/blacken-docs
-    rev: "1.20.0"  # replace with latest tag on GitHub
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.15.6
     hooks:
-    -   id: blacken-docs
+      # Run the linter.
+      - id: ruff-check
+        types_or: [python, pyi]
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format
+        types_or: [python, pyi]
+  - repo: https://github.com/adamchainz/blacken-docs
+    rev: "1.20.0"
+    hooks:
+      - id: blacken-docs
+        additional_dependencies:
+          - black==26.3.0
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: "26.3.0"
+    hooks:
+      - id: black
+      - id: black-jupyter
+  - repo: https://github.com/pycqa/isort
+    rev: "6.1.0"
+    hooks:
+      - id: isort
+  - repo: https://github.com/executablebooks/mdformat
+    rev: "1.0.0"
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat-black
+  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+    rev: v1.7.9.24
+    hooks:
+      - id: actionlint
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: "v0.24.1"
+    hooks:
+      - id: validate-pyproject
+        # Optional extra validations from SchemaStore:
+        additional_dependencies: ["validate-pyproject-schema-store[all]"]
+  - repo: https://github.com/google/yamlfmt
+    rev: v0.19.0
+    hooks:
+      - id: yamlfmt
+  - repo: https://github.com/streetsidesoftware/cspell-cli
+    rev: v9.7.0
+    hooks:
+      - id: cspell
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.10.0 # Use the latest version or a specific version
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]

@@ -57,6 +57,9 @@ words:
   - viewcode
   - xarray
   - yday
+  - pyproject
+  - spellcheck
+  - mdformat
 ignoreWords:
   - norecursedirs
   - venv
