@@ -1,4 +1,4 @@
-"""Comprehensive unit tests for geoips_driver.utils.logging module.
+"""Comprehensive unit tests for lazylemon.utils.logging module.
 
 This module provides pytest unit tests for the logging utility functions and classes.
 Tests coverlogging setup, context adaptation, Loki integration (with mocking),
@@ -27,11 +27,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from geoips_driver.interfaces.module_based.service import \
+from lazylemon.interfaces.module_based.service import \
     ServiceConfig  # For mocking in fixtures
-from geoips_driver.utils.logging import \
+from lazylemon.utils.logging import \
     setup_logging  # Monkey-patched method on Logger
-from geoips_driver.utils.logging import (TRACE_LEVEL, ContextAdapter,
+from lazylemon.utils.logging import (TRACE_LEVEL, ContextAdapter,
                                          _create_loki_handler, get_logger)
 
 
@@ -219,7 +219,7 @@ class TestContextAdapter:
 class TestCreateLokiHandler:
     """Test suite for _create_loki_handler function."""
 
-    @patch("geoips_driver.utils.logging.logging_loki")
+    @patch("lazylemon.utils.logging.logging_loki")
     def test_create_loki_handler_success(self, mock_logging_loki: MagicMock) -> None:
         """Test successful Loki handler creation.
 
@@ -269,7 +269,7 @@ class TestCreateLokiHandler:
             assert not result
             assert "python-logging-loki not installed" in caplog.text
 
-    @patch("geoips_driver.utils.logging.logging_loki")
+    @patch("lazylemon.utils.logging.logging_loki")
     def test_create_loki_handler_connection_error(self, mock_logging_loki: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
         """Test Loki handler creation fails due to connection error.
 
@@ -343,7 +343,7 @@ class TestGetLogger:
         assert isinstance(logger, ContextAdapter)
         assert logger.extra == expected_extra
 
-    @patch("geoips_driver.utils.logging._create_loki_handler")
+    @patch("lazylemon.utils.logging._create_loki_handler")
     def test_get_logger_with_loki_enabled(self, mock_create_handler: MagicMock, sample_service_config: ServiceConfig) -> None:
         """Test get_logger adds Loki handler when enabled.
 

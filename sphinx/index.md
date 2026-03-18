@@ -1,6 +1,6 @@
 # Lazy Lemon Documentation
 
-[![Tests](https://github.com/biosafetylvl5/geoips_driver/workflows/Tests/badge.svg)](https://github.com/biosafetylvl5/geoips_driver)
+[![Tests](https://github.com/biosafetylvl5/lazylemon/workflows/Tests/badge.svg)](https://github.com/biosafetylvl5/lazylemon)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 
 Welcome to Lazy Lemon's documentation! Lazy Lemon is a framework
@@ -34,7 +34,6 @@ Lazy Lemon is designed for:
 - **Researchers** requiring timely processing of observations
 - **Developers** building custom real-time data processing systems
 - **GeoIPS users** who need near real-time processing capabilities for geolocated data
-
 
 ```{toctree}
 :maxdepth: 2
@@ -75,4 +74,4 @@ api-reference/interfaces
 - {ref}`modindex`
 - {ref}`search`
 
-[GitHub Repository](https://github.com/biosafetylvl5/geoips_driver)
+[GitHub Repository](https://github.com/biosafetylvl5/lazylemon)

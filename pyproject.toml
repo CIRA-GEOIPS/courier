@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "geoips_driver"
+name = "lazylemon"
 version = "0.1.0"
 description = "TODO"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Evan Rose <none@email.com>"]
-repository = "https://github.com/biosafetylvl5/geoips_driver"
+repository = "https://github.com/biosafetylvl5/lazylemon"
 
-packages = [{include = "geoips_driver", from = "src"}]
+packages = [{include = "lazylemon", from = "src"}]
 
 readme = "README.md"
 classifiers = [
@@ -21,9 +21,9 @@ classifiers = [
 ]
 
 include = [
-    "src/geoips_driver/plugins/**/*.yaml",
-    "src/geoips_driver/plugins/**/*.txt",
-    "src/geoips_driver/py.typed",
+    "src/lazylemon/plugins/**/*.yaml",
+    "src/lazylemon/plugins/**/*.txt",
+    "src/lazylemon/py.typed",
 ]
 
 [tool.poetry.dependencies] # must download to run
@@ -99,15 +99,15 @@ test = [
 ]
 
 [tool.poetry.scripts]
-# geoips_driver_cli = "geoips_driver.cli:main"
+# lazylemon_cli = "lazylemon.cli:main"
 
-[tool.poetry.plugins."geoips_driver.plugin_packages"]
-"geoips_driver" = "geoips_driver"
+[tool.poetry.plugins."lazylemon.plugin_packages"]
+"lazylemon" = "lazylemon"
 
 [tool.poetry.urls]
-Homepage = "https://github.com/biosafetylvl5/geoips_driver"
-Issues = "https://github.com/biosafetylvl5/geoips_driver/issues"
-Documentation = "https://biosafetylvl5.github.io/geoips_driver/"
+Homepage = "https://github.com/biosafetylvl5/lazylemon"
+Issues = "https://github.com/biosafetylvl5/lazylemon/issues"
+Documentation = "https://biosafetylvl5.github.io/lazylemon/"
 
 [tool.mypy]
 python_version = "3.12"

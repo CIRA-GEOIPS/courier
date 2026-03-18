@@ -20,7 +20,7 @@ spec:
         kind: data_monitor
         name: file_system_poller_watchdog # this is the plugin name
         config:
-          path: /workspaces/geoips_driver/tests/watch-dir # where to watch
+          path: /workspaces/lazylemon/tests/watch-dir # where to watch
           metadata-tools:
             - goes16_abi # This adds metadata to files that look like goes16 files
             - goes18_abi # This adds metadata to files that look like goes18 files
