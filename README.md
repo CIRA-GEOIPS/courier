@@ -9,3 +9,10 @@
 ![Commitizen](.github/badges/commitizen-badge.svg)
 
 [![GitHub stars](https://img.shields.io/github/stars/CIRA-GEOIPS/geoips-rt.svg)](https://github.com/CIRA-GEOIPS/geoips-rt/stargazers)
+
+```
+   ╱|
+(> ༝ < 7
+  🍋૮ 〵
+ | ˜ ˍ,)ノ
+```
