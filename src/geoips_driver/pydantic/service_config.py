@@ -18,9 +18,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 __all__ = [
+    "MessageBrokerSettings",
     "MicroserviceDefinitionModel",
     "MicroserviceModel",
-    "RabbitMQSettings",
     "ServiceConfigModel",
     "ServiceSpecModel",
 ]
@@ -53,8 +53,8 @@ class FrozenModel(BaseModel):
     )
 
 
-class RabbitMQSettings(FrozenModel):
-    """RabbitMQ connection settings."""
+class MessageBrokerSettings(FrozenModel):
+    """Message broker connection settings."""
 
     host: str = Field(..., description="Hostname or IP address of the broker.")
     port: int = Field(
@@ -63,8 +63,8 @@ class RabbitMQSettings(FrozenModel):
         le=65535,
         description="TCP port exposed by the broker.",
     )
-    username: str = Field(..., description="Username for RabbitMQ authentication.")
-    password: str = Field(..., description="Password for RabbitMQ authentication.")
+    username: str = Field(..., description="Username for broker authentication.")
+    password: str = Field(..., description="Password for broker authentication.")
 
     @field_validator("host", "username", "password")
     @classmethod
@@ -138,9 +138,9 @@ class ServiceSpecModel(FrozenModel):
         ...,
         description="Interval in seconds between service heartbeat messages.",
     )
-    rabbitmq: RabbitMQSettings = Field(
+    broker: MessageBrokerSettings = Field(
         ...,
-        description="RabbitMQ connection configuration.",
+        description="Message broker connection configuration.",
     )
     run: list[MicroserviceModel] = Field(
         ...,

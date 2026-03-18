@@ -6,12 +6,13 @@ import re
 import threading
 import time
 from collections.abc import Callable, Generator
+from contextlib import suppress
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
 
-import pika
-import pika.exceptions
+import kombu
+from kombu.exceptions import OperationalError
 from prometheus_client import Gauge
 
 from geoips_driver.interfaces.module_based.data_monitors import DataMonitorBasePlugin
@@ -284,27 +285,22 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
         return None
 
-    def _build_connection_params(self) -> pika.ConnectionParameters:
-        credentials = pika.PlainCredentials(
-            username=self.rabbitmq_username,
-            password=self.rabbitmq_password,
-        )
-        return pika.ConnectionParameters(
-            host=self.rabbitmq_host,
-            port=self.rabbitmq_port,
-            virtual_host=self.rabbitmq_virtual_host,
-            credentials=credentials,
+    def _build_broker_url(self) -> str:
+        """Build the AMQP broker URL from the plugin's connection config."""
+        return (
+            f"amqp://{self.rabbitmq_username}:{self.rabbitmq_password}"
+            f"@{self.rabbitmq_host}:{self.rabbitmq_port}"
+            f"{self.rabbitmq_virtual_host}"
         )
 
-    def _listen_to_rabbit_mq(
+    def _listen_to_broker(
         self,
         file_queue: queue.Queue[File],
     ) -> None:
-        """Listen to RabbitMQ for files and add to **file_queue** as Files.
+        """Listen to the broker queue and place files onto *file_queue*.
 
-        Listen to the configured RabbitMQ queue, placing :class:`File` objects
-        onto *file_queue*.  Reconnects automatically on connection errors according
-        to the configured retry policy.  Any fatal error is placed onto
+        Reconnects automatically on connection errors according to the
+        configured retry policy.  Any fatal error is placed onto
         ``self._error_queue``.
 
         Intended to be run in a daemon thread.
@@ -318,9 +314,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 # _connect_and_consume only returns if consuming ends cleanly;
                 # treat that as a reason to reconnect as well.
                 self._logger.warning(
-                    "RabbitMQ consumer stopped unexpectedly; reconnecting...",
+                    "Broker consumer stopped unexpectedly; reconnecting...",
                 )
-            except pika.exceptions.AMQPConnectionError as exc:
+            except OperationalError as exc:
                 attempt += 1
                 if self.max_retries != -1 and attempt > self.max_retries:
                     self._logger.error(  # noqa: TRY400
@@ -336,48 +332,44 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 time.sleep(delay)
                 delay = min(delay * self.retry_backoff_factor, 60.0)
             except Exception as exc:
-                self._logger.exception("Unrecoverable error in RabbitMQ listener")
+                self._logger.exception("Unrecoverable error in broker listener")
                 self._error_queue.put(exc)
                 return
 
     def _connect_and_consume(self, file_queue: queue.Queue[File]) -> None:
-        """Open a single connection+channel and block until consumption ends."""
-        params = self._build_connection_params()
+        """Open a single broker connection and block until consumption ends."""
+        url = self._build_broker_url()
+        self._logger.debug(f"Attempting to connect to broker at {url!r}")
+
+        connection = kombu.Connection(url)
+        connection.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
+
+        queue_obj = kombu.Queue(self.rabbitmq_queue, durable=True)
+        queue_obj = queue_obj.bind(connection)
+        queue_obj.declare()
+
         self._logger.debug(
-            f"Attempting to connect to RabbitMQ at url {params!r}",
-        )
-        connection = pika.BlockingConnection(params)
-        channel = connection.channel()
-        channel.queue_declare(queue=self.rabbitmq_queue, durable=True)
-        self._logger.debug(
-            f"Connected to RabbitMQ at {self.rabbitmq_host}:{self.rabbitmq_port}"
+            f"Connected to broker at {self.rabbitmq_host}:{self.rabbitmq_port}"
             f" (virtual_host={self.rabbitmq_virtual_host!r}), "
             f"waiting for messages from queue {self.rabbitmq_queue!r}...",
         )
 
         fm = self.field_map
 
-        def callback(
-            ch: pika.adapters.blocking_connection.BlockingChannel,
-            method: pika.spec.Basic.Deliver,
-            properties: pika.spec.BasicProperties,  # noqa: ARG001
-            body: bytes,
-        ) -> None:
-            """Handle an incoming RabbitMQ message."""
-            self._logger.debug(f"Received message: {body}")
+        def callback(body: Any, message: kombu.Message) -> None:
+            """Handle an incoming broker message."""
+            self._logger.debug(f"Received message: {body!r}")
             try:
-                loaded_file_info: dict[str, Any] | str = json.loads(
-                    body.decode("utf-8"),
-                )
-                if isinstance(loaded_file_info, str):
+                raw = body if isinstance(body, str) else body.decode("utf-8")
+                loaded: dict[str, Any] | str = json.loads(raw)
+                if isinstance(loaded, str):
                     self._logger.debug(
-                        f"Received string instead of dict: {loaded_file_info}"
-                        ".. casting into dict. This means the producer is sending "
-                        "JSON-encoded strings instead of objects.",
+                        f"Received string instead of dict: {loaded}"
+                        " — double-decoding. Producer is sending JSON-encoded strings.",
                     )
-                    file_info: dict[str, Any] = json.loads(loaded_file_info)
+                    file_info: dict[str, Any] = json.loads(loaded)
                 else:
-                    file_info = loaded_file_info
+                    file_info = loaded
 
                 location: str = file_info.get(fm["location"], "")
                 hostname, location_path = self._parse_location(location)
@@ -398,25 +390,23 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     timestamp=timestamp,
                 )
                 file_queue.put(file)
+                message.ack()
             except Exception:
                 self._logger.exception(
-                    "Failed to process message; negative acknowledging. "
-                    f"Body: {body!r}",
+                    f"Failed to process message; rejecting. Body: {body!r}",
                 )
-                ch.basic_nack(
-                    delivery_tag=method.delivery_tag,
-                    requeue=False,
-                )
-                return
+                message.reject(requeue=False)
 
-            ch.basic_ack(delivery_tag=method.delivery_tag)
+        with kombu.Consumer(
+            connection,
+            queues=[queue_obj],
+            callbacks=[callback],
+            prefetch_count=self.rabbitmq_prefetch_count,
+        ):
+            while not self._stop_event.is_set():
+                with suppress(TimeoutError):
+                    connection.drain_events(timeout=1.0)
 
-        channel.basic_qos(prefetch_count=self.rabbitmq_prefetch_count)
-        channel.basic_consume(queue=self.rabbitmq_queue, on_message_callback=callback)
-
-        while not self._stop_event.is_set():
-            connection.process_data_events(time_limit=1.0)
-        channel.stop_consuming()
         connection.close()
 
     def find_file(self) -> Generator[File, None, None]:
@@ -440,10 +430,10 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self._stop_event.clear()
         file_queue: queue.Queue[File] = queue.Queue()
         listener = threading.Thread(
-            target=self._listen_to_rabbit_mq,
+            target=self._listen_to_broker,
             args=(file_queue,),
             daemon=True,
-            name=f"rmq-listener-{self.rabbitmq_queue}",
+            name=f"broker-listener-{self.rabbitmq_queue}",
         )
         listener.start()
         try:
