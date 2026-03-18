@@ -2,7 +2,7 @@
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
 
-from lazylemon.pydantic.service_config import ServiceConfigModel
+from lazylemon.schema.service_config import ServiceConfigModel
 
 
 class ServiceConfigInterface(BaseYamlInterface):

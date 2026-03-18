@@ -7,17 +7,14 @@ from typing import Any, ClassVar
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter
 
-from lazylemon.interfaces.module_based.service import (
-    Service,
-    ServicePlugin,
-    log_execution,
-)
-from lazylemon.pydantic.data_monitor_configs import DataMonitorConfig
+from lazylemon.constants import FILE_FOUND_QUEUE
+from lazylemon.interfaces.plugin_protocol import ServicePlugin
+from lazylemon.schema.data_monitor_configs import DataMonitorConfig
+from lazylemon.service import Service
 from lazylemon.types.file import File
+from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
 from lazylemon.utils.metadata import apply_metadata_from_configs
-
-FILE_FOUND_QUEUE = "FilesFoundQueue"
 
 
 class DataMonitorBasePlugin(ServicePlugin):

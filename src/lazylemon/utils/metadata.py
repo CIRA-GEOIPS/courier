@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from lazylemon.pydantic.data_monitor_configs import (
+from lazylemon.schema.data_monitor_configs import (
     DataMonitorConfig,
     FileMetadataEntry,
 )

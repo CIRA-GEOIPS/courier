@@ -109,4 +109,5 @@ ignoreWords:
   - modindex
   - genindex
   - usermod
+  - pluginify
 import: []

@@ -28,8 +28,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lazylemon.interfaces.module_based.service import \
-    ServiceConfig  # For mocking in fixtures
+from lazylemon.config import ServiceConfig  # For mocking in fixtures
 from lazylemon.utils.logging import \
     setup_logging  # Monkey-patched method on Logger
 from lazylemon.utils.logging import (TRACE_LEVEL, ContextAdapter,
