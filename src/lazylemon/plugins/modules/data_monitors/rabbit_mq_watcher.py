@@ -9,10 +9,10 @@ from collections.abc import Callable, Generator
 from contextlib import suppress
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, cast
 
-import kombu
-from kombu.exceptions import OperationalError
+import kombu  # type: ignore[import-untyped]
+from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
 from prometheus_client import Gauge
 
 from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
@@ -244,8 +244,11 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         """Dispatch to the configured location parser and return (hostname, path)."""
         parser = _LOCATION_PARSERS[self.location_format]
         if self.location_format == "regex":
-            return parser(location, pattern=self.location_format_regex)
-        return parser(location)
+            return cast(
+                "tuple[str, str]",
+                parser(location, pattern=self.location_format_regex),
+            )
+        return cast("tuple[str, str]", parser(location))
 
     def _extract_timestamp(self, message: dict[str, Any]) -> datetime | None:
         """Extract and parse a timestamp from *message* using the plugin config."""

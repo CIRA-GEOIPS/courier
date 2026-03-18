@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 try:
     import logging_loki  # type: ignore
 except ImportError:
-    logging_loki = None  # type: ignore[assignment]
+    logging_loki = None
 
 # Define TRACE logging level (below DEBUG=10)
 TRACE_LEVEL = 5
@@ -187,7 +187,7 @@ def get_logger(
     source_type: str,
     source_name: str,
     config: ServiceConfig | None = None,
-) -> logging.Logger:
+) -> ContextAdapter:
     """Create a contextualized logger with optional Loki integration.
 
     This function is the primary logging factory for the GeoIPS Driver system.
@@ -299,10 +299,10 @@ def get_logger(
         {"source_type": source_type, "source_name": source_name},
     )
 
-    return adapter  # type: ignore[return-value]
+    return adapter
 
 
-def setup_logging(name: str | None = None) -> logging.Logger:
+def setup_logging(name: str | None = None) -> ContextAdapter:
     """Configure logger with standardized formatting and return module logger.
 
     This function provides backward compatibility with the legacy logging
