@@ -7,7 +7,7 @@ import pytest
 from geoips.interfaces.base import (  # type: ignore[import-untyped]
     BaseModuleInterface, BaseYamlInterface)
 
-from geoips_driver.interfaces import (data_monitor_configs, data_monitors,
+from lazylemon.interfaces import (data_monitor_configs, data_monitors,
                                       dispatchers, job_builders)
 
 PLUGIN_REGISTRIES: dict[str, BaseYamlInterface | BaseModuleInterface] = {
@@ -17,7 +17,7 @@ PLUGIN_REGISTRIES: dict[str, BaseYamlInterface | BaseModuleInterface] = {
     "job_builders": job_builders,
 }
 
-PLUGINS_ROOT = pathlib.Path(__file__).parent.parent / "src" / "geoips_driver" / "plugins"
+PLUGINS_ROOT = pathlib.Path(__file__).parent.parent / "src" / "lazylemon" / "plugins"
 
 
 def _discover_plugins() -> Iterator[tuple[str, str]]:

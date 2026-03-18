@@ -10,10 +10,9 @@ services:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin_test
     networks:
-      - geoips_driver_testing
+      - lazylemon_testing
     stdin_open: true
     tty: true
-
 networks:
-  geoips_driver_testing:
+  lazylemon_testing:
     external: true

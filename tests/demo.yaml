@@ -1,4 +1,4 @@
-apiVersion: nrtp/driver/v1
+apiVersion: lazylemon/driver/v1
 kind: Service
 name: Data Inventory Ingest
 description: Watches for files from a data inventory notification.
@@ -10,12 +10,12 @@ docstring: |
   files as they arrive.
 spec:
   service_namespace: data-inventory-ingest
-  heartbeat_interval: 1000  # in milliseconds
-  rabbitmq:
+  heartbeat_interval: 1000 # in milliseconds
+  broker:
     host: rabbitmqhost
     port: 5672
-    username: admin  # could be a secret set by
-    password: admin_test  # kubernetes, docker, etc.
+    username: admin # could be a secret set by
+    password: admin_test # kubernetes, docker, etc.
   run:
     - clavrx-file-watcher:
         kind: data_monitor
@@ -25,29 +25,24 @@ spec:
           rabbitmq_port: 5672
           rabbitmq_username: guest
           rabbitmq_password: guest
-
           rabbitmq_queue: nrt_file_notif_queue # set by the data inventory
-          rabbitmq_prefetch_count: 1  # one message at a time
-
+          rabbitmq_prefetch_count: 1 # one message at a time
           # Reconnection policy
-          max_retries: -1             # retry forever on connection loss
+          max_retries: -1 # retry forever on connection loss
           retry_delay_seconds: 2.0
           retry_backoff_factor: 1.5
-
           # Message field mapping — matches the nrt_file_notif_queue schema
           field_map:
-            location:             location
-            dir_path:             dir_path
-            file_name:            file_name
-            platform:             platform_name
-            sensor:               source_name
-            time_range_key:       time_range
+            location: location
+            dir_path: dir_path
+            file_name: file_name
+            platform: platform_name
+            sensor: source_name
+            time_range_key: time_range
             time_range_lower_key: lower
             time_range_start_key: start
-
           # Location format: "user@hostname:/mount/path"
           location_format: user_at_host_colon_path
-
           # Timestamp for file objects
           timestamp_field: time_range
     - job-builder:
@@ -55,7 +50,7 @@ spec:
         name: filter_pass
         config:
           files_per_job: 1 # How many files required dispatch job, 1 per clavrx output
-          time_grouping:  # Optionally batch files by time (eg. 2 files in N:00-N:15)
+          time_grouping: # Optionally batch files by time (eg. 2 files in N:00-N:15)
             start: 2000-01-01 00:00:00 # optional reference time
             minutes: 15
           filters: # Metadata to filter on

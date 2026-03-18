@@ -1,4 +1,4 @@
-"""Unit tests for src/geoips_driver/types/file.py"""
+"""Unit tests for src/lazylemon/types/file.py"""
 
 import json
 import re
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from geoips_driver.types.file import (
+from lazylemon.types.file import (
     File,
     FrozenFile,
     build_timestamp_from_components,
@@ -548,6 +548,7 @@ class TestFrozenFileSerialization:
         assert result["processing_stage"] == frozen_file.processing_stage
         assert result["domain"] == frozen_file.domain
         assert result["num_expected"] == frozen_file.num_expected
+        assert frozen_file.timestamp is not None
         assert result["timestamp"] == frozen_file.timestamp.isoformat()
 
     def test_to_dict_none_values(self) -> None:
