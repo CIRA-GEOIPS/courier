@@ -1,5 +1,7 @@
 """Service entry point for lazylemon."""
 
+from typing import Any
+
 import lazylemon.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
 from lazylemon import dummy_cli
 from lazylemon.interfaces.module_based.service import (
@@ -23,12 +25,12 @@ AVAILABLE_PLUGINS = {
 }
 
 
-def _build_broker_url(broker) -> str:
+def _build_broker_url(broker: Any) -> str:
     """Construct the broker AMQP URL from config."""
     return f"amqp://{broker.username}:{broker.password}@{broker.host}:{broker.port}/"
 
 
-def _resolve_plugin(plugin):
+def _resolve_plugin(plugin: Any) -> tuple[type, dict]:
     """Resolve a plugin config entry to a (class, config) tuple."""
     name = plugin.spec.name.lower()
     if name not in AVAILABLE_PLUGINS:

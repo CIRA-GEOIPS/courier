@@ -21,6 +21,7 @@ Notes
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -406,9 +407,7 @@ class TestGetLogger:
         AssertionError
             If log level is not enforced.
         """
-        config = sample_service_config.model_copy()
-        config.production_mode = True
-        config.log_level = "TRACE"
+        config = dataclasses.replace(sample_service_config, production_mode=True, log_level="TRACE")
 
         logger = get_logger("service", "test", config)
 
@@ -472,4 +471,5 @@ def test_setup_logging_as_wrapper() -> None:
 
     # Test default name
     result_default = setup_logging()
+    assert result_default.extra is not None
     assert result_default.extra["source_name"] == "__main__"

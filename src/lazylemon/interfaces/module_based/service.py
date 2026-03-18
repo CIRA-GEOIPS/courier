@@ -3,7 +3,6 @@
 Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
 """
 
-import logging
 import os
 import queue as stdlib_queue
 import signal
@@ -19,11 +18,11 @@ from enum import Enum, auto
 from functools import partial, reduce, wraps
 from typing import Any, Protocol, TypeVar
 
-import kombu
+import kombu  # type: ignore[import-untyped]
 import prometheus_client
-from kombu.exceptions import OperationalError
+from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
 
-from lazylemon.utils.logging import get_logger
+from lazylemon.utils.logging import ContextAdapter, get_logger
 
 # Type variables for generic type hints
 T = TypeVar("T")
@@ -328,7 +327,7 @@ class ServiceConfig:
     )
 
 
-def setup_logging(name: str | None = None) -> logging.Logger:
+def setup_logging(name: str | None = None) -> ContextAdapter:
     """Configure logger with standardized formatting and return module logger.
 
     This function provides backward compatibility with the legacy logging
@@ -524,7 +523,11 @@ def messages(
                 decoded = (
                     raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8")
                 )
-                yield decoded, msg.ack, lambda msg=msg: msg.reject(requeue=True)
+
+                def _reject(msg: Any = msg) -> None:
+                    msg.reject(requeue=True)
+
+                yield decoded, msg.ack, _reject
 
 
 def retry_with_backoff(
@@ -617,7 +620,7 @@ def retry_with_backoff(
                                     f"Retry aborted for {func.__name__}: "
                                     "stop event set during backoff.",
                                 )
-                                raise last_exc  # type: ignore[misc]
+                                raise last_exc
                             time.sleep(min(0.1, deadline - time.monotonic()))
                     except KeyboardInterrupt:
                         logger.info(
@@ -1867,7 +1870,7 @@ class MessageBrokerManager(ServiceManager):
         Idempotent — no action taken if already connected and healthy.
         """
         if not self.is_healthy():
-            self._connection = self._establish_connection()  # type: ignore
+            self._connection = self._establish_connection()
 
     def stop(self) -> None:
         """Close the broker connection safely and reset connection state."""
