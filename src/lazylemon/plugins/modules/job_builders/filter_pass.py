@@ -3,9 +3,10 @@
 import logging
 from datetime import datetime, timedelta
 
-from lazylemon.interfaces.module_based.job_builders import Job, JobBuilder, JobGroup
-from lazylemon.interfaces.module_based.service import Service
+from lazylemon.interfaces.module_based.job_builders import JobBuilder
+from lazylemon.service import Service
 from lazylemon.types.file import File, FrozenFile
+from lazylemon.types.job import Job, JobGroup
 
 _module_logger = logging.getLogger(__name__)
 

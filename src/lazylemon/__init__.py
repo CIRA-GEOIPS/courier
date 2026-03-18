@@ -3,7 +3,6 @@
 # NOTE: _version.py is generated automatically during build/install
 
 from lazylemon import interfaces
-
-from ._version import __version__, __version_tuple__
+from lazylemon._version import __version__, __version_tuple__
 
 __all__ = ["__version__", "__version_tuple__", "interfaces"]

@@ -16,7 +16,7 @@ from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
 from prometheus_client import Gauge
 
 from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from lazylemon.interfaces.module_based.service import Service
+from lazylemon.service import Service
 from lazylemon.types.file import File
 
 interface: str = "data_monitors"

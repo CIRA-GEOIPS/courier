@@ -4,7 +4,7 @@ from typing import ClassVar
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
 
-from lazylemon.pydantic.data_monitor_configs import DataMonitorConfig
+from lazylemon.schema.data_monitor_configs import DataMonitorConfig
 
 
 class DataMonitorConfigsInterface(BaseYamlInterface):

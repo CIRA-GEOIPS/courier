@@ -99,7 +99,7 @@ test = [
 ]
 
 [tool.poetry.scripts]
-# lazylemon_cli = "lazylemon.cli:main"
+lazylemon = "lazylemon.cli.app:app"
 
 [tool.poetry.plugins."lazylemon.plugin_packages"]
 "lazylemon" = "lazylemon"

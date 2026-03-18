@@ -1,47 +1,19 @@
-"""Python class for the data_monitors lazylemon interface."""
+"""Python class for the dispatchers lazylemon interface."""
 
-import json
 import threading
 import time
-from dataclasses import dataclass
 from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter, Gauge, Histogram
 
-from lazylemon.interfaces.module_based.job_builders import JOB_READY_QUEUE, Job
-from lazylemon.interfaces.module_based.service import (
-    Service,
-    ServicePlugin,
-    log_execution,
-)
+from lazylemon.constants import JOB_READY_QUEUE
+from lazylemon.interfaces.plugin_protocol import ServicePlugin
+from lazylemon.service import Service
+from lazylemon.types.execution_log import ExecutionLog
+from lazylemon.types.job import Job
+from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
-
-
-@dataclass(frozen=True)
-class ExecutionLog:
-    """Execution log DataClass."""
-
-    return_code: int | None = None
-    stdout: str | None = None
-    stderr: str | None = None
-    hostname: str | None = None
-
-    def __str__(self) -> str:
-        """Convert ExecutionLog to JSON string."""
-        return json.dumps(
-            {
-                "return_code": self.return_code,
-                "stdout": self.stdout,
-                "stderr": self.stderr,
-                "hostname": self.hostname,
-            },
-        )
-
-    @classmethod
-    def from_string(cls, s: str) -> "ExecutionLog":
-        """Initialize ExecutionLog from JSON string."""
-        return cls(**json.loads(s))
 
 
 class Dispatcher(ServicePlugin):
@@ -91,17 +63,12 @@ class Dispatcher(ServicePlugin):
         self.parent_service.emit(queue=self.queue, message=str(execution_log))
 
     def handle_incoming_jobs(self) -> None:
-        """Execute given a steady stream of jobs, log and execute them.
-
-        Once a job is complete, yield the result of its execution to a downstream
-        service.
-        """
+        """Execute given a steady stream of jobs, log and execute them."""
         while True:
             for job_string in self.parent_service.consume(JOB_READY_QUEUE):
                 job = Job.from_string(str(job_string))
                 self._logger.debug(f"Received Job: {job}")
 
-                # Track job start time
                 start_time = time.time()
                 job_id = job.identifier
                 self.active_job_timestamps[job_id] = start_time
@@ -115,7 +82,6 @@ class Dispatcher(ServicePlugin):
                             dispatcher_name=self.name,
                         ).inc()
 
-                    # Record successful processing
                     self.jobs_processed.labels(
                         status="success",
                         dispatcher_name=self.name,
@@ -129,7 +95,6 @@ class Dispatcher(ServicePlugin):
                     ).inc()
 
                 finally:
-                    # Track job execution duration
                     if job_id in self.active_job_timestamps:
                         execution_time = (
                             time.time() - self.active_job_timestamps[job_id]
@@ -168,7 +133,6 @@ class Dispatcher(ServicePlugin):
         """Return plugin-specific metrics."""
         metrics_dict = {}
 
-        # Collect jobs_processed metrics
         for sample in self.jobs_processed.collect():
             for s in sample.samples:
                 if s.name == self.jobs_processed._name:
@@ -177,7 +141,6 @@ class Dispatcher(ServicePlugin):
                         "labels": s.labels,
                     }
 
-        # Collect job_execution_duration metrics (histogram)
         for sample in self.job_execution_duration.collect():
             for s in sample.samples:
                 if s.name == self.job_execution_duration._name:
@@ -186,7 +149,6 @@ class Dispatcher(ServicePlugin):
                         "labels": s.labels,
                     }
 
-        # Collect active_jobs metrics
         for sample in self.active_jobs.collect():
             for s in sample.samples:
                 if s.name == self.active_jobs._name:
@@ -195,7 +157,6 @@ class Dispatcher(ServicePlugin):
                         "labels": s.labels,
                     }
 
-        # Collect execution_logs_emitted metrics
         for sample in self.execution_logs_emitted.collect():
             for s in sample.samples:
                 if s.name == self.execution_logs_emitted._name:

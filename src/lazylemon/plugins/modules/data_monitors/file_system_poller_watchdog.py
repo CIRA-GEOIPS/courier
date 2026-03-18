@@ -9,7 +9,7 @@ from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHa
 from watchdog.observers import Observer
 
 from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from lazylemon.interfaces.module_based.service import Service
+from lazylemon.service import Service
 from lazylemon.types.file import File
 
 interface: str = "data_monitors"

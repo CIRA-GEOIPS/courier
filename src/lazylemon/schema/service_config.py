@@ -1,4 +1,4 @@
-"""Python Pydantic models for GeoIPS service configuration validation."""
+"""Pydantic models for service configuration validation."""
 
 from __future__ import annotations
 
