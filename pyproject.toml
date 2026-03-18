@@ -35,7 +35,7 @@ watchdog = "*" # Required to listen for data (used by daemon)
 geoips = "^1.16.1"
 prometheus-client = "*"
 pydantic = "*"
-pika = "*"
+kombu = "*"
 typer = "*"
 pyyaml = "*"
 python-logging-loki = ">=0.3.1"
@@ -56,7 +56,6 @@ mypy = { version = "*", optional = true }
 pytest = { version = "*", optional = true }
 pytest-cov = { version = "*", optional = true }
 pytest-xdist = { version = "*", optional = true }
-types-pika = { version = "*", optional = true }
 types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
 commitizen = { version = "*", optional = true }
@@ -88,7 +87,6 @@ lint = [
     "prettier",                  # YAML, JSON linting
     "ruff",                      # Python linting
     "mypy",                      # Type checking
-    "types-pika",                # Type hints for pika
     "types-PyYAML",              # Type hints for pyyaml
     "types-dateparser",          # Type hints for dateparser
     "pre-commit"                 # For pre-commit hooks
@@ -188,7 +186,7 @@ select = [
     "ERA",          # eradicate
     "PL",           # Pylint
     "RUF",          # Ruff-specific rules
-    "TCH",          # flake8-type-checking
+    "TC",           # flake8-type-checking
     "S",            # flake8-bandit (security)
     "A",            # flake8-builtins
     "COM",          # flake8-commas

@@ -4,6 +4,7 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - kombu
   - charliermarsh
   - CIRA
   - commitizen
@@ -61,6 +62,7 @@ words:
   - viewcode
   - xarray
   - yday
+  - lazylemon
 ignoreWords:
   - includehidden
   - intersphinx
@@ -91,4 +93,10 @@ ignoreWords:
   - caplog
   - labelnames
   - FLDK
+  - CLAVR
+  - clavrx
+  - geocolor
+  - procflow
+  - colostate
+  - notif
 import: []

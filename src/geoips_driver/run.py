@@ -23,9 +23,9 @@ AVAILABLE_PLUGINS = {
 }
 
 
-def _build_rabbitmq_url(rmq) -> str:
-    """Construct the RabbitMQ connection URL from config."""
-    return f"amqp://{rmq.username}:{rmq.password}@{rmq.host}:{rmq.port}/"
+def _build_broker_url(broker) -> str:
+    """Construct the broker AMQP URL from config."""
+    return f"amqp://{broker.username}:{broker.password}@{broker.host}:{broker.port}/"
 
 
 def _resolve_plugin(plugin):
@@ -39,7 +39,7 @@ def _resolve_plugin(plugin):
 def run_service(config: dict) -> None:
     """Run a dummy service using the dummy-cli module."""
     service_config = ServiceConfig(
-        rabbitmq_url=_build_rabbitmq_url(config.spec.rabbitmq),  # type: ignore
+        broker_url=_build_broker_url(config.spec.broker),  # type: ignore
         service_namespace=config.spec.service_namespace,  # type: ignore
         service_id=config.name,  # type: ignore
         heartbeat_interval=config.spec.heartbeat_interval,  # type: ignore

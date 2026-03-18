@@ -5,23 +5,23 @@ Manager with Prometheus metrics, RabbitMQ integration, and plugin support.
 
 import logging
 import os
+import queue as stdlib_queue
 import signal
 import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from functools import partial, reduce, wraps
 from typing import Any, Protocol, TypeVar
 
-import pika
+import kombu
 import prometheus_client
-from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from pika.exceptions import AMQPConnectionError
+from kombu.exceptions import OperationalError
 
 from geoips_driver.utils.logging import get_logger
 
@@ -198,12 +198,12 @@ class ServiceConfig:
     prometheus_port : int, optional
         Port number for Prometheus metrics HTTP server. Defaults to environment
         variable PROMETHEUS_PORT or 8000.
-    rabbitmq_url : str, optional
-        RabbitMQ connection URL. Defaults to environment variable RABBITMQ_URL
-        or localhost connection.
-    rabbitmq_max_retries : int, optional
-        Maximum retry attempts for RabbitMQ operations. Defaults to environment
-        variable RABBITMQ_MAX_RETRIES or 5.
+    broker_url : str, optional
+        Message broker connection URL. Defaults to environment variable BROKER_URL
+        or localhost AMQP connection.
+    broker_max_retries : int, optional
+        Maximum retry attempts for broker operations. Defaults to environment
+        variable BROKER_MAX_RETRIES or 5.
     heartbeat_interval : int, optional
         Interval in seconds between heartbeat metric updates. Default is 10.
     plugin_restart_delay : int, optional
@@ -238,10 +238,10 @@ class ServiceConfig:
         Database connection URL.
     prometheus_port : int
         Prometheus metrics server port.
-    rabbitmq_url : str
-        RabbitMQ connection URL.
-    rabbitmq_max_retries : int
-        Maximum RabbitMQ retry attempts.
+    broker_url : str
+        Message broker connection URL.
+    broker_max_retries : int
+        Maximum broker retry attempts.
     heartbeat_interval : int
         Heartbeat interval in seconds.
     plugin_restart_delay : int
@@ -291,14 +291,14 @@ class ServiceConfig:
     prometheus_port: int = field(
         default_factory=lambda: int(os.environ.get("PROMETHEUS_PORT", "8000")),
     )
-    rabbitmq_url: str = field(
+    broker_url: str = field(
         default_factory=lambda: os.environ.get(
-            "RABBITMQ_URL",
+            "BROKER_URL",
             "amqp://admin:admin@localhost:5672/",
         ),
     )
-    rabbitmq_max_retries: int = field(
-        default_factory=lambda: int(os.environ.get("RABBITMQ_MAX_RETRIES", "5")),
+    broker_max_retries: int = field(
+        default_factory=lambda: int(os.environ.get("BROKER_MAX_RETRIES", "5")),
     )
     heartbeat_interval: int = 10
     plugin_restart_delay: int = field(
@@ -370,6 +370,161 @@ def setup_logging(name: str | None = None) -> logging.Logger:
 
 
 logger = setup_logging()
+
+
+# ---------------------------------------------------------------------------
+# Module-level messaging functions (pure / context-manager style)
+# ---------------------------------------------------------------------------
+
+
+def _open_connection(url: str) -> kombu.Connection:
+    """Return an established kombu Connection for *url*.
+
+    kombu connections are lazy by default; this function forces the connection
+    to open so callers can detect failures immediately.
+
+    Parameters
+    ----------
+    url : str
+        Broker URL (e.g. ``amqp://user:pass@host:5672/``, ``redis://…``).
+
+    Returns
+    -------
+    kombu.Connection
+        An open, connected broker connection.
+
+    Raises
+    ------
+    OperationalError
+        If the broker is unreachable.
+    """
+    conn = kombu.Connection(url)
+    conn.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
+    return conn
+
+
+@contextmanager
+def broker_connection(url: str) -> Generator["kombu.Connection", None, None]:
+    """Context manager that opens a broker connection and closes it on exit.
+
+    Parameters
+    ----------
+    url : str
+        Broker URL passed directly to :func:`_open_connection`.
+
+    Yields
+    ------
+    kombu.Connection
+        An open connection that is closed when the block exits.
+    """
+    conn = _open_connection(url)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def declare_queue(
+    conn: "kombu.Connection",
+    name: str,
+    **kwargs: Any,
+) -> "kombu.Queue":
+    """Declare a queue on *conn* and return the bound Queue object.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    name : str
+        Queue name.
+    **kwargs : Any
+        Extra keyword arguments forwarded to ``kombu.Queue`` (e.g.
+        ``durable=True``, ``exclusive=False``).
+
+    Returns
+    -------
+    kombu.Queue
+        A queue object bound to *conn*'s channel and already declared on the
+        broker.
+    """
+    q: kombu.Queue = kombu.Queue(name, channel=conn.channel(), **kwargs)
+    q.declare()
+    return q
+
+
+def publish(
+    conn: "kombu.Connection",
+    queue: "kombu.Queue",
+    body: str,
+) -> None:
+    """Publish *body* to *queue* using *conn*.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    queue : kombu.Queue
+        Target queue (already declared).
+    body : str
+        Message body string.
+    """
+    with kombu.Producer(conn) as producer:
+        producer.publish(
+            body,
+            routing_key=queue.name,
+            exchange="",
+            declare=[queue],
+        )
+
+
+def messages(
+    conn: "kombu.Connection",
+    queue: "kombu.Queue",
+    stop_event: threading.Event | None = None,
+) -> Generator[tuple[str, Callable[[], None], Callable[[], None]], None, None]:
+    """Yield ``(body, ack, reject)`` tuples from *queue* until *stop_event* is set.
+
+    Drains the broker connection in 0.5-second windows so that a
+    ``stop_event`` check can interrupt consuming promptly.  Socket timeouts
+    from an idle broker are silently swallowed.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    queue : kombu.Queue
+        Queue to consume from (must already be declared).
+    stop_event : threading.Event or None, optional
+        When set, the generator exits after delivering any already-buffered
+        messages.  Pass ``None`` to run until the caller closes the generator.
+
+    Yields
+    ------
+    tuple[str, Callable[[], None], Callable[[], None]]
+        ``(body, ack, reject)`` where *body* is the decoded message string,
+        *ack* acknowledges successful processing, and *reject* re-queues the
+        message for retry.
+
+    Notes
+    -----
+    ``reject`` always requeues (``requeue=True``).  Callers that want
+    dead-lettering should call ``message.reject(requeue=False)`` directly.
+    """
+    buffer: stdlib_queue.Queue[tuple[Any, kombu.Message]] = stdlib_queue.Queue()
+
+    def _on_message(body: Any, message: kombu.Message) -> None:
+        buffer.put((body, message))
+
+    with kombu.Consumer(conn, queues=[queue], callbacks=[_on_message]):
+        while stop_event is None or not stop_event.is_set():
+            with suppress(TimeoutError):
+                conn.drain_events(timeout=0.5)
+            while not buffer.empty():
+                raw_body, msg = buffer.get_nowait()
+                decoded = (
+                    raw_body if isinstance(raw_body, str) else raw_body.decode("utf-8")
+                )
+                yield decoded, msg.ack, lambda msg=msg: msg.reject(requeue=True)
 
 
 def retry_with_backoff(
@@ -673,7 +828,7 @@ class Service:
         self._signal_handler = SignalHandler()
 
         self._prometheus_manager = PrometheusManager(self._config)
-        self._rabbitmq_manager = RabbitMQManager(
+        self._broker_manager = MessageBrokerManager(
             self._config,
             stop_event=self._signal_handler.stop_event,
         )
@@ -681,7 +836,7 @@ class Service:
 
         self._managers: list[ServiceManager] = [
             self._prometheus_manager,
-            self._rabbitmq_manager,
+            self._broker_manager,
             self._plugin_manager,
         ]
         self.namespace = "default"
@@ -711,20 +866,20 @@ class Service:
 
         Raises
         ------
-        AMQPConnectionError
-            If unable to connect to RabbitMQ.
+        OperationalError
+            If unable to connect to the broker.
         Exception
             If message publishing fails.
         """
-        queue = self._rabbitmq_manager.add_queue(
+        queue_name = self._broker_manager.add_queue(
             queue,
             durable=True,
             exclusive=False,
         )
-        # Underscore indicates unused variable to silence linters
-        with self._rabbitmq_manager.get_connection_context() as (_connection, channel):
-            self._logger.debug(f"Emitting message to queue '{queue}': {message}")
-            channel.basic_publish(exchange="", routing_key=queue, body=message)
+        with self._broker_manager.get_connection_context() as conn:
+            self._logger.debug(f"Emitting message to queue '{queue_name}': {message}")
+            q = declare_queue(conn, queue_name, durable=True)
+            publish(conn, q, message)
 
     def consume(self, queue: str) -> Generator[str, None, None]:
         """Yield messages from a message broker queue.
@@ -747,64 +902,42 @@ class Service:
         Raises
         ------
         GeneratorExit
-            Raised when the generator is explicitly closed. Messages are requeued,
-            the consumer is cancelled, and the exception is re-raised.
-        AMQPConnectionError
-            If unable to connect to RabbitMQ.
+            Raised when the generator is explicitly closed. Messages are
+            requeued and the exception is re-raised.
+        OperationalError
+            If unable to connect to the broker.
         Exception
-            Any other exception during message processing. Messages are requeued
-            and the exception is re-raised.
+            Any other exception during message processing. Messages are
+            requeued and the exception is re-raised.
 
         Notes
         -----
-        - Messages are automatically acknowledged after being yielded and processed.
-        - If an exception occurs or the generator is closed, unprocessed messages
-          are requeued for later processing.
-        - The generator must be explicitly closed if not consumed completely,
-          otherwise the connection will remain open.
+        Messages are acknowledged after being successfully yielded and
+        processed.  On any exception or generator close, the in-flight
+        message is rejected and requeued.
         """
-        queue = self._rabbitmq_manager.add_queue(
+        queue_name = self._broker_manager.add_queue(
             queue,
             durable=True,
             exclusive=False,
         )
 
-        self._logger.debug(f"Consuming from queue: {queue}")
+        self._logger.debug(f"Consuming from queue: {queue_name}")
 
-        with self._rabbitmq_manager.get_connection_context() as (_connection, channel):
-            for method_frame, _properties, body in channel.consume(
-                queue,
-                auto_ack=False,
-            ):
+        with self._broker_manager.get_connection_context() as conn:
+            q = declare_queue(conn, queue_name, durable=True)
+            for body, ack, reject in messages(conn, q):
                 try:
-                    message = body.decode("utf-8")
-                    yield message
                     self._logger.debug(
-                        f"Received message from queue '{queue}': {message}",
+                        f"Received message from queue '{queue_name}': {body}",
                     )
-
-                    # Fix: Ensure delivery_tag is an integer before Ack
-                    if method_frame.delivery_tag is not None:
-                        channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-                    else:
-                        self._logger.error("Skipped Ack: delivery_tag is None")
-
+                    yield body
+                    ack()
                 except GeneratorExit:
-                    # Fix: Ensure delivery_tag is an integer before Nack
-                    if method_frame.delivery_tag is not None:
-                        channel.basic_nack(
-                            delivery_tag=method_frame.delivery_tag,
-                            requeue=True,
-                        )
-                    channel.cancel()
+                    reject()
                     raise
                 except Exception:
-                    # Fix: Ensure delivery_tag is an integer before Nack
-                    if method_frame.delivery_tag is not None:
-                        channel.basic_nack(
-                            delivery_tag=method_frame.delivery_tag,
-                            requeue=True,
-                        )
+                    reject()
                     raise
 
     def register_plugin(
@@ -1596,38 +1729,38 @@ class PrometheusManager(ServiceManager):
         self._logger.debug(f"Heartbeat sent at {current_time}")
 
 
-# RabbitMQ Manager
-class RabbitMQManager(ServiceManager):
-    """Manages RabbitMQ connections, channels, and queue configurations.
+# Message Broker Manager
+class MessageBrokerManager(ServiceManager):
+    """Manages broker connections and queue registry for the service.
 
-    Handles RabbitMQ connection lifecycle with retry logic, provides context
+    Handles broker connection lifecycle with retry logic, provides context
     managers for independent connections, and maintains queue configuration
-    for connection establishment.
+    for connection establishment.  Transport-agnostic: the backend is
+    determined by the URL scheme in ``config.broker_url`` (``amqp://``,
+    ``redis://``, ``sqs://``, etc.).
 
     Parameters
     ----------
     config : ServiceConfig
-        Service configuration containing RabbitMQ URL and retry settings.
+        Service configuration containing the broker URL and retry settings.
 
     Attributes
     ----------
     _config : ServiceConfig
         Service configuration.
-    _connection : BlockingConnection or None
-        Active RabbitMQ connection.
-    _channel : BlockingChannel or None
-        Active RabbitMQ channel.
+    _connection : kombu.Connection or None
+        Active broker connection.
     _queues : dict[str, dict[str, Any]]
         Registered queue configurations.
     _created_queues : set[str]
-        Set of queues that have been created.
+        Set of queues that have been declared on the broker.
     _namespace : str
         Service namespace for queue naming.
 
     Methods
     -------
     get_connection_context()
-        Provide independent RabbitMQ connection context.
+        Provide an independent broker connection context.
     get_queue_name(base_name)
         Generate full queue name with namespace prefix.
     add_queue(queue_name, **queue_config)
@@ -1636,10 +1769,11 @@ class RabbitMQManager(ServiceManager):
     Examples
     --------
     >>> config = ServiceConfig()
-    >>> manager = RabbitMQManager(config)
+    >>> manager = MessageBrokerManager(config)
     >>> manager.is_healthy()
     False
     >>> manager.add_queue("test_queue", durable=True)
+    'default-test_queue'
     >>> len(manager._queues)
     1
     """
@@ -1649,7 +1783,7 @@ class RabbitMQManager(ServiceManager):
         config: ServiceConfig,
         stop_event: threading.Event | None = None,
     ) -> None:
-        """Initialize RabbitMQ manager with configuration.
+        """Initialize the broker manager with configuration.
 
         Parameters
         ----------
@@ -1662,9 +1796,8 @@ class RabbitMQManager(ServiceManager):
         """
         self._config = config
         self._stop_event = stop_event
-        self._logger = get_logger("manager", "RabbitMQManager", config)
-        self._connection: BlockingConnection | None = None
-        self._channel: BlockingChannel | None = None
+        self._logger = get_logger("manager", "MessageBrokerManager", config)
+        self._connection: kombu.Connection | None = None
         self._queues: dict[str, dict[str, Any]] = {}
         self._created_queues: set[str] = set()
         self._namespace = config.service_namespace
@@ -1673,31 +1806,29 @@ class RabbitMQManager(ServiceManager):
         # decorator has access to it (decorators are applied at class definition
         # time and cannot receive instance state directly).
         self._establish_connection = retry_with_backoff(
-            exceptions=(AMQPConnectionError,),
+            exceptions=(OperationalError,),
             stop_event=self._stop_event,
         )(self._establish_connection_impl)
 
-        # Prometheus metrics for RabbitMQ
-        self._rabbitmq_connections_total = prometheus_client.Counter(
-            "rabbitmq_connections_total",
-            "Total number of RabbitMQ connection attempts",
+        # Prometheus metrics
+        self._broker_connections_total = prometheus_client.Counter(
+            "broker_connections_total",
+            "Total number of broker connection attempts",
             ["status"],
         )
-        self._rabbitmq_messages_sent_total = prometheus_client.Counter(
-            "rabbitmq_messages_sent_total",
-            "Total number of messages sent to RabbitMQ queues",
+        self._broker_messages_sent_total = prometheus_client.Counter(
+            "broker_messages_sent_total",
+            "Total number of messages sent to broker queues",
             ["queue_name"],
         )
-        self._rabbitmq_messages_received_total = prometheus_client.Counter(
-            "rabbitmq_messages_received_total",
-            "Total number of messages received from RabbitMQ queues",
+        self._broker_messages_received_total = prometheus_client.Counter(
+            "broker_messages_received_total",
+            "Total number of messages received from broker queues",
             ["queue_name"],
         )
 
-    def _establish_connection_impl(
-        self,
-    ) -> tuple[BlockingConnection, BlockingChannel]:
-        """Establish new RabbitMQ connection and channel.
+    def _establish_connection_impl(self) -> kombu.Connection:
+        """Establish a new broker connection.
 
         This is the raw implementation.  The retry-with-backoff wrapper is
         applied in ``__init__`` (rather than via a class-level decorator) so
@@ -1706,125 +1837,108 @@ class RabbitMQManager(ServiceManager):
 
         Returns
         -------
-        tuple[BlockingConnection, BlockingChannel]
-            New RabbitMQ connection and channel pair.
+        kombu.Connection
+            An open broker connection.
 
         Raises
         ------
-        AMQPConnectionError
-            If connection fails.
+        OperationalError
+            If the connection attempt fails.
         """
         self._logger.debug(
-            f"Attempting to connect to RabbitMQ at url {self._config.rabbitmq_url}",
+            f"Attempting to connect to broker at {self._config.broker_url}",
         )
         try:
-            parameters = pika.URLParameters(self._config.rabbitmq_url)
-            connection = pika.BlockingConnection(parameters)
-            channel = connection.channel()
-            logger.debug("Successfully connected to RabbitMQ")
-            self._rabbitmq_connections_total.labels(status="success").inc()
-        except AMQPConnectionError:
-            self._rabbitmq_connections_total.labels(status="failure").inc()
-            self._logger.exception("Failed to connect to RabbitMQ")
+            conn = _open_connection(self._config.broker_url)
+            logger.debug("Successfully connected to broker")
+            self._broker_connections_total.labels(status="success").inc()
+        except OperationalError:
+            self._broker_connections_total.labels(status="failure").inc()
+            self._logger.exception("Failed to connect to broker")
             raise
         else:
-            return connection, channel
+            return conn
 
     @log_execution
     def start(self) -> None:
-        """Initialize RabbitMQ connection if not already healthy.
+        """Initialize broker connection if not already healthy.
 
-        Establishes RabbitMQ connection and channel if not currently connected.
-        Connection establishment is idempotent - no action taken if already
-        connected and healthy.
+        Establishes a broker connection if not currently connected.
+        Idempotent — no action taken if already connected and healthy.
         """
         if not self.is_healthy():
-            self._connection, self._channel = self._establish_connection()  # type: ignore
+            self._connection = self._establish_connection()  # type: ignore
 
     def stop(self) -> None:
-        """Close RabbitMQ connection safely and reset connection state.
-
-        Gracefully closes active RabbitMQ connection if present, handles
-        connection errors during shutdown, and resets internal state.
-        """
-        if self._connection and not self._connection.is_closed:
+        """Close the broker connection safely and reset connection state."""
+        if self._connection and self._connection.connected:
             try:
                 self._connection.close()
-                self._logger.info("RabbitMQ connection closed")
+                self._logger.info("Broker connection closed")
             except Exception as e:
-                self._logger.warning(f"Error closing RabbitMQ connection: {e}")
+                self._logger.warning(f"Error closing broker connection: {e}")
 
         self._connection = None
-        self._channel = None
 
     def is_healthy(self) -> bool:
-        """Check if RabbitMQ connection is active and not closed.
+        """Check whether the broker connection is active.
 
         Returns
         -------
         bool
-            True if connection exists and is not closed, False otherwise.
+            True if a connection exists and is open, False otherwise.
 
         Examples
         --------
         >>> config = ServiceConfig()
-        >>> manager = RabbitMQManager(config)
+        >>> manager = MessageBrokerManager(config)
         >>> manager.is_healthy()
         False
         """
-        return self._connection is not None and not self._connection.is_closed
+        return self._connection is not None and self._connection.connected
 
     @contextmanager
     def get_connection_context(
         self,
-    ) -> Generator[tuple[BlockingConnection, BlockingChannel], None, None]:
-        """Provide independent RabbitMQ connection context for isolated operations.
+    ) -> Generator["kombu.Connection", None, None]:
+        """Provide an independent broker connection for isolated operations.
 
-        Creates temporary connection and channel separate from main connection,
-        declares configured queues on new connection, and ensures cleanup
-        regardless of operation success or failure.
+        Opens a temporary connection separate from the main connection,
+        declares all registered queues on it, and ensures cleanup regardless
+        of operation success or failure.
 
         Yields
         ------
-        tuple[BlockingConnection, BlockingChannel]
-            Independent connection and channel pair for isolated operations.
+        kombu.Connection
+            An open connection with all registered queues declared.
 
         Raises
         ------
-        AMQPConnectionError
-            If unable to establish connection.
+        OperationalError
+            If unable to establish a connection.
 
         Examples
         --------
         >>> config = ServiceConfig()
-        >>> manager = RabbitMQManager(config)
+        >>> manager = MessageBrokerManager(config)
         >>> manager.add_queue("temp_queue", durable=False)
-        >>> # Note: This would fail in doctest without actual RabbitMQ server
-        >>> # with manager.get_connection_context() as (conn, channel):
-        >>> #     isinstance(conn, BlockingConnection)
+        'default-temp_queue'
+        >>> # with manager.get_connection_context() as conn:
+        >>> #     isinstance(conn, kombu.Connection)
         >>> # True
         """
-        connection: BlockingConnection | None = None
-        channel: BlockingChannel | None = None
-        try:
-            connection, channel = self._establish_connection()  # type: ignore
-
-            # Declare existing queues on new connection
-            for queue_name, config in self._queues.items():
+        with broker_connection(self._config.broker_url) as conn:
+            for queue_name, cfg in self._queues.items():
                 if queue_name not in self._created_queues:
                     self._logger.debug(
-                        f"Creating queue {queue_name} with config {config}",
+                        f"Declaring queue {queue_name} with config {cfg}",
                     )
-                    channel.queue_declare(queue=queue_name, **config)
+                    declare_queue(conn, queue_name, **cfg)
                     self._created_queues.add(queue_name)
-
-            yield connection, channel
-        finally:
-            if connection and not connection.is_closed:
-                connection.close()
+            yield conn
 
     def get_queue_name(self, base_name: str) -> str:
-        """Generate full queue name with service namespace prefix.
+        """Generate a full queue name with the service namespace prefix.
 
         Parameters
         ----------
@@ -1839,25 +1953,25 @@ class RabbitMQManager(ServiceManager):
         Examples
         --------
         >>> config = ServiceConfig()
-        >>> manager = RabbitMQManager(config)
+        >>> manager = MessageBrokerManager(config)
         >>> manager.get_queue_name("my_queue")
         'default-my_queue'
         """
         return f"{self._namespace}-{base_name}"
 
     def add_queue(self, queue_name: str, **queue_config: Any) -> str:
-        """Register queue configuration for automatic declaration on connections.
+        """Register a queue for automatic declaration on connections.
 
         Stores queue configuration that will be applied when establishing
-        new connections through get_connection_context().
+        new connections through :meth:`get_connection_context`.
 
         Parameters
         ----------
         queue_name : str
-            Base name of the queue to configure (without namespace prefix).
+            Base name of the queue (without namespace prefix).
         **queue_config : Any
-            Keyword arguments for pika queue_declare method (e.g., durable=True,
-            exclusive=False, auto_delete=False, arguments=None).
+            Keyword arguments forwarded to :func:`declare_queue` (e.g.
+            ``durable=True``, ``exclusive=False``, ``auto_delete=False``).
 
         Returns
         -------
@@ -1867,7 +1981,7 @@ class RabbitMQManager(ServiceManager):
         Examples
         --------
         >>> config = ServiceConfig()
-        >>> manager = RabbitMQManager(config)
+        >>> manager = MessageBrokerManager(config)
         >>> full_name = manager.add_queue("my_queue", durable=True, exclusive=False)
         >>> full_name in manager._queues
         True
