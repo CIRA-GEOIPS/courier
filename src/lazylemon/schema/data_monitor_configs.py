@@ -202,40 +202,13 @@ class FileMetadataEntry(BaseModel):
     @field_validator("source", "instrument", "processing_stage", mode="after")
     @classmethod
     def lowercase_string_fields(cls, value: str | None) -> str | None:
-        """Convert string fields to lowercase.
-
-        Parameters
-        ----------
-        value : str | None
-            The value to convert.
-
-        Returns
-        -------
-        str | None
-            Lowercased value or None.
-        """
+        """Convert string fields to lowercase."""
         return value.lower() if value is not None else None
 
     @field_validator("domain", mode="after")
     @classmethod
     def uppercase_and_validate_domain(cls, value: str | None) -> str | None:
-        """Convert domain to uppercase and validate it's non-empty if provided.
-
-        Parameters
-        ----------
-        value : str | None
-            The domain value.
-
-        Returns
-        -------
-        str | None
-            The validated, uppercase domain value.
-
-        Raises
-        ------
-        ValueError
-            If domain is empty string.
-        """
+        """Convert domain to uppercase and validate it's non-empty if provided."""
         if value is not None:
             if not value:
                 msg = "domain must be a non-empty string"
@@ -246,23 +219,7 @@ class FileMetadataEntry(BaseModel):
     @field_validator("date", mode="after")
     @classmethod
     def validate_date_regex(cls, value: str | None) -> str | None:
-        """Validate that date is a valid regex pattern.
-
-        Parameters
-        ----------
-        value : str | None
-            The date regex pattern.
-
-        Returns
-        -------
-        str | None
-            The validated pattern.
-
-        Raises
-        ------
-        ValueError
-            If pattern is invalid.
-        """
+        """Validate that date is a valid regex pattern."""
         if value is not None:
             _validate_regex_pattern(value)
         return value
@@ -270,39 +227,12 @@ class FileMetadataEntry(BaseModel):
     @field_validator("match", mode="after")
     @classmethod
     def validate_match_patterns(cls, value: list[str]) -> list[str]:
-        """Validate that all match patterns are valid regex patterns.
-
-        Parameters
-        ----------
-        value : list[str]
-            List of match patterns.
-
-        Returns
-        -------
-        list[str]
-            The validated patterns.
-
-        Raises
-        ------
-        ValueError
-            If any pattern is invalid.
-        """
+        """Validate that all match patterns are valid regex patterns."""
         return [_validate_regex_pattern(pattern) for pattern in value]
 
     @model_validator(mode="after")
     def validate_has_at_least_one_field(self) -> Self:
-        """Validate that entry has at least one non-default field set.
-
-        Returns
-        -------
-        Self
-            The validated model.
-
-        Raises
-        ------
-        ValueError
-            If no fields are set.
-        """
+        """Validate that entry has at least one non-default field set."""
         non_default_fields = [
             self.source,
             self.instrument,
@@ -315,8 +245,6 @@ class FileMetadataEntry(BaseModel):
             self.hh,
             self.nn,
         ]
-        # num_expected has a default, so we check if any other field is set
-        # or if num_expected differs from default
         has_content = any(f is not None for f in non_default_fields)
         has_non_default_num = self.num_expected != 1
 
@@ -326,13 +254,7 @@ class FileMetadataEntry(BaseModel):
         return self
 
     def get_manual_date_components(self) -> frozenset[str]:
-        """Get the set of manually specified date components.
-
-        Returns
-        -------
-        frozenset[str]
-            Set of date component names that are manually specified.
-        """
+        """Get the set of manually specified date components."""
         components: set[str] = set()
         if self.yyyy is not None:
             components.add("YYYY")
@@ -349,27 +271,13 @@ class FileMetadataEntry(BaseModel):
         return frozenset(components)
 
     def _get_regex_date_components(self) -> frozenset[str]:
-        """Extract date components from the date regex pattern.
-
-        Returns
-        -------
-        frozenset[str]
-            Set of date component names found in the regex.
-        """
+        """Extract date components from the date regex pattern."""
         if self.date is None:
             return frozenset()
         return _extract_regex_named_groups(self.date) & DATE_COMPONENTS
 
     def _has_sufficient_date_info(self) -> bool:
-        """Check if sufficient date information is available.
-
-        Requires YYYY and either (MM + DD) or JJJ.
-
-        Returns
-        -------
-        bool
-            True if sufficient date information is available.
-        """
+        """Check if sufficient date information is available."""
         manual_components = self.get_manual_date_components()
         regex_components = self._get_regex_date_components()
         all_components = manual_components | regex_components
@@ -382,22 +290,7 @@ class FileMetadataEntry(BaseModel):
 
     @model_validator(mode="after")
     def validate_date_requirements(self) -> Self:
-        """Validate date regex and manual components provide sufficient info.
-
-        Only applies to entries with source specified (main entries).
-
-        Returns
-        -------
-        Self
-            The validated model.
-
-        Raises
-        ------
-        ValueError
-            If insufficient date information is provided for a main entry.
-        """
-        # Only validate date requirements for entries with a source
-        # (domain-only entries don't need date information)
+        """Validate date regex and manual components provide sufficient info."""
         if self.source is not None and not self._has_sufficient_date_info():
             manual = self.get_manual_date_components()
             regex = self._get_regex_date_components()
@@ -413,13 +306,7 @@ class FileMetadataEntry(BaseModel):
 
 
 class Spec(BaseModel):
-    """Specification section of the data monitor configuration.
-
-    Attributes
-    ----------
-    file_metadata : dict[str, FileMetadataEntry]
-        Mapping of entry names to their configurations.
-    """
+    """Specification section of the data monitor configuration."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -438,34 +325,12 @@ class Spec(BaseModel):
         cls,
         value: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Convert file-metadata entry keys to lowercase.
-
-        Parameters
-        ----------
-        value : Mapping[str, Any]
-            The file-metadata mapping.
-
-        Returns
-        -------
-        dict[str, Any]
-            Mapping with lowercased keys.
-        """
+        """Convert file-metadata entry keys to lowercase."""
         return {k.lower(): v for k, v in value.items()}
 
     @model_validator(mode="after")
     def validate_has_source_entry(self) -> Self:
-        """Validate that at least one entry has a source specified.
-
-        Returns
-        -------
-        Self
-            The validated model.
-
-        Raises
-        ------
-        ValueError
-            If no entry has source specified.
-        """
+        """Validate that at least one entry has a source specified."""
         has_source = any(
             entry.source is not None for entry in self.file_metadata.values()
         )
@@ -476,27 +341,7 @@ class Spec(BaseModel):
 
 
 class DataMonitorConfig(BaseModel):
-    """Root configuration model for data monitor YAML files.
-
-    Attributes
-    ----------
-    api_version : str
-        API version string, must be 'lazylemon/v1'.
-    interface : str
-        Interface identifier, must be 'data_monitor_configs'.
-    family : str
-        Configuration family, must be 'standard'.
-    kind : str
-        Configuration kind, must be 'data_monitor_config'.
-    name : str
-        Configuration name identifier.
-    description : str
-        Human-readable description.
-    docstring : str
-        Optional documentation string, can be empty.
-    spec : Spec
-        The specification section containing file metadata.
-    """
+    """Root configuration model for data monitor YAML files."""
 
     model_config = ConfigDict(
         extra="allow",
@@ -521,40 +366,13 @@ class DataMonitorConfig(BaseModel):
     @field_validator("name", mode="after")
     @classmethod
     def lowercase_name(cls, value: str) -> str:
-        """Convert name to lowercase.
-
-        Parameters
-        ----------
-        value : str
-            The name value.
-
-        Returns
-        -------
-        str
-            Lowercased name.
-        """
+        """Convert name to lowercase."""
         return value.lower()
 
     @field_validator("description", mode="after")
     @classmethod
     def validate_description_format(cls, value: str) -> str:
-        """Validate description starts with capital and ends with period.
-
-        Parameters
-        ----------
-        value : str
-            The description value.
-
-        Returns
-        -------
-        str
-            The validated description.
-
-        Raises
-        ------
-        ValueError
-            If description format is invalid.
-        """
+        """Validate description starts with capital and ends with period."""
         if not value:
             msg = "description cannot be empty"
             raise ValueError(msg)

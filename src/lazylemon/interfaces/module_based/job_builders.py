@@ -1,132 +1,19 @@
-"""Python class for the data_filter lazylemon interface."""
+"""Python class for the job_builders lazylemon interface."""
 
-import json
 import threading
 import time
-from typing import Any, ClassVar, Never
+from typing import ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 from prometheus_client import Counter, Gauge, Histogram
 
-from lazylemon.interfaces.module_based.data_monitors import FILE_FOUND_QUEUE
-from lazylemon.interfaces.module_based.service import (
-    Service,
-    ServicePlugin,
-    log_execution,
-)
-from lazylemon.types.file import File, FrozenFile
+from lazylemon.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE
+from lazylemon.interfaces.plugin_protocol import ServicePlugin
+from lazylemon.service import Service
+from lazylemon.types.file import FrozenFile
+from lazylemon.types.job import Job, JobGroup
+from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
-
-JOB_READY_QUEUE = "JobReadyQueue"
-
-
-class Job:
-    """Job class."""
-
-    def __init__(  # noqa: PLR0913
-        self,
-        name: str,
-        identifier: str,
-        config: Any,
-        files: set[File | FrozenFile] | frozenset[Never] = frozenset(),
-        last_modified: float | None = None,
-        timeout: float = 60 * 60 * 24,
-    ) -> None:
-        self.name = name
-        self.identifier = identifier
-        self.config = config
-        self.files = files
-        self.last_modified = last_modified if last_modified is not None else time.time()
-        self.timeout = timeout
-        if self.files == frozenset():
-            self.files = set()
-
-    def __str__(self) -> str:
-        """Convert Job to JSON string."""
-        return json.dumps(
-            {
-                "name": self.name,
-                "identifier": self.identifier,
-                "config": self.config,
-                "files": [str(f) for f in self.files],
-                "last_modified": self.last_modified,
-                "timeout": self.timeout,
-            },
-        )
-
-    @classmethod
-    def from_string(cls, s: str) -> "Job":
-        """Initialize Job from JSON string.
-
-        Args:
-            s: JSON string representation of Job
-
-        Returns
-        -------
-            Job instance
-        """
-        data = json.loads(s)
-        return cls(
-            name=data["name"],
-            identifier=data["identifier"],
-            config=data["config"],
-            files={FrozenFile.from_string(f) for f in data.get("files", [])},
-            last_modified=data.get("last_modified"),
-            timeout=data.get("timeout", 60 * 60 * 24),
-        )
-
-    def ready(self) -> bool:
-        """Return true if job is ready to be emitted."""
-        return False
-
-    def add_file(self, file: File | FrozenFile) -> None:
-        """Add file to job."""
-        # ignore type because self.files is initialized as frozenset by default
-        # but..... is set in init anyways if empty
-        self.files.add(file)  # type: ignore
-        self.last_modified = time.time()
-
-    def is_old(self) -> bool:
-        """Return true if job is old and ready to be discarded."""
-        return time.time() - self.last_modified > self.timeout
-
-
-class JobGroup:
-    """Job group class."""
-
-    def __init__(self, job_name: str, config: Any) -> None:
-        self.name = job_name
-        self.config = config
-        self.jobs: dict[str, Job] = {}
-        self.job = Job
-
-    def ready_jobs(self) -> list[Job]:
-        """Return list of ready jobs."""
-        return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
-
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:  # noqa: ARG002
-        """Return true if file is relevant to this job group."""
-        return False
-
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
-        """Return job ID from file."""
-        return [str(file.file)]
-
-    def add_file(self, file: File | FrozenFile) -> bool:
-        """Add file to appropriate job in job group.
-
-        Return true if file was added to a job, false otherwise.
-        """
-        if not self.file_is_relevant(file):
-            return False
-        job_ids = self.get_job_ids_from_file(file)
-        for job_id in job_ids:
-            if job_id in self.jobs:
-                self.jobs[job_id].add_file(file)
-            else:
-                self.jobs[job_id] = self.job(self.name, job_id, self.config)
-                self.jobs[job_id].add_file(file)
-        return True
 
 
 class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
@@ -182,7 +69,6 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
             start_time = time.time()
 
-            # Record file received
             self.files_received.labels(job_builder_name=self.name).inc()
             self._logger.debug(f"Received file {file_string} from file queue")
 
@@ -192,7 +78,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 self._logger.debug(
                     f"Processing file {file} in job group {job_group.name}",
                 )
-                if job_group.add_file(file):  # aka file added
+                if job_group.add_file(file):
                     self._logger.debug(
                         f"File {file} added to job group {job_group.name}",
                     )
@@ -206,7 +92,6 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                             job_builder_name=self.name,
                         ).inc()
 
-                # Clean up old jobs
                 jobs_to_delete = []
                 for job_id, job in job_group.jobs.items():
                     if job.is_old():
@@ -218,17 +103,14 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                         ).inc()
                         jobs_to_delete.append(job_id)
 
-                # Delete old jobs after iteration
                 for job_id in jobs_to_delete:
                     del job_group.jobs[job_id]
 
-            # Record file processing duration
             processing_time = time.time() - start_time
             self.file_processing_duration.labels(job_builder_name=self.name).observe(
                 processing_time,
             )
 
-            # Update active job groups count
             self.active_job_groups.labels(job_builder_name=self.name).set(
                 len(self.job_groups),
             )

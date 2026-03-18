@@ -5,9 +5,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from lazylemon.interfaces.module_based.dispatchers import Dispatcher, ExecutionLog
-from lazylemon.interfaces.module_based.job_builders import Job
-from lazylemon.interfaces.module_based.service import Service
+from lazylemon.interfaces.module_based.dispatchers import Dispatcher
+from lazylemon.service import Service
+from lazylemon.types.execution_log import ExecutionLog
+from lazylemon.types.job import Job
 
 interface: str = "dispatchers"
 family: str = "standard"
