@@ -1,4 +1,4 @@
-"""Unit tests for src/geoips_driver/types/file.py"""
+"""Unit tests for src/lazylemon/types/file.py"""
 
 import json
 import re
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from geoips_driver.types.file import (
+from lazylemon.types.file import (
     File,
     FrozenFile,
     build_timestamp_from_components,

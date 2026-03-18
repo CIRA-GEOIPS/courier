@@ -19,7 +19,7 @@ spec:
         kind: data_monitor
         name: file_system_poller_watchdog # this is the plugin name
         config:
-          path: /workspaces/geoips_driver/tests/fake-watch-dir # where to watch
+          path: /workspaces/lazylemon/tests/fake-watch-dir # where to watch
           metadata-tools:
             - goes16_abi # This looks for filenames that look like goes16 files
             - himawari9_ahi # In the future these could also be module based plugins

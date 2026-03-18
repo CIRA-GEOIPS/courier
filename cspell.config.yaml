@@ -63,6 +63,7 @@ words:
   - xarray
   - yday
   - lazylemon
+  - geolocated
 ignoreWords:
   - includehidden
   - intersphinx
@@ -99,4 +100,13 @@ ignoreWords:
   - procflow
   - colostate
   - notif
+  - SBATCH
+  - srun
+  - biosafetylvl
+  - ntasks
+  - pyenv
+  - toctree
+  - modindex
+  - genindex
+  - usermod
 import: []
