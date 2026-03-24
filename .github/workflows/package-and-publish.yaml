@@ -87,6 +87,7 @@ jobs:
   # Publish to PyPI
   # ---------------------------------------------------------------------------
   publish-pypi:
+    environment: pypi
     needs: [build, test-built-package]
     runs-on: ubuntu-latest
     #if: github.event_name == 'release'
