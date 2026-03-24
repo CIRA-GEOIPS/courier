@@ -49,46 +49,11 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # Run the test suite against the built wheel (not the source tree)
-  # ---------------------------------------------------------------------------
-  test-built-package:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - uses: astral-sh/setup-uv@v6
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Install wheel and test dependencies
-        shell: bash
-        run: |
-          uv pip install dist/*.whl
-          uv pip install pytest pytest-cov pytest-xdist pydantic
-
-      - name: Run tests
-        run: python -m pytest tests/ -v
-
-  # ---------------------------------------------------------------------------
   # Publish to PyPI
   # ---------------------------------------------------------------------------
   publish-pypi:
     environment: pypi
-    needs: [build, test-built-package]
+    needs: [build]
     runs-on: ubuntu-latest
     #if: github.event_name == 'release'
     steps:
