@@ -1,4 +1,4 @@
-apiVersion: geoips/driver/v1
+apiVersion: lazylemon/driver/v1
 kind: Service
 name: testing_spec_not_complete
 description: This is for testing a basic workflow! Not a complete spec.

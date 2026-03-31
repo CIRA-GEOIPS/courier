@@ -25,6 +25,12 @@ DATA_MONITOR_FILES_PROCESSED: Counter = Counter(
     ["monitor_name", "status"],
 )
 
+DATA_MONITOR_LAST_SCAN_TIMESTAMP: Gauge = Gauge(
+    "lazylemon_data_monitor_last_scan_timestamp_seconds",
+    "Unix timestamp of the last completed directory scan for a data monitor plugin",
+    ["monitor_name"],
+)
+
 # ---------------------------------------------------------------------------
 # Job builder metrics
 # ---------------------------------------------------------------------------

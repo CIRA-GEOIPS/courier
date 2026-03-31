@@ -4,6 +4,7 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - croniter
   - kombu
   - charliermarsh
   - CIRA

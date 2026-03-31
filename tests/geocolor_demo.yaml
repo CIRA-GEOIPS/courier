@@ -1,4 +1,4 @@
-apiVersion: geoips/driver/v1
+apiVersion: lazylemon/driver/v1
 kind: Service
 name: GeoColor-Demo
 description: This looks for ABI files and then produces GeoColor from them.
