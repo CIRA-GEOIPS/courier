@@ -27,7 +27,7 @@ yaml_based_interfaces: list[str] = [
 # for more information.
 # No QA this line because many linters will complain about
 # this not "only" containing strings
-__all__ = (  # noqa: PLE0605
+__all__ = (  # noqa: PLE0605 # type: ignore
     module_based_interfaces
     + yaml_based_interfaces
     + [
@@ -35,4 +35,4 @@ __all__ = (  # noqa: PLE0605
         "Service",
         "create_service_with_plugins",
     ]
-)  # type: ignore
+)
