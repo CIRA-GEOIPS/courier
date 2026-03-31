@@ -216,7 +216,7 @@ The repository includes a dev container configuration:
 
 ## Troubleshooting
 
-**Import Error: No module named 'geoips_driver'**
+**Import Error: No module named 'lazylemon'**
 
 Make sure you've activated your virtual environment:
 
