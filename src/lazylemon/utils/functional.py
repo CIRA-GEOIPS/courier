@@ -93,7 +93,7 @@ def maybe(default: T) -> Callable[[T | None], T]:  # noqa: UP047
     return lambda x: x if x is not None else default
 
 
-def filter_map[T, R](
+def filter_map(  # noqa: UP047
     predicate: Callable[[T], bool],
     transform: Callable[[T], R],
     items: Iterable[T],
