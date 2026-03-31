@@ -357,7 +357,7 @@ class MessageBrokerManager(ServiceManager):
             If unable to establish a connection.
         """
         with broker_connection(self._config.broker_url) as conn:
-            for queue_name, cfg in self._queues.items():
+            for queue_name, cfg in list(self._queues.items()):
                 if queue_name not in self._created_queues:
                     self._logger.debug(
                         f"Declaring queue {queue_name} with config {cfg}",
