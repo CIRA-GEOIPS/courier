@@ -5,10 +5,10 @@ from collections.abc import Generator
 from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
-from prometheus_client import Counter
 
 from lazylemon.constants import FILE_FOUND_QUEUE
 from lazylemon.interfaces.plugin_protocol import ServicePlugin
+from lazylemon.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
 from lazylemon.schema.data_monitor_configs import DataMonitorConfig
 from lazylemon.service import Service
 from lazylemon.types.file import File
@@ -34,13 +34,7 @@ class DataMonitorBasePlugin(ServicePlugin):
             for tool in config.get("metadata-tools", [])
         ]
 
-        self.files_processed = Counter(
-            f"files_processed_{self.name}",
-            f"Total number of files processed by {self.name} data monitor",
-            [
-                "status",
-            ],  # Labels for prometheus metric
-        )
+        self._files_processed = DATA_MONITOR_FILES_PROCESSED
 
     def find_file(self) -> Generator[File, None, None]:
         """Yield File objects."""
@@ -66,9 +60,15 @@ class DataMonitorBasePlugin(ServicePlugin):
                 file_with_metadata = self.add_metadata_to_file(incoming_file)
                 self._logger.info(f"Found file: {file_with_metadata}")
                 self.emit(file_with_metadata)
-                self.files_processed.labels(status="success").inc()
+                self._files_processed.labels(
+                    monitor_name=self.name,
+                    status="success",
+                ).inc()
             except Exception:
-                self.files_processed.labels(status="failure").inc()
+                self._files_processed.labels(
+                    monitor_name=self.name,
+                    status="failure",
+                ).inc()
                 self._logger.exception(f"Error processing file {incoming_file}")
 
     @log_execution
@@ -97,17 +97,11 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def get_metrics(self) -> dict[str, Any]:
         """Return plugin-specific metrics."""
-        # Extract metrics from the prometheus counters
-        metrics_dict = {}
-        # Get the counter value by collecting all samples
-        for item in self.files_processed.collect():
-            for sample in item.samples:
-                if sample.name == self.files_processed._name:
-                    metrics_dict[f"{self.name}_files_processed"] = {
-                        "value": sample.value,
-                        "labels": sample.labels,
-                    }
-        return metrics_dict
+        return collect_labeled(
+            DATA_MONITOR_FILES_PROCESSED,
+            "monitor_name",
+            self.name,
+        )
 
 
 def call() -> None:

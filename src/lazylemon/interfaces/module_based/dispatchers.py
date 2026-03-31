@@ -5,10 +5,16 @@ import time
 from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
-from prometheus_client import Counter, Gauge, Histogram
 
 from lazylemon.constants import JOB_READY_QUEUE
 from lazylemon.interfaces.plugin_protocol import ServicePlugin
+from lazylemon.metrics import (
+    DISPATCHER_ACTIVE_JOBS,
+    DISPATCHER_EXECUTION_LOGS_EMITTED,
+    DISPATCHER_JOB_EXECUTION_DURATION,
+    DISPATCHER_JOBS_PROCESSED,
+    collect_labeled,
+)
 from lazylemon.service import Service
 from lazylemon.types.execution_log import ExecutionLog
 from lazylemon.types.job import Job
@@ -28,28 +34,10 @@ class Dispatcher(ServicePlugin):
         self._running = False
         self.config = config
 
-        # Prometheus metrics
-        self.jobs_processed = Counter(
-            f"dispatcher_jobs_processed_total_{self.name}",
-            f"Total number of jobs processed by {self.name} dispatcher",
-            ["status", "dispatcher_name"],
-        )
-        self.job_execution_duration = Histogram(
-            f"dispatcher_job_execution_duration_seconds_{self.name}",
-            f"Job execution duration in seconds for {self.name} dispatcher",
-            ["dispatcher_name"],
-            buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
-        )
-        self.active_jobs = Gauge(
-            f"dispatcher_active_jobs_{self.name}",
-            f"Number of currently active jobs for {self.name} dispatcher",
-            ["dispatcher_name"],
-        )
-        self.execution_logs_emitted = Counter(
-            f"dispatcher_execution_logs_emitted_total_{self.name}",
-            f"Total number of execution logs emitted by {self.name} dispatcher",
-            ["dispatcher_name"],
-        )
+        self._jobs_processed = DISPATCHER_JOBS_PROCESSED
+        self._job_execution_duration = DISPATCHER_JOB_EXECUTION_DURATION
+        self._active_jobs = DISPATCHER_ACTIVE_JOBS
+        self._execution_logs_emitted = DISPATCHER_EXECUTION_LOGS_EMITTED
         self.active_job_timestamps = {}  # type: dict[str, float]
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
@@ -72,24 +60,24 @@ class Dispatcher(ServicePlugin):
                 start_time = time.time()
                 job_id = job.identifier
                 self.active_job_timestamps[job_id] = start_time
-                self.active_jobs.labels(dispatcher_name=self.name).inc()
+                self._active_jobs.labels(dispatcher_name=self.name).inc()
 
                 try:
                     execution_logs = self.get_execution_log(job)
                     for ex_log in execution_logs:
                         self.emit(ex_log)
-                        self.execution_logs_emitted.labels(
+                        self._execution_logs_emitted.labels(
                             dispatcher_name=self.name,
                         ).inc()
 
-                    self.jobs_processed.labels(
+                    self._jobs_processed.labels(
                         status="success",
                         dispatcher_name=self.name,
                     ).inc()
 
                 except Exception:
                     self._logger.exception(f"Error processing job {job_id}")
-                    self.jobs_processed.labels(
+                    self._jobs_processed.labels(
                         status="failure",
                         dispatcher_name=self.name,
                     ).inc()
@@ -99,11 +87,11 @@ class Dispatcher(ServicePlugin):
                         execution_time = (
                             time.time() - self.active_job_timestamps[job_id]
                         )
-                        self.job_execution_duration.labels(
+                        self._job_execution_duration.labels(
                             dispatcher_name=self.name,
                         ).observe(execution_time)
                         del self.active_job_timestamps[job_id]
-                        self.active_jobs.labels(dispatcher_name=self.name).dec()
+                        self._active_jobs.labels(dispatcher_name=self.name).dec()
 
     @log_execution
     def start(self) -> None:
@@ -131,41 +119,20 @@ class Dispatcher(ServicePlugin):
 
     def get_metrics(self) -> dict[str, Any]:
         """Return plugin-specific metrics."""
-        metrics_dict = {}
-
-        for sample in self.jobs_processed.collect():
-            for s in sample.samples:
-                if s.name == self.jobs_processed._name:
-                    metrics_dict[f"{self.name}_jobs_processed"] = {
-                        "value": s.value,
-                        "labels": s.labels,
-                    }
-
-        for sample in self.job_execution_duration.collect():
-            for s in sample.samples:
-                if s.name == self.job_execution_duration._name:
-                    metrics_dict[f"{self.name}_job_execution_duration"] = {
-                        "value": s.value,
-                        "labels": s.labels,
-                    }
-
-        for sample in self.active_jobs.collect():
-            for s in sample.samples:
-                if s.name == self.active_jobs._name:
-                    metrics_dict[f"{self.name}_active_jobs"] = {
-                        "value": s.value,
-                        "labels": s.labels,
-                    }
-
-        for sample in self.execution_logs_emitted.collect():
-            for s in sample.samples:
-                if s.name == self.execution_logs_emitted._name:
-                    metrics_dict[f"{self.name}_execution_logs_emitted"] = {
-                        "value": s.value,
-                        "labels": s.labels,
-                    }
-
-        return metrics_dict
+        return {
+            **collect_labeled(DISPATCHER_JOBS_PROCESSED, "dispatcher_name", self.name),
+            **collect_labeled(
+                DISPATCHER_JOB_EXECUTION_DURATION,
+                "dispatcher_name",
+                self.name,
+            ),
+            **collect_labeled(DISPATCHER_ACTIVE_JOBS, "dispatcher_name", self.name),
+            **collect_labeled(
+                DISPATCHER_EXECUTION_LOGS_EMITTED,
+                "dispatcher_name",
+                self.name,
+            ),
+        }
 
 
 def call() -> None:

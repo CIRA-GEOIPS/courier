@@ -6,6 +6,7 @@ import prometheus_client
 
 from lazylemon.config import ServiceConfig
 from lazylemon.managers.base import ServiceManager
+from lazylemon.metrics import APP_HEARTBEAT
 from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
 
@@ -26,8 +27,6 @@ class PrometheusManager(ServiceManager):
     ----------
     _config : ServiceConfig
         Service configuration.
-    _heartbeat_metric : prometheus_client.Gauge
-        Gauge metric for heartbeat timestamps.
     _server_started : bool
         Whether the Prometheus HTTP server has been started.
 
@@ -57,21 +56,7 @@ class PrometheusManager(ServiceManager):
         """
         self._config = config
         self._logger = get_logger("manager", "PrometheusManager", config)
-        self._heartbeat_metric = self._create_heartbeat_metric()
         self._server_started = False
-
-    def _create_heartbeat_metric(self) -> prometheus_client.Gauge:
-        """Create Prometheus gauge metric for heartbeat timestamps.
-
-        Returns
-        -------
-        prometheus_client.Gauge
-            Configured gauge metric for heartbeat timestamp tracking.
-        """
-        return prometheus_client.Gauge(
-            "app_heartbeat_timestamp_seconds",
-            "Last reported service heartbeat timestamp",
-        )
 
     @log_execution
     def start(self) -> None:
@@ -107,5 +92,5 @@ class PrometheusManager(ServiceManager):
     def send_heartbeat(self) -> None:
         """Update heartbeat metric with current Unix timestamp."""
         current_time = time.time()
-        self._heartbeat_metric.set(current_time)
+        APP_HEARTBEAT.set(current_time)
         self._logger.debug(f"Heartbeat sent at {current_time}")

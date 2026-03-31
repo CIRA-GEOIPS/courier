@@ -4,8 +4,6 @@ import time
 from collections.abc import Generator
 from typing import Any
 
-import prometheus_client
-
 from lazylemon.broker.kombu import MessageBrokerManager, declare_queue, publish
 from lazylemon.broker.kombu import messages as broker_messages
 from lazylemon.config import ServiceConfig
@@ -13,6 +11,7 @@ from lazylemon.interfaces.plugin_protocol import ServicePlugin
 from lazylemon.managers.base import ServiceManager
 from lazylemon.managers.plugin_manager import PluginManager
 from lazylemon.managers.prometheus_manager import PrometheusManager
+from lazylemon.metrics import SERVICE_HEALTH, SERVICE_UPTIME
 from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
 from lazylemon.utils.signals import SignalHandler
@@ -83,15 +82,8 @@ class Service:
         self.namespace = "default"
         self._start_time = time.time()
 
-        # Service-level Prometheus metrics
-        self._service_uptime_metric = prometheus_client.Gauge(
-            "service_uptime_seconds",
-            "Service uptime in seconds",
-        )
-        self._service_health_metric = prometheus_client.Gauge(
-            "service_health",
-            "Overall service health status (1 = healthy, 0 = unhealthy)",
-        )
+        self._service_uptime_metric = SERVICE_UPTIME
+        self._service_health_metric = SERVICE_HEALTH
 
     @log_execution
     def emit(self, queue: str, message: str) -> None:

@@ -2,13 +2,20 @@
 
 import threading
 import time
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
-from prometheus_client import Counter, Gauge, Histogram
 
 from lazylemon.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE
 from lazylemon.interfaces.plugin_protocol import ServicePlugin
+from lazylemon.metrics import (
+    JOB_BUILDER_ACTIVE_GROUPS,
+    JOB_BUILDER_FILE_PROCESSING_DURATION,
+    JOB_BUILDER_FILES_RECEIVED,
+    JOB_BUILDER_JOBS_BUILT,
+    JOB_BUILDER_JOBS_DISCARDED,
+    collect_labeled,
+)
 from lazylemon.service import Service
 from lazylemon.types.file import FrozenFile
 from lazylemon.types.job import Job, JobGroup
@@ -29,33 +36,11 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self.job_groups: list[JobGroup] = []
         self.config = config
 
-        # Prometheus metrics
-        self.files_received = Counter(
-            f"job_builder_files_received_total_{self.name}",
-            f"Total number of files received by {self.name} job builder",
-            ["job_builder_name"],
-        )
-        self.jobs_built = Counter(
-            f"job_builder_jobs_built_total_{self.name}",
-            f"Total number of jobs built by {self.name} job builder",
-            ["status", "job_builder_name"],
-        )
-        self.active_job_groups = Gauge(
-            f"job_builder_active_job_groups_{self.name}",
-            f"Number of currently active job groups for {self.name} job builder",
-            ["job_builder_name"],
-        )
-        self.jobs_discarded = Counter(
-            f"job_builder_jobs_discarded_total_{self.name}",
-            f"Total number of old jobs discarded by {self.name} job builder",
-            ["job_builder_name"],
-        )
-        self.file_processing_duration = Histogram(
-            f"job_builder_file_processing_duration_seconds_{self.name}",
-            f"File processing duration in seconds for {self.name} job builder",
-            ["job_builder_name"],
-            buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0),
-        )
+        self._files_received = JOB_BUILDER_FILES_RECEIVED
+        self._jobs_built = JOB_BUILDER_JOBS_BUILT
+        self._active_job_groups = JOB_BUILDER_ACTIVE_GROUPS
+        self._jobs_discarded = JOB_BUILDER_JOBS_DISCARDED
+        self._file_processing_duration = JOB_BUILDER_FILE_PROCESSING_DURATION
 
     def emit(self, job: Job) -> None:
         """Emit job to parent service."""
@@ -69,7 +54,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
             start_time = time.time()
 
-            self.files_received.labels(job_builder_name=self.name).inc()
+            self._files_received.labels(job_builder_name=self.name).inc()
             self._logger.debug(f"Received file {file_string} from file queue")
 
             file = FrozenFile.from_string(str(file_string))
@@ -87,7 +72,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                             f"Job {ready_job.identifier} is ready; emitting",
                         )
                         self.emit(ready_job)
-                        self.jobs_built.labels(
+                        self._jobs_built.labels(
                             status="ready",
                             job_builder_name=self.name,
                         ).inc()
@@ -96,8 +81,8 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 for job_id, job in job_group.jobs.items():
                     if job.is_old():
                         self._logger.info(f"Discarding old job {job.identifier}")
-                        self.jobs_discarded.labels(job_builder_name=self.name).inc()
-                        self.jobs_built.labels(
+                        self._jobs_discarded.labels(job_builder_name=self.name).inc()
+                        self._jobs_built.labels(
                             status="old",
                             job_builder_name=self.name,
                         ).inc()
@@ -107,11 +92,11 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                     del job_group.jobs[job_id]
 
             processing_time = time.time() - start_time
-            self.file_processing_duration.labels(job_builder_name=self.name).observe(
-                processing_time,
-            )
+            self._file_processing_duration.labels(
+                job_builder_name=self.name,
+            ).observe(processing_time)
 
-            self.active_job_groups.labels(job_builder_name=self.name).set(
+            self._active_job_groups.labels(job_builder_name=self.name).set(
                 len(self.job_groups),
             )
 
@@ -136,6 +121,36 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         """Stop main thread."""
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
+
+    def is_healthy(self) -> bool:
+        """Check if plugin is healthy."""
+        return self._running
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Return plugin-specific metrics."""
+        return {
+            **collect_labeled(
+                JOB_BUILDER_FILES_RECEIVED,
+                "job_builder_name",
+                self.name,
+            ),
+            **collect_labeled(JOB_BUILDER_JOBS_BUILT, "job_builder_name", self.name),
+            **collect_labeled(
+                JOB_BUILDER_ACTIVE_GROUPS,
+                "job_builder_name",
+                self.name,
+            ),
+            **collect_labeled(
+                JOB_BUILDER_JOBS_DISCARDED,
+                "job_builder_name",
+                self.name,
+            ),
+            **collect_labeled(
+                JOB_BUILDER_FILE_PROCESSING_DURATION,
+                "job_builder_name",
+                self.name,
+            ),
+        }
 
 
 def call() -> None:
