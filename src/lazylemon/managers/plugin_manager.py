@@ -7,12 +7,11 @@ from datetime import datetime
 from functools import partial
 from typing import Any
 
-import prometheus_client
-
 from lazylemon.config import ServiceConfig
 from lazylemon.constants import PluginRunState
 from lazylemon.interfaces.plugin_protocol import ServicePlugin
 from lazylemon.managers.base import ServiceManager
+from lazylemon.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
 from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.functional import filter_map
 from lazylemon.utils.logging import get_logger
@@ -98,22 +97,9 @@ class PluginManager(ServiceManager):
         self._monitor_thread: threading.Thread | None = None
         self._service = parent_service
 
-        # Metrics
-        self._plugin_state_metric = prometheus_client.Gauge(
-            "plugin_state",
-            "Current state of plugins",
-            ["plugin_name"],
-        )
-        self._plugin_restart_metric = prometheus_client.Counter(
-            "plugin_restarts_total",
-            "Total number of plugin restarts",
-            ["plugin_name"],
-        )
-        self._plugin_health_metric = prometheus_client.Gauge(
-            "plugin_health",
-            "Plugin health status (1 = healthy, 0 = unhealthy)",
-            ["plugin_name"],
-        )
+        self._plugin_state_metric = PLUGIN_STATE
+        self._plugin_restart_metric = PLUGIN_RESTARTS
+        self._plugin_health_metric = PLUGIN_HEALTH
 
     def register_plugin(
         self,
