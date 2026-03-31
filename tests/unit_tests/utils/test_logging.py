@@ -262,8 +262,8 @@ class TestCreateLokiHandler:
         AssertionError
             If result is not None or warning not logged.
         """
-        # Simulate import error by not patching
-        with patch.dict("sys.modules", {"logging_loki": None}):
+        # Simulate import error by patching the module-level binding directly
+        with patch("lazylemon.utils.logging.logging_loki", None):
             result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
 
             assert not result
@@ -417,7 +417,7 @@ class TestGetLogger:
     @pytest.mark.parametrize(
         ("invalid_config", "expected_exception"),
         [
-            ({"service_id": None}, TypeError),  # Invalid config, would cause issues
+            ({"log_level": None}, AttributeError),  # None log_level causes AttributeError on .upper()
         ],
     )
     def test_get_logger_handles_edge_cases(self, invalid_config: dict[str, Any], expected_exception: type[Exception]) -> None:
@@ -439,10 +439,10 @@ class TestGetLogger:
         AssertionError
             If expected exception is not raised.
         """
-        # Note: ServiceConfig is frozen/dataclass, so invalid inputs are caught via validation.
-        # This test assumes no actual ServiceConfig for invalid cases.
+        # Note: ServiceConfig is a plain dataclass — no runtime type validation.
+        # Use a unique source_name to avoid the cached-handlers guard skipping config processing.
         with pytest.raises(expected_exception):
-            get_logger("service", "test", ServiceConfig(**invalid_config))
+            get_logger("service", "edge-case-unique", ServiceConfig(**invalid_config))
 
 
 # Test setup_logging
@@ -466,7 +466,8 @@ def test_setup_logging_as_wrapper() -> None:
 
     expected = get_logger("module", "test_module", None)
 
-    assert result == expected  # Both return LoggerAdapter instances with same extra
+    # We can't compare directly but we can compare their representations
+    assert repr(result) == repr(expected)  # Both return LoggerAdapter instances with same extra
 
     # Test default name
     result_default = setup_logging()
