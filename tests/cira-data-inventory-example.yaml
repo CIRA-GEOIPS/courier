@@ -1,4 +1,4 @@
-apiVersion: geoips/driver/v1
+apiVersion: lazylemon/driver/v1
 kind: Service
 name: Data Inventory Ingest
 description: Watches for files from a data inventory notification.
