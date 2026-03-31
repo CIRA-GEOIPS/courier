@@ -150,7 +150,7 @@ Run your service:
 ```
 If using pip installation
 =========================
-geoips-driver run goes18_watcher.yaml
+lazylemon run goes18_watcher.yaml
 
 If using poetry
 ===============

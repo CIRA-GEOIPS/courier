@@ -172,7 +172,7 @@ The `{file}` template variable is replaced with the actual file path.
 Before running, validate the configuration:
 
 ```
-geoips-driver validate watcher.yaml
+lazylemon validate watcher.yaml
 ```
 
 Expected output:
@@ -188,7 +188,7 @@ If you see errors, check your YAML syntax and indentation.
 Start the service in the foreground:
 
 ```
-geoips-driver run watcher.yaml
+lazylemon run watcher.yaml
 ```
 
 You should see startup logs:
