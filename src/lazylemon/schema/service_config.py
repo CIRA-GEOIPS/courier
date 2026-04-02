@@ -2,75 +2,24 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import (
-    BaseModel,
-    ConfigDict,
     Field,
     ValidationInfo,
     field_validator,
     model_validator,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable
+from lazylemon.schema.base import FrozenModel, _ensure_non_empty, _find_duplicate_values
+from lazylemon.schema.broker_config import BrokerConfig  # noqa: TC001
 
 __all__ = [
-    "MessageBrokerSettings",
     "MicroserviceDefinitionModel",
     "MicroserviceModel",
     "ServiceConfigModel",
     "ServiceSpecModel",
 ]
-
-
-def _ensure_non_empty(value: str | None, *, field_name: str | None) -> str:
-    """Guarantee that a string value is non-empty after trimming whitespace."""
-    if not isinstance(value, str):
-        raise TypeError(f"Field '{field_name}' must be a string.")
-    stripped = value.strip()
-    if not stripped:
-        raise ValueError(f"Field '{field_name}' must be a non-empty string.")
-    return stripped
-
-
-def _find_duplicate_values(values: Iterable[str]) -> set[str]:
-    """Return the set of duplicated values within an iterable."""
-    counts = Counter(values)
-    return {value for value, count in counts.items() if count > 1}
-
-
-class FrozenModel(BaseModel):
-    """Base model enforcing immutability and strict field handling."""
-
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True,
-        populate_by_name=True,
-        str_strip_whitespace=True,
-    )
-
-
-class MessageBrokerSettings(FrozenModel):
-    """Message broker connection settings."""
-
-    host: str = Field(..., description="Hostname or IP address of the broker.")
-    port: int = Field(
-        ...,
-        ge=1,
-        le=65535,
-        description="TCP port exposed by the broker.",
-    )
-    username: str = Field(..., description="Username for broker authentication.")
-    password: str = Field(..., description="Password for broker authentication.")
-
-    @field_validator("host", "username", "password")
-    @classmethod
-    def _validate_non_empty(cls, value: str, info: ValidationInfo) -> str:
-        """Ensure required string fields are populated."""
-        return _ensure_non_empty(value, field_name=info.field_name)
 
 
 class MicroserviceDefinitionModel(FrozenModel):
@@ -138,7 +87,7 @@ class ServiceSpecModel(FrozenModel):
         ...,
         description="Interval in seconds between service heartbeat messages.",
     )
-    broker: MessageBrokerSettings = Field(
+    broker: BrokerConfig = Field(
         ...,
         description="Message broker connection configuration.",
     )

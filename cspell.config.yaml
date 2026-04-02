@@ -4,6 +4,18 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - rediss
+  - AMQPS
+  - mydb
+  - confluentkafka
+  - azureservicebus
+  - gcpubsub
+  - sqla
+  - pyro
+  - vhost
+  - Qpid
+  - SLMQ
+  - Pyro
   - autouse
   - croniter
   - kombu

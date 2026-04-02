@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -43,19 +42,3 @@ def load_config(file_path: Path) -> ServiceConfigModel:
             return ServiceConfigModel(**yaml.safe_load(f))
     else:
         raise UnsupportedFileTypeError(file_path)
-
-
-def build_broker_url(broker: Any) -> str:
-    """Construct the broker AMQP URL from a broker config object.
-
-    Parameters
-    ----------
-    broker : Any
-        Broker settings object with host, port, username, password attributes.
-
-    Returns
-    -------
-    str
-        AMQP connection URL.
-    """
-    return f"amqp://{broker.username}:{broker.password}@{broker.host}:{broker.port}/"
