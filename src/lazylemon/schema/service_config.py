@@ -12,7 +12,10 @@ from pydantic import (
 )
 
 from lazylemon.schema.base import FrozenModel, _ensure_non_empty, _find_duplicate_values
-from lazylemon.schema.broker_config import BrokerConfig  # noqa: TC001
+from lazylemon.schema.broker_config import (
+    BrokerConfig,
+    MemoryBrokerConfig,
+)
 
 __all__ = [
     "MicroserviceDefinitionModel",
@@ -79,17 +82,17 @@ class MicroserviceModel(FrozenModel):
 class ServiceSpecModel(FrozenModel):
     """The `spec` section of a GeoIPS service configuration."""
 
-    service_namespace: str = Field(
+    namespace: str = Field(
         ...,
         description="Namespace used to group related service assets.",
     )
     heartbeat_interval: int = Field(
-        ...,
+        default=30,
         description="Interval in seconds between service heartbeat messages.",
     )
     broker: BrokerConfig = Field(
-        ...,
-        description="Message broker connection configuration.",
+        default_factory=MemoryBrokerConfig,  # type: ignore[arg-type]
+        description="Broker connection config. Defaults to in-memory when omitted.",
     )
     run: list[MicroserviceModel] = Field(
         ...,
@@ -97,10 +100,10 @@ class ServiceSpecModel(FrozenModel):
         description="Ordered collection of steps to execute for the service.",
     )
 
-    @field_validator("service_namespace")
+    @field_validator("namespace")
     @classmethod
     def _validate_namespace(cls, value: str, info: ValidationInfo) -> str:
-        """Ensure the service namespace is provided."""
+        """Ensure the namespace is provided."""
         return _ensure_non_empty(value, field_name=info.field_name)
 
     @model_validator(mode="after")

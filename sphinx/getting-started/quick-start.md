@@ -50,7 +50,7 @@ name: goes18-file-watcher
 description: Monitor for GOES-18 ABI Full-Disk data and process it.
 
 spec:
-  service_namespace: goes18_quickstart
+  namespace: goes18_quickstart
   heartbeat_interval: 30  # Send heartbeat every 30 seconds
 
   rabbitmq:
@@ -112,7 +112,7 @@ name: goes18-file-watcher     # Unique service name
 **Service Spec:**
 
 ```
-service_namespace: goes18_quickstart  # Namespace for isolation
+namespace: goes18_quickstart  # Namespace for isolation
 heartbeat_interval: 30                # Health check frequency
 ```
 

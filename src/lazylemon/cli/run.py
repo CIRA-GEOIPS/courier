@@ -58,7 +58,7 @@ def run_service(config: Any) -> None:
     """
     service_config = ServiceConfig(
         broker_url=config.spec.broker.to_url(),
-        service_namespace=config.spec.service_namespace,
+        namespace=config.spec.namespace,
         service_id=config.name,
         heartbeat_interval=config.spec.heartbeat_interval,
         broker_max_retries=config.spec.broker.max_retries,

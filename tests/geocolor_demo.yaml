@@ -8,7 +8,7 @@ docstring: |
   Job builders accept any 1 file with ABI as the sensor and full-disk as the sector.
   They dispatch that to a GeoColor creator job that produces output.
 spec:
-  service_namespace: demo
+  namespace: demo
   heartbeat_interval: 1000 # in milliseconds
   broker:
     host: rabbitmq

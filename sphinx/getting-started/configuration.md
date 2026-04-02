@@ -17,8 +17,8 @@ service.
 
 ## Minimal Working Example
 
-No external broker is required to get started. The in-memory
-transport is used by default when `broker` has no `host` field:
+No external broker is required to get started. Omit the `broker`
+section entirely and Lazy Lemon uses the in-memory transport:
 
 ```yaml
 apiVersion: lazylemon/driver/v1
@@ -27,10 +27,7 @@ name: my-service
 description: A minimal Lazy Lemon service.
 
 spec:
-  service_namespace: default
-  heartbeat_interval: 30
-
-  broker: {}                     # In-memory transport (the default).
+  namespace: default
 
   run:
     - watch:
@@ -38,13 +35,10 @@ spec:
         name: file_system_poller_watchdog
         config:
           path: /data/incoming
-          metadata-tools:
-            - goes18_abi
 
     - build:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
 
     - dispatch:
         kind: dispatcher
@@ -88,13 +82,13 @@ Everything under `spec:` controls runtime behavior.
 
 ```yaml
 spec:
-  service_namespace: production    # Required. Groups queues and metrics.
-  heartbeat_interval: 30           # Required. Seconds between heartbeats.
-  broker: { ... }                  # Required. See "Broker Configuration" below.
-  run: [ ... ]                     # Required. At least one pipeline step.
+  namespace: production    # Required. Groups queues and metrics.
+  heartbeat_interval: 30   # Optional. Seconds between heartbeats. Default: 30.
+  broker: { ... }          # Optional. Defaults to in-memory. See "Broker Configuration" below.
+  run: [ ... ]             # Required. At least one pipeline step.
 ```
 
-### `service_namespace`
+### `namespace`
 
 A string that prefixes all queue names on the broker. Use it to
 isolate multiple services sharing the same broker (e.g. `staging`
@@ -102,7 +96,8 @@ vs `production`).
 
 ### `heartbeat_interval`
 
-How often the service publishes health metrics, in seconds.
+How often the service publishes health metrics, in seconds. Defaults
+to `30` when omitted.
 
 ### `run`
 
@@ -114,7 +109,7 @@ run:
   - my_step_name:            # Unique identifier for this step.
       kind: data_monitor     # Plugin kind: data_monitor, job_builder, or dispatcher.
       name: plugin_name      # Registered plugin name.
-      config: { ... }        # Plugin-specific configuration (or null).
+      config: { ... }        # Optional. Plugin-specific configuration. Defaults to null when omitted.
 ```
 
 Step identifiers must be unique. Duplicate identifiers cause a
@@ -216,12 +211,12 @@ redis://redis.example.com:6379/0
 ### In-Memory (default)
 
 A testing transport that passes messages between threads without any
-external broker. This is the default when `transport` and `host` are
-both omitted, making it easy to get started without infrastructure.
+external broker. This is the default when the `broker` section is
+omitted entirely, or when `transport` and `host` are both absent.
 
 ```yaml
 broker:
-  transport: memory           # Also selected when broker section is empty.
+  transport: memory
   max_retries: 5            # Default: 5.
 ```
 
@@ -326,7 +321,7 @@ broker:
 
 ### In-memory for local development
 
-The simplest configuration -- no external services required:
+The simplest configuration — no external services required:
 
 ```yaml
 apiVersion: lazylemon/driver/v1
@@ -335,10 +330,7 @@ name: test-pipeline
 description: In-memory broker for local dev and tests.
 
 spec:
-  service_namespace: test
-  heartbeat_interval: 5
-
-  broker: {}                     # Defaults to in-memory transport.
+  namespace: test
 
   run:
     - watch:
@@ -346,13 +338,10 @@ spec:
         name: file_system_poller_watchdog
         config:
           path: /tmp/test-data
-          metadata-tools:
-            - goes16_abi
 
     - build:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
 
     - dispatch:
         kind: dispatcher
@@ -371,8 +360,7 @@ name: himawari-watcher
 description: Himawari-9 watcher backed by Redis.
 
 spec:
-  service_namespace: himawari
-  heartbeat_interval: 30
+  namespace: himawari
 
   broker:
     transport: redis
@@ -388,13 +376,10 @@ spec:
         name: file_system_poller_watchdog
         config:
           path: /data/himawari9/incoming
-          metadata-tools:
-            - himawari9_ahi
 
     - build:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
 
     - dispatch:
         kind: dispatcher
@@ -413,8 +398,7 @@ name: goes18-processor
 description: Production GOES-18 data processing with TLS.
 
 spec:
-  service_namespace: production
-  heartbeat_interval: 60
+  namespace: production
 
   broker:
     transport: amqp
@@ -432,13 +416,10 @@ spec:
         name: file_system_poller_watchdog
         config:
           path: /data/goes18/incoming
-          metadata-tools:
-            - goes18_abi
 
     - build:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
 
     - dispatch:
         kind: dispatcher

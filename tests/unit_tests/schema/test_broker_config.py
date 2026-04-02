@@ -51,8 +51,7 @@ kind: Service
 name: svc
 description: d
 spec:
-  service_namespace: ns
-  heartbeat_interval: 10
+  namespace: ns
   broker: {broker}
   run:
     - step:
@@ -512,6 +511,39 @@ class TestServiceConfigBrokerIntegration:
         cfg = ServiceConfigModel(**raw)
         assert isinstance(cfg.spec.broker, AmqpBrokerConfig)
         assert cfg.spec.broker.host == "rabbitmqhost"
+
+    def test_broker_omitted_defaults_to_memory(self) -> None:
+        raw = yaml.safe_load("""\
+apiVersion: v1
+kind: Service
+name: svc
+description: d
+spec:
+  namespace: ns
+  run:
+    - step:
+        kind: k
+        name: n
+""")
+        cfg = ServiceConfigModel(**raw)
+        assert isinstance(cfg.spec.broker, MemoryBrokerConfig)
+        assert cfg.spec.broker.to_url() == "memory://"
+
+    def test_plugin_config_omitted_defaults_to_none(self) -> None:
+        raw = yaml.safe_load("""\
+apiVersion: v1
+kind: Service
+name: svc
+description: d
+spec:
+  namespace: ns
+  run:
+    - step:
+        kind: k
+        name: n
+""")
+        cfg = ServiceConfigModel(**raw)
+        assert cfg.spec.run[0].spec.config is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

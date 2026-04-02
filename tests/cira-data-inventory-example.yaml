@@ -9,7 +9,7 @@ docstring: |
   metadata. Downstream job builders and dispatchers can filter and act on these
   files as they arrive.
 spec:
-  service_namespace: data-inventory-ingest
+  namespace: data-inventory-ingest
   heartbeat_interval: 1000 # in milliseconds
   broker:
     host: rabbitmqhost

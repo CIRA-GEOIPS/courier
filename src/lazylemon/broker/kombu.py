@@ -251,7 +251,7 @@ class MessageBrokerManager(ServiceManager):
         self._connection: kombu.Connection | None = None
         self._queues: dict[str, dict[str, Any]] = {}
         self._created_queues: set[str] = set()
-        self._namespace = config.service_namespace
+        self._namespace = config.namespace
 
         self._establish_connection = retry_with_backoff(
             exceptions=(OperationalError,),

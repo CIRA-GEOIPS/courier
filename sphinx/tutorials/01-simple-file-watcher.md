@@ -78,7 +78,7 @@ docstring: |
   extracts metadata automatically.
 
 spec:
-  service_namespace: tutorial01
+  namespace: tutorial01
   heartbeat_interval: 30
 
   rabbitmq:

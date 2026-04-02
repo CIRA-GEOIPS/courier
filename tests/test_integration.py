@@ -143,7 +143,7 @@ def _make_service_config() -> ServiceConfig:
         prometheus_port=0,
         heartbeat_interval=2,
         plugin_health_check_interval=1,
-        service_namespace=f"test-{uuid.uuid4().hex[:8]}",
+        namespace=f"test-{uuid.uuid4().hex[:8]}",
     )
 
 

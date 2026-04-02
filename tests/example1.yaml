@@ -7,7 +7,7 @@ docstring: |
   file and makes a single job out of it and a bash script job dispatcher that
   just echos out the filename as a proof of concept.
 spec:
-  service_namespace: example_service1 # in case you wanted an "alpha" and "beta" and whatever else
+  namespace: example_service1 # in case you wanted an "alpha" and "beta" and whatever else
   heartbeat_interval: 1000 # for prometheus and loki
   broker:
     host: rabbitmq
@@ -28,7 +28,6 @@ spec:
     - this_builds_jobs:
         kind: job_builder
         name: DummyJobBuilder
-        config: null # just using defaults
     - dispatch_those_jobs:
         kind: dispatcher
         name: serial_bash
