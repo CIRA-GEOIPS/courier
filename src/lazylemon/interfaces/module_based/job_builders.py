@@ -166,7 +166,7 @@ class JobBuilderInterface(BaseModuleInterface):
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "lazylemon/v1"  # noqa: N815
+    apiVersion: ClassVar[str] = "lazylemon.dev/v1alpha1"  # noqa: N815
 
 
 job_builders = JobBuilderInterface()

@@ -10,10 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from lazylemon.schema.data_monitor_configs import (
-    DataMonitorConfig,
-    FileMetadataEntry,
-)
+from lazylemon.schema import DataMonitorConfig, FileMetadataEntry
 from lazylemon.types.file import File, build_timestamp_from_components
 
 

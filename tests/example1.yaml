@@ -1,13 +1,14 @@
-apiVersion: lazylemon/driver/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: testing_spec_not_complete
-description: This is for testing a basic workflow! Not a complete spec.
-docstring: |
-  This is for testing. Uses a file watcher, a "dummy" job builder that takes *any*
-  file and makes a single job out of it and a bash script job dispatcher that
-  just echos out the filename as a proof of concept.
+metadata:
+  name: testing-spec-not-complete
+  namespace: example-service1 # in case you wanted an "alpha" and "beta" and whatever else
+  description: This is for testing a basic workflow! Not a complete spec.
+  docstring: |
+    This is for testing. Uses a file watcher, a "dummy" job builder that takes *any*
+    file and makes a single job out of it and a bash script job dispatcher that
+    just echos out the filename as a proof of concept.
 spec:
-  namespace: example_service1 # in case you wanted an "alpha" and "beta" and whatever else
   heartbeat_interval: 1000 # for prometheus and loki
   broker:
     host: rabbitmq
@@ -15,7 +16,7 @@ spec:
     username: admin # these could be secrets
     password: admin_test
   run:
-    - file_watching_service:
+    - file-watching-service:
         kind: data_monitor
         name: file_system_poller_watchdog # this is the plugin name
         config:
@@ -25,10 +26,10 @@ spec:
             - himawari9_ahi # In the future these could also be module based plugins
             - meteosat9_seviri # But for now they are "just" YAML plugins
             - meteosat10_seviri # A few are defined by default in the core rt package
-    - this_builds_jobs:
+    - this-builds-jobs:
         kind: job_builder
         name: DummyJobBuilder
-    - dispatch_those_jobs:
+    - dispatch-those-jobs:
         kind: dispatcher
         name: serial_bash
         config:

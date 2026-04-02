@@ -14,14 +14,14 @@ import pytest
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from lazylemon.schema.broker_config import (
+from lazylemon.schema import (
     AmqpBrokerConfig,
     BrokerConfig,
     MemoryBrokerConfig,
     RedisBrokerConfig,
+    ServiceConfigModel,
     UrlBrokerConfig,
 )
-from lazylemon.schema.service_config import ServiceConfigModel
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,12 +46,13 @@ def _validate(data: Any) -> AmqpBrokerConfig | RedisBrokerConfig | MemoryBrokerC
 _MINIMAL_AMQP = {"host": "rabbit", "username": "u", "password": "p"}
 
 _MINIMAL_SERVICE_YAML = """\
-apiVersion: v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: svc
-description: d
-spec:
+metadata:
+  name: svc
   namespace: ns
+  description: d
+spec:
   broker: {broker}
   run:
     - step:
@@ -514,12 +515,13 @@ class TestServiceConfigBrokerIntegration:
 
     def test_broker_omitted_defaults_to_memory(self) -> None:
         raw = yaml.safe_load("""\
-apiVersion: v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: svc
-description: d
-spec:
+metadata:
+  name: svc
   namespace: ns
+  description: d
+spec:
   run:
     - step:
         kind: k
@@ -531,12 +533,13 @@ spec:
 
     def test_plugin_config_omitted_defaults_to_none(self) -> None:
         raw = yaml.safe_load("""\
-apiVersion: v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: svc
-description: d
-spec:
+metadata:
+  name: svc
   namespace: ns
+  description: d
+spec:
   run:
     - step:
         kind: k

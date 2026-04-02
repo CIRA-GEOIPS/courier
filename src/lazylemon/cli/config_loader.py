@@ -2,10 +2,11 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-from lazylemon.schema.service_config import ServiceConfigModel
+from lazylemon.schema import ServiceConfigModel, get_model_for_version
 
 
 class UnsupportedFileTypeError(ValueError):
@@ -16,8 +17,39 @@ class UnsupportedFileTypeError(ValueError):
         super().__init__(f"Unsupported file type: {file_path.suffix}")
 
 
+def _load_raw(file_path: Path) -> dict[str, Any]:
+    """Read a JSON or YAML file into a raw dict.
+
+    Parameters
+    ----------
+    file_path : Path
+        Path to the config file.
+
+    Returns
+    -------
+    dict[str, Any]
+        Raw parsed data.
+
+    Raises
+    ------
+    UnsupportedFileTypeError
+        If the file extension is not .json, .yml, or .yaml.
+    """
+    if file_path.suffix == ".json":
+        with Path.open(file_path) as f:
+            return json.load(f)  # type: ignore[no-any-return]
+    elif file_path.suffix in [".yml", ".yaml"]:
+        with Path.open(file_path) as f:
+            return yaml.safe_load(f)  # type: ignore[no-any-return]
+    else:
+        raise UnsupportedFileTypeError(file_path)
+
+
 def load_config(file_path: Path) -> ServiceConfigModel:
     """Load a service config file (.json or .yml/.yaml).
+
+    The ``apiVersion`` field is read first to select the correct schema
+    version.  Currently only ``lazylemon.dev/v1alpha1`` is supported.
 
     Parameters
     ----------
@@ -33,12 +65,10 @@ def load_config(file_path: Path) -> ServiceConfigModel:
     ------
     UnsupportedFileTypeError
         If the file extension is not .json, .yml, or .yaml.
+    ValueError
+        If the ``apiVersion`` is missing or unsupported.
     """
-    if file_path.suffix == ".json":
-        with Path.open(file_path) as f:
-            return ServiceConfigModel(**json.load(f))
-    elif file_path.suffix in [".yml", ".yaml"]:
-        with Path.open(file_path) as f:
-            return ServiceConfigModel(**yaml.safe_load(f))
-    else:
-        raise UnsupportedFileTypeError(file_path)
+    raw = _load_raw(file_path)
+    api_version = raw.get("apiVersion", "")
+    model_cls = get_model_for_version(api_version)
+    return model_cls(**raw)

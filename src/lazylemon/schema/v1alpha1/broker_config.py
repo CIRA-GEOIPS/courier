@@ -19,7 +19,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator, Field, ValidationInfo, field_validator
 
-from lazylemon.schema.base import FrozenModel, _ensure_non_empty
+from lazylemon.schema.v1alpha1.base import FrozenModel, _ensure_non_empty
 
 __all__ = [
     "AmqpBrokerConfig",

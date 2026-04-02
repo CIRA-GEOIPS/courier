@@ -4,6 +4,7 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - APIVERSION
   - rediss
   - AMQPS
   - mydb

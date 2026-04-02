@@ -1,14 +1,15 @@
-apiVersion: lazylemon/driver/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: GeoColor-Demo
-description: This looks for ABI files and then produces GeoColor from them.
-docstring: |
-  This uses a file watcher to look for incoming files.
-  The incoming files are annotated with metadata.
-  Job builders accept any 1 file with ABI as the sensor and full-disk as the sector.
-  They dispatch that to a GeoColor creator job that produces output.
-spec:
+metadata:
+  name: geocolor-demo
   namespace: demo
+  description: This looks for ABI files and then produces GeoColor from them.
+  docstring: |
+    This uses a file watcher to look for incoming files.
+    The incoming files are annotated with metadata.
+    Job builders accept any 1 file with ABI as the sensor and full-disk as the sector.
+    They dispatch that to a GeoColor creator job that produces output.
+spec:
   heartbeat_interval: 1000 # in milliseconds
   broker:
     host: rabbitmq

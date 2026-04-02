@@ -351,7 +351,10 @@ class DataMonitorConfig(BaseModel):
 
     api_version: Annotated[
         str,
-        Field(alias="apiVersion", pattern=r"^lazylemon/v1$"),
+        Field(
+            alias="apiVersion",
+            pattern=r"^lazylemon\.io/v[0-9]+(alpha[0-9]+|beta[0-9]+)?$",
+        ),
     ]
     interface: Annotated[str, Field(pattern=r"^data_monitor_configs$")]
     family: Annotated[str, Field(pattern=r"^standard$")]

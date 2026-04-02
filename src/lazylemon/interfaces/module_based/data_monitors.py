@@ -9,7 +9,7 @@ from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-un
 from lazylemon.constants import FILE_FOUND_QUEUE
 from lazylemon.interfaces.plugin_protocol import ServicePlugin
 from lazylemon.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
-from lazylemon.schema.data_monitor_configs import DataMonitorConfig
+from lazylemon.schema import DataMonitorConfig
 from lazylemon.service import Service
 from lazylemon.types.file import File
 from lazylemon.utils.decorators import log_execution
@@ -117,7 +117,7 @@ class DataMonitorInterface(BaseModuleInterface):
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "lazylemon/v1"  # noqa: N815
+    apiVersion: ClassVar[str] = "lazylemon.dev/v1alpha1"  # noqa: N815
 
 
 data_monitors = DataMonitorInterface()

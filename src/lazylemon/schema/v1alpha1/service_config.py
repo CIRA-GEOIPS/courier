@@ -11,8 +11,14 @@ from pydantic import (
     model_validator,
 )
 
-from lazylemon.schema.base import FrozenModel, _ensure_non_empty, _find_duplicate_values
-from lazylemon.schema.broker_config import (
+from lazylemon.schema.v1alpha1.base import (
+    FrozenModel,
+    _ensure_api_version,
+    _ensure_dns_name,
+    _ensure_non_empty,
+    _find_duplicate_values,
+)
+from lazylemon.schema.v1alpha1.broker_config import (
     BrokerConfig,
     MemoryBrokerConfig,
 )
@@ -20,9 +26,60 @@ from lazylemon.schema.broker_config import (
 __all__ = [
     "MicroserviceDefinitionModel",
     "MicroserviceModel",
+    "ResourceMetadataModel",
     "ServiceConfigModel",
     "ServiceSpecModel",
 ]
+
+
+class ResourceMetadataModel(FrozenModel):
+    """Kubernetes-style metadata block for a lazylemon resource."""
+
+    name: str = Field(..., description="DNS-subdomain name for this resource.")
+    namespace: str | None = Field(
+        default=None,
+        description="Target namespace for grouping related service assets.",
+    )
+    description: str = Field(
+        ...,
+        description="Concise description of the resource.",
+    )
+    docstring: str | None = Field(
+        default=None,
+        description="Optional long-form documentation.",
+    )
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Key/value pairs for identifying and selecting resources.",
+    )
+    annotations: dict[str, str] = Field(
+        default_factory=dict,
+        description="Key/value pairs for non-identifying metadata.",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str, info: ValidationInfo) -> str:
+        """Ensure name is a valid DNS subdomain name."""
+        return _ensure_dns_name(value, field_name=info.field_name)
+
+    @field_validator("namespace")
+    @classmethod
+    def _validate_namespace(
+        cls,
+        value: str | None,
+        info: ValidationInfo,
+    ) -> str | None:
+        """Ensure namespace, if provided, is a valid DNS subdomain name."""
+        if value is not None:
+            return _ensure_dns_name(value, field_name=info.field_name)
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def _validate_description(cls, value: str, info: ValidationInfo) -> str:
+        """Ensure description is a non-empty string."""
+        return _ensure_non_empty(value, field_name=info.field_name)
 
 
 class MicroserviceDefinitionModel(FrozenModel):
@@ -75,17 +132,13 @@ class MicroserviceModel(FrozenModel):
     @field_validator("identifier")
     @classmethod
     def _validate_identifier(cls, value: str, info: ValidationInfo) -> str:
-        """Ensure the run step identifier is a non-empty string."""
-        return _ensure_non_empty(value, field_name=info.field_name)
+        """Ensure the run step identifier is a valid DNS subdomain name."""
+        return _ensure_dns_name(value, field_name=info.field_name)
 
 
 class ServiceSpecModel(FrozenModel):
     """The `spec` section of a GeoIPS service configuration."""
 
-    namespace: str = Field(
-        ...,
-        description="Namespace used to group related service assets.",
-    )
     heartbeat_interval: int = Field(
         default=30,
         description="Interval in seconds between service heartbeat messages.",
@@ -99,12 +152,6 @@ class ServiceSpecModel(FrozenModel):
         min_length=1,
         description="Ordered collection of steps to execute for the service.",
     )
-
-    @field_validator("namespace")
-    @classmethod
-    def _validate_namespace(cls, value: str, info: ValidationInfo) -> str:
-        """Ensure the namespace is provided."""
-        return _ensure_non_empty(value, field_name=info.field_name)
 
     @model_validator(mode="after")
     def _ensure_unique_run_identifiers(self) -> ServiceSpecModel:
@@ -121,18 +168,22 @@ class ServiceConfigModel(FrozenModel):
 
     apiVersion: str = Field(..., description="API version of the service document.")  # noqa: N815
     kind: str = Field(..., description="Resource kind; expected to be 'Service'.")
-    name: str = Field(..., description="Unique service name.")
-    description: str = Field(..., description="Concise description of the service.")
-    docstring: str | None = Field(
-        default=None,
-        description="Optional long-form documentation for the service.",
+    metadata: ResourceMetadataModel = Field(
+        ...,
+        description="Resource metadata (name, namespace, labels, annotations).",
     )
     spec: ServiceSpecModel = Field(
         ...,
         description="Detailed service configuration specification.",
     )
 
-    @field_validator("apiVersion", "kind", "name", "description")
+    @field_validator("apiVersion")
+    @classmethod
+    def _validate_api_version(cls, value: str, info: ValidationInfo) -> str:
+        """Ensure apiVersion follows the CRD ``<group>/v<N>`` format."""
+        return _ensure_api_version(value, field_name=info.field_name)
+
+    @field_validator("kind")
     @classmethod
     def _validate_non_empty(cls, value: str, info: ValidationInfo) -> str:
         """Ensure required top-level string fields are populated."""

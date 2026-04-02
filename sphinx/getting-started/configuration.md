@@ -9,8 +9,8 @@ Lazy Lemon services are configured through YAML (or JSON) files that
 describe **what** the service does and **how** it connects to
 infrastructure. A single file contains:
 
-1. **Document metadata** -- name, version, description
-1. **Service spec** -- namespace, heartbeat, broker, and pipeline steps
+1. **Document metadata** -- apiVersion, kind, and a `metadata` block (name, namespace, description)
+1. **Service spec** -- heartbeat, broker, and pipeline steps
 
 Run `lazylemon validate <file>` to check a file before starting the
 service.
@@ -21,14 +21,14 @@ No external broker is required to get started. Omit the `broker`
 section entirely and Lazy Lemon uses the in-memory transport:
 
 ```yaml
-apiVersion: lazylemon/driver/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: my-service
-description: A minimal Lazy Lemon service.
+metadata:
+  name: my-service
+  namespace: default
+  description: A minimal Lazy Lemon service.
 
 spec:
-  namespace: default
-
   run:
     - watch:
         kind: data_monitor
@@ -61,20 +61,29 @@ To connect to a real broker instead, add connection details. When
 
 ## Document Metadata
 
-The top-level fields identify the configuration document.
+The top-level fields identify the configuration document. The
+`apiVersion` must follow the `<group>/v<N>[alphaN|betaN]` format
+(e.g. `lazylemon.dev/v1alpha1`).
 
 ```yaml
-apiVersion: lazylemon/driver/v1   # Required. API version string.
+apiVersion: lazylemon.dev/v1alpha1  # Required. CRD-style API version.
 kind: Service                      # Required. Must be a non-empty string.
-name: my-service                   # Required. Unique service name.
-description: Short summary.        # Required. One-line description.
-docstring: |                       # Optional. Long-form documentation.
-  Multi-line explanation of what
-  this service does and why.
+metadata:
+  name: my-service                 # Required. DNS subdomain name (lowercase, digits, hyphens).
+  namespace: production            # Optional. Groups queues and metrics.
+  description: Short summary.      # Required. One-line description.
+  docstring: |                     # Optional. Long-form documentation.
+    Multi-line explanation of what
+    this service does and why.
+  labels:                          # Optional. Key/value pairs for selection.
+    app.kubernetes.io/part-of: geoips
+  annotations: {}                  # Optional. Non-identifying metadata.
 ```
 
-All required string fields must be non-empty after whitespace is
-trimmed.
+The `name` and `namespace` fields must be valid DNS subdomain names:
+lowercase letters, digits, and hyphens only (max 63 chars, no
+leading/trailing hyphens). All required string fields must be
+non-empty after whitespace is trimmed.
 
 ## Service Spec
 
@@ -82,17 +91,10 @@ Everything under `spec:` controls runtime behavior.
 
 ```yaml
 spec:
-  namespace: production    # Required. Groups queues and metrics.
   heartbeat_interval: 30   # Optional. Seconds between heartbeats. Default: 30.
   broker: { ... }          # Optional. Defaults to in-memory. See "Broker Configuration" below.
   run: [ ... ]             # Required. At least one pipeline step.
 ```
-
-### `namespace`
-
-A string that prefixes all queue names on the broker. Use it to
-isolate multiple services sharing the same broker (e.g. `staging`
-vs `production`).
 
 ### `heartbeat_interval`
 
@@ -324,14 +326,14 @@ broker:
 The simplest configuration — no external services required:
 
 ```yaml
-apiVersion: lazylemon/driver/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: test-pipeline
-description: In-memory broker for local dev and tests.
+metadata:
+  name: test-pipeline
+  namespace: test
+  description: In-memory broker for local dev and tests.
 
 spec:
-  namespace: test
-
   run:
     - watch:
         kind: data_monitor
@@ -354,14 +356,14 @@ spec:
 ### Redis for simple deployments
 
 ```yaml
-apiVersion: lazylemon/driver/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: himawari-watcher
-description: Himawari-9 watcher backed by Redis.
+metadata:
+  name: himawari-watcher
+  namespace: himawari
+  description: Himawari-9 watcher backed by Redis.
 
 spec:
-  namespace: himawari
-
   broker:
     transport: redis
     host: redis.local
@@ -392,14 +394,14 @@ spec:
 ### Production AMQP with TLS
 
 ```yaml
-apiVersion: lazylemon/driver/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: goes18-processor
-description: Production GOES-18 data processing with TLS.
+metadata:
+  name: goes18-processor
+  namespace: production
+  description: Production GOES-18 data processing with TLS.
 
 spec:
-  namespace: production
-
   broker:
     transport: amqp
     host: rabbitmq.prod.internal

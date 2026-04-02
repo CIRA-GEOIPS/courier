@@ -67,21 +67,21 @@ OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc
 Create `watcher.yaml`:
 
 ```
-apiVersion: lazylemon/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: tutorial-01-file-watcher
-description: Basic GOES-18 file monitoring service for tutorial 01.
-
-docstring: |
-  This service demonstrates basic file watching capabilities.
-  It monitors a directory for GOES-18 ABI Full-Disk files and
-  extracts metadata automatically.
+metadata:
+  name: tutorial-01-file-watcher
+  namespace: tutorial01
+  description: Basic GOES-18 file monitoring service for tutorial 01.
+  docstring: |
+    This service demonstrates basic file watching capabilities.
+    It monitors a directory for GOES-18 ABI Full-Disk files and
+    extracts metadata automatically.
 
 spec:
-  namespace: tutorial01
   heartbeat_interval: 30
 
-  rabbitmq:
+  broker:
     host: localhost
     port: 5672
     username: admin
@@ -89,7 +89,7 @@ spec:
 
   run:
     # Monitor for files
-    - watch_files:
+    - watch-files:
         kind: data_monitor
         name: file_system_poller_watchdog
         config:
@@ -98,13 +98,13 @@ spec:
             - goes18_abi
 
     # Simple job builder (1 file = 1 job)
-    - create_jobs:
+    - create-jobs:
         kind: job_builder
         name: DummyJobBuilder
         config: null
 
     # Log processing
-    - log_files:
+    - log-files:
         kind: dispatcher
         name: serial_bash
         config:
@@ -124,7 +124,7 @@ Let's break down this configuration:
 **Data Monitor Configuration:**
 
 ```
-- watch_files:
+- watch-files:
     kind: data_monitor
     name: file_system_poller_watchdog
     config:
@@ -146,7 +146,7 @@ This configures the watchdog-based file monitor to:
 **Job Builder:**
 
 ```
-- create_jobs:
+- create-jobs:
     kind: job_builder
     name: DummyJobBuilder
     config: null
@@ -157,7 +157,7 @@ For this simple tutorial, each file becomes its own job immediately.
 **Dispatcher:**
 
 ```
-- log_files:
+- log-files:
     kind: dispatcher
     name: serial_bash
     config:
