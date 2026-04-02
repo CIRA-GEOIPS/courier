@@ -103,7 +103,7 @@ test = [
 lazylemon = "lazylemon.cli.app:app"
 lzl = "lazylemon.cli.app:app"
 
-[tool.poetry.plugins."lazylemon.plugin_packages"]
+[tool.poetry.plugins."lazylemon.dev.plugin_packages"]
 "lazylemon" = "lazylemon"
 
 [tool.poetry.urls]
