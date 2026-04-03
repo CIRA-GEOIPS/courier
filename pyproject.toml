@@ -62,6 +62,7 @@ pytest-xdist = { version = "*", optional = true }
 types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
 commitizen = { version = "*", optional = true }
+fakeredis = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 # Development dependencies that are always installed for development
