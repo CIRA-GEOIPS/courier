@@ -41,6 +41,7 @@ Lazy Lemon is designed for:
 
 getting-started/installation
 getting-started/quick-start
+getting-started/configuration
 ```
 
 ```{toctree}

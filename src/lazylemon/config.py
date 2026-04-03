@@ -18,7 +18,7 @@ class ServiceConfig:
     service_id : str, optional
         Unique identifier for this service instance. Defaults to environment
         variable SERVICE_ID or auto-generated UUID-based identifier.
-    service_namespace : str, optional
+    namespace : str, optional
         Namespace for service isolation. Defaults to environment variable
         SERVICE_NAMESPACE or 'default'.
     database_url : str, optional
@@ -34,7 +34,7 @@ class ServiceConfig:
         Maximum retry attempts for broker operations. Defaults to environment
         variable BROKER_MAX_RETRIES or 5.
     heartbeat_interval : int, optional
-        Interval in seconds between heartbeat metric updates. Default is 10.
+        Interval in seconds between heartbeat metric updates. Default is 30.
     plugin_restart_delay : int, optional
         Delay in seconds before attempting to restart a failed plugin.
         Defaults to environment variable PLUGIN_RESTART_DELAY or 5.
@@ -63,7 +63,7 @@ class ServiceConfig:
     >>> isinstance(config.service_id, str)
     True
     >>> config.heartbeat_interval
-    10
+    30
     >>> config.prometheus_port >= 1024
     True
     """
@@ -74,7 +74,7 @@ class ServiceConfig:
             f"watcher-service-{uuid.uuid4().hex[:8]}",
         ),
     )
-    service_namespace: str = field(
+    namespace: str = field(
         default_factory=lambda: os.environ.get(
             "SERVICE_NAMESPACE",
             "default",
@@ -98,7 +98,7 @@ class ServiceConfig:
     broker_max_retries: int = field(
         default_factory=lambda: int(os.environ.get("BROKER_MAX_RETRIES", "5")),
     )
-    heartbeat_interval: int = 10
+    heartbeat_interval: int = 30
     plugin_restart_delay: int = field(
         default_factory=lambda: int(os.environ.get("PLUGIN_RESTART_DELAY", "5")),
     )

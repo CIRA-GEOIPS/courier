@@ -1,4 +1,4 @@
-apiVersion: lazylemon/v1
+apiVersion: lazylemon.dev/v1alpha1
 name: goes18_abi
 interface: data_monitor_configs
 family: standard

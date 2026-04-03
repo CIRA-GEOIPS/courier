@@ -51,7 +51,7 @@ def sample_service_config() -> ServiceConfig:
     """
     return ServiceConfig(
         service_id="test-service",
-        service_namespace="test-namespace",
+        namespace="test-namespace",
         loki_url="http://test-loki:3100/loki/api/v1/push",
         loki_enabled=True,
         log_level="DEBUG",

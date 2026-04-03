@@ -2,14 +2,14 @@
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
 
-from lazylemon.schema.service_config import ServiceConfigModel
+from lazylemon.schema import ServiceConfigModel
 
 
 class ServiceConfigInterface(BaseYamlInterface):
     """Configuration protocol for controlling GeoIPS NRT processing."""
 
     name = "service"
-    apiVersion = "lazylemon/v1"  # noqa: N815
+    apiVersion = "lazylemon.dev/v1alpha1"  # noqa: N815
     validator = ServiceConfigModel
 
 

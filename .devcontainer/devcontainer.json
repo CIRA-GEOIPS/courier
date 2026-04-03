@@ -4,7 +4,7 @@
 {
 	"name": "lazylemon Devcontainer",
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye", // in the future can use geoips image
-	"postCreateCommand": "pip install -e .[doc,lint,test] && geoips config create-reg -n lazylemon.plugin_packages",
+	"postCreateCommand": "pip install -e .[doc,lint,test] && geoips config create-reg -n lazylemon.dev.plugin_packages",
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],

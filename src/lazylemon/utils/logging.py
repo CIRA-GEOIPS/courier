@@ -264,7 +264,7 @@ def get_logger(
                 # Prepare tags for Loki
                 tags: dict[str, str] = {
                     "service": config.service_id,
-                    "namespace": config.service_namespace,
+                    "namespace": config.namespace,
                     "source_type": source_type,
                 }
 

@@ -6,7 +6,7 @@ from typing import Any
 import typer
 
 import lazylemon.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
-from lazylemon.cli.config_loader import build_broker_url, load_config
+from lazylemon.cli.config_loader import load_config
 from lazylemon.config import ServiceConfig
 from lazylemon.plugins.modules.data_monitors import file_system_poller_watchdog
 from lazylemon.plugins.modules.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
@@ -57,10 +57,11 @@ def run_service(config: Any) -> None:
         Validated ServiceConfigModel instance.
     """
     service_config = ServiceConfig(
-        broker_url=build_broker_url(config.spec.broker),
-        service_namespace=config.spec.service_namespace,
-        service_id=config.name,
+        broker_url=config.spec.broker.to_url(),
+        namespace=config.metadata.namespace or "default",
+        service_id=config.metadata.name,
         heartbeat_interval=config.spec.heartbeat_interval,
+        broker_max_retries=config.spec.broker.max_retries,
     )
     plugins = list(map(_resolve_plugin, config.spec.run))
     create_service_with_plugins(service_config, plugins).start()

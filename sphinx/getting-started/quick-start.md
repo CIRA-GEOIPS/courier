@@ -44,16 +44,17 @@ These are Full-Disk (RadF) Level 1B files for channels 1-16.
 Create a file `goes18_watcher.yaml`:
 
 ```
-apiVersion: lazylemon/v1
+apiVersion: lazylemon.dev/v1alpha1
 kind: Service
-name: goes18-file-watcher
-description: Monitor for GOES-18 ABI Full-Disk data and process it.
+metadata:
+  name: goes18-file-watcher
+  namespace: goes18-quickstart
+  description: Monitor for GOES-18 ABI Full-Disk data and process it.
 
 spec:
-  service_namespace: goes18_quickstart
   heartbeat_interval: 30  # Send heartbeat every 30 seconds
 
-  rabbitmq:
+  broker:
     host: localhost
     port: 5672
     username: admin
@@ -61,7 +62,7 @@ spec:
 
   run:
     # Step 1: Monitor for files
-    - watch_files:
+    - watch-files:
         kind: data_monitor
         name: file_system_poller_watchdog
         config:
@@ -70,13 +71,13 @@ spec:
             - goes18_abi  # Use built-in GOES-18 metadata extractor
 
     # Step 2: Build jobs from files
-    - group_files:
+    - group-files:
         kind: job_builder
         name: DummyJobBuilder
         config: null
 
     # Step 3: Process jobs
-    - process_data:
+    - process-data:
         kind: dispatcher
         name: serial_bash
         config:
@@ -104,23 +105,25 @@ Let's break down what each section does:
 **Metadata Section:**
 
 ```
-apiVersion: lazylemon/v1  # API version
-kind: Service                  # This is a service configuration
-name: goes18-file-watcher     # Unique service name
+apiVersion: lazylemon.dev/v1alpha1  # API version (CRD-style group/version)
+kind: Service                       # This is a service configuration
+metadata:
+  name: goes18-file-watcher         # DNS subdomain name (lowercase, hyphens)
+  namespace: goes18-quickstart      # Namespace for isolation
 ```
 
 **Service Spec:**
 
 ```
-service_namespace: goes18_quickstart  # Namespace for isolation
-heartbeat_interval: 30                # Health check frequency
+spec:
+  heartbeat_interval: 30  # Health check frequency
 ```
 
-**RabbitMQ Connection:**
+**Broker Connection:**
 
 ```
-rabbitmq:
-  host: localhost      # RabbitMQ server
+broker:
+  host: localhost      # RabbitMQ server (AMQP inferred when host is present)
   port: 5672          # Default AMQP port
   username: admin     # Authentication
   password: admin_password
