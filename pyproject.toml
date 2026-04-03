@@ -29,6 +29,7 @@ include = [
 [tool.poetry.dependencies] # must download to run
 python = ">=3.11,<3.14" # dependencies - namely geoips do not support python 3.14
 rich = "*"
+redis = { version = ">=4.0", optional = true }  # Required for HA state sync
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
@@ -97,6 +98,11 @@ test = [
     "pytest",                    # for running tests
     "pytest-cov",                # for test coverage
     "pytest-xdist",              # for parallel testing
+    "fakeredis",                 # in-process Redis fake for sync tests
+]
+
+ha = [
+    "redis",                     # Redis client for HA state synchronization
 ]
 
 [tool.poetry.scripts]

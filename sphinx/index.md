@@ -53,6 +53,13 @@ tutorials/01-simple-file-watcher
 
 ```{toctree}
 :maxdepth: 2
+:caption: Operations
+
+operations/high-availability
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Contribute
 
 contribute/code-style

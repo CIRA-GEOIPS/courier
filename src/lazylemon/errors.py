@@ -107,3 +107,16 @@ class PluginMaxRestartsExceededError(PluginError):
 
 class InvalidTransitionError(PluginError):
     """Raised when an invalid plugin state transition is attempted."""
+
+
+# ---------------------------------------------------------------------------
+# State sync errors
+# ---------------------------------------------------------------------------
+
+
+class StateSyncError(GeoIPSDriverError):
+    """Base class for HA state synchronization errors."""
+
+
+class StateSyncConnectionError(StateSyncError):
+    """Raised when the state-sync Redis connection cannot be established."""

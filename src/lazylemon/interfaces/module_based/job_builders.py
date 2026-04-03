@@ -1,12 +1,16 @@
 """Python class for the job_builders lazylemon interface."""
 
+from __future__ import annotations
+
+import contextlib
 import threading
 import time
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
 
 from lazylemon.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE
+from lazylemon.errors import InvalidPluginConfigError
 from lazylemon.interfaces.plugin_protocol import ServicePlugin
 from lazylemon.metrics import (
     JOB_BUILDER_ACTIVE_GROUPS,
@@ -16,15 +20,40 @@ from lazylemon.metrics import (
     JOB_BUILDER_JOBS_DISCARDED,
     collect_labeled,
 )
-from lazylemon.service import Service
 from lazylemon.types.file import FrozenFile
-from lazylemon.types.job import Job, JobGroup
 from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from lazylemon.service import Service
+    from lazylemon.sync.job_builder_state_sync import JobBuilderStateSync
+    from lazylemon.types.job import Job, JobGroup
+
 
 class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
-    """Base data filter plugin."""
+    """Base data filter plugin.
+
+    Optional HA state synchronization
+    -----------------------------------
+    Add a ``state_sync`` block to the plugin's ``config`` section to enable
+    Redis-backed state sharing across multiple instances::
+
+        config:
+          state_sync:
+            host: redis.internal
+            port: 6379
+            db: 1
+
+    When enabled the builder will:
+
+    * Refuse to start if the Redis server is unreachable.
+    * Load in-progress job state from Redis on startup (crash recovery).
+    * Push every job mutation to the shared Redis hash so peers stay current.
+    * Use Redis SET NX to guarantee that exactly one instance emits each job.
+
+    Requires ``pip install lazylemon[ha]``.  Disabled by default (no
+    ``state_sync`` key → no Redis dependency at runtime).
+    """
 
     name = "JobBuilder"
 
@@ -34,7 +63,12 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self.queue = JOB_READY_QUEUE
         self._running = False
         self.job_groups: list[JobGroup] = []
+        # Thread-safe: _group_locks protects job_group.jobs dicts when
+        # state_sync is enabled. Populated in start() after subclasses set
+        # up job_groups. Empty dict = no locking (sync disabled).
+        self._group_locks: dict[str, threading.Lock] = {}
         self.config = config
+        self._sync: JobBuilderStateSync | None = self._init_sync(config, service)
 
         self._files_received = JOB_BUILDER_FILES_RECEIVED
         self._jobs_built = JOB_BUILDER_JOBS_BUILT
@@ -42,8 +76,58 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self._jobs_discarded = JOB_BUILDER_JOBS_DISCARDED
         self._file_processing_duration = JOB_BUILDER_FILE_PROCESSING_DURATION
 
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    @log_execution
+    def start(self) -> None:
+        """Start main thread, connecting to Redis first if sync is enabled."""
+        if self._running:
+            return
+        if self._sync is not None:
+            self._group_locks = {jg.name: threading.Lock() for jg in self.job_groups}
+            self._sync.connect()  # raises StateSyncConnectionError if unreachable
+            self._sync.start(self.job_groups, self._group_locks)
+        self._main_thread = threading.Thread(
+            target=self.handle_incoming_files,
+            name=self.name,
+            daemon=True,
+        )
+        self._running = True
+        self._main_thread.start()
+
+    @log_execution
+    def stop(self) -> None:
+        """Stop the sync subscriber and the main thread."""
+        if self._sync is not None:
+            self._sync.stop()
+        if self._main_thread and self._main_thread.is_alive():
+            self._main_thread.join(timeout=5)
+
+    def is_healthy(self) -> bool:
+        """Check if plugin is healthy."""
+        return self._running
+
+    # ------------------------------------------------------------------
+    # Core file processing loop
+    # ------------------------------------------------------------------
+
     def emit(self, job: Job) -> None:
-        """Emit job to parent service."""
+        """Emit job to parent service, claiming emit rights when sync is active.
+
+        When state synchronization is enabled, uses Redis SET NX to ensure
+        only one instance across the HA cluster emits each job.  Silently
+        skips the emit if another instance already holds the claim.
+        """
+        if self._sync is not None and not self._sync.try_claim_emit(
+            job.identifier,
+            job.timeout,
+        ):
+            self._logger.info(
+                f"Job {job.identifier} already claimed by another instance; skipping",
+            )
+            return
         message = str(job)
         self._logger.info(f"Queueing job: {message}")
         self.parent_service.emit(queue=self.queue, message=message)
@@ -53,78 +137,122 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self._logger.debug("Starting to handle incoming files")
         for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
             start_time = time.time()
-
             self._files_received.labels(job_builder_name=self.name).inc()
             self._logger.debug(f"Received file {file_string} from file queue")
-
             file = FrozenFile.from_string(str(file_string))
-
             for job_group in self.job_groups:
                 self._logger.debug(
                     f"Processing file {file} in job group {job_group.name}",
                 )
-                if job_group.add_file(file):
-                    self._logger.debug(
-                        f"File {file} added to job group {job_group.name}",
-                    )
-                    for ready_job in job_group.ready_jobs():
-                        self._logger.info(
-                            f"Job {ready_job.identifier} is ready; emitting",
-                        )
-                        self.emit(ready_job)
-                        self._jobs_built.labels(
-                            status="ready",
-                            job_builder_name=self.name,
-                        ).inc()
-
-                jobs_to_delete = []
-                for job_id, job in job_group.jobs.items():
-                    if job.is_old():
-                        self._logger.info(f"Discarding old job {job.identifier}")
-                        self._jobs_discarded.labels(job_builder_name=self.name).inc()
-                        self._jobs_built.labels(
-                            status="old",
-                            job_builder_name=self.name,
-                        ).inc()
-                        jobs_to_delete.append(job_id)
-
-                for job_id in jobs_to_delete:
-                    del job_group.jobs[job_id]
-
-            processing_time = time.time() - start_time
+                self._process_job_group(job_group, file)
             self._file_processing_duration.labels(
                 job_builder_name=self.name,
-            ).observe(processing_time)
-
+            ).observe(time.time() - start_time)
             self._active_job_groups.labels(job_builder_name=self.name).set(
                 len(self.job_groups),
             )
-
         self._logger.error("Exiting handle_incoming_files loop unexpectedly")
 
-    @log_execution
-    def start(self) -> None:
-        """Start main thread."""
-        if self._running:
+    # ------------------------------------------------------------------
+    # Per-group helpers (complexity-bounded)
+    # ------------------------------------------------------------------
+
+    def _process_job_group(self, job_group: JobGroup, file: FrozenFile) -> None:
+        """Add a file to a group, emit ready jobs, and prune timed-out ones."""
+        added, ready, updates = self._add_file_locked(job_group, file)
+        if added:
+            self._logger.debug(f"File added to job group {job_group.name}")
+        self._push_updates(job_group.name, updates)
+        for ready_job in ready:
+            self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
+            self.emit(ready_job)
+            self._jobs_built.labels(
+                status="ready",
+                job_builder_name=self.name,
+            ).inc()
+        self._cleanup_old_jobs(job_group)
+
+    def _add_file_locked(
+        self,
+        job_group: JobGroup,
+        file: FrozenFile,
+    ) -> tuple[bool, list[Job], dict[str, Job]]:
+        """Add a file under the group lock; collect ready jobs and sync updates.
+
+        Returns
+        -------
+        tuple[bool, list[Job], dict[str, Job]]
+            ``(added, ready_jobs, updates)`` where *updates* maps job IDs
+            to the modified ``Job`` objects that should be pushed to Redis.
+        """
+        lock = self._group_locks.get(job_group.name)
+        updates: dict[str, Job] = {}
+        ready: list[Job] = []
+        with lock if lock is not None else contextlib.nullcontext():
+            added = job_group.add_file(file)
+            if added:
+                ready = job_group.ready_jobs()
+                updates = self._collect_sync_updates(job_group, file)
+        return added, ready, updates
+
+    def _collect_sync_updates(
+        self,
+        job_group: JobGroup,
+        file: FrozenFile,
+    ) -> dict[str, Job]:
+        """Snapshot jobs affected by the last add_file call for Redis push.
+
+        Must be called while the group lock is held.
+        """
+        if self._sync is None:
+            return {}
+        return {
+            jid: job_group.jobs[jid]
+            for jid in job_group.get_job_ids_from_file(file)
+            if jid in job_group.jobs
+        }
+
+    def _push_updates(self, group_name: str, updates: dict[str, Job]) -> None:
+        """Push a batch of job updates to Redis (no-op when sync is disabled)."""
+        if self._sync is None:
             return
-        self._main_thread = threading.Thread(
-            target=self.handle_incoming_files,
-            name=self.name,
-            daemon=True,
-        )
-        self._running = True
-        self._main_thread.start()
-        return
+        for jid, job in updates.items():
+            self._sync.push_job_update(group_name, jid, job)
 
-    @log_execution
-    def stop(self) -> None:
-        """Stop main thread."""
-        if self._main_thread and self._main_thread.is_alive():
-            self._main_thread.join(timeout=5)
+    def _cleanup_old_jobs(self, job_group: JobGroup) -> None:
+        """Remove timed-out jobs from the group and sync the deletions."""
+        deletions = self._collect_and_delete_old_jobs(job_group)
+        self._push_deletions(job_group.name, deletions)
 
-    def is_healthy(self) -> bool:
-        """Check if plugin is healthy."""
-        return self._running
+    def _collect_and_delete_old_jobs(self, job_group: JobGroup) -> list[str]:
+        """Delete timed-out jobs under the group lock; return their IDs."""
+        lock = self._group_locks.get(job_group.name)
+        with lock if lock is not None else contextlib.nullcontext():
+            old_ids = [jid for jid, job in job_group.jobs.items() if job.is_old()]
+            for job_id in old_ids:
+                self._log_discard(job_id)
+                del job_group.jobs[job_id]
+        return old_ids
+
+    def _log_discard(self, job_id: str) -> None:
+        """Log and count a discarded job."""
+        self._logger.info(f"Discarding old job {job_id}")
+        self._jobs_discarded.labels(job_builder_name=self.name).inc()
+        self._jobs_built.labels(
+            status="old",
+            job_builder_name=self.name,
+        ).inc()
+
+    def _push_deletions(self, group_name: str, deletions: list[str]) -> None:
+        """Notify peers of deleted jobs (no-op when sync is disabled)."""
+        if self._sync is None:
+            return
+        for job_id in deletions:
+            self._sync.push_job_deletion(group_name, job_id)
+
+    # ------------------------------------------------------------------
+    # Metrics
+    # ------------------------------------------------------------------
 
     def get_metrics(self) -> dict[str, Any]:
         """Return plugin-specific metrics."""
@@ -151,6 +279,46 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 self.name,
             ),
         }
+
+    # ------------------------------------------------------------------
+    # Config parsing
+    # ------------------------------------------------------------------
+
+    def _init_sync(
+        self,
+        config: dict[str, Any],
+        service: Service,
+    ) -> JobBuilderStateSync | None:
+        """Parse ``state_sync`` config and return a sync object, or None.
+
+        Raises
+        ------
+        InvalidPluginConfigError
+            If ``state_sync`` is present but the ``redis`` package is not
+            installed (``pip install lazylemon[ha]``).
+        pydantic.ValidationError
+            If the ``state_sync`` config values are invalid.
+        """
+        raw = config.get("state_sync")
+        if raw is None:
+            return None
+        try:
+            from lazylemon.schema.v1alpha1.sync_config import (  # noqa: PLC0415
+                RedisStateSyncConfig,
+            )
+            from lazylemon.sync.job_builder_state_sync import (  # noqa: PLC0415
+                JobBuilderStateSync,
+            )
+        except ImportError as exc:
+            raise InvalidPluginConfigError(
+                "state_sync requires the redis package: pip install lazylemon[ha]",
+            ) from exc
+        sync_config = RedisStateSyncConfig.model_validate(raw)
+        return JobBuilderStateSync(
+            config=sync_config,
+            namespace=service._config.namespace,
+            builder_name=self.name,
+        )
 
 
 def call() -> None:
