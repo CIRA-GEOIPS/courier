@@ -11,7 +11,12 @@ from lazylemon.interfaces.plugin_protocol import ServicePlugin
 from lazylemon.managers.base import ServiceManager
 from lazylemon.managers.plugin_manager import PluginManager
 from lazylemon.managers.prometheus_manager import PrometheusManager
-from lazylemon.metrics import SERVICE_HEALTH, SERVICE_UPTIME
+from lazylemon.metrics import (
+    BROKER_MESSAGES_RECEIVED,
+    BROKER_MESSAGES_SENT,
+    SERVICE_HEALTH,
+    SERVICE_UPTIME,
+)
 from lazylemon.utils.decorators import log_execution
 from lazylemon.utils.logging import get_logger
 from lazylemon.utils.signals import SignalHandler
@@ -105,6 +110,7 @@ class Service:
             self._logger.debug(f"Emitting message to queue '{queue_name}': {message}")
             q = declare_queue(conn, queue_name, durable=True)
             publish(conn, q, message)
+            BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
 
     def consume(self, queue: str) -> Generator[str, None, None]:
         """Yield messages from a message broker queue.
@@ -134,6 +140,9 @@ class Service:
                     self._logger.debug(
                         f"Received message from queue '{queue_name}': {body}",
                     )
+                    BROKER_MESSAGES_RECEIVED.labels(
+                        queue_name=queue_name,
+                    ).inc()
                     yield body
                     ack()
                 except GeneratorExit:

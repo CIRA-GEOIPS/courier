@@ -38,6 +38,7 @@ from lazylemon.errors import StateSyncConnectionError
 from lazylemon.metrics import (
     STATE_SYNC_APPLIES,
     STATE_SYNC_EMIT_CLAIMS,
+    STATE_SYNC_ERRORS,
     STATE_SYNC_PUSHES,
 )
 from lazylemon.utils.logging import get_logger
@@ -92,6 +93,7 @@ class JobBuilderStateSync:
         self._pushes = STATE_SYNC_PUSHES
         self._applies = STATE_SYNC_APPLIES
         self._claims = STATE_SYNC_EMIT_CLAIMS
+        self._errors = STATE_SYNC_ERRORS
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -203,6 +205,10 @@ class JobBuilderStateSync:
                 event="job_updated",
             ).inc()
         except redis.RedisError as exc:
+            self._errors.labels(
+                builder_name=self._builder_name,
+                operation="push_update",
+            ).inc()
             self._logger.warning(f"Failed to push job update for {job_id!r}: {exc}")
 
     def push_job_deletion(self, group_name: str, job_id: str) -> None:
@@ -225,6 +231,10 @@ class JobBuilderStateSync:
                 event="job_deleted",
             ).inc()
         except redis.RedisError as exc:
+            self._errors.labels(
+                builder_name=self._builder_name,
+                operation="push_deletion",
+            ).inc()
             self._logger.warning(
                 f"Failed to push job deletion for {job_id!r}: {exc}",
             )
@@ -265,6 +275,10 @@ class JobBuilderStateSync:
                 result="acquired" if claimed else "skipped",
             ).inc()
         except redis.RedisError as exc:
+            self._errors.labels(
+                builder_name=self._builder_name,
+                operation="claim_emit",
+            ).inc()
             self._logger.warning(
                 f"Redis error claiming emit for {job_id!r}: {exc}. "
                 "Proceeding with emit (fail-open) to avoid silent job loss.",
@@ -326,6 +340,10 @@ class JobBuilderStateSync:
                 self._hash_key(job_group.name),
             )
         except redis.RedisError as exc:
+            self._errors.labels(
+                builder_name=self._builder_name,
+                operation="load_state",
+            ).inc()
             self._logger.warning(
                 f"Failed to load remote state for group {job_group.name!r}: {exc}",
             )
@@ -365,6 +383,10 @@ class JobBuilderStateSync:
             try:
                 message = pubsub.get_message(timeout=1.0)
             except redis.RedisError as exc:
+                self._errors.labels(
+                    builder_name=self._builder_name,
+                    operation="subscribe",
+                ).inc()
                 self._logger.warning(f"Pub/sub receive error: {exc}")
                 continue
             if message is None:
@@ -415,6 +437,10 @@ class JobBuilderStateSync:
                 job_id,
             )
         except redis.RedisError as exc:
+            self._errors.labels(
+                builder_name=self._builder_name,
+                operation="fetch_merge",
+            ).inc()
             self._logger.warning(
                 f"Failed to fetch updated job {job_id!r}: {exc}",
             )

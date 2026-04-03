@@ -49,7 +49,10 @@ from croniter import croniter
 from pydantic import BaseModel, field_validator
 
 from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from lazylemon.metrics import DATA_MONITOR_LAST_SCAN_TIMESTAMP
+from lazylemon.metrics import (
+    DATA_MONITOR_LAST_SCAN_TIMESTAMP,
+    DATA_MONITOR_SCAN_DURATION,
+)
 from lazylemon.service import Service
 from lazylemon.types.file import File
 
@@ -190,6 +193,7 @@ class CronGlob(DataMonitorBasePlugin):
         File
             A ``File`` object for each new file found.
         """
+        scan_start = time.time()
         for path in self.scan_path.glob(self.glob_pattern):
             if not path.is_file():
                 continue
@@ -202,6 +206,9 @@ class CronGlob(DataMonitorBasePlugin):
 
         DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name).set(
             time.time(),
+        )
+        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name).observe(
+            time.time() - scan_start,
         )
 
     def _evict_if_over_cap(self) -> None:
