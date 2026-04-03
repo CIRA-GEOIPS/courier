@@ -31,6 +31,13 @@ DATA_MONITOR_LAST_SCAN_TIMESTAMP: Gauge = Gauge(
     ["monitor_name"],
 )
 
+DATA_MONITOR_SCAN_DURATION: Histogram = Histogram(
+    "lazylemon_data_monitor_scan_duration_seconds",
+    "Duration of a single directory scan cycle for a data monitor plugin",
+    ["monitor_name"],
+    buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
+)
+
 # ---------------------------------------------------------------------------
 # Job builder metrics
 # ---------------------------------------------------------------------------
@@ -66,6 +73,14 @@ JOB_BUILDER_FILE_PROCESSING_DURATION: Histogram = Histogram(
     buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0),
 )
 
+JOB_BUILDER_FILES_PER_JOB: Histogram = Histogram(
+    "lazylemon_job_builder_files_per_job",
+    "Number of files accumulated in a job before it was emitted",
+    ["job_builder_name"],
+    buckets=(1, 2, 5, 10, 20, 50, 100, 200),
+)
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher metrics
 # ---------------------------------------------------------------------------
@@ -93,6 +108,13 @@ DISPATCHER_EXECUTION_LOGS_EMITTED: Counter = Counter(
     "lazylemon_dispatcher_execution_logs_emitted_total",
     "Total number of execution logs emitted by a dispatcher plugin",
     ["dispatcher_name"],
+)
+
+DISPATCHER_QUEUE_WAIT_DURATION: Histogram = Histogram(
+    "lazylemon_dispatcher_queue_wait_duration_seconds",
+    "Time a job spent waiting in the queue before dispatch started",
+    ["dispatcher_name"],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0),
 )
 
 # ---------------------------------------------------------------------------
@@ -137,6 +159,33 @@ APP_HEARTBEAT: Gauge = Gauge(
 )
 
 # ---------------------------------------------------------------------------
+# Broker metrics
+# ---------------------------------------------------------------------------
+
+BROKER_CONNECTIONS: Counter = Counter(
+    "lazylemon_broker_connections_total",
+    "Total number of broker connection attempts",
+    ["status"],
+)
+
+BROKER_MESSAGES_SENT: Counter = Counter(
+    "lazylemon_broker_messages_sent_total",
+    "Total number of messages published to broker queues",
+    ["queue_name"],
+)
+
+BROKER_MESSAGES_RECEIVED: Counter = Counter(
+    "lazylemon_broker_messages_received_total",
+    "Total number of messages consumed from broker queues",
+    ["queue_name"],
+)
+
+BROKER_CONNECTED: Gauge = Gauge(
+    "lazylemon_broker_connected",
+    "Whether the broker connection is active (1 = connected, 0 = disconnected)",
+)
+
+# ---------------------------------------------------------------------------
 # Helper utilities
 # ---------------------------------------------------------------------------
 
@@ -161,6 +210,12 @@ STATE_SYNC_EMIT_CLAIMS: Counter = Counter(
     "lazylemon_state_sync_emit_claims_total",
     "Total number of emit claim attempts via Redis SETNX",
     ["builder_name", "result"],
+)
+
+STATE_SYNC_ERRORS: Counter = Counter(
+    "lazylemon_state_sync_errors_total",
+    "Total number of Redis operation errors during state synchronization",
+    ["builder_name", "operation"],
 )
 
 # ---------------------------------------------------------------------------

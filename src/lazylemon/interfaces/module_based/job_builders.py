@@ -15,6 +15,7 @@ from lazylemon.interfaces.plugin_protocol import ServicePlugin
 from lazylemon.metrics import (
     JOB_BUILDER_ACTIVE_GROUPS,
     JOB_BUILDER_FILE_PROCESSING_DURATION,
+    JOB_BUILDER_FILES_PER_JOB,
     JOB_BUILDER_FILES_RECEIVED,
     JOB_BUILDER_JOBS_BUILT,
     JOB_BUILDER_JOBS_DISCARDED,
@@ -75,6 +76,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self._active_job_groups = JOB_BUILDER_ACTIVE_GROUPS
         self._jobs_discarded = JOB_BUILDER_JOBS_DISCARDED
         self._file_processing_duration = JOB_BUILDER_FILE_PROCESSING_DURATION
+        self._files_per_job = JOB_BUILDER_FILES_PER_JOB
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -170,6 +172,9 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
                 status="ready",
                 job_builder_name=self.name,
             ).inc()
+            self._files_per_job.labels(
+                job_builder_name=self.name,
+            ).observe(len(ready_job.files))
         self._cleanup_old_jobs(job_group)
 
     def _add_file_locked(
@@ -275,6 +280,11 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
             ),
             **collect_labeled(
                 JOB_BUILDER_FILE_PROCESSING_DURATION,
+                "job_builder_name",
+                self.name,
+            ),
+            **collect_labeled(
+                JOB_BUILDER_FILES_PER_JOB,
                 "job_builder_name",
                 self.name,
             ),

@@ -7,11 +7,11 @@ from contextlib import contextmanager, suppress
 from typing import Any
 
 import kombu  # type: ignore[import-untyped]
-import prometheus_client
 from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
 
 from lazylemon.config import ServiceConfig
 from lazylemon.managers.base import ServiceManager
+from lazylemon.metrics import BROKER_CONNECTED, BROKER_CONNECTIONS
 from lazylemon.utils.decorators import log_execution, retry_with_backoff
 from lazylemon.utils.logging import get_logger
 
@@ -258,23 +258,6 @@ class MessageBrokerManager(ServiceManager):
             stop_event=self._stop_event,
         )(self._establish_connection_impl)
 
-        # Prometheus metrics
-        self._broker_connections_total = prometheus_client.Counter(
-            "broker_connections_total",
-            "Total number of broker connection attempts",
-            ["status"],
-        )
-        self._broker_messages_sent_total = prometheus_client.Counter(
-            "broker_messages_sent_total",
-            "Total number of messages sent to broker queues",
-            ["queue_name"],
-        )
-        self._broker_messages_received_total = prometheus_client.Counter(
-            "broker_messages_received_total",
-            "Total number of messages received from broker queues",
-            ["queue_name"],
-        )
-
     def _establish_connection_impl(self) -> kombu.Connection:
         """Establish a new broker connection.
 
@@ -294,9 +277,11 @@ class MessageBrokerManager(ServiceManager):
         try:
             conn = _open_connection(self._config.broker_url)
             _logger.debug("Successfully connected to broker")
-            self._broker_connections_total.labels(status="success").inc()
+            BROKER_CONNECTIONS.labels(status="success").inc()
+            BROKER_CONNECTED.set(1)
         except OperationalError:
-            self._broker_connections_total.labels(status="failure").inc()
+            BROKER_CONNECTIONS.labels(status="failure").inc()
+            BROKER_CONNECTED.set(0)
             self._logger.exception("Failed to connect to broker")
             raise
         else:
@@ -318,6 +303,7 @@ class MessageBrokerManager(ServiceManager):
                 self._logger.warning(f"Error closing broker connection: {e}")
 
         self._connection = None
+        BROKER_CONNECTED.set(0)
 
     def is_healthy(self) -> bool:
         """Check whether the broker connection is active.

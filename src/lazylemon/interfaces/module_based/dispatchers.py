@@ -13,6 +13,7 @@ from lazylemon.metrics import (
     DISPATCHER_EXECUTION_LOGS_EMITTED,
     DISPATCHER_JOB_EXECUTION_DURATION,
     DISPATCHER_JOBS_PROCESSED,
+    DISPATCHER_QUEUE_WAIT_DURATION,
     collect_labeled,
 )
 from lazylemon.service import Service
@@ -38,6 +39,7 @@ class Dispatcher(ServicePlugin):
         self._job_execution_duration = DISPATCHER_JOB_EXECUTION_DURATION
         self._active_jobs = DISPATCHER_ACTIVE_JOBS
         self._execution_logs_emitted = DISPATCHER_EXECUTION_LOGS_EMITTED
+        self._queue_wait_duration = DISPATCHER_QUEUE_WAIT_DURATION
         self.active_job_timestamps = {}  # type: dict[str, float]
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
@@ -61,6 +63,9 @@ class Dispatcher(ServicePlugin):
                 job_id = job.identifier
                 self.active_job_timestamps[job_id] = start_time
                 self._active_jobs.labels(dispatcher_name=self.name).inc()
+                self._queue_wait_duration.labels(
+                    dispatcher_name=self.name,
+                ).observe(start_time - job.last_modified)
 
                 try:
                     execution_logs = self.get_execution_log(job)
@@ -129,6 +134,11 @@ class Dispatcher(ServicePlugin):
             **collect_labeled(DISPATCHER_ACTIVE_JOBS, "dispatcher_name", self.name),
             **collect_labeled(
                 DISPATCHER_EXECUTION_LOGS_EMITTED,
+                "dispatcher_name",
+                self.name,
+            ),
+            **collect_labeled(
+                DISPATCHER_QUEUE_WAIT_DURATION,
                 "dispatcher_name",
                 self.name,
             ),
