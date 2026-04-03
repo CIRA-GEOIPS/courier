@@ -8,6 +8,12 @@ words:
   - rediss
   - AMQPS
   - mydb
+  - hget
+  - setnx
+  - hset
+  - hdel
+  - hgetall
+  - fakeredis
   - confluentkafka
   - azureservicebus
   - gcpubsub

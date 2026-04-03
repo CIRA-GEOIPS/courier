@@ -141,6 +141,33 @@ APP_HEARTBEAT: Gauge = Gauge(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# State sync metrics
+# ---------------------------------------------------------------------------
+
+STATE_SYNC_PUSHES: Counter = Counter(
+    "lazylemon_state_sync_pushes_total",
+    "Total number of job state pushes sent to the shared Redis instance",
+    ["builder_name", "event"],
+)
+
+STATE_SYNC_APPLIES: Counter = Counter(
+    "lazylemon_state_sync_applies_total",
+    "Total number of remote job state updates applied from Redis",
+    ["builder_name"],
+)
+
+STATE_SYNC_EMIT_CLAIMS: Counter = Counter(
+    "lazylemon_state_sync_emit_claims_total",
+    "Total number of emit claim attempts via Redis SETNX",
+    ["builder_name", "result"],
+)
+
+# ---------------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------------
+
+
 def collect_labeled(
     metric: MetricWrapperBase,
     label_key: str,
