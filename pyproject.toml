@@ -124,6 +124,7 @@ Issues = "https://github.com/biosafetylvl5/lazylemon/issues"
 Documentation = "https://biosafetylvl5.github.io/lazylemon/"
 
 [tool.mypy]
+plugins = ["pydantic.mypy"]
 python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
