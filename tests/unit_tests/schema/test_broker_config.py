@@ -145,19 +145,19 @@ class TestAmqpBrokerConfig:
 
     def test_missing_host_rejected(self) -> None:
         with pytest.raises(ValidationError, match="host"):
-            AmqpBrokerConfig(username="u", password="p")
+            AmqpBrokerConfig(username="u", password="p")  # type: ignore[call-arg]
 
     def test_missing_username_rejected(self) -> None:
         with pytest.raises(ValidationError, match="username"):
-            AmqpBrokerConfig(host="h", password="p")
+            AmqpBrokerConfig(host="h", password="p")  # type: ignore[call-arg]
 
     def test_missing_password_rejected(self) -> None:
         with pytest.raises(ValidationError, match="password"):
-            AmqpBrokerConfig(host="h", username="u")
+            AmqpBrokerConfig(host="h", username="u")  # type: ignore[call-arg]
 
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
-            AmqpBrokerConfig(**_MINIMAL_AMQP, bogus="x")
+            AmqpBrokerConfig(**_MINIMAL_AMQP, bogus="x")  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         cfg = AmqpBrokerConfig(**_MINIMAL_AMQP)
@@ -252,7 +252,7 @@ class TestRedisBrokerConfig:
 
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
-            RedisBrokerConfig(transport="redis", cluster=True)
+            RedisBrokerConfig(transport="redis", cluster=True)  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         cfg = RedisBrokerConfig(transport="redis")
@@ -286,7 +286,7 @@ class TestMemoryBrokerConfig:
 
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
-            MemoryBrokerConfig(transport="memory", host="h")
+            MemoryBrokerConfig(transport="memory", host="h")  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         cfg = MemoryBrokerConfig(transport="memory")
@@ -354,11 +354,11 @@ class TestUrlBrokerConfig:
 
     def test_missing_url_rejected(self) -> None:
         with pytest.raises(ValidationError, match="url"):
-            UrlBrokerConfig(transport="url")
+            UrlBrokerConfig(transport="url")  # type: ignore[call-arg]
 
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
-            UrlBrokerConfig(transport="url", url="sqs://", host="h")
+            UrlBrokerConfig(transport="url", url="sqs://", host="h")  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         cfg = UrlBrokerConfig(transport="url", url="memory://")
