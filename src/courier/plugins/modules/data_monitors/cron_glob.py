@@ -46,14 +46,15 @@ from pathlib import Path
 from typing import Any
 
 from croniter import croniter
-from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from lazylemon.metrics import (
+from pydantic import BaseModel, field_validator
+
+from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.metrics import (
     DATA_MONITOR_LAST_SCAN_TIMESTAMP,
     DATA_MONITOR_SCAN_DURATION,
 )
-from lazylemon.service import Service
-from lazylemon.types.file import File
-from pydantic import BaseModel, field_validator
+from courier.service import Service
+from courier.types.file import File
 
 interface: str = "data_monitors"
 family: str = "standard"

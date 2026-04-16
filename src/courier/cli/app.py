@@ -1,8 +1,9 @@
 """Root typer application with subcommand registration."""
 
 import typer
-from lazylemon.cli.run import run
-from lazylemon.cli.validate import validate
+
+from courier.cli.run import run
+from courier.cli.validate import validate
 
 app = typer.Typer()
 

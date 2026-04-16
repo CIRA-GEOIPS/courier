@@ -1,6 +1,6 @@
-"""State synchronization utilities for lazylemon HA deployments.
+"""State synchronization utilities for courier HA deployments.
 
 Requires the ``redis`` extra::
 
-    pip install lazylemon[ha]
+    pip install courier[ha]
 """

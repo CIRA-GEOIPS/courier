@@ -3,11 +3,12 @@
 import time
 
 import prometheus_client
-from lazylemon.config import ServiceConfig
-from lazylemon.managers.base import ServiceManager
-from lazylemon.metrics import APP_HEARTBEAT
-from lazylemon.utils.decorators import log_execution
-from lazylemon.utils.logging import get_logger
+
+from courier.config import ServiceConfig
+from courier.managers.base import ServiceManager
+from courier.metrics import APP_HEARTBEAT
+from courier.utils.decorators import log_execution
+from courier.utils.logging import get_logger
 
 
 class PrometheusManager(ServiceManager):

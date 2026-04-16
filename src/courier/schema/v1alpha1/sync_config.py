@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from lazylemon.schema.v1alpha1.base import FrozenModel, _ensure_non_empty
 from pydantic import Field, ValidationInfo, field_validator
+
+from courier.schema.v1alpha1.base import FrozenModel, _ensure_non_empty
 
 __all__ = ["RedisStateSyncConfig"]
 
@@ -18,7 +19,7 @@ class RedisStateSyncConfig(FrozenModel):
     On startup the builder loads existing job state from Redis, enabling
     crash recovery without losing in-progress groupings.
 
-    Implementations: JobBuilder (lazylemon.interfaces.module_based.job_builders)
+    Implementations: JobBuilder (courier.interfaces.module_based.job_builders)
 
     Configuration keys
     ------------------
@@ -36,7 +37,7 @@ class RedisStateSyncConfig(FrozenModel):
     channel_prefix : str, optional
         Prefix applied to all Redis keys and pub/sub channels.
         Set a unique value when multiple tenants share one Redis instance.
-        Default: ``"lazylemon"``.
+        Default: ``"courier"``.
 
     Examples
     --------
@@ -63,7 +64,7 @@ class RedisStateSyncConfig(FrozenModel):
     )
     ssl: bool = Field(False, description="Use TLS when True.")
     channel_prefix: str = Field(
-        "lazylemon",
+        "courier",
         description="Key prefix for multi-tenant Redis isolation.",
     )
 

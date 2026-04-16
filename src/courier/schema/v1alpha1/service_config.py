@@ -4,22 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from lazylemon.schema.v1alpha1.base import (
+from pydantic import (
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+
+from courier.schema.v1alpha1.base import (
     FrozenModel,
     _ensure_api_version,
     _ensure_dns_name,
     _ensure_non_empty,
     _find_duplicate_values,
 )
-from lazylemon.schema.v1alpha1.broker_config import (
+from courier.schema.v1alpha1.broker_config import (
     BrokerConfig,
     MemoryBrokerConfig,
-)
-from pydantic import (
-    Field,
-    ValidationInfo,
-    field_validator,
-    model_validator,
 )
 
 __all__ = [
@@ -32,7 +33,7 @@ __all__ = [
 
 
 class ResourceMetadataModel(FrozenModel):
-    """Kubernetes-style metadata block for a lazylemon resource."""
+    """Kubernetes-style metadata block for a courier resource."""
 
     name: str = Field(..., description="DNS-subdomain name for this resource.")
     namespace: str | None = Field(

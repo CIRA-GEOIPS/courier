@@ -1,5 +1,5 @@
-"""Command-line interface for lazylemon."""
+"""Command-line interface for courier."""
 
-from lazylemon.cli.app import app
+from courier.cli.app import app
 
 __all__ = ["app"]

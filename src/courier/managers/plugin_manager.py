@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from lazylemon.config import ServiceConfig
-from lazylemon.constants import PluginRunState
-from lazylemon.errors import GeoIPSDriverError
-from lazylemon.interfaces.plugin_protocol import ServicePlugin
-from lazylemon.managers.base import ServiceManager
-from lazylemon.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
-from lazylemon.utils.decorators import log_execution
-from lazylemon.utils.functional import filter_map
-from lazylemon.utils.logging import get_logger
+from courier.config import ServiceConfig
+from courier.constants import PluginRunState
+from courier.errors import GeoIPSDriverError
+from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.managers.base import ServiceManager
+from courier.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
+from courier.utils.decorators import log_execution
+from courier.utils.functional import filter_map
+from courier.utils.logging import get_logger
 
 
 @dataclass

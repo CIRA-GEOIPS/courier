@@ -1,14 +1,15 @@
-"""Python class for the service lazylemon interface."""
+"""Python class for the service courier interface."""
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
-from lazylemon.schema import ServiceConfigModel
+
+from courier.schema import ServiceConfigModel
 
 
 class ServiceConfigInterface(BaseYamlInterface):
     """Configuration protocol for controlling GeoIPS NRT processing."""
 
     name = "service"
-    apiVersion = "lazylemon.dev/v1alpha1"  # noqa: N815
+    apiVersion = "courier.dev/v1alpha1"  # noqa: N815
     validator = ServiceConfigModel
 
 

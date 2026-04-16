@@ -17,8 +17,9 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from lazylemon.schema.v1alpha1.base import FrozenModel, _ensure_non_empty
 from pydantic import BeforeValidator, Field, ValidationInfo, field_validator
+
+from courier.schema.v1alpha1.base import FrozenModel, _ensure_non_empty
 
 __all__ = [
     "AmqpBrokerConfig",
@@ -32,7 +33,7 @@ __all__ = [
 class AmqpBrokerConfig(FrozenModel):
     """AMQP broker connection settings (RabbitMQ, Qpid, etc.).
 
-    Implementations: MessageBrokerManager (lazylemon.broker.kombu)
+    Implementations: MessageBrokerManager (courier.broker.kombu)
     """
 
     transport: Literal["amqp"] = Field(
@@ -72,7 +73,7 @@ class AmqpBrokerConfig(FrozenModel):
 class RedisBrokerConfig(FrozenModel):
     """Redis broker connection settings.
 
-    Implementations: MessageBrokerManager (lazylemon.broker.kombu)
+    Implementations: MessageBrokerManager (courier.broker.kombu)
     """
 
     transport: Literal["redis"] = Field(
@@ -111,7 +112,7 @@ class RedisBrokerConfig(FrozenModel):
 class MemoryBrokerConfig(FrozenModel):
     """In-memory transport for testing (no external broker required).
 
-    Implementations: MessageBrokerManager (lazylemon.broker.kombu)
+    Implementations: MessageBrokerManager (courier.broker.kombu)
     """
 
     transport: Literal["memory"] = Field(
@@ -137,7 +138,7 @@ class UrlBrokerConfig(FrozenModel):
     Service Bus, Azure Storage Queues, GCP Pub/Sub, Consul, etcd,
     Pyro, SLMQ, and any future Kombu transport.
 
-    Implementations: MessageBrokerManager (lazylemon.broker.kombu)
+    Implementations: MessageBrokerManager (courier.broker.kombu)
     """
 
     transport: Literal["url"] = Field(

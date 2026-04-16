@@ -1,21 +1,21 @@
-"""Pydantic schema models for lazylemon configuration validation.
+"""Pydantic schema models for courier configuration validation.
 
 Re-exports all public models from the current schema version (v1alpha1).
-External code should import from ``lazylemon.schema`` directly.
+External code should import from ``courier.schema`` directly.
 """
 
-from lazylemon.schema.v1alpha1.broker_config import (
+from courier.schema.v1alpha1.broker_config import (
     AmqpBrokerConfig,
     BrokerConfig,
     MemoryBrokerConfig,
     RedisBrokerConfig,
     UrlBrokerConfig,
 )
-from lazylemon.schema.v1alpha1.data_monitor_configs import (
+from courier.schema.v1alpha1.data_monitor_configs import (
     DataMonitorConfig,
     FileMetadataEntry,
 )
-from lazylemon.schema.v1alpha1.service_config import (
+from courier.schema.v1alpha1.service_config import (
     ResourceMetadataModel,
     ServiceConfigModel,
 )
@@ -34,7 +34,7 @@ __all__ = [
 
 
 _VERSION_MAP: dict[str, type[ServiceConfigModel]] = {
-    "lazylemon.dev/v1alpha1": ServiceConfigModel,
+    "courier.dev/v1alpha1": ServiceConfigModel,
 }
 
 

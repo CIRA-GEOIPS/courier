@@ -1,5 +1,5 @@
 """Message broker implementations."""
 
-from lazylemon.broker.kombu import MessageBrokerManager
+from courier.broker.kombu import MessageBrokerManager
 
 __all__ = ["MessageBrokerManager"]

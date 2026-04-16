@@ -1,9 +1,10 @@
-"""Python class for the data_monitor_configs lazylemon interface."""
+"""Python class for the data_monitor_configs courier interface."""
 
 from typing import ClassVar
 
 from geoips.interfaces.base import BaseYamlInterface  # type: ignore
-from lazylemon.schema import DataMonitorConfig
+
+from courier.schema import DataMonitorConfig
 
 
 class DataMonitorConfigsInterface(BaseYamlInterface):
@@ -12,7 +13,7 @@ class DataMonitorConfigsInterface(BaseYamlInterface):
     name = "data_monitor_configs"
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "lazylemon.dev/v1alpha1"  # noqa: N815
+    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
     validator = DataMonitorConfig
 
 

@@ -1,20 +1,21 @@
-"""Python class for the data_monitors lazylemon interface."""
+"""Python class for the data_monitors courier interface."""
 
 import threading
 from collections.abc import Generator
 from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
-from lazylemon.constants import FILE_FOUND_QUEUE, PluginRunState
-from lazylemon.errors import GeoIPSDriverError
-from lazylemon.interfaces.plugin_protocol import ServicePlugin
-from lazylemon.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
-from lazylemon.schema import DataMonitorConfig
-from lazylemon.service import Service
-from lazylemon.types.file import File
-from lazylemon.utils.decorators import log_execution
-from lazylemon.utils.logging import get_logger
-from lazylemon.utils.metadata import apply_metadata_from_configs
+
+from courier.constants import FILE_FOUND_QUEUE, PluginRunState
+from courier.errors import GeoIPSDriverError
+from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
+from courier.schema import DataMonitorConfig
+from courier.service import Service
+from courier.types.file import File
+from courier.utils.decorators import log_execution
+from courier.utils.logging import get_logger
+from courier.utils.metadata import apply_metadata_from_configs
 
 
 class DataMonitorBasePlugin(ServicePlugin):
@@ -28,7 +29,7 @@ class DataMonitorBasePlugin(ServicePlugin):
         self._main_thread: threading.Thread | None = None
         self.config = config
         # importing here to prevent circular import
-        from lazylemon.interfaces import data_monitor_configs  # noqa: PLC0415
+        from courier.interfaces import data_monitor_configs  # noqa: PLC0415
 
         self.metadata_matchers = [
             DataMonitorConfig(**data_monitor_configs.get_plugin(tool))
@@ -119,7 +120,7 @@ class DataMonitorInterface(BaseModuleInterface):
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "lazylemon.dev/v1alpha1"  # noqa: N815
+    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
 
 
 data_monitors = DataMonitorInterface()

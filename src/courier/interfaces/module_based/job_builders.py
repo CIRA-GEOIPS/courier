@@ -1,4 +1,4 @@
-"""Python class for the job_builders lazylemon interface."""
+"""Python class for the job_builders courier interface."""
 
 from __future__ import annotations
 
@@ -8,10 +8,11 @@ import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
-from lazylemon.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE, PluginRunState
-from lazylemon.errors import InvalidPluginConfigError
-from lazylemon.interfaces.plugin_protocol import ServicePlugin
-from lazylemon.metrics import (
+
+from courier.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE, PluginRunState
+from courier.errors import InvalidPluginConfigError
+from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.metrics import (
     JOB_BUILDER_ACTIVE_GROUPS,
     JOB_BUILDER_FILE_PROCESSING_DURATION,
     JOB_BUILDER_FILES_PER_JOB,
@@ -20,14 +21,14 @@ from lazylemon.metrics import (
     JOB_BUILDER_JOBS_DISCARDED,
     collect_labeled,
 )
-from lazylemon.types.file import FrozenFile
-from lazylemon.utils.decorators import log_execution
-from lazylemon.utils.logging import get_logger
+from courier.types.file import FrozenFile
+from courier.utils.decorators import log_execution
+from courier.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from lazylemon.service import Service
-    from lazylemon.sync.job_builder_state_sync import JobBuilderStateSync
-    from lazylemon.types.job import Job, JobGroup
+    from courier.service import Service
+    from courier.sync.job_builder_state_sync import JobBuilderStateSync
+    from courier.types.job import Job, JobGroup
 
 
 class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
@@ -51,7 +52,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     * Push every job mutation to the shared Redis hash so peers stay current.
     * Use Redis SET NX to guarantee that exactly one instance emits each job.
 
-    Requires ``pip install lazylemon[ha]``.  Disabled by default (no
+    Requires ``pip install courier[ha]``.  Disabled by default (no
     ``state_sync`` key → no Redis dependency at runtime).
     """
 
@@ -306,7 +307,7 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         ------
         InvalidPluginConfigError
             If ``state_sync`` is present but the ``redis`` package is not
-            installed (``pip install lazylemon[ha]``).
+            installed (``pip install courier[ha]``).
         pydantic.ValidationError
             If the ``state_sync`` config values are invalid.
         """
@@ -314,15 +315,15 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         if raw is None:
             return None
         try:
-            from lazylemon.schema.v1alpha1.sync_config import (  # noqa: PLC0415
+            from courier.schema.v1alpha1.sync_config import (  # noqa: PLC0415
                 RedisStateSyncConfig,
             )
-            from lazylemon.sync.job_builder_state_sync import (  # noqa: PLC0415
+            from courier.sync.job_builder_state_sync import (  # noqa: PLC0415
                 JobBuilderStateSync,
             )
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "state_sync requires the redis package: pip install lazylemon[ha]",
+                "state_sync requires the redis package: pip install courier[ha]",
             ) from exc
         sync_config = RedisStateSyncConfig.model_validate(raw)
         return JobBuilderStateSync(
@@ -345,7 +346,7 @@ class JobBuilderInterface(BaseModuleInterface):
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "lazylemon.dev/v1alpha1"  # noqa: N815
+    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
 
 
 job_builders = JobBuilderInterface()

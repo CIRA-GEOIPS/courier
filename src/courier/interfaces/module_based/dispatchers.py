@@ -1,14 +1,15 @@
-"""Python class for the dispatchers lazylemon interface."""
+"""Python class for the dispatchers courier interface."""
 
 import threading
 import time
 from typing import Any, ClassVar
 
 from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
-from lazylemon.constants import DISPATCHER_QUEUE, JOB_READY_QUEUE, PluginRunState
-from lazylemon.errors import GeoIPSDriverError
-from lazylemon.interfaces.plugin_protocol import ServicePlugin
-from lazylemon.metrics import (
+
+from courier.constants import DISPATCHER_QUEUE, JOB_READY_QUEUE, PluginRunState
+from courier.errors import GeoIPSDriverError
+from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
     DISPATCHER_EXECUTION_LOGS_EMITTED,
     DISPATCHER_JOB_EXECUTION_DURATION,
@@ -16,11 +17,11 @@ from lazylemon.metrics import (
     DISPATCHER_QUEUE_WAIT_DURATION,
     collect_labeled,
 )
-from lazylemon.service import Service
-from lazylemon.types.execution_log import ExecutionLog
-from lazylemon.types.job import Job
-from lazylemon.utils.decorators import log_execution
-from lazylemon.utils.logging import get_logger
+from courier.service import Service
+from courier.types.execution_log import ExecutionLog
+from courier.types.job import Job
+from courier.utils.decorators import log_execution
+from courier.utils.logging import get_logger
 
 
 class Dispatcher(ServicePlugin):
@@ -160,7 +161,7 @@ class DispatcherInterface(BaseModuleInterface):
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
     # ignoring odd capitalization to match existing code style in GeoIPS
     # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "lazylemon.dev/v1alpha1"  # noqa: N815
+    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
 
 
 dispatchers = DispatcherInterface()

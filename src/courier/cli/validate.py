@@ -3,8 +3,9 @@
 from pathlib import Path
 
 import typer
-from lazylemon.cli.config_loader import load_config
-from lazylemon.errors import GeoIPSDriverError
+
+from courier.cli.config_loader import load_config
+from courier.errors import GeoIPSDriverError
 
 
 def validate(config_file: Path) -> None:

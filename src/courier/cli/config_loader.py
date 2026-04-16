@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from lazylemon.errors import ConfigurationError
-from lazylemon.schema import ServiceConfigModel, get_model_for_version
 from pydantic import ValidationError
+
+from courier.errors import ConfigurationError
+from courier.schema import ServiceConfigModel, get_model_for_version
 
 
 class UnsupportedFileTypeError(ValueError):
@@ -53,7 +54,7 @@ def load_config(file_path: Path) -> ServiceConfigModel:
     """Load a service config file (.json or .yml/.yaml).
 
     The ``apiVersion`` field is read first to select the correct schema
-    version.  Currently only ``lazylemon.dev/v1alpha1`` is supported.
+    version.  Currently only ``courier.dev/v1alpha1`` is supported.
 
     Parameters
     ----------

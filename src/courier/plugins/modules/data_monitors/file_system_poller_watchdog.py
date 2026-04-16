@@ -4,12 +4,13 @@ import queue
 from collections.abc import Generator
 from pathlib import Path
 
-from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from lazylemon.service import Service
-from lazylemon.types.file import File
 from prometheus_client import Gauge
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
+
+from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.service import Service
+from courier.types.file import File
 
 interface: str = "data_monitors"
 family: str = "standard"

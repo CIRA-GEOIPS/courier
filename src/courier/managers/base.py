@@ -12,9 +12,9 @@ class ServiceManager(ABC):
 
     Implementations
     ---------------
-    PluginManager : lazylemon.managers.plugin_manager
-    MessageBrokerManager : lazylemon.managers.broker
-    PrometheusManager : lazylemon.managers.prometheus_manager
+    PluginManager : courier.managers.plugin_manager
+    MessageBrokerManager : courier.managers.broker
+    PrometheusManager : courier.managers.prometheus_manager
 
     Methods
     -------

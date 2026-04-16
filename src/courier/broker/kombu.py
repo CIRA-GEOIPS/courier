@@ -8,11 +8,12 @@ from typing import Any
 
 import kombu  # type: ignore[import-untyped]
 from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
-from lazylemon.config import ServiceConfig
-from lazylemon.managers.base import ServiceManager
-from lazylemon.metrics import BROKER_CONNECTED, BROKER_CONNECTIONS
-from lazylemon.utils.decorators import log_execution, retry_with_backoff
-from lazylemon.utils.logging import get_logger
+
+from courier.config import ServiceConfig
+from courier.managers.base import ServiceManager
+from courier.metrics import BROKER_CONNECTED, BROKER_CONNECTIONS
+from courier.utils.decorators import log_execution, retry_with_backoff
+from courier.utils.logging import get_logger
 
 _logger = get_logger("module", "broker.kombu", None)
 

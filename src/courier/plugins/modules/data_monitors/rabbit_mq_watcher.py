@@ -13,13 +13,14 @@ from typing import Any, cast
 
 import kombu  # type: ignore[import-untyped]
 from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
-from lazylemon.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from lazylemon.service import Service
-from lazylemon.types.file import File
 from prometheus_client import Gauge
 
+from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.service import Service
+from courier.types.file import File
+
 LAST_FILE_EMITTED_TIMESTAMP = Gauge(
-    "lazylemon_rabbitmq_last_file_emitted_timestamp_seconds",
+    "courier_rabbitmq_last_file_emitted_timestamp_seconds",
     "Unix timestamp when the last file was processed",
     labelnames=["queue"],
 )

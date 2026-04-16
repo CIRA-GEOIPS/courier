@@ -2,7 +2,7 @@
 
 This module is optional and requires the ``redis`` package::
 
-    pip install lazylemon[ha]
+    pip install courier[ha]
 
 Design
 ------
@@ -33,18 +33,19 @@ from typing import TYPE_CHECKING, Any
 
 import redis
 import redis.client
-from lazylemon.errors import StateSyncConnectionError
-from lazylemon.metrics import (
+
+from courier.errors import StateSyncConnectionError
+from courier.metrics import (
     STATE_SYNC_APPLIES,
     STATE_SYNC_EMIT_CLAIMS,
     STATE_SYNC_ERRORS,
     STATE_SYNC_PUSHES,
 )
-from lazylemon.utils.logging import get_logger
+from courier.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from lazylemon.schema.v1alpha1.sync_config import RedisStateSyncConfig
-    from lazylemon.types.job import Job, JobGroup
+    from courier.schema.v1alpha1.sync_config import RedisStateSyncConfig
+    from courier.types.job import Job, JobGroup
 
 
 class JobBuilderStateSync:
@@ -59,7 +60,7 @@ class JobBuilderStateSync:
     and the file-processing thread both acquire the group lock before
     any mutation.  Thread-safe: protected by ``_group_locks[group_name]``.
 
-    Implementations: JobBuilder (lazylemon.interfaces.module_based.job_builders)
+    Implementations: JobBuilder (courier.interfaces.module_based.job_builders)
     """
 
     def __init__(

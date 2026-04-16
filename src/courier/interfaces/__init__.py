@@ -1,13 +1,13 @@
 """Lazy Lemon Interface Module."""
 
-from lazylemon.interfaces.module_based.data_monitors import data_monitors
-from lazylemon.interfaces.module_based.dispatchers import dispatchers
-from lazylemon.interfaces.module_based.job_builders import job_builders
-from lazylemon.interfaces.plugin_protocol import ServicePlugin
-from lazylemon.interfaces.yaml_based.data_monitor_configs import (
+from courier.interfaces.module_based.data_monitors import data_monitors
+from courier.interfaces.module_based.dispatchers import dispatchers
+from courier.interfaces.module_based.job_builders import job_builders
+from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.interfaces.yaml_based.data_monitor_configs import (
     data_monitor_configs,
 )
-from lazylemon.service import Service, create_service_with_plugins
+from courier.service import Service, create_service_with_plugins
 
 # These lists are the "master" lists of the interface names.
 # These are used in validating the plugins (ie, so we will catch a typo

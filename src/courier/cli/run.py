@@ -3,14 +3,15 @@
 from pathlib import Path
 from typing import Any
 
-import lazylemon.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
 import typer
-from lazylemon.cli.config_loader import load_config
-from lazylemon.config import ServiceConfig
-from lazylemon.plugins.modules.data_monitors import file_system_poller_watchdog
-from lazylemon.plugins.modules.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
-from lazylemon.plugins.modules.job_builders import dummy_job_builder
-from lazylemon.service import create_service_with_plugins
+
+import courier.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
+from courier.cli.config_loader import load_config
+from courier.config import ServiceConfig
+from courier.plugins.modules.data_monitors import file_system_poller_watchdog
+from courier.plugins.modules.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
+from courier.plugins.modules.job_builders import dummy_job_builder
+from courier.service import create_service_with_plugins
 
 AVAILABLE_PLUGINS = {
     cls.name.lower(): cls
