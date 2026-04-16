@@ -63,6 +63,7 @@ operations/high-availability
 :caption: Contribute
 
 contribute/code-style
+concepts/index
 ```
 
 ```{toctree}
