@@ -18,9 +18,9 @@ class ServicePlugin(Protocol):
 
     Implementations
     ---------------
-    DataMonitorBasePlugin : lazylemon.interfaces.module_based.data_monitors
-    JobBuilder : lazylemon.interfaces.module_based.job_builders
-    Dispatcher : lazylemon.interfaces.module_based.dispatchers
+    DataMonitorBasePlugin : courier.interfaces.module_based.data_monitors
+    JobBuilder : courier.interfaces.module_based.job_builders
+    Dispatcher : courier.interfaces.module_based.dispatchers
 
     Methods
     -------
