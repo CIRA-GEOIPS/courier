@@ -1,4 +1,4 @@
-"""Comprehensive unit tests for lazylemon.utils.logging module.
+"""Comprehensive unit tests for courier.utils.logging module.
 
 This module provides pytest unit tests for the logging utility functions and classes.
 Tests coverlogging setup, context adaptation, Loki integration (with mocking),
@@ -28,10 +28,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lazylemon.config import ServiceConfig  # For mocking in fixtures
-from lazylemon.utils.logging import \
+from courier.config import ServiceConfig  # For mocking in fixtures
+from courier.utils.logging import \
     setup_logging  # Monkey-patched method on Logger
-from lazylemon.utils.logging import (TRACE_LEVEL, ContextAdapter,
+from courier.utils.logging import (TRACE_LEVEL, ContextAdapter,
                                          _create_loki_handler, get_logger)
 
 
@@ -219,7 +219,7 @@ class TestContextAdapter:
 class TestCreateLokiHandler:
     """Test suite for _create_loki_handler function."""
 
-    @patch("lazylemon.utils.logging.logging_loki")
+    @patch("courier.utils.logging.logging_loki")
     def test_create_loki_handler_success(self, mock_logging_loki: MagicMock) -> None:
         """Test successful Loki handler creation.
 
@@ -263,13 +263,13 @@ class TestCreateLokiHandler:
             If result is not None or warning not logged.
         """
         # Simulate import error by patching the module-level binding directly
-        with patch("lazylemon.utils.logging.logging_loki", None):
+        with patch("courier.utils.logging.logging_loki", None):
             result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
 
             assert not result
             assert "python-logging-loki not installed" in caplog.text
 
-    @patch("lazylemon.utils.logging.logging_loki")
+    @patch("courier.utils.logging.logging_loki")
     def test_create_loki_handler_connection_error(self, mock_logging_loki: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
         """Test Loki handler creation fails due to connection error.
 
@@ -289,7 +289,7 @@ class TestCreateLokiHandler:
         AssertionError
             If result is not None or warning not logged.
         """
-        mock_logging_loki.LokiHandler.side_effect = Exception("Connection error")
+        mock_logging_loki.LokiHandler.side_effect = ValueError("Unexpected Loki init error")
 
         result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
 
@@ -343,7 +343,7 @@ class TestGetLogger:
         assert isinstance(logger, ContextAdapter)
         assert logger.extra == expected_extra
 
-    @patch("lazylemon.utils.logging._create_loki_handler")
+    @patch("courier.utils.logging._create_loki_handler")
     def test_get_logger_with_loki_enabled(self, mock_create_handler: MagicMock, sample_service_config: ServiceConfig) -> None:
         """Test get_logger adds Loki handler when enabled.
 

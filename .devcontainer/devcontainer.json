@@ -2,17 +2,17 @@
 // For config options, see the devcontainers
 // README at: https://github.com/devcontainers/templates/tree/main/src/python
 {
-	"name": "lazylemon Devcontainer",
+	"name": "courier Devcontainer",
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye", // in the future can use geoips image
-	"postCreateCommand": "pip install -e .[doc,lint,test] && geoips config create-reg -n lazylemon.dev.plugin_packages",
+	"postCreateCommand": "pip install -e .[doc,lint,test] && geoips config create-reg -n runcourier.dev.plugin_packages",
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],
 	"containerEnv": {"GEOIPS_OUTDIRS": "/geoips_outdir", "GEOIPS_REBUILD_REGISTRIES": "0"}, // Disabling Aut-Rebuild as it erases non geoips namespaces (this is a bug, issue )
 	"runArgs": [
-		"--network=lazylemon_testing"
+		"--network=courier_testing"
 	],
-	"initializeCommand": "docker network create lazylemon_testing 2>/dev/null || true",
+	"initializeCommand": "docker network create courier_testing 2>/dev/null || true",
 	"customizations": {
 		"vscode": {
 			"extensions": [

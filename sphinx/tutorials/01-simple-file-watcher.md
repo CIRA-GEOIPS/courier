@@ -67,7 +67,7 @@ OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc
 Create `watcher.yaml`:
 
 ```
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: tutorial-01-file-watcher
@@ -172,7 +172,7 @@ The `{file}` template variable is replaced with the actual file path.
 Before running, validate the configuration:
 
 ```
-lazylemon validate watcher.yaml
+courier validate watcher.yaml
 ```
 
 Expected output:
@@ -188,7 +188,7 @@ If you see errors, check your YAML syntax and indentation.
 Start the service in the foreground:
 
 ```
-lazylemon run watcher.yaml
+courier run watcher.yaml
 ```
 
 You should see startup logs:
@@ -337,7 +337,7 @@ Stop the service gracefully with `Ctrl+C`:
 
 - Check filename matches GOES-18 pattern
 - View available metadata configs:
-  `from lazylemon.interfaces import data_monitor_configs; print(data_monitor_configs.plugins)`
+  `from courier.interfaces import data_monitor_configs; print(data_monitor_configs.plugins)`
 - See :doc:`../user-guide/metadata-matching` for pattern details
 
 **RabbitMQ connection failed:**
@@ -376,4 +376,4 @@ processing pipeline flows
 The complete configuration is available in the tutorial repository:
 
 \`tutorial01-file-watcher/watcher.yaml
-\](<https://github.com/biosafetylvl5/lazylemon/tree/main/examples/tutorials/01-file-watcher>)
+\](<https://github.com/biosafetylvl5/courier/tree/main/examples/tutorials/01-file-watcher>)

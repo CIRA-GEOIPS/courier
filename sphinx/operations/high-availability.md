@@ -106,10 +106,10 @@ files. The same last-write-wins merge applies at load time.
 State sync requires:
 
 - **Redis 4.0+** (pub/sub and `SET NX EX` are used)
-- The `lazylemon[ha]` package extra:
+- The `courier[ha]` package extra:
 
 ```bash
-pip install lazylemon[ha]
+pip install courier[ha]
 ```
 
 This installs the `redis` Python package. If `state_sync` is configured but
@@ -131,7 +131,7 @@ Add a `state_sync` block to the job builder's `config` section:
         db: 1                     # Default: 0.  Redis database index.
         password: "${REDIS_PASS}" # Default: null (no auth).
         ssl: false                # Default: false.
-        channel_prefix: lazylemon # Default: "lazylemon".
+        channel_prefix: courier # Default: "courier".
 ```
 
 ### Field Reference
@@ -143,7 +143,7 @@ Add a `state_sync` block to the job builder's `config` section:
 | `db`             | integer | No       | `0`           | Redis database index (>= 0).               |
 | `password`       | string  | No       | `null`        | AUTH password. `null` or empty skips auth. |
 | `ssl`            | boolean | No       | `false`       | Use TLS (`rediss://`).                     |
-| `channel_prefix` | string  | No       | `"lazylemon"` | Key prefix for multi-tenant isolation.     |
+| `channel_prefix` | string  | No       | `"courier"`   | Key prefix for multi-tenant isolation.     |
 
 ```{note}
 State-sync Redis is **always a separate connection** from the message broker
@@ -172,7 +172,7 @@ Two-instance active-active deployment watching the same ingest directory:
 **`goes18-ha.yaml`** (identical on both hosts):
 
 ```yaml
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: goes18-ha
@@ -219,7 +219,7 @@ spec:
 Start both instances (on different hosts or in different containers):
 
 ```bash
-lazylemon run goes18-ha.yaml
+courier run goes18-ha.yaml
 ```
 
 Both instances will:
@@ -250,32 +250,32 @@ duplicate dispatches until Redis is restored.
 
 Three Prometheus metrics are exported when state sync is active:
 
-| Metric                                   | Type    | Labels                   | Description                                                                                                 |
-| ---------------------------------------- | ------- | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `lazylemon_state_sync_pushes_total`      | Counter | `builder_name`, `event`  | Job state pushes sent to Redis. `event` is `job_updated` or `job_deleted`.                                  |
-| `lazylemon_state_sync_applies_total`     | Counter | `builder_name`           | Remote job state updates merged into local state.                                                           |
-| `lazylemon_state_sync_emit_claims_total` | Counter | `builder_name`, `result` | Emit claim attempts. `result` is `acquired` (this instance dispatches) or `skipped` (peer already claimed). |
+| Metric                                 | Type    | Labels                   | Description                                                                                                 |
+| -------------------------------------- | ------- | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `courier_state_sync_pushes_total`      | Counter | `builder_name`, `event`  | Job state pushes sent to Redis. `event` is `job_updated` or `job_deleted`.                                  |
+| `courier_state_sync_applies_total`     | Counter | `builder_name`           | Remote job state updates merged into local state.                                                           |
+| `courier_state_sync_emit_claims_total` | Counter | `builder_name`, `result` | Emit claim attempts. `result` is `acquired` (this instance dispatches) or `skipped` (peer already claimed). |
 
 ### Useful Queries
 
 **Fraction of jobs this instance dispatched** (vs. skipped to peers):
 
 ```promql
-rate(lazylemon_state_sync_emit_claims_total{result="acquired"}[5m])
+rate(courier_state_sync_emit_claims_total{result="acquired"}[5m])
 /
-rate(lazylemon_state_sync_emit_claims_total[5m])
+rate(courier_state_sync_emit_claims_total[5m])
 ```
 
 **Rate of remote state updates received** (peer synchronization activity):
 
 ```promql
-rate(lazylemon_state_sync_applies_total[5m])
+rate(courier_state_sync_applies_total[5m])
 ```
 
 **State pushes by event type**:
 
 ```promql
-rate(lazylemon_state_sync_pushes_total[5m])
+rate(courier_state_sync_pushes_total[5m])
 ```
 
 A healthy active-active cluster shows both `acquired` and `skipped` results

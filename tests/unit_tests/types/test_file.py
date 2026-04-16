@@ -1,4 +1,4 @@
-"""Unit tests for src/lazylemon/types/file.py"""
+"""Unit tests for src/courier/types/file.py"""
 
 import json
 import re
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from lazylemon.types.file import (
+from courier.types.file import (
     File,
     FrozenFile,
     build_timestamp_from_components,

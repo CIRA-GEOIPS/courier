@@ -21,7 +21,7 @@ pip install -e .[grafana]
 ## Generate
 
 ```bash
-python examples/grafana/lazylemon_dashboard.py > dashboard.json
+python examples/grafana/courier_dashboard.py > dashboard.json
 ```
 
 ## Import into Grafana

@@ -4,6 +4,7 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - runcourier
   - APIVERSION
   - grafanalib
   - rediss
@@ -84,7 +85,7 @@ words:
   - viewcode
   - xarray
   - yday
-  - lazylemon
+  - courier
   - geolocated
 ignoreWords:
   - includehidden

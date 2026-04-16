@@ -18,14 +18,14 @@ from typing import Any
 import prometheus_client
 import pytest
 
-from lazylemon.config import ServiceConfig
-from lazylemon.plugins.modules.data_monitors.cron_glob import CronGlob
-from lazylemon.plugins.modules.data_monitors.file_system_poller_watchdog import (
+from courier.config import ServiceConfig
+from courier.plugins.modules.data_monitors.cron_glob import CronGlob
+from courier.plugins.modules.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
 )
-from lazylemon.plugins.modules.dispatchers.serial_bash import SerialBashDispatcher
-from lazylemon.plugins.modules.job_builders.dummy_job_builder import DummyJobBuilder
-from lazylemon.service import Service
+from courier.plugins.modules.dispatchers.serial_bash import SerialBashDispatcher
+from courier.plugins.modules.job_builders.dummy_job_builder import DummyJobBuilder
+from courier.service import Service
 
 # ---------------------------------------------------------------------------
 # Helpers
