@@ -33,7 +33,7 @@ redis = { version = ">=4.0", optional = true }  # Required for HA state sync
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
-geoips = "^1.16.1"
+geoips = "1.17.2"
 prometheus-client = "*"
 pydantic = "*"
 kombu = "*"
