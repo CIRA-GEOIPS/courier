@@ -8,7 +8,7 @@ from typing import Any
 
 from courier.config import ServiceConfig
 from courier.constants import PluginRunState
-from courier.errors import GeoIPSDriverError
+from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.managers.base import ServiceManager
 from courier.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
@@ -167,7 +167,7 @@ class PluginManager(ServiceManager):
                 ):
                     time.sleep(1)
 
-            except GeoIPSDriverError as e:
+            except CourierError as e:
                 plugin_info.state = PluginRunState.FAILED
                 plugin_info.error_message = str(e)
                 self._logger.exception(f"Plugin {plugin_info.plugin.name} failed")
@@ -206,7 +206,7 @@ class PluginManager(ServiceManager):
                 ).set(plugin_info.state.value)
 
                 self._logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
-            except GeoIPSDriverError as e:
+            except CourierError as e:
                 self._logger.warning(
                     f"Error stopping plugin {plugin_info.plugin.name}: {e}",
                 )
@@ -248,7 +248,7 @@ class PluginManager(ServiceManager):
                                         plugin_info.state = PluginRunState.FAILED
                                         self._handle_failed_plugin(plugin_info)
 
-                    except GeoIPSDriverError:
+                    except CourierError:
                         self._logger.exception(f"Error monitoring plugin {plugin_name}")
 
             time.sleep(1)

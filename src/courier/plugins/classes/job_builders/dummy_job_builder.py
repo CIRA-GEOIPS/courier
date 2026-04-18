@@ -1,18 +1,20 @@
 """Dummy job builder module for testing and demonstration purposes."""
 
+from __future__ import annotations
+
 import logging
+import types
+from typing import TYPE_CHECKING, ClassVar
 
 from courier.interfaces.module_based.job_builders import JobBuilder
-from courier.service import Service
-from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
+
+if TYPE_CHECKING:
+    from courier.service import Service
+    from courier.types.file import File, FrozenFile
 
 # Module-level logger for DummyJob class (which doesn't inherit from ServicePlugin)
 _module_logger = logging.getLogger(__name__)
-
-interface: str = "job_builders"
-family: str = "standard"
-name: str = "dummy_job_builder"
 
 
 class DummyJob(Job):
@@ -130,10 +132,16 @@ class DummyJobBuilder(JobBuilder):
         List containing the dummy job group.
     """
 
-    name: str = "DummyJobBuilder"
-    version: str = "-1"
+    interface: ClassVar[str] = "job_builders"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "DummyJobBuilder"
+    version: ClassVar[str] = "-1"
 
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
         """Initialize the DummyJobBuilder.
 
         Parameters
@@ -144,8 +152,10 @@ class DummyJobBuilder(JobBuilder):
             Configuration dictionary for the builder.
         """
         super().__init__(service, config)
+        if service is None or isinstance(service, types.ModuleType):
+            return
         self._logger.debug(f"Initializing DummyJobBuilder with config {config}")
-        self.config = config
+        self.config = config or {}
         self.job_groups = [DummyJobGroup(self.config)]
 
     def is_healthy(self) -> bool:
@@ -172,6 +182,4 @@ class DummyJobBuilder(JobBuilder):
         return super().handle_incoming_files()
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
+PLUGIN_CLASS = DummyJobBuilder

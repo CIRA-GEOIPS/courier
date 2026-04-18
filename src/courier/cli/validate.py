@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 
 from courier.cli.config_loader import load_config
-from courier.errors import GeoIPSDriverError
+from courier.errors import CourierError
 
 
 def validate(config_file: Path) -> None:
@@ -17,6 +17,6 @@ def validate(config_file: Path) -> None:
     try:
         load_config(config_file)
         typer.echo("Config valid")
-    except (GeoIPSDriverError, ValueError, OSError) as e:
+    except (CourierError, ValueError, OSError) as e:
         typer.echo(f"Invalid config: {e}")
         raise typer.Exit(1) from e

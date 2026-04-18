@@ -1,13 +1,16 @@
 """Python class for the dispatchers courier interface."""
 
+from __future__ import annotations
+
 import threading
 import time
-from typing import Any, ClassVar
+import types
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import DISPATCHER_QUEUE, JOB_READY_QUEUE, PluginRunState
-from courier.errors import GeoIPSDriverError
+from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
@@ -17,25 +20,36 @@ from courier.metrics import (
     DISPATCHER_QUEUE_WAIT_DURATION,
     collect_labeled,
 )
-from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
+if TYPE_CHECKING:
+    from courier.service import Service
+
 
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""
 
-    name = "dispatcher"
+    interface: ClassVar[str] = "dispatchers"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "dispatcher"
 
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
+        # pluginify registration path: instantiated with only a module (or nothing).
+        if service is None or isinstance(service, types.ModuleType):
+            return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.queue = DISPATCHER_QUEUE
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
-        self.config = config
+        self.config = config or {}
 
         self._jobs_processed = DISPATCHER_JOBS_PROCESSED
         self._job_execution_duration = DISPATCHER_JOB_EXECUTION_DURATION
@@ -43,6 +57,10 @@ class Dispatcher(ServicePlugin):
         self._execution_logs_emitted = DISPATCHER_EXECUTION_LOGS_EMITTED
         self._queue_wait_duration = DISPATCHER_QUEUE_WAIT_DURATION
         self.active_job_timestamps = {}  # type: dict[str, float]
+
+    def call(self) -> None:
+        """Plugins are driven by start()/stop(); call() is not used at runtime."""
+        raise NotImplementedError("Dispatcher plugins are invoked via start().")
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
@@ -82,7 +100,7 @@ class Dispatcher(ServicePlugin):
                         dispatcher_name=self.name,
                     ).inc()
 
-                except GeoIPSDriverError:
+                except CourierError:
                     self._logger.exception(f"Error processing job {job_id}")
                     self._jobs_processed.labels(
                         status="failure",
@@ -148,20 +166,15 @@ class Dispatcher(ServicePlugin):
         }
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
-
-
-class DispatcherInterface(BaseModuleInterface):
-    """Interface for creating GeoIPS formatted titles."""
+class DispatcherInterface(BaseClassInterface):
+    """Interface for courier dispatcher plugins."""
 
     name: ClassVar[str] = "dispatchers"
+    plugin_class: ClassVar[type] = Dispatcher
     required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # ignoring odd capitalization to match existing code style in GeoIPS
-    # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
+    # ignoring odd capitalization to match Kubernetes apiVersion conventions
+    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
 
 
 dispatchers = DispatcherInterface()

@@ -1,32 +1,43 @@
-"""File System Polling Data Monitor Plugin for GeoIPS Driver."""
+"""File System Polling Data Monitor Plugin for courier."""
+
+from __future__ import annotations
 
 import queue
-from collections.abc import Generator
+import types
 from pathlib import Path
+from typing import TYPE_CHECKING, ClassVar
 
 from prometheus_client import Gauge
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from courier.service import Service
 from courier.types.file import File
 
-interface: str = "data_monitors"
-family: str = "standard"
-name: str = "file_system_poller_watchdog"
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from courier.service import Service
 
 
 class FileSystemPoller(DataMonitorBasePlugin):
     """File System Polling Data Monitor Plugin."""
 
-    name = "file_system_poller_watchdog"
-    version = "0.0.0"
+    interface: ClassVar[str] = "data_monitors"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "file_system_poller_watchdog"
+    version: ClassVar[str] = "0.0.0"
 
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
         super().__init__(service, config)
+        if service is None or isinstance(service, types.ModuleType):
+            return
         self.health = False
-        self.path_to_watch = config["path"]
+        self.path_to_watch = (config or {})["path"]
         # Gauge that stores the Unix timestamp of last processing
         # more as a demonstration than for actual use here
         self.last_file_processed_timestamp = Gauge(
@@ -88,6 +99,4 @@ class FileSystemPoller(DataMonitorBasePlugin):
             observer.join()
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
+PLUGIN_CLASS = FileSystemPoller

@@ -1,30 +1,39 @@
-"""Serial Bash Dispatcher Plugin for Lazy Lemon."""
+"""Serial Bash Dispatcher Plugin for courier."""
+
+from __future__ import annotations
 
 import socket
 import subprocess
 import tempfile
+import types
 from pathlib import Path
+from typing import TYPE_CHECKING, ClassVar
 
 from courier.interfaces.module_based.dispatchers import Dispatcher
-from courier.service import Service
 from courier.types.execution_log import ExecutionLog
-from courier.types.job import Job
 
-interface: str = "dispatchers"
-family: str = "standard"
-name = "serial_bash"
+if TYPE_CHECKING:
+    from courier.service import Service
+    from courier.types.job import Job
 
 
 class SerialBashDispatcher(Dispatcher):
     """Serial Bash Dispatcher Plugin."""
 
-    interface = "dispatchers"
+    interface: ClassVar[str] = "dispatchers"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "serial_bash"
+    version: ClassVar[str] = "-1"
 
-    name = "serial_bash"
-    version = "-1"
-
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
         super().__init__(service, config)
+        if service is None or isinstance(service, types.ModuleType):
+            return
+        config = config or {}
         self.config = config
         self.bash_script = config["bash_script"]
         self._logger.debug(
@@ -40,7 +49,7 @@ class SerialBashDispatcher(Dispatcher):
 
         Returns
         -------
-            The log results of executing a GeoIPS processing workflow. Returns as a
+            The log results of executing a processing workflow. Returns as a
             list of ExecutionLog objects.
         """
         self._logger.info(f"Executing job: {job}")
@@ -106,6 +115,4 @@ class SerialBashDispatcher(Dispatcher):
                 self._logger.warning(f"Failed to delete temporary script file: {e}")
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
+PLUGIN_CLASS = SerialBashDispatcher

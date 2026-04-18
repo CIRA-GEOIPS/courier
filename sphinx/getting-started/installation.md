@@ -15,7 +15,6 @@ This guide covers installing Lazy Lemon in different environments.
 
 Lazy Lemon depends on:
 
-- GeoIPS >= 1.16.1
 - RabbitMQ (pika)
 - Prometheus client
 - Pydantic for configuration validation

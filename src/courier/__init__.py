@@ -1,4 +1,4 @@
-"""Template repository demonstrating a basic GeoIPS plugin example."""
+"""Courier — plugin-based orchestration framework for data pipelines."""
 
 # NOTE: _version.py is generated automatically during build/install
 

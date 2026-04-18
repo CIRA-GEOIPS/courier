@@ -1,18 +1,20 @@
 """Job builder module that uses metadata filters, file count and groupings by time."""
 
+from __future__ import annotations
+
 import logging
+import types
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, ClassVar
 
 from courier.interfaces.module_based.job_builders import JobBuilder
-from courier.service import Service
-from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
 
-_module_logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from courier.service import Service
+    from courier.types.file import File, FrozenFile
 
-interface: str = "job_builders"
-family: str = "standard"
-name: str = "filter_and_group"
+_module_logger = logging.getLogger(__name__)
 
 
 def create_job(
@@ -178,10 +180,16 @@ class FilterAndGroupJobBuilder(JobBuilder):
         List containing the dummy job group.
     """
 
-    name: str = "filter_pass"
-    version: str = "1"
+    interface: ClassVar[str] = "job_builders"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "filter_pass"
+    version: ClassVar[str] = "1"
 
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
         """Initialize the DummyJobBuilder.
 
         Parameters
@@ -192,10 +200,12 @@ class FilterAndGroupJobBuilder(JobBuilder):
             Configuration dictionary for the builder.
         """
         super().__init__(service, config)
+        if service is None or isinstance(service, types.ModuleType):
+            return
         self._logger.debug(
             f"Initializing FilterAndGroupJobBuilder with config {config}",
         )
-        self.config = config
+        self.config = config or {}
         self.job_groups = [FilterAndGroupJobGroup(self.config)]
 
     def is_healthy(self) -> bool:
@@ -222,6 +232,4 @@ class FilterAndGroupJobBuilder(JobBuilder):
         return super().handle_incoming_files()
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
+PLUGIN_CLASS = FilterAndGroupJobBuilder

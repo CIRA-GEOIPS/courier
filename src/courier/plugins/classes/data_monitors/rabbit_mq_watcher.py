@@ -1,33 +1,29 @@
 """Watches a RabbitMQ queue for new messages and yields them as files."""
 
+from __future__ import annotations
+
 import json
 import queue
 import re
 import threading
 import time
-from collections.abc import Callable, Generator
+import types
 from contextlib import suppress
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import kombu  # type: ignore[import-untyped]
 from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
-from prometheus_client import Gauge
 
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
-from courier.service import Service
+from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 from courier.types.file import File
 
-LAST_FILE_EMITTED_TIMESTAMP = Gauge(
-    "courier_rabbitmq_last_file_emitted_timestamp_seconds",
-    "Unix timestamp when the last file was processed",
-    labelnames=["queue"],
-)
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
 
-interface: str = "data_monitors"
-family: str = "standard"
-name: str = "rabbit_mq_watcher"
+    from courier.service import Service
 
 # Registry mapping a format name to a callable (raw_location: str) -> (hostname, path)
 _LOCATION_PARSERS: dict[str, Any] = {}
@@ -184,11 +180,20 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     """
 
     # Class-level name used by the plugin registry
-    name = "rabbit_mq_watcher"
-    version = "1.0.0"
+    interface: ClassVar[str] = "data_monitors"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "rabbit_mq_watcher"
+    version: ClassVar[str] = "1.0.0"
 
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
         super().__init__(service, config)
+        if service is None or isinstance(service, types.ModuleType):
+            return
+        config = config or {}
         self.health = False
 
         self.rabbitmq_host: str = config.get("rabbitmq_host", "localhost")
@@ -227,7 +232,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self.timestamp_field: str | None = config.get("timestamp_field")
         self.timestamp_format: str | None = config.get("timestamp_format")
 
-        self.last_file_processed_timestamp = LAST_FILE_EMITTED_TIMESTAMP
+        self.last_file_processed_timestamp = RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 
         # Queue used to surface listener thread errors back to the generator
         self._error_queue: queue.Queue[Exception] = queue.Queue()
@@ -467,10 +472,4 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             self.health = False
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
-
-
-if __name__ == "__main__":
-    call()
+PLUGIN_CLASS = RabbitMQWatcher

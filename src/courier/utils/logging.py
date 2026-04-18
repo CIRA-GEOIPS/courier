@@ -1,4 +1,4 @@
-"""Logging infrastructure for GeoIPS Driver with Loki integration.
+"""Logging infrastructure for courier with Loki integration.
 
 This module provides comprehensive logging support with optional Grafana Loki
 integration, custom TRACE logging level, and contextualized loggers for
@@ -190,7 +190,7 @@ def get_logger(
 ) -> ContextAdapter:
     """Create a contextualized logger with optional Loki integration.
 
-    This function is the primary logging factory for the GeoIPS Driver system.
+    This function is the primary logging factory for the courier system.
     It creates loggers that automatically prepend source identification to
     all messages and optionally ship logs to Grafana Loki.
 

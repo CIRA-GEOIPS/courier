@@ -1,6 +1,6 @@
 """ServicePlugin protocol — the interface all plugins must implement."""
 
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 
 class ServicePlugin(Protocol):
@@ -43,8 +43,8 @@ class ServicePlugin(Protocol):
         The plugin version.
     """
 
-    name: str
-    version: str = "0.0.0"
+    name: ClassVar[str]
+    version: ClassVar[str] = "0.0.0"
 
     def __init__(self, service: Any, config: dict[str, Any]) -> None:
         """Initialize plugin with service reference and configuration.

@@ -2,7 +2,7 @@
 
 raise NotImplementedError(
     "courier.plugin_interface is not yet implemented. "
-    "Plugin discovery currently relies on the GeoIPS interface system. "
-    "This package will provide a RegistryManager and adapters for GeoIPS "
-    "and Pluginify plugin registries.",
+    "Plugin discovery currently relies on pluginify. "
+    "This package will provide a RegistryManager and adapter for the "
+    "pluginify plugin registry.",
 )

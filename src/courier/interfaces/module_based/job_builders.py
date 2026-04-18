@@ -5,9 +5,10 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
+import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE, PluginRunState
 from courier.errors import InvalidPluginConfigError
@@ -31,7 +32,7 @@ if TYPE_CHECKING:
     from courier.types.job import Job, JobGroup
 
 
-class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
+class JobBuilder(ServicePlugin):
     """Base data filter plugin.
 
     Optional HA state synchronization
@@ -56,9 +57,18 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
     ``state_sync`` key → no Redis dependency at runtime).
     """
 
-    name = "JobBuilder"
+    interface: ClassVar[str] = "job_builders"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "JobBuilder"
 
-    def __init__(self, service: Service, config: dict) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
+        # pluginify registration path: instantiated with only a module (or nothing).
+        if service is None or isinstance(service, types.ModuleType):
+            return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.queue = JOB_READY_QUEUE
@@ -69,8 +79,8 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         # state_sync is enabled. Populated in start() after subclasses set
         # up job_groups. Empty dict = no locking (sync disabled).
         self._group_locks: dict[str, threading.Lock] = {}
-        self.config = config
-        self._sync: JobBuilderStateSync | None = self._init_sync(config, service)
+        self.config = config or {}
+        self._sync: JobBuilderStateSync | None = self._init_sync(self.config, service)
 
         self._files_received = JOB_BUILDER_FILES_RECEIVED
         self._jobs_built = JOB_BUILDER_JOBS_BUILT
@@ -78,6 +88,10 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         self._jobs_discarded = JOB_BUILDER_JOBS_DISCARDED
         self._file_processing_duration = JOB_BUILDER_FILE_PROCESSING_DURATION
         self._files_per_job = JOB_BUILDER_FILES_PER_JOB
+
+    def call(self) -> None:
+        """Plugins are driven by start()/stop(); call() is not used at runtime."""
+        raise NotImplementedError("Job builder plugins are invoked via start().")
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -333,20 +347,15 @@ class JobBuilder(ServicePlugin):  # , GeoIPSPlugin):
         )
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
-
-
-class JobBuilderInterface(BaseModuleInterface):
-    """Interface for creating GeoIPS formatted titles."""
+class JobBuilderInterface(BaseClassInterface):
+    """Interface for courier job builder plugins."""
 
     name: ClassVar[str] = "job_builders"
+    plugin_class: ClassVar[type] = JobBuilder
     required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # ignoring odd capitalization to match existing code style in GeoIPS
-    # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
+    # ignoring odd capitalization to match Kubernetes apiVersion conventions
+    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
 
 
 job_builders = JobBuilderInterface()

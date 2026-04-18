@@ -1,42 +1,63 @@
 """Python class for the data_monitors courier interface."""
 
-import threading
-from collections.abc import Generator
-from typing import Any, ClassVar
+from __future__ import annotations
 
-from geoips.interfaces.base import BaseModuleInterface  # type: ignore[import-untyped]
+import threading
+import types
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_QUEUE, PluginRunState
-from courier.errors import GeoIPSDriverError
+from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
 from courier.schema import DataMonitorConfig
-from courier.service import Service
 from courier.types.file import File
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
-from courier.utils.metadata import apply_metadata_from_configs
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from courier.service import Service
 
 
 class DataMonitorBasePlugin(ServicePlugin):
     """Base data monitor plugin."""
 
-    def __init__(self, service: Service, config: dict) -> None:
+    interface: ClassVar[str] = "data_monitors"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "data_monitor_base"
+
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
+        # pluginify registration path: instantiated with only a module (or nothing).
+        # Skip runtime setup; metadata collection reads class attributes directly.
+        if service is None or isinstance(service, types.ModuleType):
+            return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.queue = FILE_FOUND_QUEUE
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
-        self.config = config
+        self.config = config or {}
         # importing here to prevent circular import
         from courier.interfaces import data_monitor_configs  # noqa: PLC0415
 
         self.metadata_matchers = [
             DataMonitorConfig(**data_monitor_configs.get_plugin(tool))
-            for tool in config.get("metadata-tools", [])
+            for tool in self.config.get("metadata-tools", [])
         ]
 
         self._files_processed = DATA_MONITOR_FILES_PROCESSED
+
+    def call(self) -> None:
+        """Plugins are driven by start()/stop(); call() is not used at runtime."""
+        raise NotImplementedError("Data monitor plugins are invoked via start().")
 
     def find_file(self) -> Generator[File, None, None]:
         """Yield File objects."""
@@ -49,6 +70,8 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def add_metadata_to_file(self, file: File) -> File:
         """Add metadata to file before emitting."""
+        from courier.utils.metadata import apply_metadata_from_configs  # noqa: PLC0415
+
         return apply_metadata_from_configs(
             file_obj=file,
             configs=self.metadata_matchers,
@@ -66,7 +89,7 @@ class DataMonitorBasePlugin(ServicePlugin):
                     monitor_name=self.name,
                     status="success",
                 ).inc()
-            except GeoIPSDriverError:
+            except CourierError:
                 self._files_processed.labels(
                     monitor_name=self.name,
                     status="failure",
@@ -107,20 +130,15 @@ class DataMonitorBasePlugin(ServicePlugin):
         )
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
-
-
-class DataMonitorInterface(BaseModuleInterface):
-    """Interface for creating GeoIPS formatted titles."""
+class DataMonitorInterface(BaseClassInterface):
+    """Interface for courier data monitor plugins."""
 
     name: ClassVar[str] = "data_monitors"
+    plugin_class: ClassVar[type] = DataMonitorBasePlugin
     required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
     required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # ignoring odd capitalization to match existing code style in GeoIPS
-    # which itself is matching Kubernetes conventions
-    apiVersion: ClassVar[str] = "courier.dev/v1alpha1"  # noqa: N815
+    # ignoring odd capitalization to match Kubernetes apiVersion conventions
+    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
 
 
 data_monitors = DataMonitorInterface()

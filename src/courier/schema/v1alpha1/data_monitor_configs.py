@@ -353,7 +353,7 @@ class DataMonitorConfig(BaseModel):
         str,
         Field(
             alias="apiVersion",
-            pattern=r"^courier\.dev/v[0-9]+(alpha[0-9]+|beta[0-9]+)?$",
+            pattern=r"^runcourier\.dev/v[0-9]+(alpha[0-9]+|beta[0-9]+)?$",
         ),
     ]
     interface: Annotated[str, Field(pattern=r"^data_monitor_configs$")]

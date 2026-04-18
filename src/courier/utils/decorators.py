@@ -6,7 +6,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import TypeVar
 
-from courier.errors import GeoIPSDriverError
+from courier.errors import CourierError
 from courier.utils.logging import get_logger
 
 T = TypeVar("T")
@@ -155,7 +155,7 @@ def log_execution(func: Callable[..., T]) -> Callable[..., T]:  # noqa: UP047
             result = func(*args, **kwargs)
             active_logger.debug(f"Successfully executed {func.__name__}")
             return result  # noqa: TRY300
-        except GeoIPSDriverError:
+        except CourierError:
             active_logger.exception(f"Error in {func.__name__}")
             raise
 
