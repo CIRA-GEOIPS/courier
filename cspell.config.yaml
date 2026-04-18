@@ -133,4 +133,24 @@ ignoreWords:
   - genindex
   - usermod
   - pluginify
+  - pycache
+  - geolocation
+  - SLURM
+  - iterdir
+  - xlink
+  - Verdana
+  - Startable
+  - isinstance
+  - sdist
+  - pypi
+  - PYPI
+  - pypa
+  - dataclass
+  - dataclasses
+  - serialisation
+  - frozensets
+  - SPHINXOPTS
+  - SPHINXBUILD
+  - SOURCEDIR
+  - autobuild
 import: []
