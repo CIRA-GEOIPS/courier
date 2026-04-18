@@ -5,12 +5,12 @@ from typing import Any
 
 import typer
 
-import courier.plugins.modules.dispatchers.serial_bash as serial_bash_dispatcher
+import courier.plugins.classes.dispatchers.serial_bash as serial_bash_dispatcher
 from courier.cli.config_loader import load_config
 from courier.config import ServiceConfig
-from courier.plugins.modules.data_monitors import file_system_poller_watchdog
-from courier.plugins.modules.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
-from courier.plugins.modules.job_builders import dummy_job_builder
+from courier.plugins.classes.data_monitors import file_system_poller_watchdog
+from courier.plugins.classes.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
+from courier.plugins.classes.job_builders import dummy_job_builder
 from courier.service import create_service_with_plugins
 
 AVAILABLE_PLUGINS = {

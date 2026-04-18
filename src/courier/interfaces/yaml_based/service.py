@@ -1,15 +1,15 @@
 """Python class for the service courier interface."""
 
-from geoips.interfaces.base import BaseYamlInterface  # type: ignore
+from pluginify.interfaces.base import BaseYamlInterface
 
 from courier.schema import ServiceConfigModel
 
 
 class ServiceConfigInterface(BaseYamlInterface):
-    """Configuration protocol for controlling GeoIPS NRT processing."""
+    """Configuration protocol for controlling courier NRT processing."""
 
     name = "service"
-    apiVersion = "courier.dev/v1alpha1"  # noqa: N815
+    apiVersion = "runcourier.dev/v1alpha1"  # noqa: N815
     validator = ServiceConfigModel
 
 

@@ -38,6 +38,12 @@ DATA_MONITOR_SCAN_DURATION: Histogram = Histogram(
     buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
 )
 
+RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP: Gauge = Gauge(
+    "courier_rabbitmq_last_file_emitted_timestamp_seconds",
+    "Unix timestamp when the last file was processed by the RabbitMQ watcher",
+    ["queue"],
+)
+
 # ---------------------------------------------------------------------------
 # Job builder metrics
 # ---------------------------------------------------------------------------

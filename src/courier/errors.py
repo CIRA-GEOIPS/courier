@@ -1,7 +1,7 @@
-"""GeoIPSDriverError hierarchy — all package exceptions defined here."""
+"""CourierError hierarchy — all package exceptions defined here."""
 
 
-class GeoIPSDriverError(Exception):
+class CourierError(Exception):
     """Base exception for all courier errors."""
 
 
@@ -10,7 +10,7 @@ class GeoIPSDriverError(Exception):
 # ---------------------------------------------------------------------------
 
 
-class ConfigurationError(GeoIPSDriverError):
+class ConfigurationError(CourierError):
     """Raised for invalid or missing configuration."""
 
 
@@ -27,7 +27,7 @@ class MissingEnvironmentVariableError(ConfigurationError):
 # ---------------------------------------------------------------------------
 
 
-class PipelineError(GeoIPSDriverError):
+class PipelineError(CourierError):
     """Raised for errors during pipeline execution."""
 
 
@@ -159,7 +159,7 @@ class InvalidTransitionError(PluginError):
 # ---------------------------------------------------------------------------
 
 
-class StateSyncError(GeoIPSDriverError):
+class StateSyncError(CourierError):
     """Base class for HA state synchronization errors."""
 
 

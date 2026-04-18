@@ -27,13 +27,13 @@ include = [
 ]
 
 [tool.poetry.dependencies] # must download to run
-python = ">=3.11,<3.14" # dependencies - namely geoips do not support python 3.14
+python = ">=3.11,<3.14"
 rich = "*"
 redis = { version = ">=4.0", optional = true }  # Required for HA state sync
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
-geoips = "1.16.1"
+pluginify = { path = "pluginify", develop = true }
 prometheus-client = "*"
 pydantic = "*"
 kombu = "*"
@@ -143,6 +143,10 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = "croniter.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pluginify.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

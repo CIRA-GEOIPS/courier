@@ -137,7 +137,7 @@ class MicroserviceModel(FrozenModel):
 
 
 class ServiceSpecModel(FrozenModel):
-    """The `spec` section of a GeoIPS service configuration."""
+    """The `spec` section of a courier service configuration."""
 
     heartbeat_interval: int = Field(
         default=30,
@@ -164,7 +164,7 @@ class ServiceSpecModel(FrozenModel):
 
 
 class ServiceConfigModel(FrozenModel):
-    """Top-level validation model for GeoIPS service configuration files."""
+    """Top-level validation model for courier service configuration files."""
 
     apiVersion: str = Field(..., description="API version of the service document.")  # noqa: N815
     kind: str = Field(..., description="Resource kind; expected to be 'Service'.")

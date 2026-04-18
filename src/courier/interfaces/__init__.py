@@ -22,9 +22,7 @@ yaml_based_interfaces: list[str] = [
 ]
 # Note due to the fact that we are including all of the imported packages
 # in __all__ via variables rather than the actual strings, flake8 does
-# not recognize the above imports as being used.  F401 ignored via
-# per-file ignore in geoips/.config/flake8 config.  See comment above
-# for more information.
+# not recognize the above imports as being used.
 # No QA this line because many linters will complain about
 # this not "only" containing strings
 __all__ = (  # noqa: PLE0605 # type: ignore

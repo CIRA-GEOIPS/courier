@@ -37,13 +37,15 @@ Tradeoffs
   not re-emitted. A ``track_mtime`` option could be added later.
 """
 
+from __future__ import annotations
+
 import threading
 import time
+import types
 from collections import OrderedDict
-from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from croniter import croniter
 from pydantic import BaseModel, field_validator
@@ -53,12 +55,12 @@ from courier.metrics import (
     DATA_MONITOR_LAST_SCAN_TIMESTAMP,
     DATA_MONITOR_SCAN_DURATION,
 )
-from courier.service import Service
 from courier.types.file import File
 
-interface: str = "data_monitors"
-family: str = "standard"
-name: str = "cron_glob"
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from courier.service import Service
 
 
 class CronGlobConfig(BaseModel, frozen=True):
@@ -110,12 +112,20 @@ class CronGlob(DataMonitorBasePlugin):
     pipeline.
     """
 
-    name = "cron_glob"
-    version = "0.1.0"
+    interface: ClassVar[str] = "data_monitors"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "cron_glob"
+    version: ClassVar[str] = "0.1.0"
 
-    def __init__(self, service: Service, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(service, config)
-        validated = CronGlobConfig.model_validate(config)
+        if service is None or isinstance(service, types.ModuleType):
+            return
+        validated = CronGlobConfig.model_validate(config or {})
         self.scan_path = Path(validated.path)
         self.glob_pattern = validated.glob_pattern
         self.cron_expression = validated.cron_expression
@@ -236,6 +246,4 @@ class CronGlob(DataMonitorBasePlugin):
         return False
 
 
-def call() -> None:
-    """Raise error if called directly."""
-    raise NotImplementedError("You cannot call this plugin directly.")
+PLUGIN_CLASS = CronGlob
