@@ -1,13 +1,9 @@
 name: CI
-
 on: [push]
-
 permissions:
   contents: read
-
 env:
   COMMITIZEN_START_REV: "9d83e6984277ccbe6c5f6713f65b75a90e7c7e40"
-
 jobs:
   commitizen:
     runs-on: ubuntu-latest

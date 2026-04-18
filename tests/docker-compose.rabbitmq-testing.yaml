@@ -10,9 +10,9 @@ services:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin_test
     networks:
-      - lazylemon_testing
+      - courier_testing
     stdin_open: true
     tty: true
 networks:
-  lazylemon_testing:
+  courier_testing:
     external: true

@@ -8,11 +8,11 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from lazylemon.plugins.modules.data_monitors.cron_glob import (
+from courier.plugins.classes.data_monitors.cron_glob import (
     CronGlob,
     CronGlobConfig,
 )
-from lazylemon.types.file import File
+from courier.types.file import File
 
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
@@ -25,6 +25,7 @@ def mock_service() -> MagicMock:
     service._config = MagicMock()
     service._config.log_level = "DEBUG"
     service._config.loki_enabled = False
+    service.config = service._config  # expose public property alias
     return service
 
 

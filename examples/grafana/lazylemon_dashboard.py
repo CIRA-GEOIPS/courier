@@ -8,7 +8,7 @@ provisioning directory.
 
 Usage
 -----
-    python examples/grafana/lazylemon_dashboard.py > dashboard.json
+    python examples/grafana/courier_dashboard.py > dashboard.json
 
 Then import ``dashboard.json`` into Grafana (Dashboards -> Import)
 or copy it into your Grafana provisioning directory.
@@ -51,7 +51,7 @@ from grafanalib.core import (
 # ---------------------------------------------------------------------------
 
 _DS = "$datasource"
-_PREFIX = "lazylemon"
+_PREFIX = "courier"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -888,8 +888,8 @@ def build_dashboard() -> Dashboard:
     return Dashboard(
         title="LazyLemon — Overview",
         description="Comprehensive monitoring dashboard for the LazyLemon service.",
-        uid="lazylemon-overview",
-        tags=["lazylemon", "satellite", "monitoring"],
+        uid="courier-overview",
+        tags=["courier", "satellite", "monitoring"],
         timezone="browser",
         graphTooltip=GRAPH_TOOLTIP_MODE_SHARED_CROSSHAIR,
         refresh="30s",

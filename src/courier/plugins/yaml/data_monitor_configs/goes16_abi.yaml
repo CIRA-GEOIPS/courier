@@ -1,0 +1,36 @@
+apiVersion: runcourier.dev/v1alpha1
+name: goes16_abi
+interface: data_monitor_configs
+family: standard
+description: Information necessary to add metadata to GOES-16 ABI L1B data files.
+docstring: |
+  Information necessary to monitor for GOES16 ABI L1B data files at CIRA.
+spec:
+  file-metadata:
+    goes16_abi_l1b:
+      source: goes16
+      instrument: abi
+      processing_stage: L1B
+      date: '.*s(?P<YYYY>\d{4})(?P<JJJ>\d{3})(?P<HH>\d{2})(?P<NN>\d{2}).*'
+      match:
+        - '.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
+    full-disk:
+      domain: Full-Disk
+      num_expected: 16
+      match:
+        - '.*RadF.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
+    conus:
+      domain: CONUS
+      num_expected: 16
+      match:
+        - '.*RadC.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
+    meso1:
+      domain: Meso1
+      num_expected: 16
+      match:
+        - '.*RadM1.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'
+    meso2:
+      domain: Meso2
+      num_expected: 16
+      match:
+        - '.*RadM2.*M6C[01][1-6].*s\d{4}\d{3}\d{2}\d{2}.*'

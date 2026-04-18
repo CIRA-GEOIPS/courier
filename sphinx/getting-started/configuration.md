@@ -12,7 +12,7 @@ infrastructure. A single file contains:
 1. **Document metadata** -- apiVersion, kind, and a `metadata` block (name, namespace, description)
 1. **Service spec** -- heartbeat, broker, and pipeline steps
 
-Run `lazylemon validate <file>` to check a file before starting the
+Run `courier validate <file>` to check a file before starting the
 service.
 
 ## Minimal Working Example
@@ -21,7 +21,7 @@ No external broker is required to get started. Omit the `broker`
 section entirely and Lazy Lemon uses the in-memory transport:
 
 ```yaml
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: my-service
@@ -63,10 +63,10 @@ To connect to a real broker instead, add connection details. When
 
 The top-level fields identify the configuration document. The
 `apiVersion` must follow the `<group>/v<N>[alphaN|betaN]` format
-(e.g. `lazylemon.dev/v1alpha1`).
+(e.g. `runcourier.dev/v1alpha1`).
 
 ```yaml
-apiVersion: lazylemon.dev/v1alpha1  # Required. CRD-style API version.
+apiVersion: runcourier.dev/v1alpha1  # Required. CRD-style API version.
 kind: Service                      # Required. Must be a non-empty string.
 metadata:
   name: my-service                 # Required. DNS subdomain name (lowercase, digits, hyphens).
@@ -326,7 +326,7 @@ broker:
 The simplest configuration — no external services required:
 
 ```yaml
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: test-pipeline
@@ -356,7 +356,7 @@ spec:
 ### Redis for simple deployments
 
 ```yaml
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: himawari-watcher
@@ -394,7 +394,7 @@ spec:
 ### Production AMQP with TLS
 
 ```yaml
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: goes18-processor
@@ -436,7 +436,7 @@ spec:
 Always validate configuration files before deploying:
 
 ```bash
-lazylemon validate my_service.yaml
+courier validate my_service.yaml
 ```
 
 Common validation errors:

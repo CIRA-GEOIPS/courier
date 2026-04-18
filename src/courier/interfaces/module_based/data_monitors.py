@@ -1,0 +1,144 @@
+"""Python class for the data_monitors courier interface."""
+
+from __future__ import annotations
+
+import threading
+import types
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pluginify.interfaces.base import BaseClassInterface
+
+from courier.constants import FILE_FOUND_QUEUE, PluginRunState
+from courier.errors import CourierError
+from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
+from courier.schema import DataMonitorConfig
+from courier.types.file import File
+from courier.utils.decorators import log_execution
+from courier.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from courier.service import Service
+
+
+class DataMonitorBasePlugin(ServicePlugin):
+    """Base data monitor plugin."""
+
+    interface: ClassVar[str] = "data_monitors"
+    family: ClassVar[str] = "standard"
+    name: ClassVar[str] = "data_monitor_base"
+
+    def __init__(
+        self,
+        service: Service | types.ModuleType | None = None,
+        config: dict | None = None,
+    ) -> None:
+        # pluginify registration path: instantiated with only a module (or nothing).
+        # Skip runtime setup; metadata collection reads class attributes directly.
+        if service is None or isinstance(service, types.ModuleType):
+            return
+        self.parent_service = service
+        self._logger = get_logger("plugin", self.name, service.config)
+        self.queue = FILE_FOUND_QUEUE
+        self._state = PluginRunState.STOPPED
+        self._main_thread: threading.Thread | None = None
+        self.config = config or {}
+        # importing here to prevent circular import
+        from courier.interfaces import data_monitor_configs  # noqa: PLC0415
+
+        self.metadata_matchers = [
+            DataMonitorConfig(**data_monitor_configs.get_plugin(tool))
+            for tool in self.config.get("metadata-tools", [])
+        ]
+
+        self._files_processed = DATA_MONITOR_FILES_PROCESSED
+
+    def call(self) -> None:
+        """Plugins are driven by start()/stop(); call() is not used at runtime."""
+        raise NotImplementedError("Data monitor plugins are invoked via start().")
+
+    def find_file(self) -> Generator[File, None, None]:
+        """Yield File objects."""
+        yield File(file=None, hostname=None)
+
+    def emit(self, file: File) -> None:
+        """Emit file to parent service."""
+        self._logger.debug(f"Emitting file: {file}")
+        self.parent_service.emit(queue=self.queue, message=str(file))
+
+    def add_metadata_to_file(self, file: File) -> File:
+        """Add metadata to file before emitting."""
+        from courier.utils.metadata import apply_metadata_from_configs  # noqa: PLC0415
+
+        return apply_metadata_from_configs(
+            file_obj=file,
+            configs=self.metadata_matchers,
+            require_match=False,
+        )
+
+    def find_and_emit_files(self) -> None:
+        """Find file and put in file queue."""
+        for incoming_file in self.find_file():
+            try:
+                file_with_metadata = self.add_metadata_to_file(incoming_file)
+                self._logger.info(f"Found file: {file_with_metadata}")
+                self.emit(file_with_metadata)
+                self._files_processed.labels(
+                    monitor_name=self.name,
+                    status="success",
+                ).inc()
+            except CourierError:
+                self._files_processed.labels(
+                    monitor_name=self.name,
+                    status="failure",
+                ).inc()
+                self._logger.exception(f"Error processing file {incoming_file}")
+
+    @log_execution
+    def start(self) -> None:
+        """Start main thread."""
+        if self._state == PluginRunState.RUNNING:
+            return
+        self._main_thread = threading.Thread(
+            target=self.find_and_emit_files,
+            name=self.name,
+            daemon=True,
+        )
+        self._state = PluginRunState.RUNNING
+        self._main_thread.start()
+        return
+
+    @log_execution
+    def stop(self) -> None:
+        """Stop main thread."""
+        self._state = PluginRunState.STOPPED
+        if self._main_thread and self._main_thread.is_alive():
+            self._main_thread.join(timeout=5)
+
+    def is_healthy(self) -> bool:
+        """Check if plugin is healthy."""
+        return self._state == PluginRunState.RUNNING
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Return plugin-specific metrics."""
+        return collect_labeled(
+            DATA_MONITOR_FILES_PROCESSED,
+            "monitor_name",
+            self.name,
+        )
+
+
+class DataMonitorInterface(BaseClassInterface):
+    """Interface for courier data monitor plugins."""
+
+    name: ClassVar[str] = "data_monitors"
+    plugin_class: ClassVar[type] = DataMonitorBasePlugin
+    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
+    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
+    # ignoring odd capitalization to match Kubernetes apiVersion conventions
+    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
+
+
+data_monitors = DataMonitorInterface()

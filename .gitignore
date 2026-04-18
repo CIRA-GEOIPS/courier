@@ -1,6 +1,5 @@
 # // cspell: ignore pycache, sdist, htmlcov, nosetests, webassets, Scrapy, scrapy, ipython, pipenv, Pipfile, pypackages, celerybeat, Spyder, spyderproject, spyproject ropeproject, mkdocs, dmypy, ipynb
 
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -48,7 +47,6 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-*.py,cover
 .hypothesis/
 .pytest_cache/
 
@@ -138,7 +136,7 @@ dmypy.json
 Thumbs.db
 
 # Test artifacts
-tests/fake-watch-dir/*
+tests/fake-watch-dir/
 tests/multiprocessing/temp_scripts/
 
 
@@ -146,6 +144,6 @@ __pycache__
 registered_plugins.json
 registered_plugins.yaml
 
-**/fake_files/*
 
 .claude/**/*
+pluginify

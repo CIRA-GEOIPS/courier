@@ -44,7 +44,7 @@ These are Full-Disk (RadF) Level 1B files for channels 1-16.
 Create a file `goes18_watcher.yaml`:
 
 ```
-apiVersion: lazylemon.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: goes18-file-watcher
@@ -105,7 +105,7 @@ Let's break down what each section does:
 **Metadata Section:**
 
 ```
-apiVersion: lazylemon.dev/v1alpha1  # API version (CRD-style group/version)
+apiVersion: runcourier.dev/v1alpha1  # API version (CRD-style group/version)
 kind: Service                       # This is a service configuration
 metadata:
   name: goes18-file-watcher         # DNS subdomain name (lowercase, hyphens)
@@ -153,11 +153,11 @@ Run your service:
 ```
 If using pip installation
 =========================
-lazylemon run goes18_watcher.yaml
+courier run goes18_watcher.yaml
 
 If using poetry
 ===============
-poetry run python -m lazylemon.dummy_cli run goes18_watcher.yaml
+poetry run python -m courier.dummy_cli run goes18_watcher.yaml
 ```
 
 You should see output like:
@@ -277,7 +277,7 @@ you can:
 
 - Check RabbitMQ is running: `docker ps | grep rabbitmq`
 - Verify configuration syntax:
-  `poetry run python -m lazylemon.dummy_cli validate goes18_watcher.yaml`
+  `poetry run python -m courier.dummy_cli validate goes18_watcher.yaml`
 
 **Files not being detected:**
 
@@ -296,4 +296,4 @@ you can:
 - Check :doc:`../user-guide/troubleshooting` for common issues
 - Review logs in the service output
 - Ask questions in \`GitHub Discussions
-  \](<https://github.com/biosafetylvl5/lazylemon/discussions>)
+  \](<https://github.com/biosafetylvl5/courier/discussions>)

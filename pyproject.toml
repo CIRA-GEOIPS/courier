@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "lazylemon"
+name = "courier"
 version = "0.1.0"
 description = "TODO"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Evan Rose <none@email.com>"]
-repository = "https://github.com/biosafetylvl5/lazylemon"
+repository = "https://github.com/biosafetylvl5/courier"
 
-packages = [{include = "lazylemon", from = "src"}]
+packages = [{include = "courier", from = "src"}]
 
 readme = "README.md"
 classifiers = [
@@ -21,19 +21,19 @@ classifiers = [
 ]
 
 include = [
-    "src/lazylemon/plugins/**/*.yaml",
-    "src/lazylemon/plugins/**/*.txt",
-    "src/lazylemon/py.typed",
+    "src/courier/plugins/**/*.yaml",
+    "src/courier/plugins/**/*.txt",
+    "src/courier/py.typed",
 ]
 
 [tool.poetry.dependencies] # must download to run
-python = ">=3.11,<3.14" # dependencies - namely geoips do not support python 3.14
+python = ">=3.11,<3.14"
 rich = "*"
 redis = { version = ">=4.0", optional = true }  # Required for HA state sync
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
-geoips = "^1.16.1"
+pluginify = { path = "pluginify", develop = true }
 prometheus-client = "*"
 pydantic = "*"
 kombu = "*"
@@ -63,6 +63,7 @@ types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
 commitizen = { version = "*", optional = true }
 fakeredis = { version = "*", optional = true }
+hypothesis = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 # Development dependencies that are always installed for development
@@ -101,6 +102,7 @@ test = [
     "pytest-cov",                # for test coverage
     "pytest-xdist",              # for parallel testing
     "fakeredis",                 # in-process Redis fake for sync tests
+    "hypothesis",                # property-based testing for round-trip tests
 ]
 
 ha = [
@@ -112,16 +114,16 @@ grafana = [
 ]
 
 [tool.poetry.scripts]
-lazylemon = "lazylemon.cli.app:app"
-lzl = "lazylemon.cli.app:app"
+courier = "courier.cli.app:app"
+lzl = "courier.cli.app:app"
 
-[tool.poetry.plugins."lazylemon.dev.plugin_packages"]
-"lazylemon" = "lazylemon"
+[tool.poetry.plugins."runcourier.dev.plugin_packages"]
+"courier" = "courier"
 
 [tool.poetry.urls]
-Homepage = "https://github.com/biosafetylvl5/lazylemon"
-Issues = "https://github.com/biosafetylvl5/lazylemon/issues"
-Documentation = "https://biosafetylvl5.github.io/lazylemon/"
+Homepage = "https://github.com/biosafetylvl5/courier"
+Issues = "https://github.com/biosafetylvl5/courier/issues"
+Documentation = "https://biosafetylvl5.github.io/courier/"
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
@@ -141,6 +143,10 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = "croniter.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pluginify.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

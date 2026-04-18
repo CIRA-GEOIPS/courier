@@ -1,24 +1,17 @@
 name: Publish to PyPI
-
 on:
   release:
     types: [published]
-
   # Allow manual trigger for testing the workflow
   workflow_dispatch:
-
 permissions:
   contents: read
   id-token: write
-
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 env:
   UV_SYSTEM_PYTHON: true
-
 jobs:
   # ---------------------------------------------------------------------------
   # Build sdist and wheel
@@ -27,29 +20,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
       - uses: astral-sh/setup-uv@v6
-
       - name: Install build tools
         run: uv pip install build
-
       - name: Build sdist and wheel
         run: python -m build
-
       - name: List built artifacts
         run: ls -lh dist/
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
           if-no-files-found: error
-
   # ---------------------------------------------------------------------------
   # Publish to PyPI
   # ---------------------------------------------------------------------------
@@ -64,7 +50,6 @@ jobs:
         with:
           name: dist
           path: dist/
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

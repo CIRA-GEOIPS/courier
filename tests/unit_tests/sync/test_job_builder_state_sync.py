@@ -12,11 +12,11 @@ import time
 import fakeredis
 import pytest
 
-from lazylemon.errors import StateSyncConnectionError
-from lazylemon.schema.v1alpha1.sync_config import RedisStateSyncConfig
-from lazylemon.sync.job_builder_state_sync import JobBuilderStateSync
-from lazylemon.types.file import FrozenFile
-from lazylemon.types.job import Job, JobGroup
+from courier.errors import StateSyncConnectionError
+from courier.schema.v1alpha1.sync_config import RedisStateSyncConfig
+from courier.sync.job_builder_state_sync import JobBuilderStateSync
+from courier.types.file import FrozenFile
+from courier.types.job import Job, JobGroup
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ class TestRedisStateSyncConfig:
         assert cfg.db == 0
         assert cfg.password is None
         assert cfg.ssl is False
-        assert cfg.channel_prefix == "lazylemon"
+        assert cfg.channel_prefix == "courier"
 
     def test_custom_values(self) -> None:
         cfg = RedisStateSyncConfig(
@@ -176,15 +176,15 @@ class TestKeyHelpers:
 
     def test_channel(self) -> None:
         s = _sync("my-builder")
-        assert s._channel == "lazylemon:test-ns:my-builder:state_changes"
+        assert s._channel == "courier:test-ns:my-builder:state_changes"
 
     def test_hash_key(self) -> None:
         s = _sync("my-builder")
-        assert s._hash_key("grp") == "lazylemon:test-ns:my-builder:grp:jobs"
+        assert s._hash_key("grp") == "courier:test-ns:my-builder:grp:jobs"
 
     def test_claim_key(self) -> None:
         s = _sync("my-builder")
-        assert s._claim_key("job-99") == "lazylemon:test-ns:my-builder:job-99:claimed"
+        assert s._claim_key("job-99") == "courier:test-ns:my-builder:job-99:claimed"
 
     def test_custom_prefix(self) -> None:
         cfg = RedisStateSyncConfig(channel_prefix="prod")

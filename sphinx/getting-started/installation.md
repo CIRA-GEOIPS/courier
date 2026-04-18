@@ -15,7 +15,6 @@ This guide covers installing Lazy Lemon in different environments.
 
 Lazy Lemon depends on:
 
-- GeoIPS >= 1.16.1
 - RabbitMQ (pika)
 - Prometheus client
 - Pydantic for configuration validation
@@ -30,7 +29,7 @@ All dependencies are automatically installed.
 Install the latest stable release from PyPI:
 
 ```
-pip install lazylemon
+pip install courier
 ```
 
 Or install with optional dependencies:
@@ -38,15 +37,15 @@ Or install with optional dependencies:
 ```
 With documentation tools
 ========================
-pip install lazylemon[doc]
+pip install courier[doc]
 
 With development tools
 ======================
-pip install lazylemon[dev,lint,test]
+pip install courier[dev,lint,test]
 
 With all extras
 ===============
-pip install lazylemon[doc,lint,test]
+pip install courier[doc,lint,test]
 ```
 
 ### Using Poetry (Recommended for Developers)
@@ -56,8 +55,8 @@ For development work:
 ```
 Clone the repository
 ====================
-git clone https://github.com/biosafetylvl5/lazylemon.git
-cd lazylemon
+git clone https://github.com/biosafetylvl5/courier.git
+cd courier
 
 Install with poetry
 ===================
@@ -75,7 +74,7 @@ Run Lazy Lemon in a container:
 ```
 Pull the image
 ==============
-docker pull ghcr.io/biosafetylvl5/lazylemon:latest
+docker pull ghcr.io/biosafetylvl5/courier:latest
 
 Run with docker compose (recommended)
 =====================================
@@ -90,8 +89,8 @@ guide.
 Install the latest development version:
 
 ```
-git clone https://github.com/biosafetylvl5/lazylemon.git
-cd lazylemon
+git clone https://github.com/biosafetylvl5/courier.git
+cd courier
 pip install -e .
 ```
 
@@ -165,7 +164,7 @@ Verify your installation:
 ```
 Check version
 =============
-python -c "import lazylemon; print(lazylemon.__version__)"
+python -c "import courier; print(courier.__version__)"
 
 Verify RabbitMQ connection
 ==========================
@@ -173,7 +172,7 @@ python -c "import pika; pika.BlockingConnection(pika.URLParameters('amqp://admin
 
 List available plugins
 ======================
-python -c "from lazylemon.interfaces import data_monitors; print(data_monitors.plugins)"
+python -c "from courier.interfaces import data_monitors; print(data_monitors.plugins)"
 ```
 
 You should see output without errors.
@@ -185,8 +184,8 @@ For development and contributing:
 ```
 Clone and install
 =================
-git clone https://github.com/biosafetylvl5/lazylemon.git
-cd lazylemon
+git clone https://github.com/biosafetylvl5/courier.git
+cd courier
 poetry install --all-extras
 
 Install pre-commit hooks
@@ -216,7 +215,7 @@ The repository includes a dev container configuration:
 
 ## Troubleshooting
 
-**Import Error: No module named 'lazylemon'**
+**Import Error: No module named 'courier'**
 
 Make sure you've activated your virtual environment:
 

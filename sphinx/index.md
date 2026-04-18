@@ -1,6 +1,6 @@
 # Lazy Lemon Documentation
 
-[![Tests](https://github.com/biosafetylvl5/lazylemon/workflows/Tests/badge.svg)](https://github.com/biosafetylvl5/lazylemon)
+[![Tests](https://github.com/biosafetylvl5/courier/workflows/Tests/badge.svg)](https://github.com/biosafetylvl5/courier)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 
 Welcome to Lazy Lemon's documentation! Lazy Lemon is a framework
@@ -63,6 +63,7 @@ operations/high-availability
 :caption: Contribute
 
 contribute/code-style
+concepts/index
 ```
 
 ```{toctree}
@@ -82,4 +83,4 @@ api-reference/interfaces
 - {ref}`modindex`
 - {ref}`search`
 
-[GitHub Repository](https://github.com/biosafetylvl5/lazylemon)
+[GitHub Repository](https://github.com/biosafetylvl5/courier)
