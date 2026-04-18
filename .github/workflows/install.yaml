@@ -1,26 +1,21 @@
 name: Install
-
 on:
   push:
     branches: 'main'
   pull_request:
-
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.13']  # Specify the Python versions you want to test
-
+        python-version: ['3.11', '3.13'] # Specify the Python versions you want to test
     steps:
       - name: Check out the repository code
-        uses: actions/checkout@v3
-
+        uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip

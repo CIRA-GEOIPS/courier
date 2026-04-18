@@ -134,6 +134,10 @@ class PluginValidationError(DiscoveryError):
     """Raised when a plugin fails schema or structural validation."""
 
 
+class RegistryInitError(DiscoveryError):
+    """Raised when pluginify registry creation fails at startup."""
+
+
 class PluginError(PipelineError):
     """Base class for plugin runtime errors."""
 
