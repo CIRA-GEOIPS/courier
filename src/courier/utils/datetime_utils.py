@@ -2,9 +2,43 @@
 
 import re
 from datetime import datetime, timedelta
+from typing import Any
 
 # Canonical date component keys used in regex named groups.
 _DATE_KEYS = ("YYYY", "MM", "DD", "JJJ", "HH", "NN")
+
+
+def parse_timestamp(raw: Any, fmt: str | None = None) -> datetime | None:
+    """Coerce *raw* into a :class:`datetime`.
+
+    Accepts ISO-8601 strings, Unix epoch numbers (int/float), and ``None``.
+    When *fmt* is supplied, string values are parsed with ``strptime(fmt)``
+    instead of ISO-8601.
+
+    Parameters
+    ----------
+    raw : Any
+        The raw value (typically extracted from a broker message body).
+    fmt : str | None
+        Optional ``strptime`` format string. ``None`` means ISO-8601.
+
+    Returns
+    -------
+    datetime | None
+        Parsed datetime, or ``None`` if *raw* is ``None`` or of an
+        unsupported type.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, (int, float)):
+        return datetime.fromtimestamp(float(raw))
+    if not isinstance(raw, str):
+        return None
+    if fmt:
+        return datetime.strptime(raw, fmt)
+    return datetime.fromisoformat(raw)
 
 
 # This is a reasonable number of parameters for this function, ignoring ruff here.
