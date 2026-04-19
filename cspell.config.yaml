@@ -10,6 +10,7 @@ words:
   - paramiko
   - httpx
   - cafile
+  - roundtrips
   - sacct
   - sacct
   - noheader
@@ -164,4 +165,6 @@ ignoreWords:
   - SPHINXBUILD
   - SOURCEDIR
   - autobuild
+  - dedup
+  - dedups
 import: []

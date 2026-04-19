@@ -1,0 +1,195 @@
+"""Unit tests for the rabbit_mq_watcher data monitor plugin."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+from courier.plugins.classes.data_monitors.rabbit_mq_watcher import (
+    RabbitMQWatcher,
+    _parse_hostname_only,
+    _parse_regex,
+    _parse_user_at_host_colon_path,
+)
+
+
+def _make_config(**overrides: Any) -> dict[str, Any]:
+    cfg: dict[str, Any] = {}
+    cfg.update(overrides)
+    return cfg
+
+
+# ─── Location Parsers ───────────────────────────────────────────────────────
+
+
+class TestLocationParsers:
+    def test_user_at_host_colon_path_parses(self) -> None:
+        host, path = _parse_user_at_host_colon_path("admin@host1:/data")
+        assert host == "host1"
+        assert path == "/data"
+
+    def test_user_at_host_missing_at_raises(self) -> None:
+        with pytest.raises(ValueError, match="user@hostname"):
+            _parse_user_at_host_colon_path("nohost")
+
+    def test_user_at_host_missing_colon_raises(self) -> None:
+        with pytest.raises(ValueError, match="separating hostname"):
+            _parse_user_at_host_colon_path("user@host")
+
+    def test_user_at_host_empty_hostname_raises(self) -> None:
+        with pytest.raises(ValueError, match="Empty hostname"):
+            _parse_user_at_host_colon_path("user@:/path")
+
+    def test_hostname_only_parses(self) -> None:
+        host, path = _parse_hostname_only("hostname1")
+        assert host == "hostname1"
+        assert path == "/"
+
+    def test_hostname_only_empty_raises(self) -> None:
+        with pytest.raises(ValueError, match="Empty location"):
+            _parse_hostname_only("")
+
+    def test_regex_with_path(self) -> None:
+        host, path = _parse_regex(
+            "host1@/data",
+            pattern=r"(?P<hostname>[^@]+)@(?P<path>.+)",
+        )
+        assert host == "host1"
+        assert path == "/data"
+
+    def test_regex_no_match_raises(self) -> None:
+        with pytest.raises(ValueError, match="did not match"):
+            _parse_regex("xxx", pattern=r"(?P<hostname>\d+)")
+
+    def test_regex_default_path_is_root(self) -> None:
+        host, path = _parse_regex("host1", pattern=r"(?P<hostname>\w+)")
+        assert host == "host1"
+        assert path == "/"
+
+
+# ─── Constructor ────────────────────────────────────────────────────────────
+
+
+class TestConstructor:
+    def test_defaults(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(mock_service, _make_config())
+        assert plugin.rabbitmq_host == "localhost"
+        assert plugin.rabbitmq_port == 5672
+        assert plugin.rabbitmq_queue == "file_catalog"
+        assert plugin.location_format == "user_at_host_colon_path"
+        assert plugin.health is False
+
+    def test_unknown_location_format_raises(self, mock_service: MagicMock) -> None:
+        with pytest.raises(ValueError, match="Unknown location_format"):
+            RabbitMQWatcher(mock_service, _make_config(location_format="bogus"))
+
+    def test_regex_format_requires_pattern(self, mock_service: MagicMock) -> None:
+        with pytest.raises(ValueError, match="location_format_regex"):
+            RabbitMQWatcher(mock_service, _make_config(location_format="regex"))
+
+    def test_custom_overrides(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(
+                rabbitmq_host="rabbit.example.com",
+                rabbitmq_port=15672,
+                rabbitmq_queue="custom-queue",
+                rabbitmq_username="me",
+                rabbitmq_password="secret",
+            ),
+        )
+        assert plugin.rabbitmq_host == "rabbit.example.com"
+        assert plugin.rabbitmq_port == 15672
+        assert plugin.rabbitmq_queue == "custom-queue"
+        url = plugin._build_broker_url()
+        assert "me:secret@rabbit.example.com:15672" in url
+
+
+# ─── _parse_location dispatch ───────────────────────────────────────────────
+
+
+class TestParseLocationDispatch:
+    def test_dispatches_user_at_host(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(mock_service, _make_config())
+        assert plugin._parse_location("u@h:/x") == ("h", "/x")
+
+    def test_dispatches_regex(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(
+                location_format="regex",
+                location_format_regex=r"(?P<hostname>\w+)",
+            ),
+        )
+        assert plugin._parse_location("server1") == ("server1", "/")
+
+
+# ─── _extract_timestamp ─────────────────────────────────────────────────────
+
+
+class TestExtractTimestamp:
+    def test_default_uses_time_range_lower(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(
+                field_map={
+                    "time_range_key": "time_range",
+                    "time_range_lower_key": "lower",
+                    "time_range_start_key": "start",
+                },
+            ),
+        )
+        result = plugin._extract_timestamp(
+            {"time_range": {"lower": "2026-01-01T00:00:00"}},
+        )
+        assert isinstance(result, datetime)
+
+    def test_no_timestamp_returns_none(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(
+                field_map={
+                    "time_range_key": "time_range",
+                    "time_range_lower_key": "lower",
+                    "time_range_start_key": "start",
+                },
+            ),
+        )
+        assert plugin._extract_timestamp({}) is None
+
+    def test_dotted_timestamp_field(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(timestamp_field="meta.created_at"),
+        )
+        result = plugin._extract_timestamp(
+            {"meta": {"created_at": "2026-02-02T01:02:03"}},
+        )
+        assert isinstance(result, datetime)
+
+    def test_postgres_array_string_uses_first(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(timestamp_field="ts"),
+        )
+        msg = {"ts": '["2026-03-03T00:00:00", "2026-03-03T01:00:00"]'}
+        result = plugin._extract_timestamp(msg)
+        assert isinstance(result, datetime)
+        assert result.month == 3
+
+
+# ─── is_healthy / stop ──────────────────────────────────────────────────────
+
+
+class TestLifecycle:
+    def test_initially_unhealthy(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(mock_service, _make_config())
+        assert plugin.is_healthy() is False
+
+    def test_stop_sets_event(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(mock_service, _make_config())
+        plugin.stop()
+        assert plugin._stop_event.is_set()

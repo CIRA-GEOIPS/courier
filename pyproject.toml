@@ -66,6 +66,7 @@ mypy = { version = "*", optional = true }
 pytest = { version = "*", optional = true }
 pytest-cov = { version = "*", optional = true }
 pytest-xdist = { version = "*", optional = true }
+pytest-mock = { version = "*", optional = true }
 types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
 commitizen = { version = "*", optional = true }
@@ -108,8 +109,14 @@ test = [
     "pytest",                    # for running tests
     "pytest-cov",                # for test coverage
     "pytest-xdist",              # for parallel testing
+    "pytest-mock",               # mocker fixture for plugin tests
     "fakeredis",                 # in-process Redis fake for sync tests
     "hypothesis",                # property-based testing for round-trip tests
+    "boto3",                     # required by s3_poller tests
+    "botocore",                  # required by s3_poller tests
+    "paramiko",                  # required by sftp_poller tests
+    "kafka-python",              # required by kafka_consumer tests
+    "httpx",                     # required by http_dispatcher tests
 ]
 
 ha = [
