@@ -9,8 +9,19 @@ import courier.plugins.classes.dispatchers.serial_bash as serial_bash_dispatcher
 from courier.cli.config_loader import load_config
 from courier.config import ServiceConfig
 from courier.plugins.classes.data_monitors import file_system_poller_watchdog
+from courier.plugins.classes.data_monitors.kafka_consumer import KafkaConsumer
 from courier.plugins.classes.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
+from courier.plugins.classes.data_monitors.s3_poller import S3Poller
+from courier.plugins.classes.data_monitors.sftp_poller import SftpPoller
+from courier.plugins.classes.dispatchers.http_dispatcher import HttpDispatcher
+from courier.plugins.classes.dispatchers.parallel_bash import ParallelBashDispatcher
+from courier.plugins.classes.dispatchers.slurm_dispatcher import SlurmDispatcher
 from courier.plugins.classes.job_builders import dummy_job_builder
+from courier.plugins.classes.job_builders.file_count_builder import FileCountBuilder
+from courier.plugins.classes.job_builders.filter_and_group import (
+    FilterAndGroupJobBuilder,
+)
+from courier.plugins.classes.job_builders.metadata_router import MetadataRouterBuilder
 from courier.service import create_service_with_plugins
 
 AVAILABLE_PLUGINS = {
@@ -20,8 +31,19 @@ AVAILABLE_PLUGINS = {
         dummy_job_builder.DummyJobBuilder,
         serial_bash_dispatcher.SerialBashDispatcher,
         RabbitMQWatcher,
+        FilterAndGroupJobBuilder,
+        S3Poller,
+        SftpPoller,
+        KafkaConsumer,
+        MetadataRouterBuilder,
+        FileCountBuilder,
+        ParallelBashDispatcher,
+        SlurmDispatcher,
+        HttpDispatcher,
     )
 }
+# Deprecated alias; retained so existing configs using `filter_pass` keep working.
+AVAILABLE_PLUGINS["filter_pass"] = FilterAndGroupJobBuilder
 
 
 def _resolve_plugin(plugin: Any) -> tuple[type, dict]:

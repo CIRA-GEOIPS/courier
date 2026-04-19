@@ -19,6 +19,7 @@ from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
 from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 from courier.types.file import File
+from courier.utils.datetime_utils import parse_timestamp as _parse_timestamp
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -95,29 +96,6 @@ def _parse_regex(
     except IndexError:
         path = "/"
     return hostname, path or "/"
-
-
-def _parse_timestamp(raw: Any, fmt: str | None) -> datetime | None:
-    """Parse *raw* into a :class:`datetime`.
-
-    Parameters
-    ----------
-    raw:
-        The raw value extracted from the message.  May be an ISO-8601 string,
-        a Unix epoch (int/float), or ``None``.
-    fmt:
-        Optional ``strptime`` format string.  When ``None`` the value is
-        treated as ISO-8601 (or epoch if numeric).
-    """
-    if raw is None:
-        return None
-    if isinstance(raw, (int, float)):
-        return datetime.fromtimestamp(float(raw))
-    if not isinstance(raw, str):
-        return None
-    if fmt:
-        return datetime.strptime(raw, fmt)
-    return datetime.fromisoformat(raw)
 
 
 class RabbitMQWatcher(DataMonitorBasePlugin):

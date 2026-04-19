@@ -4,6 +4,15 @@ dictionaryDefinitions: []
 dictionaries: []
 words:
   - argparse
+  - interruptible
+  - boto
+  - botocore
+  - paramiko
+  - httpx
+  - cafile
+  - sacct
+  - sacct
+  - noheader
   - runcourier
   - APIVERSION
   - grafanalib
@@ -115,6 +124,8 @@ ignoreWords:
   - sphinxcontribmermaid
   - coverlogging
   - caplog
+  - pkey
+  - unparseable
   - labelnames
   - FLDK
   - CLAVR
