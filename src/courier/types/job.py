@@ -121,9 +121,6 @@ class Job:
         """Add file to job."""
         self.files.add(file)  # type: ignore
         self.last_modified = time.time()
-        file_cid = getattr(file, "correlation_id", None)
-        if not self.correlation_id and file_cid:
-            self.correlation_id = file_cid
 
     def is_old(self) -> bool:
         """Return true if job is old and ready to be discarded."""
