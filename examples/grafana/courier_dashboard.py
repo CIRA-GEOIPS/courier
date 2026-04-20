@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate a Grafana dashboard JSON for LazyLemon monitoring.
+"""Generate a Grafana dashboard JSON for Courier monitoring.
 
 Produces a comprehensive dashboard covering all Prometheus metrics
-exposed by the LazyLemon service. The output is valid Grafana
+exposed by the Courier service. The output is valid Grafana
 dashboard JSON that can be imported via the UI or placed in a
 provisioning directory.
 
@@ -158,7 +158,29 @@ def _templating() -> Templating:
         multi=True,
         refresh=REFRESH_ON_TIME_RANGE_CHANGE,
     )
-    return Templating(list=[ds, monitor, builder, dispatcher, plugin, sync_builder])
+    dispatcher_identifier = Template(
+        name="dispatcher_identifier",
+        label="Dispatcher Identifier",
+        query=(
+            f"label_values({_PREFIX}_dispatcher_jobs_consumed_total,"
+            " dispatcher_identifier)"
+        ),
+        dataSource=_DS,
+        includeAll=True,
+        multi=True,
+        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
+    )
+    return Templating(
+        list=[
+            ds,
+            monitor,
+            builder,
+            dispatcher,
+            plugin,
+            sync_builder,
+            dispatcher_identifier,
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -809,6 +831,124 @@ def _state_sync_row() -> RowPanel:
     )
 
 
+def _routing_row() -> RowPanel:
+    """Row — per-target routing throughput, failures, and dispatch latency."""
+    y = _advance(1)
+    py = _advance(8)
+    lbl_d = 'dispatcher_identifier=~"$dispatcher_identifier"'
+
+    emitted = TimeSeries(
+        title="Jobs Emitted by Target",
+        description=(
+            "Stacked rate of jobs a builder published to each dispatcher "
+            "identifier — validates fan-out distribution."
+        ),
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_job_builder_jobs_emitted_total"),
+                "{{job_builder_name}} → {{target}}",
+            ),
+        ],
+        stacking={"mode": "normal", "group": "A"},
+        fillOpacity=30,
+        unit="ops",
+        gridPos=GridPos(8, 8, 0, py),
+    )
+
+    emit_failures = TimeSeries(
+        title="Emit Failures by Reason",
+        description=(
+            "Non-zero fatal failures indicate jobs lost before reaching a "
+            "dispatcher; route an alert on fatal > 0."
+        ),
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_job_builder_emit_failures_total"),
+                "{{job_builder_name}} → {{target}} — {{reason}}",
+            ),
+        ],
+        unit="ops",
+        gridPos=GridPos(8, 8, 8, py),
+    )
+
+    consumed = TimeSeries(
+        title="Jobs Consumed by Dispatcher",
+        description=(
+            "Zero on a dispatcher that should be receiving traffic is a "
+            "smoke-test for misrouting."
+        ),
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(
+                    f"{_PREFIX}_dispatcher_jobs_consumed_total",
+                    lbl_d,
+                ),
+                "{{dispatcher_identifier}}",
+            ),
+        ],
+        unit="ops",
+        gridPos=GridPos(8, 8, 16, py),
+    )
+
+    py2 = _advance(8)
+
+    latency = TimeSeries(
+        title="Dispatch Latency (emit → consume)",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _hq(
+                    f"{_PREFIX}_dispatcher_dispatch_latency_seconds",
+                    0.50,
+                    lbl_d,
+                ),
+                "p50 — {{dispatcher_identifier}}",
+            ),
+            _target(
+                _hq(
+                    f"{_PREFIX}_dispatcher_dispatch_latency_seconds",
+                    0.95,
+                    lbl_d,
+                ),
+                "p95 — {{dispatcher_identifier}}",
+                ref="B",
+            ),
+            _target(
+                _hq(
+                    f"{_PREFIX}_dispatcher_dispatch_latency_seconds",
+                    0.99,
+                    lbl_d,
+                ),
+                "p99 — {{dispatcher_identifier}}",
+                ref="C",
+            ),
+        ],
+        unit=SECONDS_FORMAT,
+        gridPos=GridPos(8, 16, 0, py2),
+    )
+
+    depth = TimeSeries(
+        title="Queue Depth per Dispatcher",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"{_PREFIX}_dispatcher_queue_depth{{{lbl_d}}}",
+                "{{dispatcher_identifier}}",
+            ),
+        ],
+        gridPos=GridPos(8, 8, 16, py2),
+    )
+
+    return RowPanel(
+        title="Routing",
+        gridPos=GridPos(1, 24, 0, y),
+        panels=[emitted, emit_failures, consumed, latency, depth],
+    )
+
+
 def _pipeline_summary() -> RowPanel:
     """Row 7 — end-to-end pipeline throughput overlay."""
     y = _advance(1)
@@ -870,7 +1010,7 @@ def _pipeline_summary() -> RowPanel:
 
 
 def build_dashboard() -> Dashboard:
-    """Build the complete LazyLemon Grafana dashboard."""
+    """Build the complete Courier Grafana dashboard."""
     panels: list[object] = []
 
     # Row 1: stat panels (no wrapping row — top-level KPIs)
@@ -883,11 +1023,12 @@ def build_dashboard() -> Dashboard:
     panels.append(_broker_row())
     panels.append(_plugin_manager_row())
     panels.append(_state_sync_row())
+    panels.append(_routing_row())
     panels.append(_pipeline_summary())
 
     return Dashboard(
-        title="LazyLemon — Overview",
-        description="Comprehensive monitoring dashboard for the LazyLemon service.",
+        title="Courier — Overview",
+        description="Comprehensive monitoring dashboard for the Courier service.",
         uid="courier-overview",
         tags=["courier", "satellite", "monitoring"],
         timezone="browser",

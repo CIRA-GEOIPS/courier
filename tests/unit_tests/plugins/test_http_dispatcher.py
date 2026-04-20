@@ -55,7 +55,7 @@ class TestHttpDispatcherConfig:
 
 class TestConstructor:
     def test_initializes(self, mock_service: MagicMock) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config())
+        plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin.is_healthy() is True
 
 
@@ -66,7 +66,7 @@ class TestBuildContext:
     def test_context_has_job_and_first_file(
         self, mock_service: MagicMock, make_frozen_file, make_job
     ) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config())
+        plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         f = make_frozen_file(source="goes16")
         job = make_job(files=(f,))
         ctx = plugin._build_context(job)
@@ -75,7 +75,7 @@ class TestBuildContext:
         assert ctx["source"] == "goes16"
 
     def test_empty_job_context(self, mock_service: MagicMock, make_job) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config())
+        plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         ctx = plugin._build_context(make_job())
         assert ctx["file_count"] == 0
         assert ctx["source"] is None
@@ -86,7 +86,7 @@ class TestBuildContext:
 
 class TestSendWithRetries:
     def test_success_on_first_try(self, mock_service: MagicMock) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config())
+        plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         client = MagicMock()
         resp = MagicMock()
         resp.status_code = 200
@@ -104,7 +104,9 @@ class TestSendWithRetries:
             "courier.plugins.classes.dispatchers.http_dispatcher.time.sleep",
         )
         plugin = HttpDispatcher(
-            mock_service, _make_config(retry_count=1, retry_delay_seconds=0.01),
+            mock_service,
+            _make_config(retry_count=1, retry_delay_seconds=0.01),
+            identifier="test-disp",
         )
         client = MagicMock()
         client.request.side_effect = httpx.TransportError("boom")
@@ -113,7 +115,7 @@ class TestSendWithRetries:
         assert err is not None and "TransportError" in err
 
     def test_non_success_status_returned(self, mock_service: MagicMock) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config(retry_count=0))
+        plugin = HttpDispatcher(mock_service, _make_config(retry_count=0), identifier="test-disp")
         client = MagicMock()
         resp = MagicMock()
         resp.status_code = 400
@@ -131,7 +133,7 @@ class TestGetExecutionLog:
     def test_success_path(
         self, mock_service: MagicMock, make_job, mocker
     ) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config())
+        plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         client = MagicMock()
         resp = MagicMock()
         resp.status_code = 200
@@ -148,7 +150,7 @@ class TestGetExecutionLog:
     def test_template_error_returns_failure_log(
         self, mock_service: MagicMock, make_job, mocker
     ) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config())
+        plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         mocker.patch.object(
             plugin._template, "render", side_effect=Exception("render")
         )

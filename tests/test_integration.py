@@ -1,4 +1,4 @@
-"""End-to-end integration tests for the LazyLemon pipeline.
+"""End-to-end integration tests for the Courier pipeline.
 
 Tests verify that files flow through the complete pipeline:
 DataMonitor -> FILE_FOUND_QUEUE -> JobBuilder -> JOB_READY_QUEUE -> Dispatcher
@@ -209,6 +209,7 @@ def test_cron_glob_single_file_end_to_end(tmp_path: Path) -> None:
     service.register_plugin(
         SerialBashDispatcher,
         {"bash_script": "cp {file} " + str(output_dir) + "/"},
+        identifier="runner",
     )
 
     thread = threading.Thread(target=service.start, daemon=True)
@@ -244,6 +245,7 @@ def test_watchdog_detects_new_files_end_to_end(tmp_path: Path) -> None:
     service.register_plugin(
         SerialBashDispatcher,
         {"bash_script": "echo {file} >> " + str(processed_log)},
+        identifier="runner",
     )
 
     thread = threading.Thread(target=service.start, daemon=True)
@@ -300,6 +302,7 @@ def test_cron_glob_ignore_existing_processes_only_new(tmp_path: Path) -> None:
     service.register_plugin(
         SerialBashDispatcher,
         {"bash_script": "cp {file} " + str(output_dir) + "/"},
+        identifier="runner",
     )
 
     thread = threading.Thread(target=service.start, daemon=True)

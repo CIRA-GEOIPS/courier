@@ -1,6 +1,6 @@
-"""Cron-scheduled glob-based Data Monitor Plugin for LazyLemon.
+"""Cron-scheduled glob-based Data Monitor Plugin for Courier.
 
-This plugin fills the gap between LazyLemon's event-driven monitors
+This plugin fills the gap between Courier's event-driven monitors
 (watchdog, RabbitMQ) and batch workflows that just need to scan a
 directory on a fixed schedule.
 

@@ -10,23 +10,31 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pluginify.interfaces.base import BaseClassInterface
 
-from courier.constants import FILE_FOUND_QUEUE, JOB_READY_QUEUE, PluginRunState
-from courier.errors import InvalidPluginConfigError
+from courier.constants import FILE_FOUND_QUEUE, PluginRunState
+from courier.errors import (
+    FatalBrokerError,
+    InvalidPluginConfigError,
+    TransientBrokerError,
+)
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     JOB_BUILDER_ACTIVE_GROUPS,
+    JOB_BUILDER_EMIT_FAILURES,
     JOB_BUILDER_FILE_PROCESSING_DURATION,
     JOB_BUILDER_FILES_PER_JOB,
     JOB_BUILDER_FILES_RECEIVED,
     JOB_BUILDER_JOBS_BUILT,
     JOB_BUILDER_JOBS_DISCARDED,
+    JOB_BUILDER_JOBS_EMITTED,
     collect_labeled,
 )
 from courier.types.file import FrozenFile
-from courier.utils.decorators import log_execution
+from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from courier.service import Service
     from courier.sync.job_builder_state_sync import JobBuilderStateSync
     from courier.types.job import Job, JobGroup
@@ -65,13 +73,14 @@ class JobBuilder(ServicePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
         # pluginify registration path: instantiated with only a module (or nothing).
         if service is None or isinstance(service, types.ModuleType):
             return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
-        self.queue = JOB_READY_QUEUE
+        self.identifier = identifier or self.name
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
         self.job_groups: list[JobGroup] = []
@@ -81,6 +90,7 @@ class JobBuilder(ServicePlugin):
         self._group_locks: dict[str, threading.Lock] = {}
         self.config = config or {}
         self._sync: JobBuilderStateSync | None = self._init_sync(self.config, service)
+        self._targets: tuple[str, ...] = tuple(self.config.get("targets") or ())
 
         self._files_received = JOB_BUILDER_FILES_RECEIVED
         self._jobs_built = JOB_BUILDER_JOBS_BUILT
@@ -88,6 +98,8 @@ class JobBuilder(ServicePlugin):
         self._jobs_discarded = JOB_BUILDER_JOBS_DISCARDED
         self._file_processing_duration = JOB_BUILDER_FILE_PROCESSING_DURATION
         self._files_per_job = JOB_BUILDER_FILES_PER_JOB
+        self._jobs_emitted = JOB_BUILDER_JOBS_EMITTED
+        self._emit_failures = JOB_BUILDER_EMIT_FAILURES
 
     def call(self) -> None:
         """Plugins are driven by start()/stop(); call() is not used at runtime."""
@@ -131,24 +143,149 @@ class JobBuilder(ServicePlugin):
     # Core file processing loop
     # ------------------------------------------------------------------
 
-    def emit(self, job: Job) -> None:
-        """Emit job to parent service, claiming emit rights when sync is active.
+    def emit(self, job: Job, targets: Sequence[str] | None = None) -> None:
+        """Fan out *job* to every dispatcher in *targets*.
 
-        When state synchronization is enabled, uses Redis SET NX to ensure
-        only one instance across the HA cluster emits each job.  Silently
-        skips the emit if another instance already holds the claim.
+        Each ``(job_id, target)`` pair is independently claimed via
+        :meth:`JobBuilderStateSync.try_claim_emit` so that a crash between
+        targets leaves completed targets claimed and incomplete ones free
+        for resume — no duplicate executions, no silent loss.
+
+        Parameters
+        ----------
+        job : Job
+            Job to emit.  ``emit_time`` and ``targets`` are populated on
+            a copy produced by this method before publish.
+        targets : Sequence[str] or None, optional
+            Dispatcher identifiers to route to.  ``None`` falls back to
+            the builder's ``self._targets`` configured list.  Preflight
+            guarantees at least one target is present.
+
+        Notes
+        -----
+        Transient broker errors retry with backoff.  Fatal broker errors
+        release the per-target claim so a restart can retry.  Partial
+        fan-out is logged at ERROR with both succeeded and failed targets.
         """
+        target_list: tuple[str, ...] = (
+            tuple(targets) if targets is not None else self._targets
+        )
+        if not target_list:
+            self._logger.error(
+                f"emit called with no targets for job {job.identifier}; dropping",
+                extra={"correlation_id": job.correlation_id},
+            )
+            return
+        job.emit_time = time.time()
+        job.targets = target_list
+        message = str(job)
+        succeeded: list[str] = []
+        failed: list[tuple[str, str]] = []
+        for target in target_list:
+            self._emit_one(job, target, message, succeeded, failed)
+        if failed:
+            self._logger.error(
+                f"partial fan-out for job {job.identifier}: "
+                f"succeeded={succeeded} failed={failed}",
+                extra={
+                    "correlation_id": job.correlation_id,
+                    "job_id": job.identifier,
+                },
+            )
+        else:
+            self._logger.info(
+                f"Emitted job {job.identifier} to targets {list(succeeded)}",
+                extra={"correlation_id": job.correlation_id},
+            )
+
+    def _emit_one(
+        self,
+        job: Job,
+        target: str,
+        message: str,
+        succeeded: list[str],
+        failed: list[tuple[str, str]],
+    ) -> None:
+        """Publish *message* to *target* with per-target claim and retry.
+
+        Mutates *succeeded* / *failed* in place so the caller can log a
+        single partial-failure line for the whole fan-out.
+        """
+        emit_key = f"{job.identifier}::{target}"
         if self._sync is not None and not self._sync.try_claim_emit(
-            job.identifier,
+            emit_key,
             job.timeout,
         ):
             self._logger.info(
-                f"Job {job.identifier} already claimed by another instance; skipping",
+                f"Job {job.identifier} target {target} already claimed; skipping",
+                extra={"correlation_id": job.correlation_id},
             )
             return
-        message = str(job)
-        self._logger.info(f"Queueing job: {message}")
-        self.parent_service.emit(queue=self.queue, message=message)
+        queue_name = self._resolve_target(target)
+        try:
+            self._publish_with_retry(queue_name, message)
+        except TransientBrokerError as exc:
+            self._emit_failures.labels(
+                job_builder_name=self.name,
+                target=target,
+                reason="transient",
+            ).inc()
+            failed.append((target, f"transient:{exc!s}"))
+        except FatalBrokerError as exc:
+            self._emit_failures.labels(
+                job_builder_name=self.name,
+                target=target,
+                reason="fatal",
+            ).inc()
+            failed.append((target, f"fatal:{exc!s}"))
+            if self._sync is not None:
+                self._sync.release_emit_claim(emit_key)
+        else:
+            self._jobs_emitted.labels(
+                job_builder_name=self.name,
+                target=target,
+            ).inc()
+            succeeded.append(target)
+
+    def _resolve_target(self, target: str) -> str:
+        """Resolve a dispatcher identifier to its broker queue name.
+
+        Uses the service's :class:`TargetResolver` when available,
+        falling back to :func:`courier.constants.job_ready_queue_for`
+        for unit-test harnesses that construct a :class:`JobBuilder`
+        without a full service.
+        """
+        resolver = getattr(self.parent_service, "target_resolver", None)
+        if resolver is not None:
+            resolved: str = resolver.resolve(target)
+            return resolved
+        from courier.constants import (  # noqa: PLC0415
+            job_ready_queue_for,
+        )
+
+        return job_ready_queue_for(target)
+
+    def _publish_with_retry(self, queue_name: str, message: str) -> None:
+        """Publish with exponential backoff on :class:`TransientBrokerError`.
+
+        ``FatalBrokerError`` is not retried — it propagates to the
+        caller, which releases the per-target claim so a restart can
+        retry.
+        """
+
+        @retry_with_backoff(
+            exceptions=(TransientBrokerError,),
+            max_retries=3,
+            base_delay=0.5,
+        )
+        def _do_publish() -> None:
+            self.parent_service.emit(
+                queue=queue_name,
+                message=message,
+                confirm=True,
+            )
+
+        _do_publish()
 
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
@@ -175,15 +312,26 @@ class JobBuilder(ServicePlugin):
     # Per-group helpers (complexity-bounded)
     # ------------------------------------------------------------------
 
+    def _targets_for_group(self, job_group: JobGroup) -> tuple[str, ...]:
+        """Return the fan-out targets for *job_group*.
+
+        Default: ``self._targets`` (applies to every group).  Routing
+        builders (e.g. :class:`MetadataRouterBuilder`) override this to
+        return per-route targets.
+        """
+        del job_group
+        return self._targets
+
     def _process_job_group(self, job_group: JobGroup, file: FrozenFile) -> None:
         """Add a file to a group, emit ready jobs, and prune timed-out ones."""
         added, ready, updates = self._add_file_locked(job_group, file)
         if added:
             self._logger.debug(f"File added to job group {job_group.name}")
         self._push_updates(job_group.name, updates)
+        targets = self._targets_for_group(job_group)
         for ready_job in ready:
             self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
-            self.emit(ready_job)
+            self.emit(ready_job, targets)
             self._jobs_built.labels(
                 status="ready",
                 job_builder_name=self.name,

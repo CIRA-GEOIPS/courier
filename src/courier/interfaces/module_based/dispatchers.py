@@ -5,17 +5,25 @@ from __future__ import annotations
 import threading
 import time
 import types
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pluginify.interfaces.base import BaseClassInterface
 
-from courier.constants import DISPATCHER_QUEUE, JOB_READY_QUEUE, PluginRunState
+from courier.constants import (
+    DISPATCHER_QUEUE,
+    PluginRunState,
+    job_ready_queue_for,
+)
 from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
+    DISPATCHER_DEDUPE_SKIPS,
+    DISPATCHER_DISPATCH_LATENCY_SECONDS,
     DISPATCHER_EXECUTION_LOGS_EMITTED,
     DISPATCHER_JOB_EXECUTION_DURATION,
+    DISPATCHER_JOBS_CONSUMED,
     DISPATCHER_JOBS_PROCESSED,
     DISPATCHER_QUEUE_WAIT_DURATION,
     collect_labeled,
@@ -24,6 +32,8 @@ from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
+
+_DEDUPE_LRU_SIZE = 1024
 
 if TYPE_CHECKING:
     from courier.service import Service
@@ -40,13 +50,22 @@ class Dispatcher(ServicePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
         # pluginify registration path: instantiated with only a module (or nothing).
         if service is None or isinstance(service, types.ModuleType):
             return
+        if identifier is None:
+            raise ValueError(
+                f"Dispatcher {type(self).__name__} requires an identifier "
+                "(from spec.run[*].identifier); preflight should have "
+                "supplied it.",
+            )
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
+        self.identifier = identifier
         self.queue = DISPATCHER_QUEUE
+        self.incoming_queue = job_ready_queue_for(identifier)
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
         self.config = config or {}
@@ -56,7 +75,14 @@ class Dispatcher(ServicePlugin):
         self._active_jobs = DISPATCHER_ACTIVE_JOBS
         self._execution_logs_emitted = DISPATCHER_EXECUTION_LOGS_EMITTED
         self._queue_wait_duration = DISPATCHER_QUEUE_WAIT_DURATION
+        self._jobs_consumed = DISPATCHER_JOBS_CONSUMED
+        self._dispatch_latency = DISPATCHER_DISPATCH_LATENCY_SECONDS
+        self._dedupe_skips = DISPATCHER_DEDUPE_SKIPS
         self.active_job_timestamps = {}  # type: dict[str, float]
+        # Bounded LRU of recently-seen job identifiers. Catches same-replica
+        # duplicates; cross-replica strict dedupe is opt-in via state sync.
+        # Thread-safe: only touched by handle_incoming_jobs thread.
+        self._seen_jobs: OrderedDict[str, None] = OrderedDict()
 
     def call(self) -> None:
         """Plugins are driven by start()/stop(); call() is not used at runtime."""
@@ -72,12 +98,48 @@ class Dispatcher(ServicePlugin):
         self._logger.debug(f"Emitting execution log: {execution_log}")
         self.parent_service.emit(queue=self.queue, message=str(execution_log))
 
+    def _recently_seen(self, job_identifier: str) -> bool:
+        """Return True if *job_identifier* is in the bounded LRU.
+
+        On miss, records the identifier; evicts oldest when the LRU is
+        full.  Catches same-replica duplicates from at-least-once
+        delivery; cross-replica exactly-once requires the optional
+        state-sync dedupe.
+        """
+        if job_identifier in self._seen_jobs:
+            self._seen_jobs.move_to_end(job_identifier)
+            return True
+        self._seen_jobs[job_identifier] = None
+        if len(self._seen_jobs) > _DEDUPE_LRU_SIZE:
+            self._seen_jobs.popitem(last=False)
+        return False
+
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
         while True:
-            for job_string in self.parent_service.consume(JOB_READY_QUEUE):
+            for job_string in self.parent_service.consume(self.incoming_queue):
                 job = Job.from_string(str(job_string))
-                self._logger.debug(f"Received Job: {job}")
+                self._logger.debug(
+                    f"Received Job: {job}",
+                    extra={"correlation_id": job.correlation_id},
+                )
+                self._jobs_consumed.labels(
+                    dispatcher_identifier=self.identifier,
+                ).inc()
+                if job.emit_time is not None:
+                    self._dispatch_latency.labels(
+                        dispatcher_identifier=self.identifier,
+                    ).observe(time.time() - job.emit_time)
+
+                if self._recently_seen(job.identifier):
+                    self._dedupe_skips.labels(
+                        dispatcher_identifier=self.identifier,
+                    ).inc()
+                    self._logger.info(
+                        f"Duplicate job {job.identifier}; skipping",
+                        extra={"correlation_id": job.correlation_id},
+                    )
+                    continue
 
                 start_time = time.time()
                 job_id = job.identifier
@@ -101,7 +163,10 @@ class Dispatcher(ServicePlugin):
                     ).inc()
 
                 except CourierError:
-                    self._logger.exception(f"Error processing job {job_id}")
+                    self._logger.exception(
+                        f"Error processing job {job_id}",
+                        extra={"correlation_id": job.correlation_id},
+                    )
                     self._jobs_processed.labels(
                         status="failure",
                         dispatcher_name=self.name,

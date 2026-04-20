@@ -287,6 +287,33 @@ class JobBuilderStateSync:
         else:
             return claimed
 
+    def release_emit_claim(self, job_id: str) -> None:
+        """Release an emit claim acquired by :meth:`try_claim_emit`.
+
+        Callers use this after a fatal publish failure for a specific
+        fan-out target so that a restart can retry that target. Callers
+        MUST NOT release a claim after a successful emit — the claim's
+        TTL and the broker's delivery record are what deduplicate
+        future retries.
+
+        Parameters
+        ----------
+        job_id : str
+            The same key passed to :meth:`try_claim_emit`. For per-target
+            fan-out this is typically ``f"{job.identifier}::{target}"``.
+        """
+        client = self._require_client()
+        try:
+            client.delete(self._claim_key(job_id))
+        except redis.RedisError as exc:
+            self._errors.labels(
+                builder_name=self._builder_name,
+                operation="release_claim",
+            ).inc()
+            self._logger.warning(
+                f"Redis error releasing emit claim for {job_id!r}: {exc}",
+            )
+
     # ------------------------------------------------------------------
     # State loading
     # ------------------------------------------------------------------

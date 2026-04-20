@@ -6,14 +6,23 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from typing import Any
 
-import kombu  # type: ignore[import-untyped]
-from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
+import kombu
+import kombu.exceptions
+from kombu.exceptions import (
+    KombuError,
+    OperationalError,
+)
 
 from courier.config import ServiceConfig
+from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.managers.base import ServiceManager
 from courier.metrics import BROKER_CONNECTED, BROKER_CONNECTIONS
 from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
+
+# Memory transport does not implement broker-level publisher confirms;
+# passing ``confirm=True`` to it is a silent no-op.
+_MEMORY_TRANSPORT_SCHEMES: frozenset[str] = frozenset({"memory"})
 
 _logger = get_logger("module", "broker.kombu", None)
 
@@ -102,6 +111,7 @@ def publish(
     conn: "kombu.Connection",
     queue: "kombu.Queue",
     body: str,
+    confirm: bool = False,
 ) -> None:
     """Publish *body* to *queue* using *conn*.
 
@@ -113,14 +123,47 @@ def publish(
         Target queue (already declared).
     body : str
         Message body string.
+    confirm : bool, optional
+        When ``True`` and the transport supports publisher confirms (AMQP),
+        block until the broker acknowledges the message. Silently ignored on
+        transports that lack the concept (e.g. memory). Default ``False``.
+
+    Raises
+    ------
+    TransientBrokerError
+        On retryable failures (connection drops, channel errors, timeouts).
+    FatalBrokerError
+        On non-retryable failures (access refused, message too large,
+        permission denied).
     """
-    with kombu.Producer(conn) as producer:
-        producer.publish(
-            body,
-            routing_key=queue.name,
-            exchange="",
-            declare=[queue],
-        )
+    scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
+    use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
+    try:
+        producer_cls = kombu.Producer
+        with producer_cls(conn) as producer:
+            if use_confirm:
+                channel = producer.channel
+                confirm_select = getattr(channel, "confirm_select", None)
+                if confirm_select is not None:
+                    confirm_select()
+            producer.publish(
+                body,
+                routing_key=queue.name,
+                exchange="",
+                declare=[queue],
+            )
+    except OperationalError as exc:
+        raise TransientBrokerError(
+            f"transient publish failure to {queue.name!r}: {exc}",
+        ) from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise TransientBrokerError(
+            f"transient publish failure to {queue.name!r}: {exc}",
+        ) from exc
+    except KombuError as exc:
+        raise FatalBrokerError(
+            f"fatal publish failure to {queue.name!r}: {exc}",
+        ) from exc
 
 
 def messages(

@@ -105,6 +105,7 @@ class PluginManager(ServiceManager):
         self,
         plugin: type[ServicePlugin],
         config: dict[str, Any],
+        identifier: str | None = None,
     ) -> None:
         """Register a new plugin with the manager.
 
@@ -115,24 +116,34 @@ class PluginManager(ServiceManager):
             reference and config.
         config : dict[str, Any]
             Configuration to pass to the plugin constructor.
+        identifier : str or None, optional
+            ``spec.run[*].identifier`` from the service YAML.  Passed to
+            the plugin constructor as the ``identifier`` keyword
+            argument when supplied — required for dispatchers so they
+            can consume from their per-identifier queue.
 
         Raises
         ------
         ValueError
-            If a plugin with the same name is already registered.
+            If a plugin with the same registry key is already registered.
         """
         with self._lock:
-            plugin_instance = plugin(self._service, config)
-            if plugin_instance.name in self._plugins:
-                raise ValueError(f"Plugin {plugin_instance.name} already registered")
+            kwargs: dict[str, Any] = {}
+            if identifier is not None:
+                kwargs["identifier"] = identifier
+            plugin_instance = plugin(self._service, config, **kwargs)
+            registry_key = identifier or plugin_instance.name
+            if registry_key in self._plugins:
+                raise ValueError(f"Plugin {registry_key} already registered")
 
             self._logger.info(plugin_instance)
-            self._logger.info(plugin_instance.name)
-            self._plugins[plugin_instance.name] = PluginStateInfo(
+            self._logger.info(registry_key)
+            self._plugins[registry_key] = PluginStateInfo(
                 plugin=plugin_instance,
             )
             self._logger.info(
-                f"Registered plugin: {plugin_instance.name} v{plugin_instance.version}",
+                f"Registered plugin: {registry_key} "
+                f"(class={plugin_instance.name} v{plugin_instance.version})",
             )
 
     def _start_plugin(self, plugin_info: PluginStateInfo) -> None:

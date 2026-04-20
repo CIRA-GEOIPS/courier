@@ -48,11 +48,11 @@ class TestParallelBashConfig:
 
 class TestConstructor:
     def test_initializes(self, mock_service: MagicMock) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config())
+        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin.validated.bash_script == "echo {file}"
 
     def test_always_healthy(self, mock_service: MagicMock) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config())
+        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin.is_healthy() is True
 
 
@@ -61,13 +61,14 @@ class TestConstructor:
 
 class TestRenderScript:
     def test_substitutes_file(self, mock_service: MagicMock) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config())
+        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin._render_script("/tmp/x") == "echo /tmp/x"
 
     def test_missing_key_falls_back(self, mock_service: MagicMock) -> None:
         plugin = ParallelBashDispatcher(
             mock_service,
             _make_config(bash_script="echo {missing}"),
+            identifier="test-disp",
         )
         assert plugin._render_script("/tmp/x") == "echo {missing}"
 
@@ -79,7 +80,7 @@ class TestGetExecutionLog:
     def test_no_files_returns_empty(
         self, mock_service: MagicMock, make_job
     ) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config())
+        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin.get_execution_log(make_job()) == []
 
     def test_one_log_per_file(
@@ -90,7 +91,7 @@ class TestGetExecutionLog:
         fake_completed_process,
         mocker,
     ) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config(max_workers=2))
+        plugin = ParallelBashDispatcher(mock_service, _make_config(max_workers=2), identifier="test-disp")
         mocker.patch(
             "courier.plugins.classes.dispatchers.parallel_bash.subprocess.run",
             return_value=fake_completed_process(returncode=0),
@@ -114,7 +115,9 @@ class TestGetExecutionLog:
         mocker,
     ) -> None:
         plugin = ParallelBashDispatcher(
-            mock_service, _make_config(max_workers=1, fail_fast=True),
+            mock_service,
+            _make_config(max_workers=1, fail_fast=True),
+            identifier="test-disp",
         )
         mocker.patch(
             "courier.plugins.classes.dispatchers.parallel_bash.subprocess.run",

@@ -2,6 +2,7 @@
 
 import typer
 
+from courier.cli.queues import queues_app
 from courier.cli.registry import ensure_registry
 from courier.cli.run import run
 from courier.cli.validate import validate
@@ -16,6 +17,7 @@ def _pre_command() -> None:
 
 app.command()(run)
 app.command()(validate)
+app.add_typer(queues_app, name="queues")
 
 if __name__ == "__main__":
     app()

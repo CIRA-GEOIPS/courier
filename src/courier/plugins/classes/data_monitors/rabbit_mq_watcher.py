@@ -13,8 +13,8 @@ from datetime import datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-import kombu  # type: ignore[import-untyped]
-from kombu.exceptions import OperationalError  # type: ignore[import-untyped]
+import kombu
+from kombu.exceptions import OperationalError
 
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
 from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
