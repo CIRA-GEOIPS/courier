@@ -63,6 +63,14 @@ class FilterAndGroupConfig(BaseModel, frozen=True):
     window_timeout_seconds: float | None = Field(default=None, gt=0)
     filters: dict[str, str] = Field(default_factory=dict)
     time_grouping: dict[str, Any] | None = None
+    targets: list[str] | None = Field(
+        default=None,
+        description=(
+            "Dispatcher identifiers this builder's jobs should be "
+            "published to. ``None`` is resolved at preflight via the "
+            "service's ``allow_implicit_target`` policy."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_min_files(self) -> FilterAndGroupConfig:
@@ -185,8 +193,9 @@ class FilterAndGroupJobBuilder(JobBuilder):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated_config = FilterAndGroupConfig.model_validate(config or {})
@@ -254,7 +263,7 @@ class FilterAndGroupJobBuilder(JobBuilder):
                 f"Timeout reaper emitting job {job.identifier} "
                 f"with {len(job.files)} files",
             )
-            self.emit(job)
+            self.emit(job, self._targets)
             JOB_BUILDER_TIMEOUT_EMISSIONS.labels(job_builder_name=self.name).inc()
 
 

@@ -122,6 +122,18 @@ JOB_BUILDER_UNMATCHED_FILES: Counter = Counter(
     ["job_builder_name"],
 )
 
+JOB_BUILDER_JOBS_EMITTED: Counter = Counter(
+    "courier_job_builder_jobs_emitted_total",
+    "Total number of (job, target) publish successes from a job builder",
+    ["job_builder_name", "target"],
+)
+
+JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
+    "courier_job_builder_emit_failures_total",
+    "Total number of (job, target) publish failures from a job builder",
+    ["job_builder_name", "target", "reason"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher metrics
@@ -188,6 +200,32 @@ DISPATCHER_HTTP_REQUEST_DURATION: Histogram = Histogram(
     "Duration of HTTP requests made by an http_dispatcher",
     ["dispatcher_name"],
     buckets=(0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
+)
+
+DISPATCHER_JOBS_CONSUMED: Counter = Counter(
+    "courier_dispatcher_jobs_consumed_total",
+    "Total number of jobs consumed from a dispatcher's per-identifier queue",
+    ["dispatcher_identifier"],
+)
+
+DISPATCHER_DISPATCH_LATENCY_SECONDS: Histogram = Histogram(
+    "courier_dispatcher_dispatch_latency_seconds",
+    "End-to-end routing latency: time from builder emit to dispatcher consume",
+    ["dispatcher_identifier"],
+    buckets=(0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
+)
+
+DISPATCHER_QUEUE_DEPTH: Gauge = Gauge(
+    "courier_dispatcher_queue_depth",
+    "Current depth of a dispatcher's per-identifier queue (poll-based; "
+    "memory transport reports 0 with a documented caveat)",
+    ["dispatcher_identifier"],
+)
+
+DISPATCHER_DEDUPE_SKIPS: Counter = Counter(
+    "courier_dispatcher_dedupe_skips_total",
+    "Jobs dropped by a dispatcher's consumer-side dedupe (duplicate job id)",
+    ["dispatcher_identifier"],
 )
 
 # ---------------------------------------------------------------------------

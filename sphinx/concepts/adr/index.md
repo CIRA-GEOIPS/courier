@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-These records capture non-obvious architectural choices made in LazyLemon.
+These records capture non-obvious architectural choices made in Courier.
 Each ADR includes context, the decision taken, alternatives considered, and
 trade-offs accepted.
 
@@ -12,4 +12,5 @@ trade-offs accepted.
 0003-plugin-run-state-enum
 0004-frozen-file-mutable-file-split
 0005-segregated-plugin-protocols
+0006-dispatcher-routing
 ```

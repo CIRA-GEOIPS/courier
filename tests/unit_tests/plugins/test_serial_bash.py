@@ -23,7 +23,7 @@ def _make_config(**overrides):
 
 class TestConstructor:
     def test_stores_config(self, mock_service: MagicMock) -> None:
-        plugin = SerialBashDispatcher(mock_service, _make_config())
+        plugin = SerialBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin.bash_script == "echo {file}"
 
     def test_module_init_short_circuits(self) -> None:
@@ -32,7 +32,7 @@ class TestConstructor:
 
     def test_missing_bash_script_raises(self, mock_service: MagicMock) -> None:
         with pytest.raises(KeyError):
-            SerialBashDispatcher(mock_service, {})
+            SerialBashDispatcher(mock_service, {}, identifier="test-disp")
 
 
 # ─── is_healthy ─────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ class TestConstructor:
 
 class TestIsHealthy:
     def test_always_healthy(self, mock_service: MagicMock) -> None:
-        plugin = SerialBashDispatcher(mock_service, _make_config())
+        plugin = SerialBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         assert plugin.is_healthy() is True
 
 
@@ -56,7 +56,7 @@ class TestGetExecutionLog:
         fake_completed_process,
         mocker,
     ) -> None:
-        plugin = SerialBashDispatcher(mock_service, _make_config())
+        plugin = SerialBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         run = mocker.patch(
             "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
             return_value=fake_completed_process(returncode=0, stdout="hi"),
@@ -77,7 +77,7 @@ class TestGetExecutionLog:
         make_job,
         mocker,
     ) -> None:
-        plugin = SerialBashDispatcher(mock_service, _make_config())
+        plugin = SerialBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         mocker.patch(
             "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=1),
@@ -94,7 +94,7 @@ class TestGetExecutionLog:
         make_job,
         mocker,
     ) -> None:
-        plugin = SerialBashDispatcher(mock_service, _make_config())
+        plugin = SerialBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         mocker.patch(
             "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
             side_effect=OSError("boom"),
@@ -112,7 +112,7 @@ class TestGetExecutionLog:
         fake_completed_process,
         mocker,
     ) -> None:
-        plugin = SerialBashDispatcher(mock_service, _make_config())
+        plugin = SerialBashDispatcher(mock_service, _make_config(), identifier="test-disp")
         captured: list[str] = []
 
         def fake_run(args, **_kwargs):

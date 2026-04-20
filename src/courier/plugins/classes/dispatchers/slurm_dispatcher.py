@@ -101,8 +101,9 @@ class SlurmDispatcher(Dispatcher):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict[str, Any] | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated = SlurmDispatcherConfig.model_validate(config or {})

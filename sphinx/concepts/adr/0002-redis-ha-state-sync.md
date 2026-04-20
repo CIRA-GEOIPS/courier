@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-When multiple LazyLemon instances run in parallel (high-availability mode), each
+When multiple Courier instances run in parallel (high-availability mode), each
 instance has its own in-memory `JobGroup` state. Without coordination, the same job
 can be emitted to the dispatcher by more than one instance, causing duplicate
 processing.

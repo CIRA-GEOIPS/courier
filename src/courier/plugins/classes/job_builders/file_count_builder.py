@@ -40,6 +40,13 @@ class FileCountBuilderConfig(BaseModel, frozen=True):
     job_name_template: str = "{{ source }}-{{ instrument }}-{{ timestamp }}"
     filters: dict[str, str] = Field(default_factory=dict)
     job_timeout_seconds: float = Field(default=86400.0, gt=0)
+    targets: list[str] | None = Field(
+        default=None,
+        description=(
+            "Dispatcher identifiers this builder's jobs should be "
+            "published to. ``None`` is resolved at preflight."
+        ),
+    )
 
     @field_validator("job_name_template")
     @classmethod
@@ -146,8 +153,9 @@ class FileCountBuilder(JobBuilder):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated_config = FileCountBuilderConfig.model_validate(config or {})

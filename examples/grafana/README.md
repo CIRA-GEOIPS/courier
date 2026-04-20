@@ -1,8 +1,8 @@
-# LazyLemon Grafana Dashboard
+# Courier Grafana Dashboard
 
 Programmatic Grafana dashboard generated with [grafanalib](https://github.com/weaveworks/grafanalib).
 
-Covers all 20 Prometheus metrics exposed by the LazyLemon service, organized into:
+Covers all 20 Prometheus metrics exposed by the Courier service, organized into:
 
 - **Service Overview** -- health, uptime, heartbeat, total files
 - **Data Monitors** -- file processing rate, status breakdown, scan age

@@ -141,6 +141,7 @@ class DummyJobBuilder(JobBuilder):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
         """Initialize the DummyJobBuilder.
 
@@ -150,8 +151,10 @@ class DummyJobBuilder(JobBuilder):
             The service instance for the builder.
         config : dict
             Configuration dictionary for the builder.
+        identifier : str or None
+            Run-step identifier from the service YAML (optional).
         """
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self._logger.debug(f"Initializing DummyJobBuilder with config {config}")

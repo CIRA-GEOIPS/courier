@@ -192,6 +192,10 @@ module = "httpx.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "kombu.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 follow_untyped_imports = true
@@ -209,6 +213,7 @@ markers = [
     "limited_test_dataset_availability: CONCURRENT - marks integration tests that may have limited test dataset availability so may not be available to all users.",
     "base: OPTIONAL INDEPENDENT - integration tests that complete very quickly and require only a minimal installation for testing basic functionality within the current repository",
     "full: REQUIRED INDEPENDENT - integration tests that require a 'full' installation for testing all functionality within the current repository. 'full' marker includes all tests for the current repo except for tests included in the optional 'base' marker.",
+    "contract: property-based serialization round-trip tests between pipeline stages.",
 ]
 
 [tool.coverage.run]

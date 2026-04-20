@@ -1,7 +1,10 @@
 """Job and JobGroup domain types."""
 
+from __future__ import annotations
+
 import json
 import time
+import uuid
 from typing import Any, Never
 
 from courier.types.file import File, FrozenFile
@@ -26,6 +29,21 @@ class Job:
         Unix timestamp of last modification. Defaults to current time.
     timeout : float, optional
         Seconds before job is considered old. Defaults to 24 hours.
+    correlation_id : str or None, optional
+        UUID propagated from the originating file; generated on first
+        construction when absent so every Job has a stable ID for log
+        correlation across the data-monitor → builder → dispatcher
+        pipeline.
+    emit_time : float or None, optional
+        Unix timestamp stamped by the job builder at emit. Used by the
+        dispatcher to compute end-to-end routing latency. ``None`` until
+        the builder has published the job.
+    targets : tuple[str, ...] or None, optional
+        Observability record of which dispatcher identifiers the builder
+        published this job to. Not used for routing — routing is by
+        queue name — but preserved round-trip for debugging and
+        provenance. Stored as a tuple so the field remains effectively
+        immutable despite the surrounding class being mutable.
     """
 
     def __init__(  # noqa: PLR0913
@@ -36,6 +54,9 @@ class Job:
         files: set[File | FrozenFile] | frozenset[Never] = frozenset(),
         last_modified: float | None = None,
         timeout: float = 60 * 60 * 24,
+        correlation_id: str | None = None,
+        emit_time: float | None = None,
+        targets: tuple[str, ...] | None = None,
     ) -> None:
         self.name = name
         self.identifier = identifier
@@ -43,6 +64,9 @@ class Job:
         self.files = files
         self.last_modified = last_modified if last_modified is not None else time.time()
         self.timeout = timeout
+        self.correlation_id = correlation_id or str(uuid.uuid4())
+        self.emit_time = emit_time
+        self.targets: tuple[str, ...] = tuple(targets) if targets else ()
         if self.files == frozenset():
             self.files = set()
 
@@ -56,11 +80,14 @@ class Job:
                 "files": [str(f) for f in self.files],
                 "last_modified": self.last_modified,
                 "timeout": self.timeout,
+                "correlation_id": self.correlation_id,
+                "emit_time": self.emit_time,
+                "targets": list(self.targets),
             },
         )
 
     @classmethod
-    def from_string(cls, s: str) -> "Job":
+    def from_string(cls, s: str) -> Job:
         """Initialize Job from JSON string.
 
         Parameters
@@ -81,6 +108,9 @@ class Job:
             files={FrozenFile.from_string(f) for f in data.get("files", [])},
             last_modified=data.get("last_modified"),
             timeout=data.get("timeout", 60 * 60 * 24),
+            correlation_id=data.get("correlation_id"),
+            emit_time=data.get("emit_time"),
+            targets=tuple(data.get("targets") or ()),
         )
 
     def ready(self) -> bool:
@@ -91,6 +121,9 @@ class Job:
         """Add file to job."""
         self.files.add(file)  # type: ignore
         self.last_modified = time.time()
+        file_cid = getattr(file, "correlation_id", None)
+        if not self.correlation_id and file_cid:
+            self.correlation_id = file_cid
 
     def is_old(self) -> bool:
         """Return true if job is old and ready to be discarded."""

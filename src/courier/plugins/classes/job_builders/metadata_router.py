@@ -59,6 +59,14 @@ class RouteConfig(BaseModel, frozen=True):
     min_files: int = Field(default=1, ge=1)
     window_timeout_seconds: float | None = Field(default=None, gt=0)
     time_grouping: dict[str, float | int | str] | None = None
+    targets: list[str] | None = Field(
+        default=None,
+        description=(
+            "Dispatcher identifiers this route's jobs should be published "
+            "to. ``None`` is resolved at preflight via the service's "
+            "``allow_implicit_target`` policy."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_min_files(self) -> RouteConfig:
@@ -112,8 +120,9 @@ class MetadataRouterBuilder(JobBuilder):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated_config = MetadataRouterConfig.model_validate(config or {})
@@ -127,6 +136,10 @@ class MetadataRouterBuilder(JobBuilder):
         ]
         self._route_names = [route.name for route in self.validated_config.routes]
         self._group_locks = {jg.name: threading.Lock() for jg in self.job_groups}
+        self._route_targets: dict[str, tuple[str, ...]] = {
+            f"metadata_router:{route.name}": tuple(route.targets or ())
+            for route in self.validated_config.routes
+        }
 
         self._reaper_stop_event = threading.Event()
         self._reaper_thread: threading.Thread | None = None
@@ -196,6 +209,10 @@ class MetadataRouterBuilder(JobBuilder):
                 len(self.job_groups),
             )
 
+    def _targets_for_group(self, job_group: JobGroup) -> tuple[str, ...]:
+        """Return per-route targets, falling back to the builder default."""
+        return self._route_targets.get(job_group.name, self._targets)
+
     def _reaper_interval(self) -> float:
         timeouts = [
             r.window_timeout_seconds
@@ -224,12 +241,13 @@ class MetadataRouterBuilder(JobBuilder):
             emitted: list[Job] = []
             for jid in ready_ids:
                 emitted.append(job_group.jobs.pop(jid))
+        targets = self._targets_for_group(job_group)
         for job in emitted:
             self._logger.info(
                 f"Timeout reaper emitting route job {job.identifier} "
                 f"with {len(job.files)} files",
             )
-            self.emit(job)
+            self.emit(job, targets)
             JOB_BUILDER_TIMEOUT_EMISSIONS.labels(job_builder_name=self.name).inc()
 
 

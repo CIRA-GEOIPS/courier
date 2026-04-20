@@ -113,6 +113,109 @@ class BrokerCapabilityError(BrokerError):
     """Raised when an operation requires a broker capability that is unavailable."""
 
 
+class TransientBrokerError(BrokerError):
+    """Raised for retryable broker failures (connection drops, timeouts)."""
+
+
+class FatalBrokerError(BrokerError):
+    """Raised for non-retryable broker failures (malformed message, permission)."""
+
+
+# ---------------------------------------------------------------------------
+# Routing errors
+# ---------------------------------------------------------------------------
+
+
+class RoutingError(ConfigurationError):
+    """Base class for dispatcher-routing configuration errors."""
+
+
+class InvalidIdentifierError(RoutingError):
+    """Raised when a dispatcher identifier violates naming rules.
+
+    Attributes
+    ----------
+    identifier : str
+        The invalid identifier.
+    reason : str
+        Human-readable reason the identifier was rejected.
+    """
+
+    def __init__(self, identifier: str, reason: str) -> None:
+        self.identifier = identifier
+        self.reason = reason
+        super().__init__(
+            f"Invalid dispatcher identifier {identifier!r}: {reason}",
+        )
+
+
+class DuplicateTargetError(RoutingError):
+    """Raised when a builder config lists the same target more than once.
+
+    Attributes
+    ----------
+    location : str
+        Builder identifier or route name where the duplicate occurred.
+    targets : list[str]
+        The offending targets list.
+    """
+
+    def __init__(self, location: str, targets: list[str]) -> None:
+        self.location = location
+        self.targets = list(targets)
+        super().__init__(
+            f"Duplicate targets at {location}: {self.targets}",
+        )
+
+
+class UnknownTargetError(RoutingError):
+    """Raised when a builder targets a dispatcher that is not configured.
+
+    Attributes
+    ----------
+    builder : str
+        Builder identifier that declared the unknown target.
+    unknown : list[str]
+        Targets that did not match any configured dispatcher.
+    known : list[str]
+        Dispatchers actually present in the config.
+    """
+
+    def __init__(
+        self,
+        builder: str,
+        unknown: list[str],
+        known: list[str],
+    ) -> None:
+        self.builder = builder
+        self.unknown = list(unknown)
+        self.known = list(known)
+        super().__init__(
+            f"builder {builder!r} targets unknown dispatchers {sorted(self.unknown)}; "
+            f"known={sorted(self.known)}",
+        )
+
+
+class AmbiguousImplicitTargetError(RoutingError):
+    """Raised when implicit routing is requested but ≠1 dispatcher is defined.
+
+    Attributes
+    ----------
+    builder : str
+        Builder that declared no explicit targets.
+    dispatcher_count : int
+        Number of configured dispatchers.
+    """
+
+    def __init__(self, builder: str, dispatcher_count: int) -> None:
+        self.builder = builder
+        self.dispatcher_count = dispatcher_count
+        super().__init__(
+            f"builder {builder!r} has no targets and {dispatcher_count} "
+            "dispatchers exist; implicit routing requires exactly one dispatcher",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Discovery / plugin errors
 # ---------------------------------------------------------------------------

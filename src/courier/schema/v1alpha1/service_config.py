@@ -24,12 +24,50 @@ from courier.schema.v1alpha1.broker_config import (
 )
 
 __all__ = [
+    "DispatcherQueueConfig",
     "MicroserviceDefinitionModel",
     "MicroserviceModel",
     "ResourceMetadataModel",
     "ServiceConfigModel",
     "ServiceSpecModel",
 ]
+
+
+class DispatcherQueueConfig(FrozenModel):
+    """Per-dispatcher broker queue options.
+
+    Embedded under a dispatcher's ``spec.config.queue`` block. Every
+    field is optional; defaults are chosen so operators running on a
+    laptop memory broker see no-op behavior while AMQP clusters get
+    durable queues by default.
+
+    Parameters
+    ----------
+    durable : bool or None
+        If ``True``, the broker persists the queue across restarts.
+        ``None`` defers to :class:`courier.service.Service` preflight,
+        which sets ``True`` for AMQP-like transports and ``False`` for
+        memory.
+    max_length : int or None
+        Optional broker-enforced maximum queue depth. ``None`` = no cap.
+    message_ttl : int or None
+        Optional per-message TTL in seconds. ``None`` = no expiry.
+    """
+
+    durable: bool | None = Field(
+        default=None,
+        description="Whether the broker should persist the queue across restarts.",
+    )
+    max_length: int | None = Field(
+        default=None,
+        ge=1,
+        description="Broker-enforced maximum number of messages.",
+    )
+    message_ttl: int | None = Field(
+        default=None,
+        ge=1,
+        description="Per-message TTL in seconds.",
+    )
 
 
 class ResourceMetadataModel(FrozenModel):
@@ -151,6 +189,16 @@ class ServiceSpecModel(FrozenModel):
         ...,
         min_length=1,
         description="Ordered collection of steps to execute for the service.",
+    )
+    allow_implicit_target: bool = Field(
+        default=True,
+        description=(
+            "When a job builder declares no ``targets`` and exactly one "
+            "dispatcher exists, auto-wire to that dispatcher at preflight. "
+            "Always emits a WARNING log so operators never auto-wire silently. "
+            "Set ``false`` in HA deployments to make the absence of an "
+            "explicit target a preflight error."
+        ),
     )
 
     @model_validator(mode="after")

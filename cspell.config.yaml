@@ -22,6 +22,8 @@ words:
   - mydb
   - hget
   - setnx
+  - dedupe
+  - dedupes
   - hset
   - hdel
   - hgetall
@@ -94,9 +96,17 @@ words:
   - Uttmark
   - viewcode
   - xarray
+  - undeclarable
+  - predeclaration
+  - predeclare
+  - pytestmark
   - yday
   - courier
   - geolocated
+  - nonstring
+  - misrouting
+  - fanout
+  - duplicatable
 ignoreWords:
   - includehidden
   - intersphinx

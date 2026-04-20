@@ -46,18 +46,18 @@ AVAILABLE_PLUGINS = {
 AVAILABLE_PLUGINS["filter_pass"] = FilterAndGroupJobBuilder
 
 
-def _resolve_plugin(plugin: Any) -> tuple[type, dict]:
-    """Resolve a plugin config entry to a (class, config) tuple.
+def _resolve_plugin(plugin: Any) -> tuple[type, dict, str | None]:
+    """Resolve a plugin config entry to a (class, config, identifier) tuple.
 
     Parameters
     ----------
     plugin : Any
-        Microservice model entry with spec.name and spec.config.
+        Microservice model entry with spec.name, spec.config, and identifier.
 
     Returns
     -------
-    tuple[type, dict]
-        Plugin class and its configuration dict.
+    tuple[type, dict, str | None]
+        Plugin class, configuration dict, and the YAML ``identifier``.
 
     Raises
     ------
@@ -67,7 +67,30 @@ def _resolve_plugin(plugin: Any) -> tuple[type, dict]:
     name = plugin.spec.name.lower()
     if name not in AVAILABLE_PLUGINS:
         raise ValueError(f"Plugin {plugin.spec.name} not found.")
-    return (AVAILABLE_PLUGINS[name], plugin.spec.config)
+    return (AVAILABLE_PLUGINS[name], plugin.spec.config, plugin.identifier)
+
+
+def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
+    """Flatten declared ``targets`` per builder for preflight validation.
+
+    Returns a mapping from builder identifier to the union of every
+    target declared under its config (across routes, for builders like
+    ``metadata_router``). An empty tuple means "no target declared" and
+    tells preflight to resolve via ``allow_implicit_target``.
+    """
+    out: dict[str, tuple[str, ...]] = {}
+    for entry in config.spec.run:
+        if entry.spec.kind != "job_builders":
+            continue
+        cfg = entry.spec.config or {}
+        declared: list[str] = []
+        if isinstance(cfg.get("routes"), list):
+            for route in cfg["routes"]:
+                declared.extend(route.get("targets") or [])
+        else:
+            declared.extend(cfg.get("targets") or [])
+        out[entry.identifier] = tuple(declared)
+    return out
 
 
 def run_service(config: Any) -> None:
@@ -86,7 +109,22 @@ def run_service(config: Any) -> None:
         broker_max_retries=config.spec.broker.max_retries,
     )
     plugins = list(map(_resolve_plugin, config.spec.run))
-    create_service_with_plugins(service_config, plugins).start()
+    service = create_service_with_plugins(service_config, plugins)
+    dispatcher_ids = {
+        entry.identifier
+        for entry in config.spec.run
+        if entry.spec.kind == "dispatchers"
+    }
+    service.configure_routing(
+        dispatcher_identifiers=dispatcher_ids,
+        builder_targets=_collect_builder_targets(config),
+        allow_implicit_target=getattr(
+            config.spec,
+            "allow_implicit_target",
+            True,
+        ),
+    )
+    service.start()
 
 
 def run(config_file: Path) -> None:
