@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from typing import Any, Never
+from collections.abc import Iterable
+from typing import Any
 
 from courier.types.file import File, FrozenFile
 
@@ -23,8 +24,8 @@ class Job:
         Unique identifier for this job instance.
     config : Any
         Job configuration.
-    files : set[File | FrozenFile] | frozenset[Never], optional
-        Files associated with this job.
+    files : Iterable[File | FrozenFile] or None, optional
+        Files associated with this job. None or empty means no initial files.
     last_modified : float or None, optional
         Unix timestamp of last modification. Defaults to current time.
     timeout : float, optional
@@ -51,7 +52,7 @@ class Job:
         name: str,
         identifier: str,
         config: Any,
-        files: set[File | FrozenFile] | frozenset[Never] = frozenset(),
+        files: Iterable[File | FrozenFile] | None = None,
         last_modified: float | None = None,
         timeout: float = 60 * 60 * 24,
         correlation_id: str | None = None,
@@ -61,14 +62,12 @@ class Job:
         self.name = name
         self.identifier = identifier
         self.config = config
-        self.files = files
+        self.files: set[File | FrozenFile] = set(files) if files is not None else set()
         self.last_modified = last_modified if last_modified is not None else time.time()
         self.timeout = timeout
         self.correlation_id = correlation_id or str(uuid.uuid4())
         self.emit_time = emit_time
         self.targets: tuple[str, ...] = tuple(targets) if targets else ()
-        if self.files == frozenset():
-            self.files = set()
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
@@ -119,7 +118,7 @@ class Job:
 
     def add_file(self, file: File | FrozenFile) -> None:
         """Add file to job."""
-        self.files.add(file)  # type: ignore
+        self.files.add(file)
         self.last_modified = time.time()
 
     def is_old(self) -> bool:
