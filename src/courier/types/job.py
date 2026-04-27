@@ -161,12 +161,14 @@ class JobGroup:
     def add_file(self, file: File | FrozenFile) -> bool:
         """Add file to appropriate job in job group.
 
-        Return true if file was added to a job, false otherwise.
+        Return true if file was added to at least one job, false otherwise.
         """
         if not self.file_is_relevant(file):
             return False
         job_ids = self.get_job_ids_from_file(file)
-        for job_id in job_ids:
+        if not job_ids:
+            return False
+        for job_id in set(job_ids):
             if job_id in self.jobs:
                 self.jobs[job_id].add_file(file)
             else:
