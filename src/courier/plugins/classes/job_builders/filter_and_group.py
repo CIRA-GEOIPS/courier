@@ -263,7 +263,7 @@ class FilterAndGroupJobBuilder(JobBuilder):
                 f"Timeout reaper emitting job {job.identifier} "
                 f"with {len(job.files)} files",
             )
-            self.emit(job, self._targets)
+            self.emit(job, self.targets)
             JOB_BUILDER_TIMEOUT_EMISSIONS.labels(job_builder_name=self.name).inc()
 
 

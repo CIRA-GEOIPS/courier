@@ -278,7 +278,7 @@ class Service:
         """
         if self._dispatcher_identifiers and self._builder_targets:
             return
-        plugins = self._plugin_manager._plugins
+        plugins = self._plugin_manager.get_plugins()
         discovered_dispatchers: set[str] = set()
         discovered_builders: dict[str, tuple[str, ...]] = {}
         for registry_key, info in plugins.items():
@@ -287,7 +287,7 @@ class Service:
                 ident = getattr(info.plugin, "identifier", registry_key)
                 discovered_dispatchers.add(ident)
             elif interface == "job_builders":
-                existing = getattr(info.plugin, "_targets", ())
+                existing = getattr(info.plugin, "targets", ())
                 discovered_builders[registry_key] = tuple(existing)
         if not self._dispatcher_identifiers:
             self._dispatcher_identifiers = frozenset(discovered_dispatchers)
@@ -307,14 +307,14 @@ class Service:
         empty).  Copy the resolved tuple onto every matching instance so
         :meth:`JobBuilder.emit` has non-empty fan-out targets.
         """
-        plugins = self._plugin_manager._plugins
+        plugins = self._plugin_manager.get_plugins()
         for builder_id, targets in self._builder_targets.items():
             info = plugins.get(builder_id)
             if info is None:
                 continue
             if getattr(info.plugin, "interface", None) != "job_builders":
                 continue
-            info.plugin._targets = targets  # type: ignore[attr-defined]
+            info.plugin.targets = targets
 
     def _validate_dispatch_targets(self) -> None:
         """Fail fast on oversized queue names, unknown / duplicate targets.

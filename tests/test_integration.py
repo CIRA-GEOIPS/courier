@@ -124,7 +124,7 @@ def _shutdown_service(service: Service, thread: threading.Thread) -> None:
     """
     service._signal_handler._shutdown_requested = True
     service._signal_handler.stop_event.set()
-    for info in service._plugin_manager._plugins.values():
+    for info in service._plugin_manager.get_plugins().values():
         if hasattr(info.plugin, "_stop_event"):
             info.plugin._stop_event.set()
     thread.join(timeout=30)
