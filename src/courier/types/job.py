@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 from courier.types.file import File, FrozenFile
 
