@@ -314,7 +314,7 @@ class Service:
                 continue
             if getattr(info.plugin, "interface", None) != "job_builders":
                 continue
-            info.plugin.targets = targets
+            info.plugin.targets = targets  # type: ignore[attr-defined]
 
     def _validate_dispatch_targets(self) -> None:
         """Fail fast on oversized queue names, unknown / duplicate targets.
