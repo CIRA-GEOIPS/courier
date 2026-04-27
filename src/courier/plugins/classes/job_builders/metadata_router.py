@@ -211,7 +211,7 @@ class MetadataRouterBuilder(JobBuilder):
 
     def _targets_for_group(self, job_group: JobGroup) -> tuple[str, ...]:
         """Return per-route targets, falling back to the builder default."""
-        return self._route_targets.get(job_group.name, self._targets)
+        return self._route_targets.get(job_group.name, self.targets)
 
     def _reaper_interval(self) -> float:
         timeouts = [

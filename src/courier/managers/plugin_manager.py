@@ -342,6 +342,21 @@ class PluginManager(ServiceManager):
 
         self._logger.info("Plugin manager stopped")
 
+    def get_plugins(self) -> dict[str, PluginStateInfo]:
+        """Return a snapshot of all registered plugins and their state.
+
+        The returned dict is a shallow copy taken under the internal lock,
+        safe for read-only access by external callers such as
+        :class:`~courier.service.Service` during preflight routing discovery.
+
+        Returns
+        -------
+        dict[str, PluginStateInfo]
+            Mapping from registry key to plugin state information.
+        """
+        with self._lock:
+            return self._plugins.copy()
+
     def is_healthy(self) -> bool:
         """Check if plugin manager is healthy.
 

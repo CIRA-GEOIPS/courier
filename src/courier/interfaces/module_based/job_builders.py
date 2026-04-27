@@ -90,7 +90,7 @@ class JobBuilder(ServicePlugin):
         self._group_locks: dict[str, threading.Lock] = {}
         self.config = config or {}
         self._sync: JobBuilderStateSync | None = self._init_sync(self.config, service)
-        self._targets: tuple[str, ...] = tuple(self.config.get("targets") or ())
+        self.targets: tuple[str, ...] = tuple(self.config.get("targets") or ())
 
         self._files_received = JOB_BUILDER_FILES_RECEIVED
         self._jobs_built = JOB_BUILDER_JOBS_BUILT
@@ -158,7 +158,7 @@ class JobBuilder(ServicePlugin):
             a copy produced by this method before publish.
         targets : Sequence[str] or None, optional
             Dispatcher identifiers to route to.  ``None`` falls back to
-            the builder's ``self._targets`` configured list.  Preflight
+            the builder's ``self.targets`` configured list.  Preflight
             guarantees at least one target is present.
 
         Notes
@@ -168,7 +168,7 @@ class JobBuilder(ServicePlugin):
         fan-out is logged at ERROR with both succeeded and failed targets.
         """
         target_list: tuple[str, ...] = (
-            tuple(targets) if targets is not None else self._targets
+            tuple(targets) if targets is not None else self.targets
         )
         if not target_list:
             self._logger.error(
@@ -315,12 +315,12 @@ class JobBuilder(ServicePlugin):
     def _targets_for_group(self, job_group: JobGroup) -> tuple[str, ...]:
         """Return the fan-out targets for *job_group*.
 
-        Default: ``self._targets`` (applies to every group).  Routing
+        Default: ``self.targets`` (applies to every group).  Routing
         builders (e.g. :class:`MetadataRouterBuilder`) override this to
         return per-route targets.
         """
         del job_group
-        return self._targets
+        return self.targets
 
     def _process_job_group(self, job_group: JobGroup, file: FrozenFile) -> None:
         """Add a file to a group, emit ready jobs, and prune timed-out ones."""
