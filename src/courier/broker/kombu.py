@@ -297,6 +297,7 @@ class MessageBrokerManager(ServiceManager):
         self._namespace = config.namespace
 
         self._establish_connection = retry_with_backoff(
+            max_retries=max(self._config.broker_max_retries, 1),
             exceptions=(OperationalError,),
             stop_event=self._stop_event,
         )(self._establish_connection_impl)
