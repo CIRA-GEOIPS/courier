@@ -284,6 +284,10 @@ class Service:
         for registry_key, info in plugins.items():
             interface = getattr(info.plugin, "interface", None)
             if interface == "dispatchers":
+                # dispatcher.__init__ rejects identifier=None with a
+                # ValueError, so the registry_key fallback here is a
+                # safety net that only fires if the plugin bypassed
+                # normal construction (e.g. mock in test harness).
                 ident = getattr(info.plugin, "identifier", registry_key)
                 discovered_dispatchers.add(ident)
             elif interface == "job_builders":
