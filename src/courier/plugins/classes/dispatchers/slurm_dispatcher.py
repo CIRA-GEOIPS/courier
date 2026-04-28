@@ -52,6 +52,7 @@ _TERMINAL_STATES: frozenset[str] = frozenset(
         "PREEMPTED",
         "BOOT_FAIL",
         "DEADLINE",
+        "UNKNOWN",
     },
 )
 
@@ -262,6 +263,13 @@ class SlurmDispatcher(Dispatcher):
                 time.sleep(self.validated.poll_interval_seconds)
                 continue
 
+            if result.returncode != 0:
+                self._logger.warning(
+                    "sacct returned rc=%d with stderr=%r",
+                    result.returncode,
+                    result.stderr,
+                )
+
             state, exit_code = self._parse_sacct_output(result.stdout)
             last_state = state or last_state
             if last_state in _TERMINAL_STATES:
@@ -289,7 +297,8 @@ class SlurmDispatcher(Dispatcher):
                 except ValueError:
                     exit_code = -1
             return state, exit_code
-        return "", 0
+        self._logger.warning("No valid sacct output lines found")
+        return "UNKNOWN", -1
 
     def _read_output(self, job: Job) -> tuple[str, str]:
         """Read and return the ``.out`` and ``.err`` files for *job*."""

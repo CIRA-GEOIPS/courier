@@ -84,8 +84,8 @@ class TestParseSacctOutput:
     ) -> None:
         plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
         state, rc = plugin._parse_sacct_output("")
-        assert state == ""
-        assert rc == 0
+        assert state == "UNKNOWN"
+        assert rc == -1
 
 
 # ─── _submit ────────────────────────────────────────────────────────────────
