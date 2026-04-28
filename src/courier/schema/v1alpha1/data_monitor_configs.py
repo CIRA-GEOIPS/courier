@@ -17,13 +17,13 @@ from pydantic import (
     model_validator,
 )
 
+from courier.utils.datetime_utils import _DATE_KEYS
+
 # Valid template variables for parent_dir and match patterns
-VALID_TEMPLATE_VARS: frozenset[str] = frozenset(
-    {"YYYY", "MM", "DD", "JJJ", "HH", "NN"},
-)
+VALID_TEMPLATE_VARS: frozenset[str] = frozenset(_DATE_KEYS)
 
 # Date components that can be manually specified or extracted via regex
-DATE_COMPONENTS: frozenset[str] = frozenset({"YYYY", "MM", "DD", "JJJ", "HH", "NN"})
+DATE_COMPONENTS: frozenset[str] = frozenset(_DATE_KEYS)
 
 # Template variable pattern for validation
 TEMPLATE_VAR_PATTERN: re.Pattern[str] = re.compile(r"\{\{\s*(\w+)\s*\}\}")

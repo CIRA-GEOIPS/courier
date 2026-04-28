@@ -6,6 +6,7 @@ import typer
 
 from courier.cli.config_loader import load_config
 from courier.errors import CourierError
+from courier.schema import ServiceConfigModel
 
 
 def validate(config_file: Path) -> None:
@@ -15,8 +16,33 @@ def validate(config_file: Path) -> None:
         raise typer.Exit(1)
 
     try:
-        load_config(config_file)
+        config = load_config(config_file)
+        _validate_plugins(config)
         typer.echo("Config valid")
     except (CourierError, ValueError, OSError) as e:
         typer.echo(f"Invalid config: {e}")
         raise typer.Exit(1) from e
+
+
+def _validate_plugins(config: ServiceConfigModel) -> None:
+    """Check that every declared plugin name is known and dispatchers have ids."""
+    from courier.cli.run import _resolve_plugin  # noqa: PLC0415
+
+    dispatcher_ids: set[str] = set()
+    for entry in config.spec.run:
+        _resolve_plugin(entry)
+        if entry.spec.kind == "dispatchers":
+            if not entry.identifier:
+                raise ValueError(
+                    f"Dispatcher {entry.spec.name!r} is missing an identifier",
+                )
+            dispatcher_ids.add(entry.identifier)
+        if entry.spec.kind == "job_builders" and not entry.identifier:
+            typer.echo(
+                f"Warning: JobBuilder {entry.spec.name!r} has no identifier",
+            )
+
+    if not dispatcher_ids:
+        typer.echo(
+            "Warning: No dispatchers configured; jobs will not be executed",
+        )
