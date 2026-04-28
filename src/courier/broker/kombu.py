@@ -35,8 +35,8 @@ _logger = get_logger("module", "broker.kombu", None)
 def _open_connection(url: str) -> kombu.Connection:
     """Return an established kombu Connection for *url*.
 
-    kombu connections are lazy by default; this function forces the connection
-    to open so callers can detect failures immediately.
+    Forces the connection open so callers detect failures immediately.
+    Retries at a higher level are handled by :func:`retry_with_backoff`.
 
     Parameters
     ----------
@@ -54,6 +54,10 @@ def _open_connection(url: str) -> kombu.Connection:
         If the broker is unreachable.
     """
     conn = kombu.Connection(url)
+    # max_retries=1 → single attempt (no actual retries).
+    # interval_start=0, interval_step=0 → disable kombu's internal
+    # retry delays (defaults are 2 s); the outer retry_with_backoff
+    # wrapper owns the retry policy and backoff schedule.
     conn.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
     return conn
 
