@@ -2,10 +2,10 @@
 
 import re
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Final
 
 # Canonical date component keys used in regex named groups.
-_DATE_KEYS = ("YYYY", "MM", "DD", "JJJ", "HH", "NN")
+_DATE_KEYS: Final = ("YYYY", "MM", "DD", "JJJ", "HH", "NN")
 
 
 def parse_timestamp(raw: Any, fmt: str | None = None) -> datetime | None:
@@ -32,7 +32,7 @@ def parse_timestamp(raw: Any, fmt: str | None = None) -> datetime | None:
         return None
     if isinstance(raw, datetime):
         return raw
-    if isinstance(raw, (int, float)):
+    if isinstance(raw, int | float):
         return datetime.fromtimestamp(float(raw))
     if not isinstance(raw, str):
         return None

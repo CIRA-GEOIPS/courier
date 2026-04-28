@@ -12,7 +12,6 @@ words:
   - cafile
   - roundtrips
   - sacct
-  - sacct
   - noheader
   - runcourier
   - APIVERSION

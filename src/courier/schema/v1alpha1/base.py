@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 __all__ = ["FrozenModel"]
 
-_DNS_SUBDOMAIN_RE: re.Pattern[str] = re.compile(
+_DNS_SUBDOMAIN_RE: Final = re.compile(
     r"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$",
 )
 
-_APIVERSION_RE: re.Pattern[str] = re.compile(
+_APIVERSION_RE: Final = re.compile(
     r"^[a-z0-9.-]+/v[0-9]+(alpha[0-9]+|beta[0-9]+)?$",
 )
 

@@ -6,7 +6,7 @@ import threading
 import time
 import types
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from pluginify.interfaces.base import BaseClassInterface
 
@@ -33,7 +33,7 @@ from courier.types.job import Job
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
-_DEDUPE_LRU_SIZE = 1024
+_DEDUPE_LRU_SIZE: Final = 1024
 """Default maximum number of recently-seen job identifiers to track."""
 
 if TYPE_CHECKING:

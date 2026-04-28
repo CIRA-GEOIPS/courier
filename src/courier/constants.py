@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum, StrEnum, auto
+from typing import Final
 
 from courier.errors import InvalidIdentifierError
 
@@ -28,9 +29,9 @@ DISPATCHER_QUEUE: str = QueueName.DISPATCHER
 JOB_READY_PREFIX = "JobReady"
 
 # RabbitMQ queue-name limit (AMQP 0-9-1 spec).
-MAX_QUEUE_NAME_LENGTH = 255
+MAX_QUEUE_NAME_LENGTH: Final = 255
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
+_IDENTIFIER_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 
 
 def validate_dispatcher_identifier(identifier: str) -> None:

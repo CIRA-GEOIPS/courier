@@ -19,7 +19,7 @@ import time
 import types
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 import jinja2
 from pydantic import BaseModel, Field, field_validator
@@ -37,11 +37,11 @@ if TYPE_CHECKING:
     from courier.types.job import Job
 
 
-_SBATCH_JOB_ID_RE = re.compile(r"Submitted batch job (\d+)")
+_SBATCH_JOB_ID_RE: Final = re.compile(r"Submitted batch job (\d+)")
 
-_SACCT_MIN_PARTS = 2
+_SACCT_MIN_PARTS: Final = 2
 
-_TERMINAL_STATES: frozenset[str] = frozenset(
+_TERMINAL_STATES: Final = frozenset(
     {
         "COMPLETED",
         "FAILED",
