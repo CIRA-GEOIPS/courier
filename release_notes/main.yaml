@@ -1,0 +1,17 @@
+documentation:
+- title: Fix README and pyproject.toml metadata
+  description: >
+    Consolidated duplicated sections in README.md into a single clean copy.
+    Updated pyproject.toml to include a real description (was "TODO"),
+    extended Python version support to include 3.14, and fixed the
+    sphinxcontrib-mermaid package name typo.
+  files:
+    modified:
+    - README.md
+    - pyproject.toml
+  related-issue:
+    number: null
+    repo_url: https://github.com/biosafetylvl5/courier
+  date:
+    start: null
+    finish: null
