@@ -5,12 +5,14 @@ from __future__ import annotations
 import queue
 import types
 from pathlib import Path
+from queue import Empty
 from typing import TYPE_CHECKING, ClassVar
 
 from prometheus_client import Gauge
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from courier.constants import PluginRunState
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
 from courier.types.file import File
 
@@ -92,9 +94,18 @@ class FileSystemPoller(DataMonitorBasePlugin):
         try:
             self.health = True
             while True:
-                yield File(file=Path(str(file_queue.get())), hostname="localhost")
+                try:
+                    path = file_queue.get(timeout=0.5)
+                except Empty:
+                    if self._state == PluginRunState.STOPPED:
+                        return
+                    continue
+                yield File(
+                    file=Path(str(path)), hostname="localhost",
+                )
                 self.last_file_processed_timestamp.set_to_current_time()
         finally:
+            self.health = False
             observer.stop()
             observer.join()
 
