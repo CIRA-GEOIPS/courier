@@ -1,11 +1,11 @@
 # Configuration Reference
 
 This guide covers the service configuration file format and all
-broker transport options available in Lazy Lemon.
+broker transport options available in Courier.
 
 ## Overview
 
-Lazy Lemon services are configured through YAML (or JSON) files that
+Courier services are configured through YAML (or JSON) files that
 describe **what** the service does and **how** it connects to
 infrastructure. A single file contains:
 
@@ -18,7 +18,7 @@ service.
 ## Minimal Working Example
 
 No external broker is required to get started. Omit the `broker`
-section entirely and Lazy Lemon uses the in-memory transport:
+section entirely and Courier uses the in-memory transport:
 
 ```yaml
 apiVersion: runcourier.dev/v1alpha1
@@ -26,7 +26,7 @@ kind: Service
 metadata:
   name: my-service
   namespace: default
-  description: A minimal Lazy Lemon service.
+  description: A minimal Courier service.
 
 spec:
   run:
@@ -117,10 +117,36 @@ run:
 Step identifiers must be unique. Duplicate identifiers cause a
 validation error.
 
+### Plugin Resolution
+
+Plugin names (the ``name`` field of each step) are resolved
+automatically through the **pluginify** plugin registry. Courier ships
+with a built-in set of plugins for common tasks, and you can install
+additional plugin packages to extend the available set.
+
+To list all installed plugins:
+
+```bash
+courier plugins
+```
+
+The ``courier validate`` command checks that every declared plugin name
+maps to a registered plugin and that dispatchers always have an
+``identifier``.  It also warns when no dispatchers are configured.
+
+**Configuration constraints:**
+
+- **Queue names** — The full namespaced queue name (``<namespace>-<base>``)
+  must not exceed 255 characters, the AMQP 0-9-1 limit.
+- **Config file size** — Configuration files are limited to 10 MB.
+- **Missing extras** — Plugins that require optional package extras (e.g.
+  ``courier[ha]`` for Redis state synchronisation) raise a
+  ``MissingExtraError`` with installation instructions.
+
 ## Broker Configuration
 
 The `broker` section tells the service how to connect to its message
-broker. Lazy Lemon uses [Kombu](https://docs.celeryq.dev/projects/kombu/)
+broker. Courier uses [Kombu](https://docs.celeryq.dev/projects/kombu/)
 under the hood, so **any Kombu transport** is supported.
 
 There are four configuration styles, selected by the `transport` field.
@@ -441,13 +467,18 @@ courier validate my_service.yaml
 
 Common validation errors:
 
-| Error                                        | Cause                          | Fix                                     |
-| -------------------------------------------- | ------------------------------ | --------------------------------------- |
-| `Field 'host' must be a non-empty string`    | Missing or blank `host`        | Add `host: your-broker-hostname`        |
-| `Unable to extract tag using discriminator`  | Invalid `transport` value      | Use `amqp`, `redis`, `memory`, or `url` |
-| `Extra inputs are not permitted`             | Unknown field in broker config | Remove the unrecognized field           |
-| `Duplicate run step identifiers`             | Two steps share the same name  | Rename one of the step identifiers      |
-| `Input should be greater than or equal to 0` | Negative `max_retries` or `db` | Use a non-negative integer              |
+| Error                                           | Cause                                   | Fix                                              |
+| ----------------------------------------------- | --------------------------------------- | ------------------------------------------------ |
+| `Plugin foo not found`                          | Unknown plugin name                     | Check spelling; run ``courier plugins`` to list. |
+| `Dispatcher 'foo' is missing an identifier`    | Dispatcher step has no ``identifier``   | Add a unique ``identifier`` to the step.         |
+| `Field 'host' must be a non-empty string`       | Missing or blank ``host``               | Add ``host: your-broker-hostname``.              |
+| `Unable to extract tag using discriminator`     | Invalid ``transport`` value             | Use ``amqp``, ``redis``, ``memory``, or ``url``. |
+| `Extra inputs are not permitted`                | Unknown field in broker config          | Remove the unrecognized field.                   |
+| `Duplicate run step identifiers`                | Two steps share the same name           | Rename one of the step identifiers.              |
+| `Queue name ... exceeds 255 chars`              | Namespace + queue name too long         | Shorten the namespace or identifier.             |
+| `Config file ... exceeds maximum of ... bytes`  | Config file larger than 10 MB           | Split into multiple services.                    |
+| `Input should be greater than or equal to 0`    | Negative ``max_retries`` or ``db``      | Use a non-negative integer.                      |
+| `state_sync requires the redis package`         | ``courier[ha]`` extra not installed     | Run ``pip install courier[ha]``.                 |
 
 ## Configuration Precedence
 

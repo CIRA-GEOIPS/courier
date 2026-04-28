@@ -1,6 +1,6 @@
 # High-Availability Job Builder State Sync
 
-Lazy Lemon supports running multiple instances of a service simultaneously
+Courier supports running multiple instances of a service simultaneously
 for **fault tolerance** and **increased throughput**. When two or more
 instances share the same input data stream, their job builders must agree on
 which files belong to which job — otherwise one instance can dispatch a
@@ -19,7 +19,7 @@ deployment does not need Redis and the ``redis`` package is not imported unless
 
 ## When to Enable State Sync
 
-Enable state sync when you run **more than one Lazy Lemon instance** pointing
+Enable state sync when you run **more than one Courier instance** pointing
 at the same data source. Common scenarios:
 
 - Active-active redundancy where either instance can take over if the other

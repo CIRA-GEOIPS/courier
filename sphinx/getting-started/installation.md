@@ -1,6 +1,6 @@
 # Installation
 
-This guide covers installing Lazy Lemon in different environments.
+This guide covers installing Courier in different environments.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ This guide covers installing Lazy Lemon in different environments.
 
 **Python Dependencies:**
 
-Lazy Lemon depends on:
+Courier depends on:
 
 - RabbitMQ (pika)
 - Prometheus client
@@ -69,7 +69,7 @@ poetry shell
 
 ### Using Docker
 
-Run Lazy Lemon in a container:
+Run Courier in a container:
 
 ```
 Pull the image
@@ -98,7 +98,7 @@ pip install -e .
 
 ### RabbitMQ
 
-Lazy Lemon requires RabbitMQ for message passing between components.
+Courier requires RabbitMQ for message passing between components.
 
 **Using Docker (Easiest):**
 
@@ -255,7 +255,7 @@ Log out and back in for changes to take effect
 
 **Python Version Issues**
 
-Lazy Lemon requires Python 3.11+. Check your version:
+Courier requires Python 3.11+. Check your version:
 
 ```
 python --version
