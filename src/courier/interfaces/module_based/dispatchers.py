@@ -34,6 +34,7 @@ from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
 _DEDUPE_LRU_SIZE = 1024
+"""Default maximum number of recently-seen job identifiers to track."""
 
 if TYPE_CHECKING:
     from courier.service import Service
@@ -69,6 +70,9 @@ class Dispatcher(ServicePlugin):
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
         self.config = config or {}
+        self._dedupe_size = (config or {}).get(
+            "dedupe_size", _DEDUPE_LRU_SIZE,
+        )
 
         self._jobs_processed = DISPATCHER_JOBS_PROCESSED
         self._job_execution_duration = DISPATCHER_JOB_EXECUTION_DURATION
@@ -110,7 +114,7 @@ class Dispatcher(ServicePlugin):
             self._seen_jobs.move_to_end(job_identifier)
             return True
         self._seen_jobs[job_identifier] = None
-        if len(self._seen_jobs) > _DEDUPE_LRU_SIZE:
+        if len(self._seen_jobs) > self._dedupe_size:
             self._seen_jobs.popitem(last=False)
         return False
 

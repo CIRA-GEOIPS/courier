@@ -15,8 +15,10 @@ from courier.plugins.classes.job_builders.dummy_job_builder import (
 
 
 class TestDummyJob:
-    def test_ready_always_true(self) -> None:
+    def test_ready_after_file_added(self, make_frozen_file) -> None:
         job = DummyJob(name="x", identifier="j", config={})
+        assert job.ready() is False
+        job.add_file(make_frozen_file())
         assert job.ready() is True
 
     def test_add_file_caps_at_one(self, make_frozen_file) -> None:

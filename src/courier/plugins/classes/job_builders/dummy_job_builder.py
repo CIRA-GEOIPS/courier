@@ -31,7 +31,7 @@ class DummyJob(Job):
         bool
             Always returns True, indicating the job is ready.
         """
-        return True  # if len(self.files) > 0 else False
+        return len(self.files) > 0
 
     def add_file(self, file: File | FrozenFile) -> None:
         """Add a file to the job with a maximum limit of one file.
