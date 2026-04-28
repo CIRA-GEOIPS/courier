@@ -23,7 +23,10 @@ from __future__ import annotations
 import json
 import sys
 
-from grafanalib._gen import DashboardEncoder
+try:
+    from grafanalib._gen import DashboardEncoder
+except ImportError:
+    DashboardEncoder = None  # type: ignore[assignment,misc]
 from grafanalib.core import (
     GAUGE_CALC_LAST,
     GRAPH_TOOLTIP_MODE_SHARED_CROSSHAIR,
@@ -1042,6 +1045,13 @@ def build_dashboard() -> Dashboard:
 
 def main() -> None:
     """Generate dashboard JSON and print to stdout."""
+    if DashboardEncoder is None:
+        print(
+            "Error: grafanalib._gen.DashboardEncoder not available; "
+            "install grafanalib with: pip install grafanalib",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     dashboard = build_dashboard()
     json.dump(
         dashboard.to_json_data(),

@@ -4,7 +4,7 @@ import queue as stdlib_queue
 import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
-from typing import Any
+from typing import Any, Final
 
 import kombu
 import kombu.exceptions
@@ -23,7 +23,7 @@ from courier.utils.logging import get_logger
 
 # Memory transport does not implement broker-level publisher confirms;
 # passing ``confirm=True`` to it is a silent no-op.
-_MEMORY_TRANSPORT_SCHEMES: frozenset[str] = frozenset({"memory"})
+_MEMORY_TRANSPORT_SCHEMES: Final = frozenset({"memory"})
 
 _logger = get_logger("module", "broker.kombu", None)
 
