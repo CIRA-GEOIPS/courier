@@ -8,6 +8,7 @@ per-job timeout driven by :class:`Job.is_old`.
 
 from __future__ import annotations
 
+import logging
 import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -18,6 +19,8 @@ from courier.interfaces.module_based.job_builders import JobBuilder
 from courier.types.job import Job, JobGroup
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from courier.service import Service
     from courier.types.file import File, FrozenFile
 
@@ -58,9 +61,24 @@ class FileCountBuilderConfig(BaseModel, frozen=True):
         return v
 
 
-def _matches_filters(file: File | FrozenFile, filters: dict[str, str]) -> bool:
+_FILTER_LOGGER = logging.getLogger(__name__)
+
+
+def _matches_filters(
+    file: File | FrozenFile, filters: Mapping[str, str | None],
+) -> bool:
     """Return ``True`` if every filter key/value equals the file's attribute."""
-    return all(getattr(file, key, None) == value for key, value in filters.items())
+    for key, value in filters.items():
+        if value is None:
+            _FILTER_LOGGER.debug(
+                "Filter key=%r has value None; will match files "
+                "whose %r attribute is also None",
+                key,
+                key,
+            )
+        if getattr(file, key, None) != value:
+            return False
+    return True
 
 
 def _render_context(file: File | FrozenFile) -> dict[str, Any]:
@@ -88,8 +106,17 @@ def _build_job_class(config: FileCountBuilderConfig) -> type[Job]:
         def add_file(self, file: File | FrozenFile) -> None:
             """Add *file* unless filters reject it or the job is already full."""
             if not _matches_filters(file, config.filters):
+                _FILTER_LOGGER.debug(
+                    "FileCountJob: filter rejected file %s", file.file,
+                )
                 return
             if len(self.files) >= config.files_per_job:
+                _FILTER_LOGGER.debug(
+                    "FileCountJob: job full (%d/%d), ignoring file %s",
+                    len(self.files),
+                    config.files_per_job,
+                    file.file,
+                )
                 return
             super().add_file(file)
 

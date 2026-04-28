@@ -254,7 +254,11 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     if isinstance(parsed, list) and parsed:
                         raw = parsed[0]  # take the lower bound
                 except (json.JSONDecodeError, ValueError):
-                    pass  # fall through to _parse_timestamp as-is
+                    self._logger.debug(
+                        "Failed to parse timestamp array from %r; "
+                        "falling through to _parse_timestamp",
+                        raw,
+                    )
 
             return _parse_timestamp(raw, self.timestamp_format)
 

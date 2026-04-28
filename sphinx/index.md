@@ -1,10 +1,10 @@
-# Lazy Lemon Documentation
+# Courier Documentation
 
 [![Tests](https://github.com/biosafetylvl5/courier/workflows/Tests/badge.svg)](https://github.com/biosafetylvl5/courier)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 
-Welcome to Lazy Lemon's documentation! Lazy Lemon is a framework
-for running software jobs.
+Welcome to Courier's documentation! Courier is a plugin-based,
+event-driven orchestration framework for building data processing pipelines.
 It is designed for real-time processing, batch processing, or historical reprocessing.
 
 It is general purpose, but has functionality that makes it especially useful for
@@ -12,23 +12,23 @@ geolocated data processing.
 
 ## Quick Links
 
-- {doc}`getting-started/installation` - Get Lazy Lemon installed
-- {doc}`getting-started/quick-start` - Your first file watcher in 5 minutes
+- {doc}`getting-started/installation` - Get Courier installed
+- {doc}`getting-started/quick-start` - Your first pipeline in 5 minutes
 - {doc}`tutorials/01-simple-file-watcher` - Step-by-step tutorials
 
-## What is Lazy Lemon?
+## What is Courier?
 
-Lazy Lemon is a plugin-based mid-level orchestration framework that enables turning
-"lemons" (random data processing software) into .... whatever you want!
-It watches for new data files, groups them into processing jobs, and dispatches them to
-workflows or custom scripts.
+Courier watches for new data files, groups them into processing jobs, and
+dispatches them to workflows or custom scripts. Plugins define the data
+monitors, job builders, and dispatchers — swap them without changing
+pipeline logic.
 
 It also serves as a layer of abstraction between general software and
 higher level orchestration software like Kubernetes, Docker Swarm and others.
 
 ## Who Should Use This?
 
-Lazy Lemon is designed for:
+Courier is designed for:
 
 - **Data center operators** managing automated data workflows
 - **Researchers** requiring timely processing of observations

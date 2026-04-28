@@ -20,6 +20,8 @@ def interruptible_sleep(seconds: float, stop_event: threading.Event) -> bool:
         ``True`` if the stop event fired during the sleep (caller should
         exit), ``False`` if the full duration elapsed normally.
     """
+    if seconds < 0:
+        raise ValueError(f"interruptible_sleep: seconds must be >= 0, got {seconds}")
     if seconds <= 0:
         return stop_event.is_set()
     remaining = seconds
