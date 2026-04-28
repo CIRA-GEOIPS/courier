@@ -35,6 +35,7 @@ __all__ = [
 
 _VERSION_MAP: dict[str, type[ServiceConfigModel]] = {
     "courier.dev/v1alpha1": ServiceConfigModel,
+    "runcourier.dev/v1alpha1": ServiceConfigModel,
 }
 
 
