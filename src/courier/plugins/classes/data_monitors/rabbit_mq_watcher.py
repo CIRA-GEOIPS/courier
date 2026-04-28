@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import types
-from contextlib import suppress
+from contextlib import closing, suppress
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, cast
@@ -328,73 +328,76 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         url = self._build_broker_url()
         self._logger.debug(f"Attempting to connect to broker at {url!r}")
 
-        connection = kombu.Connection(url)
-        connection.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
+        with closing(kombu.Connection(url)) as connection:
+            connection.ensure_connection(
+                max_retries=1, interval_start=0, interval_step=0,
+            )
 
-        queue_obj = kombu.Queue(self.rabbitmq_queue, durable=True)
-        queue_obj = queue_obj.bind(connection)
-        queue_obj.declare()
+            queue_obj = kombu.Queue(self.rabbitmq_queue, durable=True)
+            queue_obj = queue_obj.bind(connection)
+            queue_obj.declare()
 
-        self._logger.debug(
-            f"Connected to broker at {self.rabbitmq_host}:{self.rabbitmq_port}"
-            f" (virtual_host={self.rabbitmq_virtual_host!r}), "
-            f"waiting for messages from queue {self.rabbitmq_queue!r}...",
-        )
+            self._logger.debug(
+                f"Connected to broker at {self.rabbitmq_host}:{self.rabbitmq_port}"
+                f" (virtual_host={self.rabbitmq_virtual_host!r}), "
+                f"waiting for messages from queue {self.rabbitmq_queue!r}...",
+            )
 
-        fm = self.field_map
+            fm = self.field_map
 
-        def callback(body: Any, message: kombu.Message) -> None:
-            """Handle an incoming broker message."""
-            self._logger.debug(f"Received message: {body!r}")
-            try:
-                raw = body if isinstance(body, str) else body.decode("utf-8")
-                loaded: dict[str, Any] | str = json.loads(raw)
-                if isinstance(loaded, str):
-                    self._logger.debug(
-                        f"Received string instead of dict: {loaded}"
-                        " — double-decoding. Producer is sending JSON-encoded strings.",
+            def callback(body: Any, message: kombu.Message) -> None:
+                """Handle an incoming broker message."""
+                self._logger.debug(f"Received message: {body!r}")
+                try:
+                    raw = body if isinstance(body, str) else body.decode("utf-8")
+                    loaded: dict[str, Any] | str = json.loads(raw)
+                    if isinstance(loaded, str):
+                        self._logger.debug(
+                            f"Received string instead of dict: {loaded}"
+                            " — double-decoding. "
+                            "Producer is sending JSON-encoded strings.",
+                        )
+                        file_info: dict[str, Any] = json.loads(loaded)
+                    else:
+                        file_info = loaded
+
+                    location: str = file_info.get(fm["location"], "")
+                    hostname, location_path = self._parse_location(location)
+
+                    full_path = (
+                        PurePosixPath(location_path)
+                        / PurePosixPath(
+                            file_info[fm["dir_path"]],
+                        ).relative_to("/")
+                        / file_info[fm["file_name"]]
                     )
-                    file_info: dict[str, Any] = json.loads(loaded)
-                else:
-                    file_info = loaded
 
-                location: str = file_info.get(fm["location"], "")
-                hostname, location_path = self._parse_location(location)
+                    timestamp = self._extract_timestamp(file_info)
 
-                full_path = (
-                    PurePosixPath(location_path)
-                    / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
-                    / file_info[fm["file_name"]]
-                )
+                    file = File(
+                        file=full_path,
+                        hostname=hostname,
+                        source=file_info.get(fm["platform"]),
+                        instrument=file_info.get(fm["sensor"]),
+                        timestamp=timestamp,
+                    )
+                    file_queue.put(file)
+                    message.ack()
+                except (ValueError, KeyError, UnicodeDecodeError, AttributeError):
+                    self._logger.exception(
+                        f"Failed to process message; rejecting. Body: {body!r}",
+                    )
+                    message.reject(requeue=False)
 
-                timestamp = self._extract_timestamp(file_info)
-
-                file = File(
-                    file=full_path,
-                    hostname=hostname,
-                    source=file_info.get(fm["platform"]),
-                    instrument=file_info.get(fm["sensor"]),
-                    timestamp=timestamp,
-                )
-                file_queue.put(file)
-                message.ack()
-            except (ValueError, KeyError, UnicodeDecodeError, AttributeError):
-                self._logger.exception(
-                    f"Failed to process message; rejecting. Body: {body!r}",
-                )
-                message.reject(requeue=False)
-
-        with kombu.Consumer(
-            connection,
-            queues=[queue_obj],
-            callbacks=[callback],
-            prefetch_count=self.rabbitmq_prefetch_count,
-        ):
-            while not self._stop_event.is_set():
-                with suppress(TimeoutError):
-                    connection.drain_events(timeout=1.0)
-
-        connection.close()
+            with kombu.Consumer(
+                connection,
+                queues=[queue_obj],
+                callbacks=[callback],
+                prefetch_count=self.rabbitmq_prefetch_count,
+            ):
+                while not self._stop_event.is_set():
+                    with suppress(TimeoutError):
+                        connection.drain_events(timeout=1.0)
 
     def find_file(self) -> Generator[File, None, None]:
         """Watch the configured RabbitMQ queue and yield :class:`File` objects.

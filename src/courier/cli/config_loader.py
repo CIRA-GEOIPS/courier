@@ -19,6 +19,9 @@ class UnsupportedFileTypeError(ValueError):
         super().__init__(f"Unsupported file type: {file_path.suffix}")
 
 
+_MAX_CONFIG_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
 def _load_raw(file_path: Path) -> dict[str, Any]:
     """Read a JSON or YAML file into a raw dict.
 
@@ -36,16 +39,30 @@ def _load_raw(file_path: Path) -> dict[str, Any]:
     ------
     UnsupportedFileTypeError
         If the file extension is not .json, .yml, or .yaml.
+    ConfigurationError
+        If the file is too large or the parsed YAML is not a dict.
     """
+    file_size = file_path.stat().st_size
+    if file_size > _MAX_CONFIG_SIZE:
+        raise ConfigurationError(
+            f"Config file {file_path} is {file_size} bytes; "
+            f"exceeds maximum of {_MAX_CONFIG_SIZE} bytes",
+        )
     if file_path.suffix == ".json":
         with Path.open(file_path) as f:
             return json.load(f)  # type: ignore[no-any-return]
     elif file_path.suffix in [".yml", ".yaml"]:
         try:
             with Path.open(file_path) as f:
-                return yaml.safe_load(f)  # type: ignore[no-any-return]
+                loaded = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise ConfigurationError(f"Invalid YAML in {file_path}: {e}") from e
+        if not isinstance(loaded, dict):
+            raise ConfigurationError(
+                f"Config file {file_path} must be a YAML mapping, "
+                f"got {type(loaded).__name__}",
+            )
+        return loaded
     else:
         raise UnsupportedFileTypeError(file_path)
 

@@ -13,7 +13,7 @@ from pluginify.interfaces.base import BaseClassInterface
 from courier.constants import FILE_FOUND_QUEUE, PluginRunState
 from courier.errors import (
     FatalBrokerError,
-    InvalidPluginConfigError,
+    MissingExtraError,
     TransientBrokerError,
 )
 from courier.interfaces.plugin_protocol import ServicePlugin
@@ -467,7 +467,7 @@ class JobBuilder(ServicePlugin):
 
         Raises
         ------
-        InvalidPluginConfigError
+        MissingExtraError
             If ``state_sync`` is present but the ``redis`` package is not
             installed (``pip install courier[ha]``).
         pydantic.ValidationError
@@ -484,7 +484,7 @@ class JobBuilder(ServicePlugin):
                 JobBuilderStateSync,
             )
         except ImportError as exc:
-            raise InvalidPluginConfigError(
+            raise MissingExtraError(
                 "state_sync requires the redis package: pip install courier[ha]",
             ) from exc
         sync_config = RedisStateSyncConfig.model_validate(raw)

@@ -14,7 +14,8 @@ from kombu.exceptions import (
 )
 
 from courier.config import ServiceConfig
-from courier.errors import FatalBrokerError, TransientBrokerError
+from courier.constants import MAX_QUEUE_NAME_LENGTH
+from courier.errors import ConfigurationError, FatalBrokerError, TransientBrokerError
 from courier.managers.base import ServiceManager
 from courier.metrics import BROKER_CONNECTED, BROKER_CONNECTIONS
 from courier.utils.decorators import log_execution, retry_with_backoff
@@ -448,6 +449,11 @@ class MessageBrokerManager(ServiceManager):
         True
         """
         new_queue_name = self.get_queue_name(queue_name)
+        if len(new_queue_name) > MAX_QUEUE_NAME_LENGTH:
+            raise ConfigurationError(
+                f"Queue name {new_queue_name!r} exceeds "
+                f"{MAX_QUEUE_NAME_LENGTH} chars (AMQP 0-9-1 limit).",
+            )
         if new_queue_name not in self._queues:
             self._queues[new_queue_name] = queue_config
         return new_queue_name
