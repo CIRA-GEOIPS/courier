@@ -80,7 +80,7 @@ def _ensure_api_version(value: str, *, field_name: str | None) -> str:
     if not _APIVERSION_RE.match(value):
         raise ValueError(
             f"Field '{field_name}' value '{value}' must follow "
-            "'<group>/v<N>[alphaN|betaN]' format, e.g. 'courier.dev/v1alpha1'.",
+            "'<group>/v<N>[alphaN|betaN]' format, e.g. 'runcourier.dev/v1alpha1'.",
         )
     return value
 
