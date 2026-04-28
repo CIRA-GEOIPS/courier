@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "courier"
+name = "runcourier"
 version = "0.1.0"
 description = "TODO"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Evan Rose <none@email.com>"]
