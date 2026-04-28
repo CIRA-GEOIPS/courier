@@ -22,6 +22,10 @@ class MissingEnvironmentVariableError(ConfigurationError):
     """Raised when a required environment variable is not set."""
 
 
+class MissingExtraError(ConfigurationError):
+    """Raised when a plugin requires an optional extra that is not installed."""
+
+
 # ---------------------------------------------------------------------------
 # Pipeline errors
 # ---------------------------------------------------------------------------

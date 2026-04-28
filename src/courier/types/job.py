@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+from courier.errors import BrokerConsumeError
 from courier.types.file import File, FrozenFile
 
 
@@ -102,17 +103,22 @@ class Job:
             Job instance.
         """
         data = json.loads(s)
-        return cls(
-            name=data["name"],
-            identifier=data["identifier"],
-            config=data["config"],
-            files={FrozenFile.from_string(f) for f in data.get("files", [])},
-            last_modified=data.get("last_modified"),
-            timeout=data.get("timeout", 60 * 60 * 24),
-            correlation_id=data.get("correlation_id"),
-            emit_time=data.get("emit_time"),
-            targets=tuple(data.get("targets") or ()),
-        )
+        try:
+            return cls(
+                name=data["name"],
+                identifier=data["identifier"],
+                config=data["config"],
+                files={FrozenFile.from_string(f) for f in data.get("files", [])},
+                last_modified=data.get("last_modified"),
+                timeout=data.get("timeout", 60 * 60 * 24),
+                correlation_id=data.get("correlation_id"),
+                emit_time=data.get("emit_time"),
+                targets=tuple(data.get("targets") or ()),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise BrokerConsumeError(
+                f"Malformed job payload: {exc}",
+            ) from exc
 
     def ready(self) -> bool:
         """Return true if job is ready to be emitted."""

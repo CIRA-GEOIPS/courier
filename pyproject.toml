@@ -87,7 +87,7 @@ doc = [
     "sphinx-rtd-theme",          # for docs building
     "sphinx-copybutton",         # for docs building
     "sphinx-autodoc-typehints",  # for docs building
-    "sphinxcontribmermaid",    # for docs building
+    "sphinxcontrib-mermaid",   # for docs building
     "sphinx-argparse",           # for docs building
     "pinkrst",                   # for rst formatting
     "doc8",                      # for rst linting
@@ -100,7 +100,7 @@ lint = [
     "prettier",                  # YAML, JSON linting
     "ruff",                      # Python linting
     "mypy",                      # Type checking
-    "types-PyYAML",              # Type hints for pyyaml
+    "types-pyyaml",              # Type hints for pyyaml
     "types-dateparser",          # Type hints for dateparser
     "pre-commit"                 # For pre-commit hooks
 ]
