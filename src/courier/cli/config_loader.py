@@ -54,7 +54,7 @@ def load_config(file_path: Path) -> ServiceConfigModel:
     """Load a service config file (.json or .yml/.yaml).
 
     The ``apiVersion`` field is read first to select the correct schema
-    version.  Currently only ``courier.dev/v1alpha1`` is supported.
+    version.  Currently only ``runcourier.dev/v1alpha1`` is supported.
 
     Parameters
     ----------
