@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 from courier.cli.queues import queues_app
 
 _YAML = """\
-apiVersion: courier.dev/v1alpha1
+apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: test-svc
