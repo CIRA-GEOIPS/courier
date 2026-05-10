@@ -177,7 +177,13 @@ class JobBuilder(ServicePlugin):
             )
             return
         job.emit_time = time.time()
-        job.targets = target_list
+        try:
+            job.targets = target_list
+        except TypeError as exc:
+            self._logger.exception(
+                f"Failed to set job.targets for job {job.identifier}: {exc!s}",
+                extra={"correlation_id": job.correlation_id},
+            )
         message = str(job)
         succeeded: list[str] = []
         failed: list[tuple[str, str]] = []

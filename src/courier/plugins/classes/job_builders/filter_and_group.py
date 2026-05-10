@@ -20,7 +20,8 @@ import types
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
+
 
 from courier.constants import PluginRunState
 from courier.interfaces.module_based.job_builders import JobBuilder
@@ -35,28 +36,7 @@ _module_logger = logging.getLogger(__name__)
 
 
 class FilterAndGroupConfig(BaseModel, frozen=True):
-    """Validated configuration for the filter_and_group job builder.
-
-    Attributes
-    ----------
-    files_per_job : int
-        Fast-path emission threshold: once a job has this many files, it
-        is emitted without waiting for the window to close.
-    min_files : int
-        Dropout-path minimum: on window timeout, only emit jobs that have
-        at least this many files. Must be ``<= files_per_job``.
-    window_timeout_seconds : float | None
-        If set, jobs with at least ``min_files`` will be emitted after
-        this many seconds have elapsed since the group's last file arrival.
-        ``None`` disables the timeout path (legacy behavior).
-    filters : dict[str, str]
-        Metadata filter: a file is added to the job group only when every
-        key/value pair matches the file's attribute of the same name.
-    time_grouping : dict | None
-        Optional ``timedelta`` kwargs (``weeks``/``hours``/``minutes``/
-        ``seconds``) plus an optional ``start`` reference datetime used to
-        bucket files into fixed-width time windows.
-    """
+    """Validated configuration for the filter_and_group job builder."""
 
     files_per_job: int = Field(default=5, ge=1)
     min_files: int = Field(default=1, ge=1)
@@ -72,8 +52,44 @@ class FilterAndGroupConfig(BaseModel, frozen=True):
         ),
     )
 
+    # ------------------------------------------------------------------ #
+    # Serialization                                                        #
+    # ------------------------------------------------------------------ #
+
+    @field_serializer("time_grouping")
+    def _serialize_time_grouping(
+        self, value: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Convert any ``datetime`` values to ISO-8601 strings."""
+        if value is None:
+            return None
+        return {
+            k: v.isoformat() if isinstance(v, datetime) else v
+            for k, v in value.items()
+        }
+
+    # ------------------------------------------------------------------ #
+    # Deserialization                                                      #
+    # ------------------------------------------------------------------ #
+
+    @field_validator("time_grouping", mode="before")
+    @classmethod
+    def _parse_time_grouping(
+        cls, value: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Parse ISO-8601 strings back to ``datetime`` under ``"start"``."""
+        if value is None:
+            return None
+        if "start" in value and isinstance(value["start"], str):
+            value = {**value, "start": datetime.fromisoformat(value["start"])}
+        return value
+
+    # ------------------------------------------------------------------ #
+    # Cross-field validation                                               #
+    # ------------------------------------------------------------------ #
+
     @model_validator(mode="after")
-    def _check_min_files(self) -> FilterAndGroupConfig:
+    def _check_min_files(self) -> "FilterAndGroupConfig":
         if self.min_files > self.files_per_job:
             msg = (
                 f"min_files ({self.min_files}) must be <= "

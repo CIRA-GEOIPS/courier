@@ -10,7 +10,7 @@ import time
 import types
 from contextlib import suppress
 from datetime import datetime
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import kombu
@@ -49,16 +49,17 @@ def _parse_user_at_host_colon_path(location: str) -> tuple[str, str]:
 
     Example: ``admin@28bde7b8-2ab2-11f0-9b65-3cecefb7c814.sat=/:``
     """
+    if "ceph-IPs" in location:
+        return ("ceph", "/") # special case for ceph-IPs which don't have a hostname and just use the location as the path
     if "@" not in location:
         raise ValueError(
             f"Expected 'user@hostname:/path' location format, got: {location!r}",
         )
     after_at = location.rsplit("@", maxsplit=1)[1]
-    if ":" not in after_at:
-        raise ValueError(
-            f"Expected ':' separating hostname and path in location {location!r}",
-        )
-    hostname, _, path = after_at.partition(":")
+    if ":" in after_at:
+        hostname, _, path = after_at.partition(":")
+    else:
+        hostname, path = after_at.split("=", maxsplit=1)
     if not hostname:
         raise ValueError(f"Empty hostname in location {location!r}")
     return hostname, path
@@ -361,11 +362,31 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 location: str = file_info.get(fm["location"], "")
                 hostname, location_path = self._parse_location(location)
 
-                full_path = (
-                    PurePosixPath(location_path)
-                    / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
-                    / file_info[fm["file_name"]]
-                )
+                if fm.get("file_name") is None or fm.get("dir_path") is None:
+                    self._logger.debug(
+                        "Field map missing 'file_name' or 'dir_path'; "
+                    )
+                    if fm.get("file_path") is not None:
+                        self._logger.debug(
+                            "Received message with file_path but missing dir_path/file_name; "
+                            "attempting to parse file_path into components.",
+                        )
+                        full_path = Path(file_info[fm["file_path"]])
+                        hostname = hostname or full_path.parts[0]  # maybe the hostname is in the path?
+                        location_path = "/" + "/".join(full_path.parts[1:-1])
+                        file_name = full_path.name
+                    else:
+                        raise ValueError(
+                            f"Message missing required file path components according to field_map. "
+                            f"Got: {file_info!r}, expected keys: 'dir_path' and 'file_name'",
+                            f"or a single 'file_path' key.",
+                        )
+                else:
+                    full_path = Path(
+                        PurePosixPath(location_path)
+                        / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
+                        / file_info[fm["file_name"]]
+                    )
 
                 timestamp = self._extract_timestamp(file_info)
 
@@ -373,7 +394,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     file=full_path,
                     hostname=hostname,
                     source=file_info.get(fm["platform"]),
-                    instrument=file_info.get(fm["sensor"]),
+                    instrument=file_info.get(fm["sensor"]) or ("goes18" if "G18" in str(full_path) else None),
                     timestamp=timestamp,
                 )
                 file_queue.put(file)

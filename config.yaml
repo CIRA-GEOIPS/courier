@@ -1,0 +1,57 @@
+apiVersion: runcourier.dev/v1alpha1
+kind: Service
+metadata:
+  name: dc-runner1
+  namespace: dc-dev
+  description: Watches for files from a data inventory notification and then processes them with DCFLOS.
+  docstring: |
+    This service listens to the nrt_file_notif_queue RabbitMQ queue for incoming
+    files that were ingested by the CIRA data inventory. Each notification
+    is parsed into a File object annotated with platform, sensor, and timestamp
+    metadata. Downstream job builders and dispatchers can filter and act on these
+    files as they arrive.
+spec:
+  heartbeat_interval: 1000 # in milliseconds
+  run:
+    - clavrx-file-watcher:
+        kind: data_monitor
+        name: rabbit_mq_watcher
+        config:
+          rabbitmq_host: overcast6.cira.colostate.edu
+          rabbitmq_port: 5672
+          rabbitmq_username: guest
+          rabbitmq_password: guest
+          rabbitmq_queue: nrt_file_notif_queue # set by the data inventory
+          rabbitmq_prefetch_count: 1 # one message at a time
+          # Reconnection policy
+          max_retries: -1 # retry forever on connection loss
+          retry_delay_seconds: 2.0
+          retry_backoff_factor: 1.5
+          # Message field mapping — matches the nrt_file_notif_queue schema
+          field_map:
+            location: location
+            dir_path: dir_path
+            file_name: file_name
+            platform: platform_name
+            sensor: source_name
+            time_range_key: time_range
+            time_range_lower_key: lower
+            time_range_start_key: start
+          # Location format: "user@hostname:/mount/path"
+          location_format: user_at_host_colon_path
+          # Timestamp for file objects
+          timestamp_field: time_range
+    - just-pass:
+        kind: job_builder
+        name: filter_and_group
+        config:
+          files_per_job: 1
+          min_files: 1
+          filters:
+            instrument: goes18
+    - run-bash-command:
+        kind: dispatcher
+        name: serial_bash
+        config:
+          bash_script: |
+            echo "This is running on file {file}"

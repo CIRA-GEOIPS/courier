@@ -15,6 +15,7 @@ from courier.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
 from courier.utils.decorators import log_execution
 from courier.utils.functional import filter_map
 from courier.utils.logging import get_logger
+from courier.interfaces.module_based.dispatchers import Dispatcher
 
 
 @dataclass
@@ -129,8 +130,9 @@ class PluginManager(ServiceManager):
         """
         with self._lock:
             kwargs: dict[str, Any] = {}
-            if identifier is not None:
+            if identifier is not None and issubclass(plugin, Dispatcher):
                 kwargs["identifier"] = identifier
+                self._logger.debug(f"Registering plugin with identifier: {identifier}")
             plugin_instance = plugin(self._service, config, **kwargs)
             registry_key = identifier or plugin_instance.name
             if registry_key in self._plugins:
