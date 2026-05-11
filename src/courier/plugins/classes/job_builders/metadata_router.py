@@ -177,10 +177,10 @@ class MetadataRouterBuilder(JobBuilder):
         """Loop over files, applying first-match routing and unmatched metrics."""
         import time  # noqa: PLC0415
 
-        from courier.constants import FILE_FOUND_QUEUE  # noqa: PLC0415
+        from courier.constants import FILE_FOUND_EXCHANGE  # noqa: PLC0415
 
         self._logger.debug("metadata_router starting file consumption")
-        for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
+        for file_string in self.parent_service.consume(FILE_FOUND_EXCHANGE):
             start_time = time.time()
             self._files_received.labels(job_builder_name=self.name).inc()
             file = FrozenFile.from_string(str(file_string))

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pluginify.interfaces.base import BaseClassInterface
 
-from courier.constants import FILE_FOUND_QUEUE, PluginRunState
+from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import (
     FatalBrokerError,
     InvalidPluginConfigError,
@@ -296,7 +296,7 @@ class JobBuilder(ServicePlugin):
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
         self._logger.debug("Starting to handle incoming files")
-        for file_string in self.parent_service.consume(FILE_FOUND_QUEUE):
+        for file_string in self.parent_service.consume(FILE_FOUND_EXCHANGE):
             start_time = time.time()
             self._files_received.labels(job_builder_name=self.name).inc()
             self._logger.debug(f"Received file {file_string} from file queue")

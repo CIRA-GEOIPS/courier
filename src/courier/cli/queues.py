@@ -1,17 +1,17 @@
 """CLI ``courier queues`` sub-app — list and prune broker queues.
 
-Expected queues come from the service YAML via the same
-:class:`courier.routing.TargetResolver` the runtime uses, so there is no
-drift between "what should exist" in production and "what the CLI
+Expected queue and exchange names come from the service YAML via the
+same :class:`courier.routing.TargetResolver` the runtime uses, so there
+is no drift between "what should exist" in production and "what the CLI
 compares against".
 
-``list`` prints the expected queue names. ``prune`` takes an explicit
-list of candidate queue names on the command line (or piped via
-``--from-file``), diffs them against the expected set, and either
-reports or deletes the orphans. The CLI deliberately does not try to
-list live queues off the broker: AMQP has no uniform listing endpoint
-without the management plugin, so requiring the operator to supply the
-candidates keeps the command portable and auditable.
+``list`` prints the expected names. ``prune`` takes an explicit list of
+candidate names on the command line (or piped via ``--from-file``), diffs
+them against the expected set, and either reports or deletes the orphans.
+The CLI deliberately does not try to list live queues off the broker:
+AMQP has no uniform listing endpoint without the management plugin, so
+requiring the operator to supply the candidates keeps the command
+portable and auditable.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from kombu.exceptions import OperationalError
 from courier.cli.config_loader import load_config
 from courier.constants import (
     DISPATCHER_QUEUE,
-    FILE_FOUND_QUEUE,
+    FILE_FOUND_EXCHANGE,
 )
 from courier.routing import build_default_resolver
 
@@ -69,7 +69,12 @@ _APPLY_OPTION = typer.Option(
 
 
 def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set[str]]:
-    """Return ``(namespace, expected_queue_names)`` from the validated config."""
+    """Return ``(namespace, expected_queue_names)`` from the validated config.
+
+    Returns only queue names --- exchanges (e.g. ``FilesFoundExchange``)
+    and their auto-generated consumer queues (``amq.gen-*``) are excluded
+    because they are managed by the broker.
+    """
     config = load_config(config_file)
     ns = namespace or config.metadata.namespace or "default"
     dispatcher_ids = {
@@ -79,7 +84,10 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
     queues: set[str] = set()
     for ident in resolver.known_identifiers():
         queues.add(f"{ns}-{resolver.resolve(ident)}")
-    queues.add(f"{ns}-{FILE_FOUND_QUEUE}")
+    # Note: {ns}-FilesFoundExchange is a fanout *exchange*, not a
+    # queue, so it is intentionally excluded from the queue-expected set.
+    # The fanout pattern uses anonymous exclusive queues (amq.gen-*)
+    # which are auto-deleted by the broker and must never be pruned.
     queues.add(f"{ns}-{DISPATCHER_QUEUE}")
     return ns, queues
 
@@ -109,7 +117,7 @@ def list_cmd(
     config: Annotated[Path, _CONFIG_OPTION],
     namespace: Annotated[str | None, _NAMESPACE_OPTION] = None,
 ) -> None:
-    """Print every queue the service is expected to use."""
+    """Print every queue the service is expected to use (exchanges managed separately)."""
     ns, queues = _expected_queues(config, namespace)
     typer.echo(f"namespace: {ns}")
     for name in sorted(queues):
@@ -133,6 +141,21 @@ def prune_cmd(
     """
     ns, expected = _expected_queues(config, namespace)
     candidates = _read_candidates(candidate, from_file)
+
+    # Fan-out consumers use server-generated exclusive queue names
+    # (e.g. amq.gen-xyz...). These are auto-managed by the broker and
+    # MUST NOT be deleted --- they carry live consumer state.
+    _SERVER_GEN_PREFIX = "amq."
+    unsafe = [q for q in candidates if q.startswith(_SERVER_GEN_PREFIX)]
+    if unsafe:
+        typer.echo(
+            f"WARNING: refusing to consider {len(unsafe)} server-generated "
+            f"queue(s) (amq.* are auto-managed by the broker): "
+            + ", ".join(unsafe),
+            err=True,
+        )
+    candidates = [q for q in candidates if not q.startswith(_SERVER_GEN_PREFIX)]
+
     if not candidates:
         typer.echo("no candidates provided; nothing to prune", err=True)
         raise typer.Exit(2)

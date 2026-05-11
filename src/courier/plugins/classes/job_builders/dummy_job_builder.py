@@ -33,7 +33,7 @@ class DummyJob(Job):
         """
         return True  # if len(self.files) > 0 else False
 
-    def add_file(self, file: File | FrozenFile) -> None:
+    def add_file(self, file: File | FrozenFile) -> bool:
         """Add a file to the job with a maximum limit of one file.
 
         Parameters
@@ -43,7 +43,8 @@ class DummyJob(Job):
 
         Returns
         -------
-        None
+        bool
+            ``True`` if the file was added, ``False`` if the job rejected it.
 
         Notes
         -----
@@ -54,7 +55,7 @@ class DummyJob(Job):
             _module_logger.warning(
                 "DummyJob: Maximum number of files reached; cannot add more.",
             )
-            return
+            return False
         return super().add_file(file)
 
 

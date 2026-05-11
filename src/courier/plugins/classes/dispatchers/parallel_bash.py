@@ -18,7 +18,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel, Field
+import jinja2
+from jinja2.exceptions import TemplateSyntaxError
+from pydantic import BaseModel, Field, field_validator
 
 from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
@@ -26,6 +28,7 @@ from courier.types.execution_log import ExecutionLog
 
 if TYPE_CHECKING:
     from courier.service import Service
+    from courier.types.file import FrozenFile
     from courier.types.job import Job
 
 
@@ -36,6 +39,15 @@ class ParallelBashConfig(BaseModel, frozen=True):
     max_workers: int = Field(default=4, ge=1, le=64)
     timeout_seconds: float = Field(default=3600.0, gt=0)
     fail_fast: bool = False
+
+    @field_validator("bash_script")
+    @classmethod
+    def _validate_template(cls, v: str) -> str:
+        try:
+            jinja2.Environment(autoescape=False).parse(v)  # noqa: S701
+        except TemplateSyntaxError as exc:
+            raise ValueError(f"Invalid Jinja2 template: {exc}") from exc
+        return v
 
 
 def _run_script(
@@ -93,12 +105,71 @@ def _run_script(
 
 
 class ParallelBashDispatcher(Dispatcher):
-    """Dispatcher that runs one bash script per file concurrently.
+    """Execute a Jinja2-templated bash script independently for each file.
 
-    Thread-safe: work is fanned out via :class:`ThreadPoolExecutor`; each
-    worker writes to its own temp file and returns an :class:`ExecutionLog`.
-    The active-worker gauge is incremented/decremented inside ``_submit``
-    to reflect real concurrency.
+    One script execution is launched per file in the job, up to
+    ``max_workers`` concurrent scripts via :class:`ThreadPoolExecutor`.
+    Each file execution produces its own :class:`ExecutionLog`.
+
+    **Configuration** (:class:`ParallelBashConfig`):
+
+    .. code-block:: yaml
+
+        config:
+          bash_script: |
+            #!/bin/bash
+            echo "Processing {{ file.file }}"
+            cp {{ file.file }} /output/
+          max_workers: 4
+          timeout_seconds: 3600.0
+          fail_fast: false
+
+    **Template Context**
+
+    Per-file context (each file gets its own template render):
+
+    +------------------+---------------------------------------------+---------------------------+
+    | Variable           | Description                                   | Example                    |
+    +====================+===============================================+=============================+
+    | ``file``            | Current file's :class:`FrozenFile` dict        | ``{{ file.file }}``        |
+    |                    | (via :meth:`FrozenFile.to_dict`).              |                            |
+    |                    | Keys: ``file``, ``hostname``, ``source``,      |                            |
+    |                    | ``instrument``, ``processing_stage``,          |                            |
+    |                    | ``domain``, ``num_expected``, ``timestamp``.   |                            |
+    +--------------------+---------------------------------------------+----------------------------+
+    | ``files``           | List of ALL files in the job as dicts          | ``{{ files[0].file }}``    |
+    |                    | (for cross-reference/manifest generation).     |                            |
+    +--------------------+---------------------------------------------+----------------------------+
+    | ``job``             | Job metadata dict: ``name``, ``identifier``,    | ``{{ job.name }}``         |
+    |                    | ``config``, ``last_modified``, ``timeout``,     |                             |
+    |                    | ``correlation_id``, ``emit_time``.              |                             |
+    +--------------------+---------------------------------------------+----------------------------+
+    | ``config``          | Alias for ``job.config`` (convenience).         | ``{{ config.key }}``       |
+    +--------------------+---------------------------------------------+----------------------------+
+
+    **Error Handling**
+
+    - **Config time**: Invalid Jinja2 syntax raises
+      :class:`pydantic.ValidationError` at plugin registration.
+    - **Render time**: Per-file template errors return
+      ``ExecutionLog(return_code=-1, stderr=...)`` for that specific file —
+      other files continue processing.
+    - **Execution time**: Subprocess failures are captured as
+      ``ExecutionLog`` entries with the process return code.
+    - ``fail_fast=True`` cancels remaining files on first non-zero exit.
+
+    **Jinja2 Undefined Behavior**
+
+    Uses ``jinja2.DebugUndefined``. Simple undefined references render as
+    empty strings; attribute access on undefined variables raises
+    :exc:`jinja2.TemplateError`.
+
+    **Serial vs Parallel**
+
+    Use :class:`SerialBashDispatcher` when your script processes all files
+    together (one invocation, one :class:`ExecutionLog`). Use
+    :class:`ParallelBashDispatcher` when each file should be processed
+    independently (N invocations, N :class:`ExecutionLog`\\s).
     """
 
     interface: ClassVar[str] = "dispatchers"
@@ -116,33 +187,50 @@ class ParallelBashDispatcher(Dispatcher):
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated = ParallelBashConfig.model_validate(config or {})
+        self._template = jinja2.Environment(
+            undefined=jinja2.DebugUndefined,
+            autoescape=False,  # noqa: S701
+        ).from_string(self.validated.bash_script)
         self._logger.debug(
-            f"Initialized ParallelBashDispatcher with config {self.validated}",
+            "Initialized ParallelBashDispatcher with config: "
+            f"{self.validated.model_dump()}",
         )
 
     def is_healthy(self) -> bool:
         """Stateless dispatcher; always healthy when loaded."""
         return True
 
-    def _render_script(self, file_path: Any) -> str:
-        try:
-            return self.validated.bash_script.format(file=file_path)
-        except (KeyError, IndexError) as exc:
-            self._logger.warning(
-                f"Bash script template missing key {exc}; using raw template",
-            )
-            return self.validated.bash_script
+    def _render_script(self, ff: FrozenFile, job_context: dict, all_file_dicts: list[dict]) -> str:
+        """Render the Jinja2 bash template for a single FrozenFile with full job context."""
+        context = {
+            "file": ff.to_dict(),
+            "files": all_file_dicts,
+            "job": job_context,
+            "config": job_context["config"],
+        }
+        return self._template.render(**context)
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Execute one script per file concurrently and return all logs."""
         hostname = socket.gethostname()
-        files = [f.file for f in job.files if f.file is not None]
-        if not files:
+        frozen_files = [f for f in job.files if f.file is not None]
+        if not frozen_files:
             self._logger.warning(f"Job {job.identifier} has no files to dispatch")
             return []
 
+        all_file_dicts = [f.to_dict() for f in frozen_files]
+        job_context = {
+            "name": job.name,
+            "identifier": job.identifier,
+            "config": job.config,
+            "last_modified": job.last_modified,
+            "timeout": job.timeout,
+            "correlation_id": job.correlation_id,
+            "emit_time": job.emit_time,
+        }
+
         self._logger.info(
-            f"Dispatching {len(files)} files for job {job.identifier} "
+            f"Dispatching {len(frozen_files)} files for job {job.identifier} "
             f"with max_workers={self.validated.max_workers}",
         )
 
@@ -150,15 +238,32 @@ class ParallelBashDispatcher(Dispatcher):
         gauge = DISPATCHER_PARALLEL_WORKERS_ACTIVE.labels(dispatcher_name=self.name)
 
         with ThreadPoolExecutor(max_workers=self.validated.max_workers) as pool:
-            futures = {
-                pool.submit(
-                    _run_script,
-                    self._render_script(file_path),
-                    self.validated.timeout_seconds,
-                    hostname,
-                ): file_path
-                for file_path in files
-            }
+            futures = {}
+            for ff in frozen_files:
+                try:
+                    script_body = self._render_script(ff, job_context, all_file_dicts)
+                except jinja2.TemplateError as exc:
+                    self._logger.warning(
+                        f"Template render failed for {ff.file}: {exc}",
+                    )
+                    logs.append(
+                        ExecutionLog(
+                            return_code=-1,
+                            stdout="",
+                            stderr=f"template render failed: {exc}",
+                            hostname=hostname,
+                        ),
+                    )
+                    continue
+                futures[
+                    pool.submit(
+                        _run_script,
+                        script_body,
+                        self.validated.timeout_seconds,
+                        hostname,
+                    )
+                ] = ff.file
+
             gauge.set(len(futures))
             try:
                 for future in as_completed(futures):

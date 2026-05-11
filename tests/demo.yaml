@@ -63,4 +63,4 @@ spec:
         name: serial_bash
         config:
           bash_script: |
-            python3 nar-procflow-overcast.py ${{input_file}}
+            python3 nar-procflow-overcast.py $input_file

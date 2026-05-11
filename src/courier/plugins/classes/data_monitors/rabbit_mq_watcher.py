@@ -58,8 +58,13 @@ def _parse_user_at_host_colon_path(location: str) -> tuple[str, str]:
     after_at = location.rsplit("@", maxsplit=1)[1]
     if ":" in after_at:
         hostname, _, path = after_at.partition(":")
-    else:
+    elif "=" in after_at:
         hostname, path = after_at.split("=", maxsplit=1)
+    else:
+        raise ValueError(
+            f"Expected colon ':' or '=' separating hostname and path in location {location!r}, "
+            f"e.g. 'user@host:/path' or 'user@host=/path'",
+        )
     if not hostname:
         raise ValueError(f"Empty hostname in location {location!r}")
     return hostname, path

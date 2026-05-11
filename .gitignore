@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
 # C extensions
 *.so
 
@@ -147,3 +148,6 @@ registered_plugins.yaml
 
 .claude/**/*
 pluginify
+.opencode
+.ocx
+courier/

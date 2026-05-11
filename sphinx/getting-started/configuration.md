@@ -45,7 +45,7 @@ spec:
         name: serial_bash
         config:
           bash_script: |
-            echo "Processing {file}"
+            echo "Processing {{ files[0].file }}"
 ```
 
 To connect to a real broker instead, add connection details. When
@@ -350,7 +350,7 @@ spec:
         name: serial_bash
         config:
           bash_script: |
-            echo "Test: {file}"
+            echo "Test: {{ files[0].file }}"
 ```
 
 ### Redis for simple deployments
@@ -388,7 +388,7 @@ spec:
         name: serial_bash
         config:
           bash_script: |
-            echo "Received {file}"
+            echo "Received {{ files[0].file }}"
 ```
 
 ### Production AMQP with TLS
@@ -428,7 +428,7 @@ spec:
         name: serial_bash
         config:
           bash_script: |
-            run_geoips.sh {file}
+            run_geoips.sh {{ files[0].file }}
 ```
 
 ## Validation
@@ -460,3 +460,107 @@ defaults  <  YAML file  <  environment variables  <  CLI flags
 
 For example, `max_retries: 5` in the YAML can be overridden by
 setting the `BROKER_MAX_RETRIES` environment variable.
+
+## Jinja2 Template Context
+
+The ``serial_bash`` and ``parallel_bash`` dispatchers use
+[Jinja2](https://jinja.palletsprojects.com/) for script templates.
+This replaces the old ``{file}`` placeholder with a full template context.
+
+### Why Jinja2?
+
+- **Multiple files**: Iterate over all files in a job with ``{% for %}``
+- **Rich metadata**: Access any ``FrozenFile`` field (hostname, source, instrument, etc.)
+- **Config variables**: Use ``{{ config.my_key }}`` to parameterize scripts
+- **Fail-fast validation**: Syntax errors are caught at config load time, not at runtime
+- **Conditional logic**: ``{% if %}`` blocks for dynamic script generation
+
+### Migration from Legacy Format
+
+.. list-table::
+   :header-rows: 1
+
+   * - Legacy (str.format)
+     - Modern (Jinja2)
+   * - ``echo {file}``
+     - ``echo {{ files[0].file }}``
+   * - ``cp {file} /output/``
+     - ``cp {{ files[0].file }} /output/``
+   * - (not possible)
+     - ``{% for f in files %}cp {{ f.file }} /output/;{% endfor %}``
+   * - ``${{input_file}}`` (bash variable)
+     - ``$input_file`` (plain bash — no double braces needed)
+
+### SerialBash Context
+
+Available in every template for ``serial_bash``:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Variable
+     - Type
+     - Description
+   * - ``files``
+     - List[dict]
+     - All files in the job. Each dict has keys: ``file``, ``hostname``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``num_expected``, ``timestamp``.
+   * - ``job``
+     - dict
+     - Job metadata: ``name``, ``identifier``, ``config``, ``last_modified``, ``timeout``, ``correlation_id``, ``emit_time``.
+   * - ``config``
+     - dict
+     - Alias for ``job.config`` (convenience).
+
+### ParallelBash Context
+
+Available for each file in ``parallel_bash``:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Variable
+     - Type
+     - Description
+   * - ``file``
+     - dict
+     - The current file's :class:`FrozenFile` dict (same keys as ``files`` entries above).
+   * - ``files``
+     - List[dict]
+     - ALL files in the job (for cross-reference/manifest generation).
+   * - ``job``
+     - dict
+     - Job metadata (same keys as SerialBash).
+   * - ``config``
+     - dict
+     - Alias for ``job.config``.
+
+### Undefined Variable Behavior
+
+Templates use ``jinja2.DebugUndefined``:
+
+- ``{{ missing }}`` — renders as empty string (no error)
+- ``{{ missing.attr }}`` — raises ``jinja2.TemplateError`` at render time, captured as ``ExecutionLog(return_code=-1)``
+
+### Template Examples
+
+**Serial: Process all files with a loop:**
+
+```yaml
+bash_script: |
+  #!/bin/bash
+  echo "Processing {{ job.name }} ({{ files|length }} files)"
+  {% for f in files %}
+  echo "File: {{ f.file }} from {{ f.source }}"
+  cp {{ f.file }} /output/
+  {% endfor %}
+```
+
+**Parallel: One execution per file:**
+
+```yaml
+bash_script: |
+  #!/bin/bash
+  echo "Processing {{ file.file }}"
+  echo "Source: {{ file.source }}, Instrument: {{ file.instrument }}"
+  cp {{ file.file }} /output/
+```

@@ -27,6 +27,38 @@ _MEMORY_TRANSPORT_SCHEMES: frozenset[str] = frozenset({"memory"})
 _logger = get_logger("module", "broker.kombu", None)
 
 
+def _normalize_publish_error(
+    exc: "kombu.exceptions.KombuError",
+    target_name: str,
+) -> "Exception":
+    """Classify a Kombu publish/declare error as transient or fatal.
+
+    Parameters
+    ----------
+    exc : kombu.exceptions.KombuError
+        The exception raised by Kombu.
+    target_name : str
+        Name of the queue or exchange for error messages.
+
+    Returns
+    -------
+    Exception
+        :class:`TransientBrokerError` for recoverable failures,
+        :class:`FatalBrokerError` otherwise.
+    """
+    if isinstance(exc, OperationalError):
+        return TransientBrokerError(
+            f"transient publish failure to {target_name!r}: {exc}"
+        )
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return TransientBrokerError(
+            f"transient publish failure to {target_name!r}: {exc}"
+        )
+    return FatalBrokerError(
+        f"fatal publish failure to {target_name!r}: {exc}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pure connection / messaging functions
 # ---------------------------------------------------------------------------
@@ -152,18 +184,8 @@ def publish(
                 exchange="",
                 declare=[queue],
             )
-    except OperationalError as exc:
-        raise TransientBrokerError(
-            f"transient publish failure to {queue.name!r}: {exc}",
-        ) from exc
-    except (ConnectionError, TimeoutError, OSError) as exc:
-        raise TransientBrokerError(
-            f"transient publish failure to {queue.name!r}: {exc}",
-        ) from exc
     except KombuError as exc:
-        raise FatalBrokerError(
-            f"fatal publish failure to {queue.name!r}: {exc}",
-        ) from exc
+        raise _normalize_publish_error(exc, queue.name) from exc
 
 
 def messages(
@@ -217,6 +239,92 @@ def messages(
                     msg.reject(requeue=True)
 
                 yield decoded, msg.ack, _reject
+
+
+def declare_fanout_exchange(
+    conn: "kombu.Connection",
+    name: str,
+) -> "kombu.Exchange":
+    """Declare and return a durable fanout Exchange on *conn*."""
+    try:
+        exchange = kombu.Exchange(name, type="fanout", durable=True, channel=conn.channel())
+        exchange.declare()
+        return exchange
+    except OperationalError as exc:
+        raise TransientBrokerError(
+            f"transient failure declaring fanout exchange {name!r}: {exc}",
+        ) from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise TransientBrokerError(
+            f"transient failure declaring fanout exchange {name!r}: {exc}",
+        ) from exc
+    except KombuError as exc:
+        raise FatalBrokerError(
+            f"fatal failure declaring fanout exchange {name!r}: {exc}",
+        ) from exc
+
+
+def publish_fanout(
+    conn: "kombu.Connection",
+    exchange: "kombu.Exchange",
+    body: str,
+    confirm: bool = False,
+) -> None:
+    """Publish *body* to a fanout *exchange* using *conn*.
+
+    Same error-handling strategy as :func:`publish`.
+    """
+    scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
+    use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
+    try:
+        producer_cls = kombu.Producer
+        with producer_cls(conn) as producer:
+            if use_confirm:
+                channel = producer.channel
+                confirm_select = getattr(channel, "confirm_select", None)
+                if confirm_select is not None:
+                    confirm_select()
+            producer.publish(
+                body,
+                exchange=exchange,
+                routing_key="",
+                declare=[exchange],
+            )
+    except KombuError as exc:
+        raise _normalize_publish_error(exc, exchange.name) from exc
+
+
+def declare_fanout_queue(
+    conn: "kombu.Connection",
+    exchange: "kombu.Exchange",
+) -> "kombu.Queue":
+    """Declare and return an anonymous exclusive queue bound to *exchange*.
+
+    The queue name is server-generated (empty string). ``exclusive=True``
+    ensures the queue is auto-deleted when the consumer disconnects, and
+    the fanout binding guarantees every consumer's queue receives a copy
+    of each published message.
+    """
+    # NOTE: Opens a new channel (conn.channel()) separate from the exchange's
+    # channel.  In service.py:consume(), kombu.Consumer opens yet another
+    # channel internally.  All channels share the same connection and are
+    # closed when conn is closed — no leak.
+    try:
+        q = kombu.Queue("", exchange=exchange, exclusive=True, channel=conn.channel())
+        q.declare()
+        return q
+    except OperationalError as exc:
+        raise TransientBrokerError(
+            f"transient failure declaring fanout queue: {exc}",
+        ) from exc
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise TransientBrokerError(
+            f"transient failure declaring fanout queue: {exc}",
+        ) from exc
+    except KombuError as exc:
+        raise FatalBrokerError(
+            f"fatal failure declaring fanout queue: {exc}",
+        ) from exc
 
 
 # ---------------------------------------------------------------------------

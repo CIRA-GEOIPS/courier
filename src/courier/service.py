@@ -5,12 +5,19 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-from courier.broker.kombu import MessageBrokerManager, declare_queue, publish
+from courier.broker.kombu import (
+    MessageBrokerManager,
+    declare_fanout_exchange,
+    declare_fanout_queue,
+    declare_queue,
+    publish,
+    publish_fanout,
+)
 from courier.broker.kombu import messages as broker_messages
 from courier.config import ServiceConfig
 from courier.constants import (
     DISPATCHER_QUEUE,
-    FILE_FOUND_QUEUE,
+    FILE_FOUND_EXCHANGE,
     MAX_QUEUE_NAME_LENGTH,
     job_ready_queue_for,
 )
@@ -144,6 +151,16 @@ class Service:
         FatalBrokerError
             On non-retryable publish failures.
         """
+        # --- Fan-out: FILE_FOUND uses a fanout exchange so every builder
+        # --- receives every file notification.
+        if queue == FILE_FOUND_EXCHANGE:
+            exchange_name = self._broker_manager.get_queue_name(queue)
+            with self._broker_manager.get_connection_context() as conn:
+                exchange = declare_fanout_exchange(conn, exchange_name)
+                publish_fanout(conn, exchange, message, confirm=confirm)
+                BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
+            return
+        # --- Direct queue path
         queue_name = self._broker_manager.add_queue(
             queue,
             durable=True,
@@ -167,7 +184,39 @@ class Service:
         ------
         str
             The decoded message content from the queue.
+
+        Notes
+        -----
+        Breaking the generator loop (e.g. ``break`` after yielding a single
+        message) may requeue any message pre-fetched by the broker but not yet
+        yielded.  For one-shot consumption that avoids this side-effect, use a
+        separate thread with a timeout (see ``concurrent.futures``).
         """
+        # --- Fan-out: FILE_FOUND uses a fanout exchange with an exclusive
+        # --- queue per consumer so every builder sees every file.
+        if queue == FILE_FOUND_EXCHANGE:
+            exchange_name = self._broker_manager.get_queue_name(queue)
+            with self._broker_manager.get_connection_context() as conn:
+                exchange = declare_fanout_exchange(conn, exchange_name)
+                q = declare_fanout_queue(conn, exchange)
+                for body, ack, reject in broker_messages(conn, q):
+                    try:
+                        self._logger.debug(
+                            f"Received message from exchange '{exchange_name}': {body}",
+                        )
+                        BROKER_MESSAGES_RECEIVED.labels(
+                            queue_name=exchange_name,
+                        ).inc()
+                        yield body
+                        ack()
+                    except GeneratorExit:
+                        reject()
+                        raise
+                    except Exception:  # Reject message before propagating any error
+                        reject()
+                        raise
+            return
+        # --- Direct queue path
         queue_name = self._broker_manager.add_queue(
             queue,
             durable=True,
@@ -385,11 +434,11 @@ class Service:
                 durable=True,
                 exclusive=False,
             )
-        self._broker_manager.add_queue(
-            FILE_FOUND_QUEUE,
-            durable=True,
-            exclusive=False,
-        )
+        # Predeclare the fanout exchange so it exists before any consumer arrives.
+        self._logger.debug(f"Predeclaring fanout exchange for {FILE_FOUND_EXCHANGE}")
+        with self._broker_manager.get_connection_context() as conn:
+            exchange_name = self._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
+            declare_fanout_exchange(conn, exchange_name)
         self._broker_manager.add_queue(
             DISPATCHER_QUEUE,
             durable=True,

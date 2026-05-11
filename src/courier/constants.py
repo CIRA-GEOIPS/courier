@@ -15,11 +15,11 @@ class QueueName(StrEnum):
     :func:`job_ready_queue_for` and are not members of this enum.
     """
 
-    FILE_FOUND = "FilesFoundQueue"
+    FILE_FOUND = "FilesFoundExchange"
     DISPATCHER = "DispatcherQueue"
 
 
-FILE_FOUND_QUEUE: str = QueueName.FILE_FOUND
+FILE_FOUND_EXCHANGE: str = QueueName.FILE_FOUND
 DISPATCHER_QUEUE: str = QueueName.DISPATCHER
 
 #: Prefix for per-dispatcher job-ready queues. Full queue names are

@@ -41,13 +41,20 @@ class Job:
         Unix timestamp stamped by the job builder at emit. Used by the
         dispatcher to compute end-to-end routing latency. ``None`` until
         the builder has published the job.
-    targets : tuple[str, ...] or None, optional
-        Observability record of which dispatcher identifiers the builder
-        published this job to. Not used for routing — routing is by
-        queue name — but preserved round-trip for debugging and
-        provenance. Stored as a tuple so the field remains effectively
-        immutable despite the surrounding class being mutable.
-    """
+        targets : tuple[str, ...] or None, optional
+            Observability record of which dispatcher identifiers the builder
+            published this job to. Not used for routing — routing is by
+            queue name — but preserved round-trip for debugging and
+            provenance. Stored as a tuple so the field remains effectively
+            immutable despite the surrounding class being mutable.
+
+        Notes
+        -----
+        ``config`` may be any type, but serialization via :meth:`__str__`
+        converts Pydantic models to plain dicts via ``model_dump()``.
+        Deserialization via :meth:`from_string` reconstructs ``config`` as
+        a dict.  Consumers should be prepared for either form.
+        """
 
     def __init__(  # noqa: PLR0913
         self,
@@ -64,7 +71,10 @@ class Job:
         self.name = name
         self.identifier = identifier
         self.config = config
-        self.files: set[File | FrozenFile] = set(files) if files is not None else set()
+        self.files: set[FrozenFile] = {
+            f.freeze() if isinstance(f, File) else f
+            for f in files
+        } if files is not None else set()
         self.last_modified = last_modified if last_modified is not None else time.time()
         self.timeout = timeout
         self.correlation_id = correlation_id or str(uuid.uuid4())
@@ -73,6 +83,14 @@ class Job:
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
+        def _json_default(obj):
+            import pydantic
+            if isinstance(obj, pydantic.BaseModel):
+                return obj.model_dump()
+            raise TypeError(
+                f"Object of type {type(obj).__name__} is not JSON serializable"
+            )
+
         return json.dumps(
             {
                 "name": self.name,
@@ -85,6 +103,7 @@ class Job:
                 "emit_time": self.emit_time,
                 "targets": list(self.targets),
             },
+            default=_json_default,
         )
 
     @classmethod
@@ -118,10 +137,28 @@ class Job:
         """Return true if job is ready to be emitted."""
         return False
 
-    def add_file(self, file: File | FrozenFile) -> None:
-        """Add file to job."""
+    def add_file(self, file: File | FrozenFile) -> bool:
+        """Add file to job (freezes mutable File before adding).
+
+        Returns
+        -------
+        bool
+            ``True`` if the file was accepted, ``False`` if the job rejected it
+            (e.g. capacity reached, filter mismatch).
+
+        Notes
+        -----
+        The default implementation accepts every file unconditionally.
+        Subclasses with capacity, filter, or other rejection criteria
+        **must** override this method and return ``False`` on rejection
+        so that :meth:`JobGroup.add_file` can create overflow jobs for
+        rejected files.
+        """
+        if not isinstance(file, FrozenFile):
+            file = file.freeze()
         self.files.add(file)
         self.last_modified = time.time()
+        return True
 
     def is_old(self) -> bool:
         """Return true if job is old and ready to be discarded."""
@@ -146,6 +183,7 @@ class JobGroup:
         self.config = config
         self.jobs: dict[str, Job] = {}
         self.job = Job
+        self._overflow_counters: dict[str, int] = {}
 
     def ready_jobs(self) -> list[Job]:
         """Return list of ready jobs."""
@@ -163,6 +201,10 @@ class JobGroup:
         """Add file to appropriate job in job group.
 
         Return true if file was added to at least one job, false otherwise.
+
+        When an existing job rejects the file (e.g. it is full), a new
+        overflow job is created with a suffixed ID so the file is never
+        silently dropped.
         """
         if not self.file_is_relevant(file):
             return False
@@ -171,7 +213,23 @@ class JobGroup:
             return False
         for job_id in set(job_ids):
             if job_id in self.jobs:
-                self.jobs[job_id].add_file(file)
+                accepted = self.jobs[job_id].add_file(file)
+                if not accepted:
+                    # Existing job rejected the file — create overflow job.
+                    self._overflow_counters[job_id] = (
+                        self._overflow_counters.get(job_id, 0) + 1
+                    )
+                    overflow_id = f"{job_id}_overflow_{self._overflow_counters[job_id]}"
+                    overflow = self.job(
+                        self.name, overflow_id, self.config,
+                    )
+                    if not overflow.add_file(file):
+                        raise RuntimeError(
+                            f"overflow job {overflow_id!r} rejected file {file!r}; "
+                            f"Job.add_file may only return False for capacity/filter "
+                            f"reasons; a fresh job should always accept the first file"
+                        )
+                    self.jobs[overflow_id] = overflow
             else:
                 self.jobs[job_id] = self.job(self.name, job_id, self.config)
                 self.jobs[job_id].add_file(file)

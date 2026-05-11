@@ -130,13 +130,19 @@ def make_job_class(config: FilterAndGroupConfig) -> type[Job]:
                 and len(self.files) >= config.min_files
             )
 
-        def add_file(self, file: File | FrozenFile) -> None:
-            """Add *file* unless filters reject it or the job is already full."""
+        def add_file(self, file: File | FrozenFile) -> bool:
+            """Add *file* unless filters reject it or the job is already full.
+
+            Returns
+            -------
+            bool
+                ``True`` if the file was added, ``False`` if rejected.
+            """
             if not _file_matches_filters(file, config.filters):
-                return
+                return False
             if len(self.files) >= config.files_per_job:
-                return
-            super().add_file(file)
+                return False
+            return super().add_file(file)
 
     return FilterAndGroupJob
 

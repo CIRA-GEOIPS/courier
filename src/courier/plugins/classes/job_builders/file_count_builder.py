@@ -85,13 +85,20 @@ def _build_job_class(config: FileCountBuilderConfig) -> type[Job]:
             """Emit once the configured file count is reached."""
             return len(self.files) >= config.files_per_job
 
-        def add_file(self, file: File | FrozenFile) -> None:
-            """Add *file* unless filters reject it or the job is already full."""
+        def add_file(self, file: File | FrozenFile) -> bool:
+            """Add *file* unless filters reject it or the job is already full.
+
+            Returns
+            -------
+            bool
+                ``False`` when filters reject the file or the job is
+                already at :attr:`files_per_job` capacity.
+            """
             if not _matches_filters(file, config.filters):
-                return
+                return False
             if len(self.files) >= config.files_per_job:
-                return
-            super().add_file(file)
+                return False
+            return super().add_file(file)
 
     return FileCountJob
 

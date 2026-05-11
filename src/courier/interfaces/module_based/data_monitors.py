@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pluginify.interfaces.base import BaseClassInterface
 
-from courier.constants import FILE_FOUND_QUEUE, PluginRunState
+from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
@@ -41,7 +41,7 @@ class DataMonitorBasePlugin(ServicePlugin):
             return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
-        self.queue = FILE_FOUND_QUEUE
+        self.queue = FILE_FOUND_EXCHANGE
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
         self.config = config or {}
