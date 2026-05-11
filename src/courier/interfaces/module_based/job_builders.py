@@ -345,6 +345,9 @@ class JobBuilder(ServicePlugin):
             self._files_per_job.labels(
                 job_builder_name=self.name,
             ).observe(len(ready_job.files))
+
+        self._pop_ready_jobs(job_group, ready)
+
         self._cleanup_old_jobs(job_group)
 
     def _add_file_locked(
@@ -424,6 +427,31 @@ class JobBuilder(ServicePlugin):
             return
         for job_id in deletions:
             self._sync.push_job_deletion(group_name, job_id)
+
+    def _pop_ready_jobs(
+        self,
+        job_group: JobGroup,
+        ready_jobs: list[Job],
+    ) -> None:
+        """Remove emitted ready jobs from the group and sync the deletions.
+
+        Parameters
+        ----------
+        job_group : JobGroup
+            The group to remove jobs from.
+        ready_jobs : list[Job]
+            Ready jobs that have been emitted and should be removed.
+        """
+        if not ready_jobs:
+            return
+        lock = self._group_locks.get(job_group.name)
+        deletions: list[str] = []
+        with lock if lock is not None else contextlib.nullcontext():
+            for job in ready_jobs:
+                if job.identifier in job_group.jobs:
+                    del job_group.jobs[job.identifier]
+                    deletions.append(job.identifier)
+        self._push_deletions(job_group.name, deletions)
 
     # ------------------------------------------------------------------
     # Metrics

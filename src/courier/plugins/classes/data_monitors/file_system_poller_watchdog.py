@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from prometheus_client import Gauge
+from pydantic import BaseModel, Field
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -18,6 +19,17 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     from courier.service import Service
+
+
+class FileSystemPollerConfig(BaseModel, frozen=True):
+    """Validated configuration for :class:`FileSystemPoller`."""
+
+    path: str = Field(
+        ..., description="Directory path to watch for new files",
+    )
+    hostname: str = Field(
+        default="localhost", description="Hostname to attach to emitted files",
+    )
 
 
 class FileSystemPoller(DataMonitorBasePlugin):
@@ -36,8 +48,9 @@ class FileSystemPoller(DataMonitorBasePlugin):
         super().__init__(service, config)
         if service is None or isinstance(service, types.ModuleType):
             return
+        self.validated = FileSystemPollerConfig.model_validate(config or {})
         self.health = False
-        self.path_to_watch = (config or {})["path"]
+        self.path_to_watch = self.validated.path
         # Gauge that stores the Unix timestamp of last processing
         # more as a demonstration than for actual use here
         self.last_file_processed_timestamp = Gauge(
@@ -92,7 +105,10 @@ class FileSystemPoller(DataMonitorBasePlugin):
         try:
             self.health = True
             while True:
-                yield File(file=Path(str(file_queue.get())), hostname="localhost")
+                yield File(
+                    file=Path(str(file_queue.get())),
+                    hostname=self.validated.hostname,
+                )
                 self.last_file_processed_timestamp.set_to_current_time()
         finally:
             observer.stop()

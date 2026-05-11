@@ -80,7 +80,7 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     """
     out: dict[str, tuple[str, ...]] = {}
     for entry in config.spec.run:
-        if entry.spec.kind != "job_builders":
+        if entry.spec.kind != "job_builder":
             continue
         cfg = entry.spec.config or {}
         declared: list[str] = []
@@ -113,7 +113,7 @@ def run_service(config: Any) -> None:
     dispatcher_ids = {
         entry.identifier
         for entry in config.spec.run
-        if entry.spec.kind == "dispatchers"
+        if entry.spec.kind == "dispatcher"
     }
     service.configure_routing(
         dispatcher_identifiers=dispatcher_ids,

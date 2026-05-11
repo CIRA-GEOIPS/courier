@@ -6,6 +6,8 @@ import logging
 import types
 from typing import TYPE_CHECKING, ClassVar
 
+from pydantic import BaseModel, Field
+
 from courier.interfaces.module_based.job_builders import JobBuilder
 from courier.types.job import Job, JobGroup
 
@@ -15,6 +17,15 @@ if TYPE_CHECKING:
 
 # Module-level logger for DummyJob class (which doesn't inherit from ServicePlugin)
 _module_logger = logging.getLogger(__name__)
+
+
+class DummyJobBuilderConfig(BaseModel, frozen=True):
+    """Validated configuration for :class:`DummyJobBuilder`."""
+
+    targets: list[str] | None = Field(
+        default=None,
+        description="Optional list of targets to route to",
+    )
 
 
 class DummyJob(Job):
@@ -158,8 +169,9 @@ class DummyJobBuilder(JobBuilder):
         super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
-        self._logger.debug(f"Initializing DummyJobBuilder with config {config}")
-        self.config = config or {}
+        cfg = config or {}
+        self.validated = DummyJobBuilderConfig.model_validate(cfg)
+        self.config = cfg
         self.job_groups = [DummyJobGroup(self.config)]
 
     def is_healthy(self) -> bool:

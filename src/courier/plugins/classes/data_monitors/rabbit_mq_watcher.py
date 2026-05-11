@@ -10,11 +10,12 @@ import time
 import types
 from contextlib import suppress
 from datetime import datetime
-from pathlib import PurePosixPath, Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import kombu
 from kombu.exceptions import OperationalError
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
 from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
@@ -104,6 +105,90 @@ def _parse_regex(
     return hostname, path or "/"
 
 
+class RabbitMQWatcherConfig(BaseModel, frozen=True):
+    """Validated configuration for :class:`RabbitMQWatcher`."""
+
+    rabbitmq_host: str = Field(
+        default="localhost", description="Hostname of the RabbitMQ broker",
+    )
+    rabbitmq_port: int = Field(
+        default=5672, ge=1, le=65535, description="Port of the RabbitMQ broker",
+    )
+    rabbitmq_virtual_host: str = Field(default="/", description="Virtual host")
+    rabbitmq_queue: str = Field(
+        default="file_catalog", description="Queue name to consume from",
+    )
+    rabbitmq_username: str = Field(
+        default="guest", description="Broker username",
+    )
+    rabbitmq_password: str = Field(
+        default="guest", description="Broker password",
+    )
+    rabbitmq_prefetch_count: int = Field(
+        default=1, ge=1, description="Basic QoS prefetch count",
+    )
+    max_retries: int = Field(
+        default=-1,
+        ge=-1,
+        description="Maximum reconnection attempts; -1 = forever",
+    )
+    retry_delay_seconds: float = Field(
+        default=2.0, gt=0, description="Initial delay between reconnect attempts",
+    )
+    retry_backoff_factor: float = Field(
+        default=1.5,
+        gt=1.0,
+        description="Multiplier for retry delay after each attempt",
+    )
+    field_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of canonical field names to message keys",
+    )
+    location_format: str = Field(
+        default="user_at_host_colon_path",
+        description=(
+            "Location parser: 'user_at_host_colon_path', "
+            "'hostname_only', or 'regex'"
+        ),
+    )
+    location_format_regex: str | None = Field(
+        default=None,
+        description=(
+            "Regex pattern for location_format='regex' "
+            "(required when format is 'regex')"
+        ),
+    )
+    timestamp_field: str | None = Field(
+        default=None,
+        description="Dot-separated path to timestamp in message dict",
+    )
+    timestamp_format: str | None = Field(
+        default=None,
+        description="strptime format for the timestamp value",
+    )
+
+    @field_validator("location_format")
+    @classmethod
+    def _validate_location_format(cls, v: str) -> str:
+        """Validate that the location format is a known parser."""
+        if v not in _LOCATION_PARSERS:
+            raise ValueError(
+                f"Unknown location_format {v!r}. "
+                f"Valid: {list(_LOCATION_PARSERS)}",
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _require_regex_for_regex_format(self) -> RabbitMQWatcherConfig:
+        """location_format_regex is required when location_format is 'regex'."""
+        if self.location_format == "regex" and not self.location_format_regex:
+            raise ValueError(
+                "'location_format_regex' must be set "
+                "when location_format is 'regex'",
+            )
+        return self
+
+
 class RabbitMQWatcher(DataMonitorBasePlugin):
     """RabbitMQ Data Monitor Plugin.
 
@@ -177,44 +262,24 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         super().__init__(service, config)
         if service is None or isinstance(service, types.ModuleType):
             return
-        config = config or {}
+        self.validated = RabbitMQWatcherConfig.model_validate(config or {})
         self.health = False
 
-        self.rabbitmq_host: str = config.get("rabbitmq_host", "localhost")
-        self.rabbitmq_port: int = int(config.get("rabbitmq_port", 5672))
-        self.rabbitmq_virtual_host: str = config.get("rabbitmq_virtual_host", "/")
-        self.rabbitmq_queue: str = config.get("rabbitmq_queue", "file_catalog")
-        self.rabbitmq_username: str = config.get("rabbitmq_username", "guest")
-        self.rabbitmq_password: str = config.get("rabbitmq_password", "guest")
-        self.rabbitmq_prefetch_count: int = int(
-            config.get("rabbitmq_prefetch_count", 1),
-        )
-
-        self.max_retries: int = int(config.get("max_retries", -1))
-        self.retry_delay_seconds: float = float(config.get("retry_delay_seconds", 2.0))
-        self.retry_backoff_factor: float = float(
-            config.get("retry_backoff_factor", 1.5),
-        )
-
-        self.field_map: dict[str, str] = config.get("field_map", {})
-
-        self.location_format: str = config.get(
-            "location_format",
-            "user_at_host_colon_path",
-        )
-        if self.location_format not in _LOCATION_PARSERS:
-            raise ValueError(
-                f"Unknown location_format {self.location_format!r}. "
-                f"Valid options: {list(_LOCATION_PARSERS)}",
-            )
-        self.location_format_regex: str | None = config.get("location_format_regex")
-        if self.location_format == "regex" and not self.location_format_regex:
-            raise ValueError(
-                "'location_format_regex' must be set when location_format is 'regex'",
-            )
-
-        self.timestamp_field: str | None = config.get("timestamp_field")
-        self.timestamp_format: str | None = config.get("timestamp_format")
+        self.rabbitmq_host = self.validated.rabbitmq_host
+        self.rabbitmq_port = self.validated.rabbitmq_port
+        self.rabbitmq_virtual_host = self.validated.rabbitmq_virtual_host
+        self.rabbitmq_queue = self.validated.rabbitmq_queue
+        self.rabbitmq_username = self.validated.rabbitmq_username
+        self.rabbitmq_password = self.validated.rabbitmq_password
+        self.rabbitmq_prefetch_count = self.validated.rabbitmq_prefetch_count
+        self.max_retries = self.validated.max_retries
+        self.retry_delay_seconds = self.validated.retry_delay_seconds
+        self.retry_backoff_factor = self.validated.retry_backoff_factor
+        self.field_map = self.validated.field_map
+        self.location_format = self.validated.location_format
+        self.location_format_regex = self.validated.location_format_regex
+        self.timestamp_field = self.validated.timestamp_field
+        self.timestamp_format = self.validated.timestamp_format
 
         self.last_file_processed_timestamp = RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 
@@ -369,7 +434,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
                 if fm.get("file_name") is None or fm.get("dir_path") is None:
                     self._logger.debug(
-                        "Field map missing 'file_name' or 'dir_path'; "
+                        "Field map missing 'file_name' or 'dir_path'; ",
                     )
                     if fm.get("file_path") is not None:
                         self._logger.debug(
@@ -384,13 +449,13 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                         raise ValueError(
                             f"Message missing required file path components according to field_map. "
                             f"Got: {file_info!r}, expected keys: 'dir_path' and 'file_name'",
-                            f"or a single 'file_path' key.",
+                            "or a single 'file_path' key.",
                         )
                 else:
                     full_path = Path(
                         PurePosixPath(location_path)
                         / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
-                        / file_info[fm["file_name"]]
+                        / file_info[fm["file_name"]],
                     )
 
                 timestamp = self._extract_timestamp(file_info)

@@ -40,6 +40,7 @@ Lazy Lemon is designed for:
 :caption: Getting Started
 
 getting-started/installation
+getting-started/init
 getting-started/quick-start
 getting-started/configuration
 ```

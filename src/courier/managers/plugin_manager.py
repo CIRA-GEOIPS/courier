@@ -251,7 +251,7 @@ class PluginManager(ServiceManager):
                                 else:
                                     is_healthy = plugin_info.plugin.is_healthy()
                                     self._plugin_health_metric.labels(
-                                        plugin_name=plugin_name,
+                                        plugin_name=plugin_info.plugin.name,
                                     ).set(1 if is_healthy else 0)
 
                                     if not is_healthy:

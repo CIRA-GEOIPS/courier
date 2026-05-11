@@ -2,15 +2,19 @@
 
 Programmatic Grafana dashboard generated with [grafanalib](https://github.com/weaveworks/grafanalib).
 
-Covers all 20 Prometheus metrics exposed by the Courier service, organized into:
+Covers all 46 Prometheus metrics exposed by the Courier service, organized into:
 
 - **Service Overview** -- health, uptime, heartbeat, total files
-- **Data Monitors** -- file processing rate, status breakdown, scan age
-- **Job Builders** -- files received, jobs built, active groups, discards, duration percentiles
-- **Dispatchers** -- jobs processed, success ratio, active jobs, execution duration, logs emitted
+- **Data Monitors** -- file processing rate, status breakdown, scan age, scan duration, poll errors, connection status, consumer lag, last emitted file age
+- **Job Builders** -- files received, jobs built, active groups, discards, duration percentiles, files per job, timeout emissions
+- **Dispatchers** -- jobs processed, success ratio, active jobs, execution duration, logs emitted, queue wait latency, parallel workers active
 - **Plugin Manager** -- health, status table, restarts
-- **State Sync / HA** -- pushes, applies, emit claims (collapsed by default)
+- **Broker** -- connection status, connection attempts, messages sent, messages received
+- **State Sync / HA** -- pushes, applies, emit claims, sync errors (collapsed by default)
 - **Pipeline Summary** -- end-to-end throughput funnel
+- **Job Builder — Metadata Router** -- route matches, unmatched files
+- **Dispatcher — SLURM** -- pending jobs, submissions (collapsed by default)
+- **Dispatcher — HTTP** -- response codes, request duration percentiles (collapsed by default)
 
 ## Install
 
@@ -50,3 +54,9 @@ The dashboard includes dropdown filters for:
 - Dispatcher name
 - Plugin name
 - Sync Builder name (HA only)
+- Queue (for RabbitMQ metrics)
+- Error Type (for data monitor poll errors)
+- Topic (for data monitor consumer lag)
+- Route Name (for metadata router)
+- HTTP Status Code (for HTTP dispatcher)
+- Dispatcher Identifier (for routing throughput, dispatch latency, queue depth, and dedupe skips)

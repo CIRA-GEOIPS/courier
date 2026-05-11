@@ -170,6 +170,66 @@ def _templating() -> Templating:
         multi=True,
         refresh=REFRESH_ON_TIME_RANGE_CHANGE,
     )
+    queue = Template(
+        name="queue",
+        label="Queue",
+        query=(
+            f"label_values("
+            f"{_PREFIX}_rabbitmq_last_file_emitted_timestamp_seconds, queue)"
+        ),
+        dataSource=_DS,
+        includeAll=True,
+        multi=True,
+        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
+    )
+    error_type = Template(
+        name="error_type",
+        label="Error Type",
+        query=(
+            f"label_values("
+            f"{_PREFIX}_data_monitor_poll_errors_total, error_type)"
+        ),
+        dataSource=_DS,
+        includeAll=True,
+        multi=True,
+        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
+    )
+    topic = Template(
+        name="topic",
+        label="Topic",
+        query=(
+            f"label_values("
+            f"{_PREFIX}_data_monitor_consumer_lag, topic)"
+        ),
+        dataSource=_DS,
+        includeAll=True,
+        multi=True,
+        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
+    )
+    route_name = Template(
+        name="route_name",
+        label="Route Name",
+        query=(
+            f"label_values("
+            f"{_PREFIX}_job_builder_route_matches_total, route_name)"
+        ),
+        dataSource=_DS,
+        includeAll=True,
+        multi=True,
+        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
+    )
+    status_code = Template(
+        name="status_code",
+        label="HTTP Status Code",
+        query=(
+            f"label_values("
+            f"{_PREFIX}_dispatcher_http_response_codes_total, status_code)"
+        ),
+        dataSource=_DS,
+        includeAll=True,
+        multi=True,
+        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
+    )
     return Templating(
         list=[
             ds,
@@ -179,6 +239,11 @@ def _templating() -> Templating:
             plugin,
             sync_builder,
             dispatcher_identifier,
+            queue,
+            error_type,
+            topic,
+            route_name,
+            status_code,
         ],
     )
 
@@ -339,10 +404,94 @@ def _data_monitor_row() -> RowPanel:
         gridPos=GridPos(8, 24, 0, py2),
     )
 
+    # Third sub-row — poll errors and connection status
+    py3 = _advance(8)
+    lbl_err = 'monitor_name=~"$monitor_name", error_type=~"$error_type"'
+
+    poll_errors = TimeSeries(
+        title="Poll Errors by Type",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_data_monitor_poll_errors_total", lbl_err),
+                "{{monitor_name}} — {{error_type}}",
+            ),
+        ],
+        stacking={"mode": "normal", "group": "A"},
+        fillOpacity=30,
+        gridPos=GridPos(8, 12, 0, py3),
+    )
+
+    connection_status = Stat(
+        title="Connection Status",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"{_PREFIX}_data_monitor_connection_status"
+                f"{{monitor_name=~\"$monitor_name\"}}",
+                "{{monitor_name}}",
+            ),
+        ],
+        reduceCalc=GAUGE_CALC_LAST,
+        thresholds=[
+            Threshold("red", 0, 0.0),
+            Threshold("green", 1, 1.0),
+        ],
+        mappings=[
+            StatValueMappings(
+                StatValueMappingItem("Connected", "1", "green"),
+                StatValueMappingItem("Disconnected", "0", "red"),
+            ),
+        ],
+        gridPos=GridPos(8, 6, 12, py3),
+    )
+
+    # Fourth sub-row — consumer lag and RabbitMQ file timestamp
+    py4 = _advance(8)
+    lbl_lag = 'monitor_name=~"$monitor_name", topic=~"$topic"'
+    lbl_queue = 'queue=~"$queue"'
+
+    consumer_lag = TimeSeries(
+        title="Consumer Lag",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"{_PREFIX}_data_monitor_consumer_lag{{{lbl_lag}}}",
+                "{{monitor_name}} — {{topic}}",
+            ),
+        ],
+        gridPos=GridPos(8, 12, 0, py4),
+    )
+
+    rabbitmq_timestamp = TimeSeries(
+        title="Last Emitted File Age",
+        description="Age of the most recent file emitted to RabbitMQ.",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"time() - "
+                f"{_PREFIX}_rabbitmq_last_file_emitted_timestamp_seconds"
+                f"{{{lbl_queue}}}",
+                "{{queue}}",
+            ),
+        ],
+        unit=SECONDS_FORMAT,
+        gridPos=GridPos(8, 12, 12, py4),
+    )
+
     return RowPanel(
         title="Data Monitors",
         gridPos=GridPos(1, 24, 0, y),
-        panels=[rate_panel, by_status, scan_age, scan_dur],
+        panels=[
+            rate_panel,
+            by_status,
+            scan_age,
+            scan_dur,
+            poll_errors,
+            connection_status,
+            consumer_lag,
+            rabbitmq_timestamp,
+        ],
     )
 
 
@@ -469,6 +618,23 @@ def _job_builder_row() -> RowPanel:
         gridPos=GridPos(8, 24, 0, py3),
     )
 
+    # Fourth sub-row — timeout emissions
+    py4 = _advance(8)
+
+    timeout_emissions = TimeSeries(
+        title="Timeout Emissions",
+        description="Rate of jobs discarded due to builder timeouts.",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_job_builder_timeout_emissions_total", lbl),
+                "{{job_builder_name}}",
+            ),
+        ],
+        unit="ops",
+        gridPos=GridPos(8, 24, 0, py4),
+    )
+
     return RowPanel(
         title="Job Builders",
         gridPos=GridPos(1, 24, 0, y),
@@ -479,6 +645,7 @@ def _job_builder_row() -> RowPanel:
             discarded,
             duration,
             files_per_job,
+            timeout_emissions,
         ],
     )
 
@@ -616,6 +783,22 @@ def _dispatcher_row() -> RowPanel:
         gridPos=GridPos(8, 24, 0, py3),
     )
 
+    # Fourth sub-row — parallel workers active
+    py4 = _advance(8)
+
+    parallel_workers = TimeSeries(
+        title="Parallel Workers Active",
+        description="Number of parallel dispatch workers currently processing.",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"{_PREFIX}_dispatcher_parallel_workers_active{{{lbl}}}",
+                "{{dispatcher_name}}",
+            ),
+        ],
+        gridPos=GridPos(8, 24, 0, py4),
+    )
+
     return RowPanel(
         title="Dispatchers",
         gridPos=GridPos(1, 24, 0, y),
@@ -626,6 +809,7 @@ def _dispatcher_row() -> RowPanel:
             exec_dur,
             logs_emitted,
             queue_wait,
+            parallel_workers,
         ],
     )
 
@@ -927,7 +1111,7 @@ def _routing_row() -> RowPanel:
             ),
         ],
         unit=SECONDS_FORMAT,
-        gridPos=GridPos(8, 16, 0, py2),
+        gridPos=GridPos(8, 8, 0, py2),
     )
 
     depth = TimeSeries(
@@ -939,13 +1123,182 @@ def _routing_row() -> RowPanel:
                 "{{dispatcher_identifier}}",
             ),
         ],
+        gridPos=GridPos(8, 8, 8, py2),
+    )
+
+    dedupe_skips = TimeSeries(
+        title="Dedupe Skips",
+        description=(
+            "Rate of duplicate dispatch jobs skipped by the "
+            "deduplication filter."
+        ),
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_dispatcher_dedupe_skips_total", lbl_d),
+                "{{dispatcher_identifier}}",
+            ),
+        ],
+        unit="ops",
         gridPos=GridPos(8, 8, 16, py2),
     )
 
     return RowPanel(
         title="Routing",
         gridPos=GridPos(1, 24, 0, y),
-        panels=[emitted, emit_failures, consumed, latency, depth],
+        panels=[emitted, emit_failures, consumed, latency, depth, dedupe_skips],
+    )
+
+
+def _metadata_router_row() -> RowPanel:
+    """Row — Job Builder metadata routing (collapsed by default)."""
+    y = _advance(1)
+    py = _advance(8)
+    lbl = 'job_builder_name=~"$job_builder_name"'
+    lbl_mr = 'job_builder_name=~"$job_builder_name", route_name=~"$route_name"'
+
+    route_matches = TimeSeries(
+        title="Route Matches",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_job_builder_route_matches_total", lbl_mr),
+                "{{job_builder_name}} — {{route_name}}",
+            ),
+        ],
+        stacking={"mode": "normal", "group": "A"},
+        fillOpacity=30,
+        unit="ops",
+        gridPos=GridPos(8, 12, 0, py),
+    )
+
+    unmatched_files = TimeSeries(
+        title="Unmatched Files",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_job_builder_unmatched_files_total", lbl),
+                "{{job_builder_name}}",
+            ),
+        ],
+        unit="ops",
+        gridPos=GridPos(8, 12, 12, py),
+    )
+
+    return RowPanel(
+        title="Job Builder — Metadata Router",
+        collapsed=True,
+        gridPos=GridPos(1, 24, 0, y),
+        panels=[route_matches, unmatched_files],
+    )
+
+
+def _slurm_row() -> RowPanel:
+    """Row — Dispatcher SLURM metrics (collapsed by default)."""
+    y = _advance(1)
+    py = _advance(8)
+    lbl = 'dispatcher_name=~"$dispatcher_name"'
+
+    slurm_pending = TimeSeries(
+        title="SLURM Jobs Pending",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"{_PREFIX}_dispatcher_slurm_jobs_pending{{{lbl}}}",
+                "{{dispatcher_name}}",
+            ),
+        ],
+        gridPos=GridPos(8, 12, 0, py),
+    )
+
+    slurm_submissions = TimeSeries(
+        title="SLURM Submissions",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(f"{_PREFIX}_dispatcher_slurm_submissions_total", lbl),
+                "{{dispatcher_name}} — {{status}}",
+            ),
+        ],
+        stacking={"mode": "normal", "group": "A"},
+        fillOpacity=30,
+        unit="ops",
+        gridPos=GridPos(8, 12, 12, py),
+    )
+
+    return RowPanel(
+        title="Dispatcher — SLURM",
+        collapsed=True,
+        gridPos=GridPos(1, 24, 0, y),
+        panels=[slurm_pending, slurm_submissions],
+    )
+
+
+def _http_row() -> RowPanel:
+    """Row — Dispatcher HTTP metrics (collapsed by default)."""
+    y = _advance(1)
+    py = _advance(8)
+    lbl = 'dispatcher_name=~"$dispatcher_name"'
+    lbl_status = 'dispatcher_name=~"$dispatcher_name", status_code=~"$status_code"'
+
+    http_responses = TimeSeries(
+        title="HTTP Response Codes",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(
+                    f"{_PREFIX}_dispatcher_http_response_codes_total",
+                    lbl_status,
+                ),
+                "{{dispatcher_name}} — {{status_code}}",
+            ),
+        ],
+        stacking={"mode": "normal", "group": "A"},
+        fillOpacity=30,
+        unit="ops",
+        gridPos=GridPos(8, 12, 0, py),
+    )
+
+    http_duration = TimeSeries(
+        title="HTTP Request Duration",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _hq(
+                    f"{_PREFIX}_dispatcher_http_request_duration_seconds",
+                    0.50,
+                    lbl,
+                ),
+                "p50 — {{dispatcher_name}}",
+            ),
+            _target(
+                _hq(
+                    f"{_PREFIX}_dispatcher_http_request_duration_seconds",
+                    0.90,
+                    lbl,
+                ),
+                "p90 — {{dispatcher_name}}",
+                ref="B",
+            ),
+            _target(
+                _hq(
+                    f"{_PREFIX}_dispatcher_http_request_duration_seconds",
+                    0.95,
+                    lbl,
+                ),
+                "p95 — {{dispatcher_name}}",
+                ref="C",
+            ),
+        ],
+        unit=SECONDS_FORMAT,
+        gridPos=GridPos(8, 12, 12, py),
+    )
+
+    return RowPanel(
+        title="Dispatcher — HTTP",
+        collapsed=True,
+        gridPos=GridPos(1, 24, 0, y),
+        panels=[http_responses, http_duration],
     )
 
 
@@ -1018,10 +1371,13 @@ def build_dashboard() -> Dashboard:
 
     # Rows 2-7: collapsible row panels
     panels.append(_data_monitor_row())
+    panels.append(_metadata_router_row())
     panels.append(_job_builder_row())
     panels.append(_dispatcher_row())
-    panels.append(_broker_row())
+    panels.append(_slurm_row())
+    panels.append(_http_row())
     panels.append(_plugin_manager_row())
+    panels.append(_broker_row())
     panels.append(_state_sync_row())
     panels.append(_routing_row())
     panels.append(_pipeline_summary())

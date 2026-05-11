@@ -53,3 +53,35 @@ class TestDummyJobBuilder:
     def test_module_init_short_circuits(self) -> None:
         builder = DummyJobBuilder(None, None)
         assert not hasattr(builder, "job_groups")
+
+    def test_process_job_group_removes_ready_job(
+        self, mock_service: MagicMock, make_frozen_file
+    ) -> None:
+        """Ready jobs are removed from the group after emission."""
+        builder = DummyJobBuilder(mock_service, {})
+        group = builder.job_groups[0]
+
+        from pathlib import Path
+
+        file1 = make_frozen_file(file=Path("/tmp/a.nc"))
+        builder._process_job_group(group, file1)
+        assert len(group.jobs) == 0, "Ready job should be removed after emission"
+
+    def test_n_files_produce_n_jobs_not_n_squared(
+        self, mock_service: MagicMock, make_frozen_file
+    ) -> None:
+        """N files should produce exactly N ready jobs, not O(N^2)."""
+        builder = DummyJobBuilder(mock_service, {})
+        group = builder.job_groups[0]
+
+        from pathlib import Path
+
+        n = 5
+        for i in range(n):
+            file_i = make_frozen_file(file=Path(f"/tmp/file_{i}.nc"))
+            builder._process_job_group(group, file_i)
+            # After each file, the group should be empty because
+            # the ready job is popped immediately after emission.
+            assert len(group.jobs) == 0, (
+                f"After file {i}, group should be empty but has {len(group.jobs)} jobs"
+            )
