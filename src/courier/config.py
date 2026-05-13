@@ -52,7 +52,7 @@ class ServiceConfig:
         LOKI_ENABLED or False.
     log_level : str, optional
         Logging level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL). Defaults
-        to environment variable LOG_LEVEL or 'DEBUG'.
+        to environment variable COURIER_LOG_LEVEL or 'DEBUG'.
     production_mode : bool, optional
         Enable production mode with enforced minimum INFO log level. Defaults
         to environment variable PRODUCTION or False.
@@ -119,7 +119,7 @@ class ServiceConfig:
         ),
     )
     log_level: str = field(
-        default_factory=lambda: os.environ.get("LOG_LEVEL", "DEBUG"),
+        default_factory=lambda: os.environ.get("COURIER_LOG_LEVEL", "DEBUG"),
     )
     production_mode: bool = field(
         default_factory=lambda: os.environ.get("PRODUCTION", "false").lower() == "true",
