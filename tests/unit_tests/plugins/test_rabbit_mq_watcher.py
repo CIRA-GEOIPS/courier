@@ -107,6 +107,17 @@ class TestConstructor:
         url = plugin._build_broker_url()
         assert "me:secret@rabbit.example.com:15672" in url
 
+    def test_default_rate_limit_disabled(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(mock_service, _make_config())
+        assert plugin.rate_limit_per_second == 0.0
+
+    def test_custom_rate_limit(self, mock_service: MagicMock) -> None:
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(rate_limit_per_second=5.0),
+        )
+        assert plugin.rate_limit_per_second == 5.0
+
 
 # ─── _parse_location dispatch ───────────────────────────────────────────────
 
@@ -193,3 +204,69 @@ class TestLifecycle:
         plugin = RabbitMQWatcher(mock_service, _make_config())
         plugin.stop()
         assert plugin._stop_event.is_set()
+
+
+# ─── Rate Limiting ──────────────────────────────────────────────────────────
+
+
+class TestRateLimit:
+    """Tests for the optional rate limiting feature."""
+
+    def test_rate_limit_throttles_yields(self, mock_service: MagicMock) -> None:
+        """Verify that find_file() respects the configured rate limit."""
+        import queue
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from courier.types.file import File
+
+        plugin = RabbitMQWatcher(mock_service, _make_config(rate_limit_per_second=2.0))
+
+        files = [
+            File(file=Path("/tmp/f1.txt"), hostname="h1"),
+            File(file=Path("/tmp/f2.txt"), hostname="h1"),
+            File(file=Path("/tmp/f3.txt"), hostname="h1"),
+        ]
+
+        # Patch _listen_to_broker to a no-op so the background thread does
+        # not race with the main thread on _stop_event.is_set().
+        with (
+            patch.object(plugin, "_listen_to_broker"),
+            patch.object(plugin._stop_event, "is_set", side_effect=[False, False, False, True]),
+            patch.object(queue.Queue, "get", side_effect=files),
+            patch("time.sleep") as mock_sleep,
+            patch("time.monotonic", side_effect=[0.0, 0.0, 0.5, 0.5, 1.0, 1.0]),
+        ):
+            result = list(plugin.find_file())
+
+        # With rate_limit_per_second=2.0, interval=0.5s
+        # First yield: elapsed=0.0, remaining=0.5 -> time.sleep(0.5)
+        # Second yield: elapsed=0.5, remaining=0.0 -> no sleep (below 0.001)
+        assert len(result) == 3
+        mock_sleep.assert_called_once_with(0.5)
+
+    def test_rate_limit_disabled_skips_sleep(self, mock_service: MagicMock) -> None:
+        """Verify that disabled rate limit (0.0) does not call sleep."""
+        import queue
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from courier.types.file import File
+
+        plugin = RabbitMQWatcher(mock_service, _make_config(rate_limit_per_second=0.0))
+
+        files = [
+            File(file=Path("/tmp/f1.txt"), hostname="h1"),
+            File(file=Path("/tmp/f2.txt"), hostname="h1"),
+        ]
+
+        with (
+            patch.object(plugin, "_listen_to_broker"),
+            patch.object(plugin._stop_event, "is_set", side_effect=[False, False, True]),
+            patch.object(queue.Queue, "get", side_effect=files),
+            patch("time.sleep") as mock_sleep,
+        ):
+            result = list(plugin.find_file())
+
+        assert len(result) == 2
+        mock_sleep.assert_not_called()

@@ -166,6 +166,11 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         default=None,
         description="strptime format for the timestamp value",
     )
+    rate_limit_per_second: float = Field(
+        default=0.0,
+        ge=0,
+        description="Maximum number of files per second to yield (0.0 = disabled)",
+    )
 
     @field_validator("location_format")
     @classmethod
@@ -246,6 +251,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     timestamp_format : str | None
         ``strptime`` format string for the timestamp value.  When absent the
         value is assumed to be ISO-8601 or a Unix epoch.
+    rate_limit_per_second : float
+        Maximum number of files per second to yield.  ``0.0`` (the default)
+        disables rate limiting and preserves the original unbounded behaviour.
     """
 
     # Class-level name used by the plugin registry
@@ -253,6 +261,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "rabbit_mq_watcher"
     version: ClassVar[str] = "1.0.0"
+    _min_sleep_seconds: ClassVar[float] = 0.001
 
     def __init__(
         self,
@@ -280,6 +289,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self.location_format_regex = self.validated.location_format_regex
         self.timestamp_field = self.validated.timestamp_field
         self.timestamp_format = self.validated.timestamp_format
+        self.rate_limit_per_second = self.validated.rate_limit_per_second
 
         self.last_file_processed_timestamp = RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 
@@ -514,6 +524,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             name=f"broker-listener-{self.rabbitmq_queue}",
         )
         listener.start()
+        _last_yield_time = 0.0  # monotonic timestamp for rate limiting
         try:
             self.health = True
             while not self._stop_event.is_set():
@@ -537,6 +548,14 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                                     "without an error on the queue.",
                                 )
                             raise exc from e
+                # Rate limiting: throttle to rate_limit_per_second files/sec
+                if self.rate_limit_per_second > 0:
+                    interval = 1.0 / self.rate_limit_per_second
+                    elapsed = time.monotonic() - _last_yield_time
+                    remaining = interval - elapsed
+                    if remaining >= self._min_sleep_seconds:
+                        time.sleep(remaining)
+                    _last_yield_time = time.monotonic()
         finally:
             self.health = False
 

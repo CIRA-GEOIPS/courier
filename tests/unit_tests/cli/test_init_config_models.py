@@ -68,6 +68,18 @@ class TestRabbitMQWatcherConfig:
         cfg = RabbitMQWatcherConfig(field_map={"location": "file_path"})
         assert cfg.field_map == {"location": "file_path"}
 
+    def test_default_rate_limit(self):
+        cfg = RabbitMQWatcherConfig()
+        assert cfg.rate_limit_per_second == 0.0
+
+    def test_custom_rate_limit(self):
+        cfg = RabbitMQWatcherConfig(rate_limit_per_second=5.0)
+        assert cfg.rate_limit_per_second == 5.0
+
+    def test_negative_rate_limit_raises(self):
+        with pytest.raises(ValidationError):
+            RabbitMQWatcherConfig(rate_limit_per_second=-1.0)
+
 
 class TestDummyJobBuilderConfig:
     """Tests for DummyJobBuilderConfig."""
