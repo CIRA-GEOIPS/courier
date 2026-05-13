@@ -8,8 +8,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from courier.types.file import FrozenFile
-from courier.types.job import Job, JobGroup
+from courier.types.file import File, FrozenFile
+from courier.types.job import _OVERFLOW_SEPARATOR, Job, JobGroup
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -195,3 +195,83 @@ def test_job_group_file_not_relevant_by_default() -> None:
     with pytest.raises(NotImplementedError):
         group.add_file(f)
     assert len(group.jobs) == 0
+
+
+# ─── Overflow Counter ───────────────────────────────────────────────────────
+
+
+class TestOverflowCounter:
+    """Unit tests for _overflow_counters and _record_job_emitted."""
+
+    def test_record_job_emitted_plain_id(self) -> None:
+        """_record_job_emitted bumps counter for a plain (non-suffixed) job ID."""
+        group = JobGroup(job_name="g", config=None)
+        group._record_job_emitted("bucket_0")
+        assert group._overflow_counters["bucket_0"] == 1
+
+    def test_record_job_emitted_suffixed_id(self) -> None:
+        """_record_job_emitted strips _overflow_N suffix, bumps base counter."""
+        group = JobGroup(job_name="g", config=None)
+        group._record_job_emitted("bucket_0_overflow_5")
+        assert group._overflow_counters["bucket_0"] == 1
+        assert "bucket_0_overflow_5" not in group._overflow_counters
+
+    def test_record_job_emitted_monotonic(self) -> None:
+        """Multiple calls produce monotonically increasing counter."""
+        group = JobGroup(job_name="g", config=None)
+        group._record_job_emitted("bucket_0")
+        group._record_job_emitted("bucket_0")
+        group._record_job_emitted("bucket_0_overflow_3")
+        assert group._overflow_counters["bucket_0"] == 3
+
+    def test_add_file_else_branch_uses_suffixed_id_when_counter_gt_0(
+        self,
+    ) -> None:
+        """add_file else-branch creates a suffixed job ID when counter > 0.
+
+        Uses a minimal JobGroup subclass that makes every file relevant
+        and maps it to a fixed bucket ID.
+        """
+
+        class _TestGroup(JobGroup):
+            def file_is_relevant(self, _file: File | FrozenFile) -> bool:
+                return True
+
+            def get_job_ids_from_file(
+                self, _file: File | FrozenFile,
+            ) -> list[str]:
+                return ["proto"]
+
+        group = _TestGroup(job_name="g", config=None)
+        # Simulate a previous job for 'proto' having been emitted
+        group._overflow_counters["proto"] = 3
+
+        f = FrozenFile(file=Path("/data/a.nc"))
+        added = group.add_file(f)
+        assert added is True
+        assert "proto_overflow_3" in group.jobs
+        assert "proto" not in group.jobs
+
+    def test_add_file_else_branch_plain_id_when_counter_0(self) -> None:
+        """add_file else-branch uses plain job ID when counter == 0."""
+
+        class _TestGroup(JobGroup):
+            def file_is_relevant(self, _file: File | FrozenFile) -> bool:
+                return True
+
+            def get_job_ids_from_file(
+                self, _file: File | FrozenFile,
+            ) -> list[str]:
+                return ["proto"]
+
+        group = _TestGroup(job_name="g", config=None)
+        assert group._overflow_counters.get("proto", 0) == 0
+
+        f = FrozenFile(file=Path("/data/a.nc"))
+        added = group.add_file(f)
+        assert added is True
+        assert "proto" in group.jobs
+
+    def test_overflow_separator_constant_exists(self) -> None:
+        """_OVERFLOW_SEPARATOR is a module-level constant with expected value."""
+        assert _OVERFLOW_SEPARATOR == "_overflow_"

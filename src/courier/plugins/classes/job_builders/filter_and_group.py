@@ -280,6 +280,7 @@ class FilterAndGroupJobBuilder(JobBuilder):
             emitted: list[Job] = []
             for jid in ready_ids:
                 emitted.append(job_group.jobs.pop(jid))
+                job_group._record_job_emitted(jid)
         for job in emitted:
             self._logger.info(
                 f"Timeout reaper emitting job {job.identifier} "

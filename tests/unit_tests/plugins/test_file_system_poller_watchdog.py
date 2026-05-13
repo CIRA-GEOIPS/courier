@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pydantic
 import pytest
 
 from courier.plugins.classes.data_monitors.file_system_poller_watchdog import (
@@ -36,7 +37,7 @@ class TestConstructor:
         assert not hasattr(plugin, "path_to_watch")
 
     def test_missing_path_in_config_raises(self, mock_service: MagicMock) -> None:
-        with pytest.raises(KeyError):
+        with pytest.raises(pydantic.ValidationError):
             FileSystemPoller(mock_service, {})
 
 

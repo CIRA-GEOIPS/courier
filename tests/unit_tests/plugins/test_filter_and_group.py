@@ -138,3 +138,51 @@ class TestBuilder:
         builder = FilterAndGroupJobBuilder(mock_service, {})
         mocker.patch.object(builder, "_state", PluginRunState.RUNNING)
         assert builder.is_healthy() is True
+
+    def test_reap_group_bumps_overflow_counter(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        mocker,
+    ) -> None:
+        """_reap_group bumps _overflow_counters for popped job's base ID."""
+        builder = FilterAndGroupJobBuilder(
+            mock_service,
+            {
+                "files_per_job": 1,
+                "min_files": 1,
+                "window_timeout_seconds": 0.01,
+            },
+        )
+        group = builder.job_groups[0]
+        JobCls = group.job
+        job = JobCls(name=group.name, identifier="jid_overflow_3", config={})
+        job.add_file(make_frozen_file())
+        group.jobs["jid_overflow_3"] = job
+
+        emit = mocker.patch.object(builder, "emit")
+        builder._reap_group(group)
+        emit.assert_called_once()
+        assert "jid_overflow_3" not in group.jobs
+        assert group._overflow_counters["jid"] == 1
+
+    def test_pop_ready_jobs_bumps_overflow_counter(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        mocker,
+    ) -> None:
+        """_pop_ready_jobs bumps _overflow_counters for popped job's base ID."""
+        builder = FilterAndGroupJobBuilder(
+            mock_service, {"files_per_job": 1},
+        )
+        group = builder.job_groups[0]
+        JobCls = group.job
+        job = JobCls(name=group.name, identifier="bucket_42", config={})
+        job.add_file(make_frozen_file())
+        group.jobs["bucket_42"] = job
+
+        mocker.patch.object(builder, "emit")
+        builder._pop_ready_jobs(group, [job])
+        assert "bucket_42" not in group.jobs
+        assert group._overflow_counters["bucket_42"] == 1

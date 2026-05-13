@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from courier.types.file import File, FrozenFile
 
+_OVERFLOW_SEPARATOR = "_overflow_"
 
 # Mutable because: Job accumulates files incrementally via add_file() until
 # ready() returns True; single-threaded ownership by the job builder plugin.
@@ -189,6 +190,29 @@ class JobGroup:
         """Return list of ready jobs."""
         return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
 
+    def _record_job_emitted(self, job_id: str) -> None:
+        """Bump the overflow counter for *job_id* so future jobs get unique IDs.
+
+        Strips any ``_overflow_N`` suffix to extract the base bucket ID,
+        then increments the counter.  Called by the job builder fast-path
+        and the reaper timeout-path whenever a job is emitted and popped
+        from the group.
+
+        Notes
+        -----
+        ``_overflow_counters`` is never pruned — for very long-running
+        services processing many unique base IDs, the dict grows
+        unboundedly.  This is an accepted trade-off: each entry is
+        ~100 bytes and the set of base IDs is bounded by the product of
+        the time-window granularity and the service lifetime.
+        """
+        base_id = job_id
+        if _OVERFLOW_SEPARATOR in base_id:
+            base_id = base_id.rsplit(_OVERFLOW_SEPARATOR, 1)[0]
+        self._overflow_counters[base_id] = (
+            self._overflow_counters.get(base_id, 0) + 1
+        )
+
     def file_is_relevant(self, file: File | FrozenFile) -> bool:
         """Return true if file is relevant to this job group."""
         raise NotImplementedError
@@ -219,7 +243,7 @@ class JobGroup:
                     self._overflow_counters[job_id] = (
                         self._overflow_counters.get(job_id, 0) + 1
                     )
-                    overflow_id = f"{job_id}_overflow_{self._overflow_counters[job_id]}"
+                    overflow_id = f"{job_id}{_OVERFLOW_SEPARATOR}{self._overflow_counters[job_id]}"
                     overflow = self.job(
                         self.name, overflow_id, self.config,
                     )
@@ -231,6 +255,10 @@ class JobGroup:
                         )
                     self.jobs[overflow_id] = overflow
             else:
-                self.jobs[job_id] = self.job(self.name, job_id, self.config)
-                self.jobs[job_id].add_file(file)
+                actual_id = job_id
+                counter = self._overflow_counters.get(job_id, 0)
+                if counter > 0:
+                    actual_id = f"{job_id}{_OVERFLOW_SEPARATOR}{counter}"
+                self.jobs[actual_id] = self.job(self.name, actual_id, self.config)
+                self.jobs[actual_id].add_file(file)
         return True

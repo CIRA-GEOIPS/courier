@@ -451,6 +451,7 @@ class JobBuilder(ServicePlugin):
                 if job.identifier in job_group.jobs:
                     del job_group.jobs[job.identifier]
                     deletions.append(job.identifier)
+                    job_group._record_job_emitted(job.identifier)
         self._push_deletions(job_group.name, deletions)
 
     # ------------------------------------------------------------------
