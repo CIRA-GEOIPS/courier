@@ -22,7 +22,6 @@ classifiers = [
 
 include = [
     "src/courier/plugins/**/*.yaml",
-    "src/courier/plugins/**/*.txt",
     "src/courier/py.typed",
 ]
 
@@ -98,7 +97,7 @@ lint = [
     "prettier",                  # YAML, JSON linting
     "ruff",                      # Python linting
     "mypy",                      # Type checking
-    "types-PyYAML",              # Type hints for pyyaml
+    "types-pyyaml",              # Type hints for pyyaml
     "types-dateparser",          # Type hints for dateparser
     "pre-commit"                 # For pre-commit hooks
 ]
@@ -315,6 +314,11 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 # Unlike Black, force unix style line endings ("\n")
 line-ending = "lf"
+
+[project]
+name = "runcourier"
+version = "0.3.0"
+requires-python = ">=3.11,<3.15"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
