@@ -70,7 +70,6 @@ pytest-xdist = { version = "*", optional = true }
 pytest-mock = { version = "*", optional = true }
 types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
-commitizen = { version = "*", optional = true }
 fakeredis = { version = "*", optional = true }
 hypothesis = { version = "*", optional = true }
 
@@ -79,7 +78,6 @@ hypothesis = { version = "*", optional = true }
 black = "*"
 pre-commit = "*"
 brassy = "*"
-commitizen = "*"
 
 [tool.poetry.extras]
 doc = [
@@ -92,7 +90,6 @@ doc = [
     "sphinx-argparse",           # for docs building
     "pinkrst",                   # for rst formatting
     "doc8",                      # for rst linting
-    "commitizen",                # for better commits
 ]
 
 lint = [
@@ -323,7 +320,3 @@ line-ending = "lf"
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.commitizen]
-name = "cz_conventional_commits"
-tag_format = "v$version"
-version_provider = "poetry"

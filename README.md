@@ -6,7 +6,6 @@
 ![Ruff](.github/badges/ruff-badge.svg)
 ![Install](.github/badges/install-badge.svg)
 ![CSpell](.github/badges/cspell-badge.svg)
-![Commitizen](.github/badges/commitizen-badge.svg)
 
 Courier is a plugin-based, event-driven orchestration framework for building data processing pipelines. It watches for incoming data, groups it into jobs, and dispatches those jobs to processing workflows. It scales from a single laptop to a distributed cluster without changing your pipeline code.
 
@@ -101,7 +100,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-Python 3.11–3.14. Strict mypy. [Conventional Commits](https://www.conventionalcommits.org/).
+Python 3.11–3.14. Strict mypy.
 
 ## License
 

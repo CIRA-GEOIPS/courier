@@ -42,8 +42,6 @@ words:
   - kombu
   - charliermarsh
   - CIRA
-  - commitizen
-  - COMMITIZEN
   - dateparser
   - docstrings
   - Dunder

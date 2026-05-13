@@ -41,8 +41,3 @@ repos:
     rev: v9.7.0
     hooks:
       - id: cspell
-  - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.10.0 # Use the latest version or a specific version
-    hooks:
-      - id: commitizen
-        stages: [commit-msg]
