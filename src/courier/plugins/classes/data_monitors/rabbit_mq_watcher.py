@@ -268,6 +268,41 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     rate_limit_per_second : float
         Maximum number of files per second to yield.  ``0.0`` (the default)
         disables rate limiting and preserves the original unbounded behaviour.
+
+    Field Map and Metadata
+    ----------------------
+
+    How ``field_map`` works
+    ~~~~~~~~~~~~~~~~~~~~~~~
+    The ``field_map`` dict maps canonical field names to the actual keys in the
+    incoming JSON message.  Default keys from ``_DEFAULT_FIELD_MAP`` map
+    directly to :class:`~courier.types.file.File` constructor arguments
+    (``platform`` → ``source``, ``sensor`` → ``instrument``).  Extra
+    user‑override keys — those not present in the default map — are collected
+    into the ``metadata`` dict on each ``File`` object.
+
+    Metadata construction
+    ~~~~~~~~~~~~~~~~~~~~~
+    For each ``field_map`` entry, if the canonical key is in
+    ``_FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA`` (currently ``{"platform",
+    "sensor"}``), the resolved value is set as a ``File`` constructor argument.
+    All other user‑override keys are gathered into a ``metadata`` dict and
+    passed as ``File(metadata={...})``.
+
+    Debug logging
+    ~~~~~~~~~~~~~
+    A ``DEBUG``-level log line shows the field_map resolution for every
+    message — each canonical key, its resolved value, and whether it was routed
+    to a ``File`` attribute or to ``metadata``.
+
+    Usage example
+    ~~~~~~~~~~~~~
+    A YAML configuration with both default and extra ``field_map`` keys::
+
+        field_map:
+          file_name: "custom_file_name_key"
+          location: "custom_location_key"
+          # platform and sensor use defaults (platform_name, source_name)
     """
 
     # Class-level name used by the plugin registry
