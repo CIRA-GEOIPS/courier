@@ -138,6 +138,7 @@ class TestFileSerialization:
             "instrument": "abi",
             "processing_stage": "l1b",
             "domain": "Full-Disk",
+            "metadata": {},
             "num_expected": 16,
             "timestamp": sample_timestamp.isoformat(),
         }
@@ -293,30 +294,19 @@ class TestFileSerialization:
         reconstructed = File.from_string(str(minimal_file))
         assert reconstructed == minimal_file
 
-    def test_from_dict_legacy_keys(self) -> None:
-        """from_dict accepts legacy keys (platform, sensor, level, sector)."""
+    def test_from_dict_metadata(self) -> None:
+        """from_dict reads metadata key when present."""
         data = {
             "file": "/tmp/test.nc",
-            "platform": "goes16",
-            "sensor": "abi",
-            "level": "l1b",
-            "sector": "conus",
+            "metadata": {"key1": "value1", "key2": 42},
         }
         f = File.from_dict(data)
-        assert f.source == "goes16"
-        assert f.instrument == "abi"
-        assert f.processing_stage == "l1b"
-        assert f.domain == "conus"
+        assert f.metadata == {"key1": "value1", "key2": 42}
 
-    def test_from_dict_new_keys_take_precedence(self) -> None:
-        """New keys take precedence over legacy keys in from_dict."""
-        data = {
-            "file": "/tmp/test.nc",
-            "source": "new_source",
-            "platform": "old_platform",
-        }
-        f = File.from_dict(data)
-        assert f.source == "new_source"
+    def test_from_dict_metadata_default(self) -> None:
+        """from_dict defaults metadata to empty dict when missing."""
+        f = File.from_dict({"file": "/tmp/test.nc"})
+        assert f.metadata == {}
 
 
 # ─── File methods ────────────────────────────────────────────────────────────
@@ -452,6 +442,36 @@ class TestFileMethods:
         assert result.domain is None
         assert result.num_expected == 1
         assert result.timestamp is None
+
+    def test_with_updates_preserves_metadata(self) -> None:
+        """with_updates retains metadata when other fields are updated."""
+        f = File(file=Path("/tmp/f.nc"), metadata={"key1": "val1", "key2": 42})
+        updated = f.with_updates(source="new-source")
+        assert updated.source == "new-source"
+        assert updated.metadata == {"key1": "val1", "key2": 42}
+
+    def test_merge_metadata_with_metadata_kwarg_preserves_existing(self) -> None:
+        """merge_metadata(metadata={...}) shallow-merges: existing keys preserved, new keys added."""
+        f = File(
+            file=Path("/tmp/f.nc"),
+            source="goes16",
+            metadata={"existing": "keep", "shared": "original"},
+        )
+        result = f.merge_metadata(
+            metadata={"new_key": "added", "shared": "should-not-overwrite"},
+        )
+        assert result.source == "goes16"  # existing scalar preserved
+        assert result.metadata == {
+            "existing": "keep",
+            "shared": "original",  # NOT overwritten
+            "new_key": "added",
+        }
+
+    def test_merge_metadata_with_metadata_kwarg_on_empty_metadata(self) -> None:
+        """merge_metadata(metadata={...}) adds all keys when metadata is empty."""
+        f = File(file=Path("/tmp/f.nc"))
+        result = f.merge_metadata(metadata={"a": 1, "b": 2})
+        assert result.metadata == {"a": 1, "b": 2}
 
 
 # ─── FrozenFile creation & immutability ──────────────────────────────────────
@@ -638,20 +658,17 @@ class TestFrozenFileSerialization:
         reconstructed = FrozenFile.from_dict(frozen_file.to_dict())
         assert reconstructed == frozen_file
 
-    def test_from_dict_legacy_keys(self) -> None:
-        """FrozenFile.from_dict accepts legacy keys."""
+    def test_from_dict_metadata_roundtrip(self) -> None:
+        """from_dict -> to_dict roundtrip preserves metadata."""
         data = {
             "file": "/tmp/test.nc",
-            "platform": "goes16",
-            "sensor": "abi",
-            "level": "l1b",
-            "sector": "conus",
+            "source": "goes16",
+            "metadata": {"location": "ceph-IPs", "file_name": "clavrx_goes18_20260101T120000.nc"},
         }
         ff = FrozenFile.from_dict(data)
-        assert ff.source == "goes16"
-        assert ff.instrument == "abi"
-        assert ff.processing_stage == "l1b"
-        assert ff.domain == "conus"
+        result = ff.to_dict()
+        assert result["metadata"] == data["metadata"]
+
 
 
 # ─── FrozenFile methods ──────────────────────────────────────────────────────
@@ -706,6 +723,37 @@ class TestFrozenFileMethods:
     def test_thaw_freeze_roundtrip(self, frozen_file: FrozenFile) -> None:
         """thaw() -> freeze() round-trip preserves all fields."""
         assert frozen_file.thaw().freeze() == frozen_file
+
+    def test_freeze_metadata_immutable(self) -> None:
+        """FrozenFile.metadata is wrapped with MappingProxyType and cannot be mutated."""
+        f = File(file=Path("/tmp/f.nc"), metadata={"key": "value"})
+        frozen = f.freeze()
+        # Access works
+        assert frozen.metadata == {"key": "value"}
+        # Mutation should raise TypeError (mappingproxy is immutable)
+        with pytest.raises(TypeError):
+            frozen.metadata["new"] = "value"  # type: ignore[index]
+
+    def test_thaw_metadata_mutable(self) -> None:
+        """thaw() copies metadata to a regular mutable dict."""
+        f = File(file=Path("/tmp/f.nc"), metadata={"key": "value"})
+        frozen = f.freeze()
+        thawed = frozen.thaw()
+        assert thawed.metadata == {"key": "value"}
+        # Should be mutable
+        thawed.metadata["new"] = "added"
+        assert thawed.metadata == {"key": "value", "new": "added"}
+
+    def test_freeze_with_metadata_roundtrip(self) -> None:
+        """freeze -> thaw roundtrip preserves metadata."""
+        original = File(
+            file=Path("/tmp/f.nc"),
+            source="goes16",
+            metadata={"k1": "v1", "k2": 42},
+        )
+        restored = original.freeze().thaw()
+        assert restored == original
+        assert restored.metadata == original.metadata
 
 
 # ─── build_timestamp_from_components ─────────────────────────────────────────
@@ -886,3 +934,37 @@ class TestExtractDatetimeFromRegex:
         pattern = r"(?P<YYYY>\d{4})(?P<JJJ>\d{3})"
         result = extract_datetime_from_regex(pattern, "s2023001.nc", None)
         assert result == datetime(2023, 1, 1)
+
+
+# ─── Legacy alias removal ────────────────────────────────────────────────────
+
+
+class TestLegacyAliasRemoval:
+    """Verify that legacy field aliases (platform, sensor, level, sector) are no longer supported."""
+
+    def test_platform_not_fallback_for_source(self) -> None:
+        """When 'platform' key is present but 'source' is not, source stays None."""
+        f = File.from_dict({"file": "/tmp/test.nc", "platform": "goes-18"})
+        assert f.source is None
+
+    def test_sensor_not_fallback_for_instrument(self) -> None:
+        """When 'sensor' key is present but 'instrument' is not, instrument stays None."""
+        f = File.from_dict({"file": "/tmp/test.nc", "sensor": "ABI"})
+        assert f.instrument is None
+
+    def test_level_not_fallback_for_processing_stage(self) -> None:
+        """When 'level' key is present but 'processing_stage' is not, processing_stage stays None."""
+        f = File.from_dict({"file": "/tmp/test.nc", "level": "l2"})
+        assert f.processing_stage is None
+
+    def test_sector_not_fallback_for_domain(self) -> None:
+        """When 'sector' key is present but 'domain' is not, domain stays None."""
+        f = File.from_dict({"file": "/tmp/test.nc", "sector": "full-disk"})
+        assert f.domain is None
+
+    def test_null_source_does_not_fallback(self) -> None:
+        """When 'source' is explicit null, it stays None (does not fall back to 'platform')."""
+        import json
+        data = json.loads('{"file": "/tmp/test.nc", "source": null, "platform": "goes-18"}')
+        f = File.from_dict(data)
+        assert f.source is None

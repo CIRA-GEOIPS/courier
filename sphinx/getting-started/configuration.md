@@ -501,9 +501,9 @@ Available in every template for ``serial_bash``:
    * - Variable
      - Type
      - Description
-   * - ``files``
-     - List[dict]
-     - All files in the job. Each dict has keys: ``file``, ``hostname``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``num_expected``, ``timestamp``.
+    * - ``files``
+      - List[dict]
+      - All files in the job. Each dict has keys: ``file``, ``hostname``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``metadata``, ``num_expected``, ``timestamp``.
    * - ``job``
      - dict
      - Job metadata: ``name``, ``identifier``, ``config``, ``last_modified``, ``timeout``, ``correlation_id``, ``emit_time``.
@@ -521,9 +521,9 @@ Available for each file in ``parallel_bash``:
    * - Variable
      - Type
      - Description
-   * - ``file``
-     - dict
-     - The current file's :class:`FrozenFile` dict (same keys as ``files`` entries above).
+    * - ``file``
+      - dict
+      - The current file's :class:`FrozenFile` dict with keys: ``file``, ``hostname``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``metadata``, ``num_expected``, ``timestamp``.
    * - ``files``
      - List[dict]
      - ALL files in the job (for cross-reference/manifest generation).

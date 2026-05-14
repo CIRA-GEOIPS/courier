@@ -194,6 +194,20 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         return self
 
 
+_DEFAULT_FIELD_MAP: dict[str, str] = {
+    "location": "location",
+    "dir_path": "dir_path",
+    "file_name": "file_name",
+    "platform": "platform_name",
+    "sensor": "source_name",
+    "time_range_key": "time_range",
+    "time_range_lower_key": "lower",
+    "time_range_start_key": "start",
+}
+
+_FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA = frozenset({"platform", "sensor"})
+
+
 class RabbitMQWatcher(DataMonitorBasePlugin):
     """RabbitMQ Data Monitor Plugin.
 
@@ -284,7 +298,14 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self.max_retries = self.validated.max_retries
         self.retry_delay_seconds = self.validated.retry_delay_seconds
         self.retry_backoff_factor = self.validated.retry_backoff_factor
-        self.field_map = self.validated.field_map
+        self.field_map = {**_DEFAULT_FIELD_MAP, **self.validated.field_map}
+        # Validate required keys are present after merge (fail fast)
+        for required_key in ("location", "platform", "sensor", "time_range_key"):
+            if required_key not in self.field_map:
+                raise ValueError(
+                    f"field_map missing required key {required_key!r}. "
+                    f"Available keys: {list(self.field_map.keys())}"
+                )
         self.location_format = self.validated.location_format
         self.location_format_regex = self.validated.location_format_regex
         self.timestamp_field = self.validated.timestamp_field
@@ -439,6 +460,13 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 else:
                     file_info = loaded
 
+                # Debug logging for field_map resolution
+                self._logger.debug(
+                    "field_map resolution for message: %s",
+                    {k: (file_info.get(v), "attr" if k in _DEFAULT_FIELD_MAP else "metadata")
+                     for k, v in fm.items()}
+                )
+
                 location: str = file_info.get(fm["location"], "")
                 hostname, location_path = self._parse_location(location)
 
@@ -451,7 +479,10 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                             "Received message with file_path but missing dir_path/file_name; "
                             "attempting to parse file_path into components.",
                         )
-                        full_path = Path(file_info[fm["file_path"]])
+                        full_path_str = file_info.get(fm["file_path"])
+                        if full_path_str is None:
+                            raise ValueError("file_path key not found in message")
+                        full_path = Path(full_path_str)
                         hostname = hostname or full_path.parts[0]  # maybe the hostname is in the path?
                         location_path = "/" + "/".join(full_path.parts[1:-1])
                         file_name = full_path.name
@@ -470,12 +501,24 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
                 timestamp = self._extract_timestamp(file_info)
 
+                # Build metadata from extra field_map entries not directly mapped to File attrs
+                metadata: dict[str, Any] = {}
+                for key, msg_key in fm.items():
+                    if key in _FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA:
+                        continue
+                    if key in _DEFAULT_FIELD_MAP:
+                        continue
+                    value = file_info.get(msg_key)
+                    if value is not None:
+                        metadata[key] = value
+
                 file = File(
                     file=full_path,
                     hostname=hostname,
                     source=file_info.get(fm["platform"]),
                     instrument=file_info.get(fm["sensor"]) or ("goes18" if "G18" in str(full_path) else None),
                     timestamp=timestamp,
+                    metadata=metadata,
                 )
                 file_queue.put(file)
                 message.ack()

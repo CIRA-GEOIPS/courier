@@ -48,6 +48,8 @@ _DEFAULT_FIELD_MAP: dict[str, str] = {
     "timestamp": "timestamp",
 }
 
+_FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA = frozenset(_DEFAULT_FIELD_MAP.keys())
+
 SaslMechanism = Literal["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"]
 OffsetReset = Literal["latest", "earliest"]
 
@@ -181,6 +183,14 @@ class KafkaConsumer(DataMonitorBasePlugin):
             if timestamp_raw is not None
             else None
         )
+        # Build metadata from user-override field_map entries not mapped to File attrs
+        metadata: dict[str, Any] = {}
+        for key, msg_key in fm.items():
+            if key in _FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA:
+                continue
+            value = payload.get(msg_key)
+            if value is not None:
+                metadata[key] = value
         return File(
             file=PurePosixPath(str(file_raw)),  # type: ignore[arg-type]
             hostname=payload.get(fm["hostname"]),
@@ -189,6 +199,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
             processing_stage=payload.get(fm["processing_stage"]),
             domain=payload.get(fm["domain"]),
             timestamp=timestamp,
+            metadata=metadata,
         )
 
     def _decode_value(self, raw: bytes | str | None) -> dict[str, Any] | None:

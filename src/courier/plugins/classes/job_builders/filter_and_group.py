@@ -103,8 +103,37 @@ def _file_matches_filters(
     file: File | FrozenFile,
     filters: dict[str, str],
 ) -> bool:
-    """Return ``True`` if every filter key/value matches the file's attribute."""
-    return all(getattr(file, key, None) == value for key, value in filters.items())
+    """Return ``True`` if every filter key/value matches the file.
+
+    Checks, in order, for each filter key:
+    1. ``file.metadata.get(key)`` — metadata dict keys (from field_map extras)
+    2. ``getattr(file, key, None)`` — File dataclass attributes
+
+    If the key is found in neither layer, logs a WARNING and returns ``False``.
+    """
+    for key, value in filters.items():
+        # Layer 1: check metadata dict
+        if key in file.metadata:
+            if file.metadata[key] != value:
+                return False
+            continue
+        # Layer 2: check File dataclass attribute
+        attr_value = getattr(file, key, None)
+        if attr_value is not None:
+            if attr_value != value:
+                return False
+            continue
+        # Key not found in either layer
+        _module_logger.warning(
+            "Unknown filter key %r: not found in file metadata or "
+            "File attributes (source, instrument, processing_stage, domain, "
+            "hostname, num_expected, timestamp). "
+            "Metadata keys: %s",
+            key,
+            list(file.metadata.keys()),
+        )
+        return False
+    return True
 
 
 def make_job_class(config: FilterAndGroupConfig) -> type[Job]:

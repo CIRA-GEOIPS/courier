@@ -4,7 +4,9 @@ This module provides a File class that stores file information along with metada
 """
 
 import json
-from dataclasses import dataclass, replace
+import types
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
@@ -32,6 +34,7 @@ def _file_to_dict(obj: "File | FrozenFile") -> dict[str, Any]:
         "instrument": obj.instrument,
         "processing_stage": obj.processing_stage,
         "domain": obj.domain,
+        "metadata": dict(obj.metadata),
         "num_expected": obj.num_expected,
         "timestamp": obj.timestamp.isoformat() if obj.timestamp else None,
     }
@@ -49,19 +52,15 @@ def _parse_timestamp_field(dt: Any) -> datetime | None:
 
 
 def _file_fields_from_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Extract File/FrozenFile constructor kwargs from a dictionary.
-
-    Supports both new keys (source, instrument, processing_stage, domain)
-    and legacy keys (platform, sensor, level, sector) for backward
-    compatibility.
-    """
+    """Extract File/FrozenFile constructor kwargs from a dictionary."""
     return {
         "file": Path(data["file"]) if data.get("file") else None,
         "hostname": data.get("hostname"),
-        "source": data.get("source", data.get("platform")),
-        "instrument": data.get("instrument", data.get("sensor")),
-        "processing_stage": data.get("processing_stage", data.get("level")),
-        "domain": data.get("domain", data.get("sector")),
+        "source": data.get("source"),
+        "instrument": data.get("instrument"),
+        "processing_stage": data.get("processing_stage"),
+        "domain": data.get("domain"),
+        "metadata": data.get("metadata", {}),
         "num_expected": data.get("num_expected", 1),
         "timestamp": _parse_timestamp_field(data.get("timestamp")),
     }
@@ -85,6 +84,8 @@ class File:
         Data processing stage (e.g., 'l1b').
     domain : str | None
         Domain identifier (e.g., 'full-disk', 'conus').
+    metadata : dict[str, Any]
+        Arbitrary metadata dictionary.
     num_expected : int
         Expected number of files for this dataset.
     timestamp : datetime | None
@@ -97,6 +98,7 @@ class File:
     instrument: str | None = None
     processing_stage: str | None = None
     domain: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
     num_expected: int = 1
     timestamp: datetime | None = None
 
@@ -115,12 +117,7 @@ class File:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Initialize File from dictionary.
-
-        Supports both new keys (source, instrument, processing_stage, domain)
-        and legacy keys (platform, sensor, level, sector) for backward
-        compatibility.
-        """
+        """Initialize File from dictionary."""
         return cls(**_file_fields_from_dict(data))
 
     def freeze(self) -> "FrozenFile":
@@ -138,6 +135,7 @@ class File:
             instrument=self.instrument,
             processing_stage=self.processing_stage,
             domain=self.domain,
+            metadata=types.MappingProxyType(self.metadata),
             num_expected=self.num_expected,
             timestamp=self.timestamp,
         )
@@ -165,6 +163,7 @@ class File:
         instrument: str | None = None,
         processing_stage: str | None = None,
         domain: str | None = None,
+        metadata: dict[str, Any] | None = None,
         num_expected: int | None = None,
         dt: datetime | None = None,
     ) -> Self:
@@ -183,6 +182,9 @@ class File:
             Data processing stage.
         domain : str | None
             Domain identifier.
+        metadata : dict[str, Any] | None
+            Metadata dictionary to shallow-merge. Existing keys are
+            preserved; only new keys are added.
         num_expected : int | None
             Expected number of files.
         dt : datetime | None
@@ -193,6 +195,11 @@ class File:
         Self
             New File instance with merged metadata.
         """
+        new_metadata = dict(self.metadata)
+        if metadata is not None:
+            for k, v in metadata.items():
+                if k not in new_metadata:
+                    new_metadata[k] = v
         return replace(
             self,
             source=self.source if self.source is not None else source,
@@ -203,6 +210,7 @@ class File:
                 else processing_stage
             ),
             domain=self.domain if self.domain is not None else domain,
+            metadata=new_metadata,
             num_expected=(
                 self.num_expected if self.num_expected != 1 else (num_expected or 1)
             ),
@@ -228,6 +236,8 @@ class FrozenFile:
         Data processing stage (e.g., 'l1b').
     domain : str | None
         Domain identifier (e.g., 'full-disk', 'conus').
+    metadata : Mapping[str, Any]
+        Arbitrary metadata dictionary.
     num_expected : int
         Expected number of files for this dataset.
     timestamp : datetime | None
@@ -240,6 +250,7 @@ class FrozenFile:
     instrument: str | None = None
     processing_stage: str | None = None
     domain: str | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict, hash=False)
     num_expected: int = 1
     timestamp: datetime | None = None
 
@@ -258,12 +269,7 @@ class FrozenFile:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Initialize FrozenFile from dictionary.
-
-        Supports both new keys (source, instrument, processing_stage, domain)
-        and legacy keys (platform, sensor, level, sector) for backward
-        compatibility.
-        """
+        """Initialize FrozenFile from dictionary."""
         return cls(**_file_fields_from_dict(data))
 
     def thaw(self) -> File:
@@ -281,6 +287,7 @@ class FrozenFile:
             instrument=self.instrument,
             processing_stage=self.processing_stage,
             domain=self.domain,
+            metadata=dict(self.metadata),
             num_expected=self.num_expected,
             timestamp=self.timestamp,
         )
