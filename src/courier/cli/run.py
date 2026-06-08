@@ -1,29 +1,22 @@
 """CLI `run` command — loads config and starts the service."""
 
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
+
+from pathlib import (
+    Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
+)
+from typing import TYPE_CHECKING, Any
 
 import typer
 
-import courier.plugins.classes.dispatchers.serial_bash as serial_bash_dispatcher
 from courier.cli.config_loader import load_config
+from courier.cli.plugins import PLUGIN_REGISTRIES
 from courier.config import ServiceConfig
-from courier.plugins.classes.data_monitors import file_system_poller_watchdog
-from courier.plugins.classes.data_monitors.kafka_consumer import KafkaConsumer
-from courier.plugins.classes.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
-from courier.plugins.classes.data_monitors.s3_poller import S3Poller
-from courier.plugins.classes.data_monitors.sftp_poller import SftpPoller
-from courier.plugins.classes.dispatchers.http_dispatcher import HttpDispatcher
-from courier.plugins.classes.dispatchers.parallel_bash import ParallelBashDispatcher
-from courier.plugins.classes.dispatchers.slurm_dispatcher import SlurmDispatcher
-from courier.plugins.classes.job_builders import dummy_job_builder
-from courier.plugins.classes.job_builders.file_count_builder import FileCountBuilder
-from courier.plugins.classes.job_builders.filter_and_group import (
-    FilterAndGroupJobBuilder,
-)
-from courier.cli.plugins import get_plugins
-from courier.plugins.classes.job_builders.metadata_router import MetadataRouterBuilder
 from courier.service import create_service_with_plugins
+
+if TYPE_CHECKING:
+    from courier.interfaces.plugin_protocol import ServicePlugin
+
 
 def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     """Flatten declared ``targets`` per builder for preflight validation.
@@ -76,8 +69,27 @@ def run_service(config: Any, log_level: str | None = None) -> None:
             heartbeat_interval=config.spec.heartbeat_interval,
             broker_max_retries=config.spec.broker.max_retries,
         )
-    plugins = get_plugins(config_file=config, namespace=None)[1]
-    service = create_service_with_plugins(service_config, plugins)
+    # Build plugin registration tuples from the config's run spec.
+    plugin_registrations: list[
+        tuple[type[ServicePlugin], dict[str, Any], str | None]
+    ] = []
+    for entry in config.spec.run:
+        if entry.spec.kind == "data_monitor_configs":
+            continue  # YAML-based config, not a ServicePlugin
+        registry = PLUGIN_REGISTRIES.get(entry.spec.kind)
+        if registry is None:
+            continue
+        plugin_obj = registry.get_plugin(entry.spec.name)
+        plugin_class = type(plugin_obj)
+        plugin_config: dict[str, Any] = (
+            entry.spec.config if entry.spec.config is not None else {}
+        )
+        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
+
+    service = create_service_with_plugins(
+        service_config,
+        plugin_registrations,
+    )
     dispatcher_ids = {
         entry.identifier for entry in config.spec.run if entry.spec.kind == "dispatcher"
     }

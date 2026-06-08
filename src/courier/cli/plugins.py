@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path  # noqa: TC003 — Typer reads annotation at runtime.
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import typer
+from lexeme_type.lexeme import Lexeme
 from rich import box
 from rich.console import Console
 from rich.table import Table
-from pluginify.interfaces.base import BaseClassInterface, BaseYamlInterface
-from lexeme_type.lexeme import Lexeme
 
 from courier.cli.config_loader import load_config
 from courier.cli.registry import COURIER_NAMESPACE
@@ -21,12 +20,13 @@ from courier.interfaces import (
     dispatchers,
     job_builders,
 )
-from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from pluginify.interfaces.base import BaseClassInterface, BaseYamlInterface
+
+    from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 plugins_app = typer.Typer(
     name="plugins",
@@ -77,16 +77,24 @@ def _discover_plugins() -> Iterator[tuple[str, str]]:
             yield kind, plugin.name
 
 
-def _config_references_plugin(config: ServiceConfigModel, plugin_type: str, plugin_name: str) -> bool:
+def _config_references_plugin(
+    config: ServiceConfigModel,
+    plugin_type: str,
+    plugin_name: str,
+) -> bool:
     """Return True if the config references the plugin."""
     for section in config.spec.run:
-        if Lexeme(section.spec.kind) == plugin_type and Lexeme(section.spec.name) == plugin_name:
+        if (
+            Lexeme(section.spec.kind) == plugin_type
+            and Lexeme(section.spec.name) == plugin_name
+        ):
             return True
     return False
 
 
 def get_plugins(
-    config_file: Path | ServiceConfigModel | None, namespace: str | None
+    config_file: Path | ServiceConfigModel | None,
+    namespace: str | None,
 ) -> tuple[str, list[list[str]]]:
     """Return ``(namespace, [[plugin_type, plugin_name], ...])``."""
     if not isinstance(config_file, Path):
@@ -94,14 +102,16 @@ def get_plugins(
     else:
         config = load_config(config_file)
     if config:
-        namespace = config.metadata.namespace if config.metadata.namespace else namespace
+        namespace = (
+            config.metadata.namespace if config.metadata.namespace else namespace
+        )
     ns = namespace or COURIER_NAMESPACE
     plugins: list[list[str]] = []
     for plugin_type, registry in PLUGIN_REGISTRIES.items():
         for plugin in registry.get_plugins():
             plugin_name = plugin.name
             if not config or _config_references_plugin(
-                config.model_dump(),
+                config,
                 plugin_type,
                 plugin_name,
             ):
@@ -169,7 +179,7 @@ def _render_plugins_json(namespace: str, plugins: list[list[str]]) -> None:
 
 @plugins_app.command("list")
 def list_cmd(
-    config: Annotated[Path, _CONFIG_OPTION] = None,
+    config: Annotated[Path | None, _CONFIG_OPTION] = None,
     namespace: Annotated[str | None, _NAMESPACE_OPTION] = None,
     json_output: Annotated[bool, _JSON_OPTION] = False,
 ) -> None:

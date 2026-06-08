@@ -194,6 +194,10 @@ module = "kombu.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "lexeme_type.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "textual.*"
 ignore_missing_imports = true
 
