@@ -38,6 +38,7 @@ pydantic = "*"
 kombu = "*"
 croniter = "*"
 typer = "*"
+lexeme-type = "*"
 pyyaml = "*"
 python-logging-loki = ">=0.3.1"
 grafanalib = { version = ">=0.7.0", optional = true }

@@ -21,54 +21,9 @@ from courier.plugins.classes.job_builders.file_count_builder import FileCountBui
 from courier.plugins.classes.job_builders.filter_and_group import (
     FilterAndGroupJobBuilder,
 )
+from courier.cli.plugins import get_plugins
 from courier.plugins.classes.job_builders.metadata_router import MetadataRouterBuilder
 from courier.service import create_service_with_plugins
-
-AVAILABLE_PLUGINS = {
-    cls.name.lower(): cls
-    for cls in (
-        file_system_poller_watchdog.FileSystemPoller,
-        dummy_job_builder.DummyJobBuilder,
-        serial_bash_dispatcher.SerialBashDispatcher,
-        RabbitMQWatcher,
-        FilterAndGroupJobBuilder,
-        S3Poller,
-        SftpPoller,
-        KafkaConsumer,
-        MetadataRouterBuilder,
-        FileCountBuilder,
-        ParallelBashDispatcher,
-        SlurmDispatcher,
-        HttpDispatcher,
-    )
-}
-# Deprecated alias; retained so existing configs using `filter_pass` keep working.
-AVAILABLE_PLUGINS["filter_pass"] = FilterAndGroupJobBuilder
-
-
-def _resolve_plugin(plugin: Any) -> tuple[type, dict, str | None]:
-    """Resolve a plugin config entry to a (class, config, identifier) tuple.
-
-    Parameters
-    ----------
-    plugin : Any
-        Microservice model entry with spec.name, spec.config, and identifier.
-
-    Returns
-    -------
-    tuple[type, dict, str | None]
-        Plugin class, configuration dict, and the YAML ``identifier``.
-
-    Raises
-    ------
-    ValueError
-        If the plugin name is not registered.
-    """
-    name = plugin.spec.name.lower()
-    if name not in AVAILABLE_PLUGINS:
-        raise ValueError(f"Plugin {plugin.spec.name} not found.")
-    return (AVAILABLE_PLUGINS[name], plugin.spec.config, plugin.identifier)
-
 
 def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     """Flatten declared ``targets`` per builder for preflight validation.
@@ -121,7 +76,7 @@ def run_service(config: Any, log_level: str | None = None) -> None:
             heartbeat_interval=config.spec.heartbeat_interval,
             broker_max_retries=config.spec.broker.max_retries,
         )
-    plugins = list(map(_resolve_plugin, config.spec.run))
+    plugins = get_plugins(config_file=config, namespace=None)[1]
     service = create_service_with_plugins(service_config, plugins)
     dispatcher_ids = {
         entry.identifier
