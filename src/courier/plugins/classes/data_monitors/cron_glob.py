@@ -87,8 +87,8 @@ class CronGlobConfig(BaseModel, frozen=True):
     """
 
     path: str
-    glob_pattern: str
-    cron_expression: str
+    glob_pattern: str = "*"
+    cron_expression: str = "0 * * * *"
     max_seen_files: int = 100_000
     hostname: str = "localhost"
     run_on_start: bool = True
