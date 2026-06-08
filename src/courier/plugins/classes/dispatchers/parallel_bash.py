@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Parallel Bash Dispatcher — run one bash script per file concurrently.
 
 Each file in the job triggers an independent script execution, with up to
@@ -105,7 +106,7 @@ def _run_script(
 
 
 class ParallelBashDispatcher(Dispatcher):
-    """Execute a Jinja2-templated bash script independently for each file.
+    r"""Execute a Jinja2-templated bash script independently for each file.
 
     One script execution is launched per file in the job, up to
     ``max_workers`` concurrent scripts via :class:`ThreadPoolExecutor`.
@@ -200,7 +201,12 @@ class ParallelBashDispatcher(Dispatcher):
         """Stateless dispatcher; always healthy when loaded."""
         return True
 
-    def _render_script(self, ff: FrozenFile, job_context: dict, all_file_dicts: list[dict]) -> str:
+    def _render_script(
+        self,
+        ff: FrozenFile,
+        job_context: dict,
+        all_file_dicts: list[dict],
+    ) -> str:
         """Render the Jinja2 bash template for a single FrozenFile with full job context."""
         context = {
             "file": ff.to_dict(),

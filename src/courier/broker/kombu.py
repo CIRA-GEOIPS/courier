@@ -48,14 +48,14 @@ def _normalize_publish_error(
     """
     if isinstance(exc, OperationalError):
         return TransientBrokerError(
-            f"transient publish failure to {target_name!r}: {exc}"
+            f"transient publish failure to {target_name!r}: {exc}",
         )
     if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
         return TransientBrokerError(
-            f"transient publish failure to {target_name!r}: {exc}"
+            f"transient publish failure to {target_name!r}: {exc}",
         )
     return FatalBrokerError(
-        f"fatal publish failure to {target_name!r}: {exc}"
+        f"fatal publish failure to {target_name!r}: {exc}",
     )
 
 
@@ -247,9 +247,13 @@ def declare_fanout_exchange(
 ) -> "kombu.Exchange":
     """Declare and return a durable fanout Exchange on *conn*."""
     try:
-        exchange = kombu.Exchange(name, type="fanout", durable=True, channel=conn.channel())
+        exchange = kombu.Exchange(
+            name,
+            type="fanout",
+            durable=True,
+            channel=conn.channel(),
+        )
         exchange.declare()
-        return exchange
     except OperationalError as exc:
         raise TransientBrokerError(
             f"transient failure declaring fanout exchange {name!r}: {exc}",
@@ -262,6 +266,8 @@ def declare_fanout_exchange(
         raise FatalBrokerError(
             f"fatal failure declaring fanout exchange {name!r}: {exc}",
         ) from exc
+    else:
+        return exchange
 
 
 def publish_fanout(
@@ -312,7 +318,6 @@ def declare_fanout_queue(
     try:
         q = kombu.Queue("", exchange=exchange, exclusive=True, channel=conn.channel())
         q.declare()
-        return q
     except OperationalError as exc:
         raise TransientBrokerError(
             f"transient failure declaring fanout queue: {exc}",
@@ -325,6 +330,8 @@ def declare_fanout_queue(
         raise FatalBrokerError(
             f"fatal failure declaring fanout queue: {exc}",
         ) from exc
+    else:
+        return q
 
 
 # ---------------------------------------------------------------------------

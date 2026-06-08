@@ -185,10 +185,7 @@ def _templating() -> Templating:
     error_type = Template(
         name="error_type",
         label="Error Type",
-        query=(
-            f"label_values("
-            f"{_PREFIX}_data_monitor_poll_errors_total, error_type)"
-        ),
+        query=(f"label_values({_PREFIX}_data_monitor_poll_errors_total, error_type)"),
         dataSource=_DS,
         includeAll=True,
         multi=True,
@@ -197,10 +194,7 @@ def _templating() -> Templating:
     topic = Template(
         name="topic",
         label="Topic",
-        query=(
-            f"label_values("
-            f"{_PREFIX}_data_monitor_consumer_lag, topic)"
-        ),
+        query=(f"label_values({_PREFIX}_data_monitor_consumer_lag, topic)"),
         dataSource=_DS,
         includeAll=True,
         multi=True,
@@ -209,10 +203,7 @@ def _templating() -> Templating:
     route_name = Template(
         name="route_name",
         label="Route Name",
-        query=(
-            f"label_values("
-            f"{_PREFIX}_job_builder_route_matches_total, route_name)"
-        ),
+        query=(f"label_values({_PREFIX}_job_builder_route_matches_total, route_name)"),
         dataSource=_DS,
         includeAll=True,
         multi=True,
@@ -222,8 +213,7 @@ def _templating() -> Templating:
         name="status_code",
         label="HTTP Status Code",
         query=(
-            f"label_values("
-            f"{_PREFIX}_dispatcher_http_response_codes_total, status_code)"
+            f"label_values({_PREFIX}_dispatcher_http_response_codes_total, status_code)"
         ),
         dataSource=_DS,
         includeAll=True,
@@ -428,7 +418,7 @@ def _data_monitor_row() -> RowPanel:
         targets=[
             _target(
                 f"{_PREFIX}_data_monitor_connection_status"
-                f"{{monitor_name=~\"$monitor_name\"}}",
+                f'{{monitor_name=~"$monitor_name"}}',
                 "{{monitor_name}}",
             ),
         ],
@@ -1129,8 +1119,7 @@ def _routing_row() -> RowPanel:
     dedupe_skips = TimeSeries(
         title="Dedupe Skips",
         description=(
-            "Rate of duplicate dispatch jobs skipped by the "
-            "deduplication filter."
+            "Rate of duplicate dispatch jobs skipped by the deduplication filter."
         ),
         dataSource=_DS,
         targets=[

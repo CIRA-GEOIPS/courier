@@ -18,6 +18,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, Static
 
+from courier.constants import PluginRunState
 from courier.viz.design import (
     COLOR_HEALTHY,
     COLOR_HIGHLIGHT,
@@ -28,7 +29,6 @@ from courier.viz.design import (
     REFRESH_RATES,
     STEEL_BLUE,
 )
-from courier.constants import PluginRunState
 from courier.viz.fetcher import MetricsFetcher
 
 if TYPE_CHECKING:
@@ -147,7 +147,7 @@ class CourierViz(App):
     # Key Bindings
     # ------------------------------------------------------------------
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Force Refresh"),
         Binding("p", "toggle_pause", "Pause/Resume"),
@@ -259,7 +259,8 @@ class CourierViz(App):
 
         # Start auto-refresh
         self._refresh_timer = self.set_interval(
-            self.refresh_interval, self._do_refresh,
+            self.refresh_interval,
+            self._do_refresh,
         )
 
         # Immediate initial fetch
@@ -269,7 +270,7 @@ class CourierViz(App):
     # Auto-refresh worker
     # ------------------------------------------------------------------
 
-    @work(exclusive=True)  # type: ignore[untyped-decorator]
+    @work(exclusive=True)
     async def _do_refresh(self) -> None:
         """Fetch metrics and update the display.
 
@@ -449,14 +450,13 @@ class CourierViz(App):
 
         for plg in snap.plugins.plugins:
             health_cell = (
-                "[#00ff00]●[/]"
-                if plg.health >= _HEALTH_THRESHOLD
-                else "[#ff3333]●[/]"
+                "[#00ff00]●[/]" if plg.health >= _HEALTH_THRESHOLD else "[#ff3333]●[/]"
             )
 
             state_idx = int(plg.state)
             state_name = self._PLUGIN_STATE_NAMES.get(
-                state_idx, f"STATE_{state_idx}",
+                state_idx,
+                f"STATE_{state_idx}",
             )
 
             restart_text = f"{plg.restart_rate:,.0f}"
@@ -519,10 +519,7 @@ class CourierViz(App):
         """Render state sync / HA metrics as a status line."""
         ss = snap.state_sync
 
-        if ss.errors_rate > 0:
-            errors_str = f"[#f8ad9d]{ss.errors_rate:,.0f}[/]"
-        else:
-            errors_str = "0"
+        errors_str = f"[#f8ad9d]{ss.errors_rate:,.0f}[/]" if ss.errors_rate > 0 else "0"
 
         status = (
             f"  Pushes: [#ffff39]{ss.pushes_rate:,.0f}[/]/s  │  "
@@ -556,29 +553,41 @@ class CourierViz(App):
         """Render the pipeline throughput bar chart."""
         p = snap.pipeline_summary
         max_val = max(
-            p.files_detected_rate, p.jobs_built_rate, p.jobs_dispatched_rate, 1.0,
+            p.files_detected_rate,
+            p.jobs_built_rate,
+            p.jobs_dispatched_rate,
+            1.0,
         )
         bar_width = 40
 
         lines = Text()
         lines.append(
             self._render_bar(
-                "Files Detected", p.files_detected_rate, max_val,
-                bar_width, "#2081c3",
+                "Files Detected",
+                p.files_detected_rate,
+                max_val,
+                bar_width,
+                "#2081c3",
             ),
         )
         lines.append("\n")
         lines.append(
             self._render_bar(
-                "Jobs Built   ", p.jobs_built_rate, max_val,
-                bar_width, "#84e6f8",
+                "Jobs Built   ",
+                p.jobs_built_rate,
+                max_val,
+                bar_width,
+                "#84e6f8",
             ),
         )
         lines.append("\n")
         lines.append(
             self._render_bar(
-                "Jobs Dispatch", p.jobs_dispatched_rate, max_val,
-                bar_width, "#ffff39",
+                "Jobs Dispatch",
+                p.jobs_dispatched_rate,
+                max_val,
+                bar_width,
+                "#ffff39",
             ),
         )
 
@@ -599,9 +608,7 @@ class CourierViz(App):
         else:
             conn = "[#ff3333]✗ Disconnected[/]"
 
-        err_part = (
-            f" │ Errors: {self._error_count}" if self._error_count > 0 else ""
-        )
+        err_part = f" │ Errors: {self._error_count}" if self._error_count > 0 else ""
 
         self.sub_title = (
             f"Refresh: {self.refresh_interval}s │ "
@@ -678,7 +685,8 @@ class CourierViz(App):
         if self._refresh_timer is not None:
             self._refresh_timer.stop()
         self._refresh_timer = self.set_interval(
-            self.refresh_interval, self._do_refresh,
+            self.refresh_interval,
+            self._do_refresh,
         )
 
     # ------------------------------------------------------------------
@@ -716,17 +724,41 @@ class CourierViz(App):
     def _setup_tables(self) -> None:
         """Initialize column headers for all DataTables."""
         self.query_one("#table-monitors", DataTable).add_columns(
-            "Name", "Files", "Success", "Fail", "Scan Age", "Avg Dur",
+            "Name",
+            "Files",
+            "Success",
+            "Fail",
+            "Scan Age",
+            "Avg Dur",
         )
         self.query_one("#table-builders", DataTable).add_columns(
-            "Name", "Files", "Jobs", "Succ%", "Active", "Disc", "Dur", "FPJ",
+            "Name",
+            "Files",
+            "Jobs",
+            "Succ%",
+            "Active",
+            "Disc",
+            "Dur",
+            "FPJ",
         )
         self.query_one("#table-dispatchers", DataTable).add_columns(
-            "Name", "Jobs", "Succ%", "Active", "Dur", "Logs", "Q Wait",
+            "Name",
+            "Jobs",
+            "Succ%",
+            "Active",
+            "Dur",
+            "Logs",
+            "Q Wait",
         )
         self.query_one("#table-plugins", DataTable).add_columns(
-            "Name", "State", "Health", "Restarts",
+            "Name",
+            "State",
+            "Health",
+            "Restarts",
         )
         self.query_one("#table-routing", DataTable).add_columns(
-            "Identifier", "Consumed", "Latency", "Q Depth",
+            "Identifier",
+            "Consumed",
+            "Latency",
+            "Q Depth",
         )

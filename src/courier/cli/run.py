@@ -79,9 +79,7 @@ def run_service(config: Any, log_level: str | None = None) -> None:
     plugins = get_plugins(config_file=config, namespace=None)[1]
     service = create_service_with_plugins(service_config, plugins)
     dispatcher_ids = {
-        entry.identifier
-        for entry in config.spec.run
-        if entry.spec.kind == "dispatcher"
+        entry.identifier for entry in config.spec.run if entry.spec.kind == "dispatcher"
     }
     service.configure_routing(
         dispatcher_identifiers=dispatcher_ids,

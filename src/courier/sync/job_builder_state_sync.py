@@ -363,7 +363,7 @@ class JobBuilderStateSync:
         """Load and merge remote jobs for a single group from its hash."""
         client = self._require_client()
         try:
-            remote: dict[str, str] = client.hgetall(  # type: ignore[assignment]
+            remote: dict[str, str] = client.hgetall(
                 self._hash_key(job_group.name),
             )
         except redis.RedisError as exc:
@@ -459,7 +459,7 @@ class JobBuilderStateSync:
         """Fetch a job from the Redis hash and merge it into the local group."""
         client = self._require_client()
         try:
-            job_json: str | None = client.hget(  # type: ignore[assignment]
+            job_json: str | None = client.hget(
                 self._hash_key(job_group.name),
                 job_id,
             )

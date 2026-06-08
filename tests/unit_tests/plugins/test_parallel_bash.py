@@ -80,7 +80,7 @@ class TestRenderScript:
         )
         ff = make_frozen_file(file=Path("/tmp/x"))
         all_file_dicts = [ff.to_dict()]
-        job_context = {"config": {}}
+        job_context: dict = {"config": {}}
         result = plugin._render_script(ff, job_context, all_file_dicts)
         assert result == "echo /tmp/x"
 
@@ -94,7 +94,7 @@ class TestRenderScript:
         )
         ff = make_frozen_file()
         all_file_dicts = [ff.to_dict()]
-        job_context = {"config": {}}
+        job_context: dict = {"config": {}}
         # DebugUndefined renders simple {{ missing }} as literal, so use
         # attribute access (__getattr__ raises UndefinedError).
         plugin._template = jinja2.Environment(
@@ -191,7 +191,7 @@ class TestGetExecutionLog:
         errors = [log for log in logs if log.return_code == -1]
         successes = [log for log in logs if log.return_code == 0]
         assert len(errors) == 1
-        assert "template render failed" in errors[0].stderr
+        assert "template render failed" in (errors[0].stderr or "")
         assert len(successes) == 1
 
 
@@ -215,4 +215,4 @@ class TestRunScript:
         )
         log = _run_script("x", 60.0, "h")
         assert log.return_code == -1
-        assert "boom" in log.stderr
+        assert "boom" in (log.stderr or "")

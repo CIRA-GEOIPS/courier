@@ -174,10 +174,6 @@ module = "pluginify.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "grafanalib.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
@@ -208,7 +204,13 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
-follow_untyped_imports = true
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "grafanalib.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -305,6 +307,8 @@ ban-relative-imports = "all"
 "tests/**/*" = ["S101"]
 # Ignore import violations in __init__.py files
 "__init__.py" = ["F401"]
+# Docstring RST tables exceed line length; cannot be wrapped
+"src/courier/plugins/classes/dispatchers/serial_bash.py" = ["E501"]
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
@@ -324,4 +328,10 @@ requires-python = ">=3.11,<3.15"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "types-redis>=4.6.0.20241004",
+]
 

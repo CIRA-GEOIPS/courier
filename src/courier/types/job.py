@@ -7,12 +7,15 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
+import pydantic
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 from courier.types.file import File, FrozenFile
 
 _OVERFLOW_SEPARATOR = "_overflow_"
+
 
 # Mutable because: Job accumulates files incrementally via add_file() until
 # ready() returns True; single-threaded ownership by the job builder plugin.
@@ -49,13 +52,13 @@ class Job:
             provenance. Stored as a tuple so the field remains effectively
             immutable despite the surrounding class being mutable.
 
-        Notes
-        -----
+    Notes
+    -----
         ``config`` may be any type, but serialization via :meth:`__str__`
         converts Pydantic models to plain dicts via ``model_dump()``.
         Deserialization via :meth:`from_string` reconstructs ``config`` as
         a dict.  Consumers should be prepared for either form.
-        """
+    """
 
     def __init__(  # noqa: PLR0913
         self,
@@ -72,10 +75,11 @@ class Job:
         self.name = name
         self.identifier = identifier
         self.config = config
-        self.files: set[FrozenFile] = {
-            f.freeze() if isinstance(f, File) else f
-            for f in files
-        } if files is not None else set()
+        self.files: set[FrozenFile] = (
+            {f.freeze() if isinstance(f, File) else f for f in files}
+            if files is not None
+            else set()
+        )
         self.last_modified = last_modified if last_modified is not None else time.time()
         self.timeout = timeout
         self.correlation_id = correlation_id or str(uuid.uuid4())
@@ -84,12 +88,12 @@ class Job:
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
-        def _json_default(obj):
-            import pydantic
+
+        def _json_default(obj: Any) -> Any:
             if isinstance(obj, pydantic.BaseModel):
                 return obj.model_dump()
             raise TypeError(
-                f"Object of type {type(obj).__name__} is not JSON serializable"
+                f"Object of type {type(obj).__name__} is not JSON serializable",
             )
 
         return json.dumps(
@@ -209,9 +213,7 @@ class JobGroup:
         base_id = job_id
         if _OVERFLOW_SEPARATOR in base_id:
             base_id = base_id.rsplit(_OVERFLOW_SEPARATOR, 1)[0]
-        self._overflow_counters[base_id] = (
-            self._overflow_counters.get(base_id, 0) + 1
-        )
+        self._overflow_counters[base_id] = self._overflow_counters.get(base_id, 0) + 1
 
     def file_is_relevant(self, file: File | FrozenFile) -> bool:
         """Return true if file is relevant to this job group."""
@@ -243,15 +245,20 @@ class JobGroup:
                     self._overflow_counters[job_id] = (
                         self._overflow_counters.get(job_id, 0) + 1
                     )
-                    overflow_id = f"{job_id}{_OVERFLOW_SEPARATOR}{self._overflow_counters[job_id]}"
+                    overflow_id = (
+                        f"{job_id}{_OVERFLOW_SEPARATOR}"
+                        f"{self._overflow_counters[job_id]}"
+                    )
                     overflow = self.job(
-                        self.name, overflow_id, self.config,
+                        self.name,
+                        overflow_id,
+                        self.config,
                     )
                     if not overflow.add_file(file):
                         raise RuntimeError(
                             f"overflow job {overflow_id!r} rejected file {file!r}; "
                             f"Job.add_file may only return False for capacity/filter "
-                            f"reasons; a fresh job should always accept the first file"
+                            f"reasons; a fresh job should always accept the first file",
                         )
                     self.jobs[overflow_id] = overflow
             else:

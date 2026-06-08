@@ -9,13 +9,13 @@ from typing import Any
 from courier.config import ServiceConfig
 from courier.constants import PluginRunState
 from courier.errors import CourierError
+from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.managers.base import ServiceManager
 from courier.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
 from courier.utils.decorators import log_execution
 from courier.utils.functional import filter_map
 from courier.utils.logging import get_logger
-from courier.interfaces.module_based.dispatchers import Dispatcher
 
 
 @dataclass

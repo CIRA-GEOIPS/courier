@@ -13,13 +13,16 @@ viz_app = typer.Typer()
 @viz_app.callback(invoke_without_command=True)
 def viz(
     host: Annotated[
-        str, typer.Option("--host", "-h", help="Courier host"),
+        str,
+        typer.Option("--host", "-h", help="Courier host"),
     ] = "localhost",
     port: Annotated[
-        int, typer.Option("--port", "-p", help="Prometheus metrics port"),
+        int,
+        typer.Option("--port", "-p", help="Prometheus metrics port"),
     ] = 8000,
     refresh: Annotated[
-        int, typer.Option("--refresh", "-r", help="Refresh interval in seconds"),
+        int,
+        typer.Option("--refresh", "-r", help="Refresh interval in seconds"),
     ] = 5,
 ) -> None:
     """Open the live metrics visualizer for a running courier instance."""

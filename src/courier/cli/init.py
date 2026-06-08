@@ -1,4 +1,5 @@
 """Interactive service config generator — ``courier init``."""
+
 from __future__ import annotations
 
 import json

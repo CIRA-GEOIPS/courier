@@ -164,4 +164,4 @@ class TestGetExecutionLog:
         )
         logs = plugin.get_execution_log(make_job())
         assert logs[0].return_code == -1
-        assert "render-fail" in logs[0].stderr
+        assert "render-fail" in (logs[0].stderr or "")

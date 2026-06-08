@@ -42,8 +42,7 @@ def _pre_command(
         if upper not in VALID_LOG_LEVELS:
             valid_levels = ", ".join(VALID_LOG_LEVELS)
             raise typer.BadParameter(
-                f"'{log_level}' is not a valid log level. "
-                f"Choose from: {valid_levels}",
+                f"'{log_level}' is not a valid log level. Choose from: {valid_levels}",
             )
         ctx.obj["log_level"] = upper
     ensure_registry()

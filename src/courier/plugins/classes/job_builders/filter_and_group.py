@@ -20,8 +20,13 @@ import types
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
-
+from pydantic import (
+    BaseModel,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from courier.constants import PluginRunState
 from courier.interfaces.module_based.job_builders import JobBuilder
@@ -58,14 +63,14 @@ class FilterAndGroupConfig(BaseModel, frozen=True):
 
     @field_serializer("time_grouping")
     def _serialize_time_grouping(
-        self, value: dict[str, Any] | None
+        self,
+        value: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """Convert any ``datetime`` values to ISO-8601 strings."""
         if value is None:
             return None
         return {
-            k: v.isoformat() if isinstance(v, datetime) else v
-            for k, v in value.items()
+            k: v.isoformat() if isinstance(v, datetime) else v for k, v in value.items()
         }
 
     # ------------------------------------------------------------------ #
@@ -75,7 +80,8 @@ class FilterAndGroupConfig(BaseModel, frozen=True):
     @field_validator("time_grouping", mode="before")
     @classmethod
     def _parse_time_grouping(
-        cls, value: dict[str, Any] | None
+        cls,
+        value: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """Parse ISO-8601 strings back to ``datetime`` under ``"start"``."""
         if value is None:
@@ -89,7 +95,7 @@ class FilterAndGroupConfig(BaseModel, frozen=True):
     # ------------------------------------------------------------------ #
 
     @model_validator(mode="after")
-    def _check_min_files(self) -> "FilterAndGroupConfig":
+    def _check_min_files(self) -> FilterAndGroupConfig:
         if self.min_files > self.files_per_job:
             msg = (
                 f"min_files ({self.min_files}) must be <= "

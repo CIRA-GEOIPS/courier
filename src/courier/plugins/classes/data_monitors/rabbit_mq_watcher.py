@@ -51,7 +51,10 @@ def _parse_user_at_host_colon_path(location: str) -> tuple[str, str]:
     Example: ``admin@28bde7b8-2ab2-11f0-9b65-3cecefb7c814.sat=/:``
     """
     if "ceph-IPs" in location:
-        return ("ceph", "/") # special case for ceph-IPs which don't have a hostname and just use the location as the path
+        return (
+            "ceph",
+            "/",
+        )  # special case for ceph-IPs which don't have a hostname and just use the location as the path  # noqa: E501
     if "@" not in location:
         raise ValueError(
             f"Expected 'user@hostname:/path' location format, got: {location!r}",
@@ -63,7 +66,8 @@ def _parse_user_at_host_colon_path(location: str) -> tuple[str, str]:
         hostname, path = after_at.split("=", maxsplit=1)
     else:
         raise ValueError(
-            f"Expected colon ':' or '=' separating hostname and path in location {location!r}, "
+            f"Expected colon ':' or '=' separating hostname and path"
+            f" in location {location!r}, "
             f"e.g. 'user@host:/path' or 'user@host=/path'",
         )
     if not hostname:
@@ -109,23 +113,32 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
     """Validated configuration for :class:`RabbitMQWatcher`."""
 
     rabbitmq_host: str = Field(
-        default="localhost", description="Hostname of the RabbitMQ broker",
+        default="localhost",
+        description="Hostname of the RabbitMQ broker",
     )
     rabbitmq_port: int = Field(
-        default=5672, ge=1, le=65535, description="Port of the RabbitMQ broker",
+        default=5672,
+        ge=1,
+        le=65535,
+        description="Port of the RabbitMQ broker",
     )
     rabbitmq_virtual_host: str = Field(default="/", description="Virtual host")
     rabbitmq_queue: str = Field(
-        default="file_catalog", description="Queue name to consume from",
+        default="file_catalog",
+        description="Queue name to consume from",
     )
     rabbitmq_username: str = Field(
-        default="guest", description="Broker username",
+        default="guest",
+        description="Broker username",
     )
     rabbitmq_password: str = Field(
-        default="guest", description="Broker password",
+        default="guest",
+        description="Broker password",
     )
     rabbitmq_prefetch_count: int = Field(
-        default=1, ge=1, description="Basic QoS prefetch count",
+        default=1,
+        ge=1,
+        description="Basic QoS prefetch count",
     )
     max_retries: int = Field(
         default=-1,
@@ -133,7 +146,9 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         description="Maximum reconnection attempts; -1 = forever",
     )
     retry_delay_seconds: float = Field(
-        default=2.0, gt=0, description="Initial delay between reconnect attempts",
+        default=2.0,
+        gt=0,
+        description="Initial delay between reconnect attempts",
     )
     retry_backoff_factor: float = Field(
         default=1.5,
@@ -147,8 +162,7 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
     location_format: str = Field(
         default="user_at_host_colon_path",
         description=(
-            "Location parser: 'user_at_host_colon_path', "
-            "'hostname_only', or 'regex'"
+            "Location parser: 'user_at_host_colon_path', 'hostname_only', or 'regex'"
         ),
     )
     location_format_regex: str | None = Field(
@@ -178,8 +192,7 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         """Validate that the location format is a known parser."""
         if v not in _LOCATION_PARSERS:
             raise ValueError(
-                f"Unknown location_format {v!r}. "
-                f"Valid: {list(_LOCATION_PARSERS)}",
+                f"Unknown location_format {v!r}. Valid: {list(_LOCATION_PARSERS)}",
             )
         return v
 
@@ -188,8 +201,7 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         """location_format_regex is required when location_format is 'regex'."""
         if self.location_format == "regex" and not self.location_format_regex:
             raise ValueError(
-                "'location_format_regex' must be set "
-                "when location_format is 'regex'",
+                "'location_format_regex' must be set when location_format is 'regex'",
             )
         return self
 
@@ -278,7 +290,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     incoming JSON message.  Default keys from ``_DEFAULT_FIELD_MAP`` map
     directly to :class:`~courier.types.file.File` constructor arguments
     (``platform`` → ``source``, ``sensor`` → ``instrument``).  Extra
-    user‑override keys — those not present in the default map — are collected
+    user-override keys — those not present in the default map — are collected
     into the ``metadata`` dict on each ``File`` object.
 
     Metadata construction
@@ -286,7 +298,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     For each ``field_map`` entry, if the canonical key is in
     ``_FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA`` (currently ``{"platform",
     "sensor"}``), the resolved value is set as a ``File`` constructor argument.
-    All other user‑override keys are gathered into a ``metadata`` dict and
+    All other user-override keys are gathered into a ``metadata`` dict and
     passed as ``File(metadata={...})``.
 
     Debug logging
@@ -339,7 +351,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             if required_key not in self.field_map:
                 raise ValueError(
                     f"field_map missing required key {required_key!r}. "
-                    f"Available keys: {list(self.field_map.keys())}"
+                    f"Available keys: {list(self.field_map.keys())}",
                 )
         self.location_format = self.validated.location_format
         self.location_format_regex = self.validated.location_format_regex
@@ -460,7 +472,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 self._error_queue.put(exc)
                 return
 
-    def _connect_and_consume(self, file_queue: queue.Queue[File]) -> None:
+    def _connect_and_consume(self, file_queue: queue.Queue[File]) -> None:  # noqa: PLR0915
         """Open a single broker connection and block until consumption ends."""
         url = self._build_broker_url()
         self._logger.debug(f"Attempting to connect to broker at {url!r}")
@@ -498,8 +510,13 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 # Debug logging for field_map resolution
                 self._logger.debug(
                     "field_map resolution for message: %s",
-                    {k: (file_info.get(v), "attr" if k in _DEFAULT_FIELD_MAP else "metadata")
-                     for k, v in fm.items()}
+                    {
+                        k: (
+                            file_info.get(v),
+                            "attr" if k in _DEFAULT_FIELD_MAP else "metadata",
+                        )
+                        for k, v in fm.items()
+                    },
                 )
 
                 location: str = file_info.get(fm["location"], "")
@@ -511,20 +528,24 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     )
                     if fm.get("file_path") is not None:
                         self._logger.debug(
-                            "Received message with file_path but missing dir_path/file_name; "
+                            "Received message with file_path but missing "
+                            "dir_path/file_name; "
                             "attempting to parse file_path into components.",
                         )
                         full_path_str = file_info.get(fm["file_path"])
                         if full_path_str is None:
-                            raise ValueError("file_path key not found in message")
+                            raise ValueError("file_path key not found in message")  # noqa: TRY301
                         full_path = Path(full_path_str)
-                        hostname = hostname or full_path.parts[0]  # maybe the hostname is in the path?
+                        hostname = (
+                            hostname or full_path.parts[0]
+                        )  # maybe the hostname is in the path?
                         location_path = "/" + "/".join(full_path.parts[1:-1])
-                        file_name = full_path.name
                     else:
-                        raise ValueError(
-                            f"Message missing required file path components according to field_map. "
-                            f"Got: {file_info!r}, expected keys: 'dir_path' and 'file_name'",
+                        raise ValueError(  # noqa: TRY301
+                            f"Message missing required file path components "
+                            f"according to field_map. "
+                            f"Got: {file_info!r}, expected keys: "
+                            f"'dir_path' and 'file_name'",
                             "or a single 'file_path' key.",
                         )
                 else:
@@ -536,7 +557,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
                 timestamp = self._extract_timestamp(file_info)
 
-                # Build metadata from extra field_map entries not directly mapped to File attrs
+                # Build metadata from extra field_map entries not directly mapped to File attrs  # noqa: E501
                 metadata: dict[str, Any] = {}
                 for key, msg_key in fm.items():
                     if key in _FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA:
@@ -551,7 +572,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     file=full_path,
                     hostname=hostname,
                     source=file_info.get(fm["platform"]),
-                    instrument=file_info.get(fm["sensor"]) or ("goes18" if "G18" in str(full_path) else None),
+                    instrument=file_info.get(fm["sensor"])
+                    or ("goes18" if "G18" in str(full_path) else None),
                     timestamp=timestamp,
                     metadata=metadata,
                 )

@@ -120,7 +120,7 @@ class TestGetExecutionLog:
         assert len(logs) == 1
         assert isinstance(logs[0], ExecutionLog)
         assert logs[0].return_code == -1
-        assert "template render failed" in logs[0].stderr
+        assert "template render failed" in (logs[0].stderr or "")
 
     def test_timeout_returns_failure_log(
         self,
@@ -139,7 +139,7 @@ class TestGetExecutionLog:
         job = make_job(files=(make_frozen_file(),))
         logs = plugin.get_execution_log(job)
         assert logs[0].return_code == -1
-        assert "timed out" in logs[0].stderr
+        assert "timed out" in (logs[0].stderr or "")
 
     def test_subprocess_error_returns_failure_log(
         self,
@@ -158,7 +158,7 @@ class TestGetExecutionLog:
         job = make_job(files=(make_frozen_file(),))
         logs = plugin.get_execution_log(job)
         assert logs[0].return_code == -1
-        assert "boom" in logs[0].stderr
+        assert "boom" in (logs[0].stderr or "")
 
     def test_script_file_cleaned_up(
         self,

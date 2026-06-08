@@ -171,7 +171,8 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_snapshot(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> MetricsSnapshot:
         """Populate all metric models from the raw metric dict."""
         now = time.time()
@@ -226,7 +227,9 @@ class MetricsFetcher:
     ) -> DataMonitorMetrics:
         """Extract per-monitor data monitor metrics."""
         monitor_names = self._unique_label_values(
-            m, "courier_data_monitor_files_processed_total", "monitor_name",
+            m,
+            "courier_data_monitor_files_processed_total",
+            "monitor_name",
         )
         monitors: list[DataMonitorInfo] = []
 
@@ -238,7 +241,9 @@ class MetricsFetcher:
             # second label dimension (status).
             files_processed = 0.0
             if "courier_data_monitor_files_processed_total" in m:
-                for label_set, value in m["courier_data_monitor_files_processed_total"].items():
+                for label_set, value in m[
+                    "courier_data_monitor_files_processed_total"
+                ].items():
                     if dict(label_set).get("monitor_name") == name:
                         files_processed += value
 
@@ -254,7 +259,9 @@ class MetricsFetcher:
 
             # Last scan age
             last_scan_ts = self._get(
-                m, "courier_data_monitor_last_scan_timestamp_seconds", labels,
+                m,
+                "courier_data_monitor_last_scan_timestamp_seconds",
+                labels,
             )
             last_scan_age = 0.0
             if last_scan_ts > 0:
@@ -262,7 +269,9 @@ class MetricsFetcher:
 
             # Scan duration average (from histogram)
             avg_scan = _histogram_avg(
-                m, "courier_data_monitor_scan_duration_seconds", labels,
+                m,
+                "courier_data_monitor_scan_duration_seconds",
+                labels,
             )
 
             monitors.append(
@@ -284,11 +293,14 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_job_builders(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> JobBuilderMetrics:
         """Extract per-builder job builder metrics."""
         builder_names = self._unique_label_values(
-            m, "courier_job_builder_jobs_built_total", "job_builder_name",
+            m,
+            "courier_job_builder_jobs_built_total",
+            "job_builder_name",
         )
         builders: list[JobBuilderInfo] = []
 
@@ -297,7 +309,9 @@ class MetricsFetcher:
 
             # Files received rate
             files_received = self._get(
-                m, "courier_job_builder_files_received_total", labels,
+                m,
+                "courier_job_builder_files_received_total",
+                labels,
             )
 
             # Jobs built (status="ready")
@@ -310,12 +324,16 @@ class MetricsFetcher:
             # Success rate: emitted / (emitted + failures)
             emitted = 0.0
             if "courier_job_builder_jobs_emitted_total" in m:
-                for label_set, value in m["courier_job_builder_jobs_emitted_total"].items():
+                for label_set, value in m[
+                    "courier_job_builder_jobs_emitted_total"
+                ].items():
                     if dict(label_set).get("job_builder_name") == name:
                         emitted += value
             failures = 0.0
             if "courier_job_builder_emit_failures_total" in m:
-                for label_set, value in m["courier_job_builder_emit_failures_total"].items():
+                for label_set, value in m[
+                    "courier_job_builder_emit_failures_total"
+                ].items():
                     if dict(label_set).get("job_builder_name") == name:
                         failures += value
             total_emits = emitted + failures
@@ -323,22 +341,30 @@ class MetricsFetcher:
 
             # Active groups
             active_groups = self._get(
-                m, "courier_job_builder_active_groups", labels,
+                m,
+                "courier_job_builder_active_groups",
+                labels,
             )
 
             # Jobs discarded
             discarded = self._get(
-                m, "courier_job_builder_jobs_discarded_total", labels,
+                m,
+                "courier_job_builder_jobs_discarded_total",
+                labels,
             )
 
             # Processing duration average
             proc_avg = _histogram_avg(
-                m, "courier_job_builder_file_processing_duration_seconds", labels,
+                m,
+                "courier_job_builder_file_processing_duration_seconds",
+                labels,
             )
 
             # Files per job average
             fpj_avg = _histogram_avg(
-                m, "courier_job_builder_files_per_job", labels,
+                m,
+                "courier_job_builder_files_per_job",
+                labels,
             )
 
             builders.append(
@@ -364,11 +390,14 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_dispatchers(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> DispatcherMetrics:
         """Extract per-dispatcher metrics."""
         disp_names = self._unique_label_values(
-            m, "courier_dispatcher_jobs_processed_total", "dispatcher_name",
+            m,
+            "courier_dispatcher_jobs_processed_total",
+            "dispatcher_name",
         )
         dispatchers: list[DispatcherInfo] = []
 
@@ -381,7 +410,9 @@ class MetricsFetcher:
             total_processed = 0.0
             success = 0.0
             if "courier_dispatcher_jobs_processed_total" in m:
-                for label_set, value in m["courier_dispatcher_jobs_processed_total"].items():
+                for label_set, value in m[
+                    "courier_dispatcher_jobs_processed_total"
+                ].items():
                     label_dict = dict(label_set)
                     if label_dict.get("dispatcher_name") == name:
                         total_processed += value
@@ -394,17 +425,23 @@ class MetricsFetcher:
 
             # Execution duration average
             exec_avg = _histogram_avg(
-                m, "courier_dispatcher_job_execution_duration_seconds", labels,
+                m,
+                "courier_dispatcher_job_execution_duration_seconds",
+                labels,
             )
 
             # Logs emitted rate
             logs_emitted = self._get(
-                m, "courier_dispatcher_execution_logs_emitted_total", labels,
+                m,
+                "courier_dispatcher_execution_logs_emitted_total",
+                labels,
             )
 
             # Queue wait average
             queue_avg = _histogram_avg(
-                m, "courier_dispatcher_queue_wait_duration_seconds", labels,
+                m,
+                "courier_dispatcher_queue_wait_duration_seconds",
+                labels,
             )
 
             dispatchers.append(
@@ -429,11 +466,14 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_plugins(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> PluginMetrics:
         """Extract per-plugin metrics."""
         plugin_names = self._unique_label_values(
-            m, "courier_plugin_state", "plugin_name",
+            m,
+            "courier_plugin_state",
+            "plugin_name",
         )
         plugins: list[PluginInfo] = []
 
@@ -460,7 +500,8 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_broker(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> BrokerMetrics:
         """Extract broker connectivity and throughput metrics."""
         connected = self._get(m, "courier_broker_connected")
@@ -480,11 +521,14 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_routing(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> RoutingMetrics:
         """Extract per-target routing metrics."""
         identifiers = self._unique_label_values(
-            m, "courier_dispatcher_jobs_consumed_total", "dispatcher_identifier",
+            m,
+            "courier_dispatcher_jobs_consumed_total",
+            "dispatcher_identifier",
         )
         routes: list[RoutingInfo] = []
 
@@ -492,13 +536,19 @@ class MetricsFetcher:
             labels = {"dispatcher_identifier": identifier}
 
             jobs_consumed = self._get(
-                m, "courier_dispatcher_jobs_consumed_total", labels,
+                m,
+                "courier_dispatcher_jobs_consumed_total",
+                labels,
             )
             latency_avg = _histogram_avg(
-                m, "courier_dispatcher_dispatch_latency_seconds", labels,
+                m,
+                "courier_dispatcher_dispatch_latency_seconds",
+                labels,
             )
             queue_depth = self._get(
-                m, "courier_dispatcher_queue_depth", labels,
+                m,
+                "courier_dispatcher_queue_depth",
+                labels,
             )
 
             routes.append(
@@ -514,7 +564,8 @@ class MetricsFetcher:
 
         # Emit failures — sum all job builder emit failures
         emit_failures = self._sum_all(
-            m, "courier_job_builder_emit_failures_total",
+            m,
+            "courier_job_builder_emit_failures_total",
         )
 
         return RoutingMetrics(routes=routes, emit_failures_rate=emit_failures)
@@ -524,7 +575,8 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_state_sync(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> StateSyncMetrics:
         """Extract HA state sync metrics."""
         pushes = self._sum_all(m, "courier_state_sync_pushes_total")
@@ -544,27 +596,28 @@ class MetricsFetcher:
     # ------------------------------------------------------------------
 
     def _build_pipeline_summary(
-        self, m: dict[str, dict[frozenset[tuple[str, str]], float]],
+        self,
+        m: dict[str, dict[frozenset[tuple[str, str]], float]],
     ) -> PipelineSummary:
         """Extract end-to-end pipeline throughput metrics."""
         # Files detected — sum all data monitor files processed
         files_detected = self._sum_all(
-            m, "courier_data_monitor_files_processed_total",
+            m,
+            "courier_data_monitor_files_processed_total",
         )
 
         # Jobs built — sum jobs built with status "ready"
         jobs_built = 0.0
         if "courier_job_builder_jobs_built_total" in m:
-            for label_set, value in m[
-                "courier_job_builder_jobs_built_total"
-            ].items():
+            for label_set, value in m["courier_job_builder_jobs_built_total"].items():
                 label_dict = dict(label_set)
                 if label_dict.get("status") == "ready":
                     jobs_built += value
 
         # Jobs dispatched — sum all dispatcher jobs processed
         jobs_dispatched = self._sum_all(
-            m, "courier_dispatcher_jobs_processed_total",
+            m,
+            "courier_dispatcher_jobs_processed_total",
         )
 
         return PipelineSummary(

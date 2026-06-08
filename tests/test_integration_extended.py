@@ -725,7 +725,7 @@ def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
         def find_file(self):
             """Empty generator — exits immediately, killing the thread."""
             if False:  # pragma: no cover
-                yield
+                yield  # type: ignore[unreachable]
 
     watch_dir = tmp_path / "doa_input"
     watch_dir.mkdir()

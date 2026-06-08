@@ -25,10 +25,12 @@ class FileSystemPollerConfig(BaseModel, frozen=True):
     """Validated configuration for :class:`FileSystemPoller`."""
 
     path: str = Field(
-        ..., description="Directory path to watch for new files",
+        ...,
+        description="Directory path to watch for new files",
     )
     hostname: str = Field(
-        default="localhost", description="Hostname to attach to emitted files",
+        default="localhost",
+        description="Hostname to attach to emitted files",
     )
 
 

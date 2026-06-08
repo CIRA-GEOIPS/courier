@@ -21,7 +21,7 @@ class TestFileSystemPollerConfig:
 
     def test_requires_path(self):
         with pytest.raises(ValidationError):
-            FileSystemPollerConfig()
+            FileSystemPollerConfig()  # type: ignore[call-arg]
 
     def test_default_hostname(self):
         cfg = FileSystemPollerConfig(path="/tmp")

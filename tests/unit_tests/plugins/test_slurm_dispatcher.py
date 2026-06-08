@@ -145,7 +145,7 @@ class TestGetExecutionLog:
         assert len(logs) == 1
         assert isinstance(logs[0], ExecutionLog)
         assert logs[0].return_code == 0
-        assert "42" in logs[0].stdout
+        assert "42" in (logs[0].stdout or "")
 
     def test_full_cycle_completed(
         self, mock_service: MagicMock, tmp_path: Path, make_job, mocker

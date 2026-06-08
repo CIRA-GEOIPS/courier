@@ -54,7 +54,7 @@ def _make_job(
     file = FrozenFile(file=None, hostname=None, source=None, instrument=None,
                       processing_stage=None, domain=None)
     files: set[FrozenFile] = {file}
-    j = Job(name="test", identifier=identifier, config={}, files=files)  # type: ignore[arg-type]
+    j = Job(name="test", identifier=identifier, config={}, files=files)
     if last_modified is not None:
         j.last_modified = last_modified
     return j

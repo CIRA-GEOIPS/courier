@@ -1,17 +1,15 @@
-"""CLI ``courier plugins`` sub-app — list plugins.
-"""
+"""CLI ``courier plugins`` sub-app — list plugins."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path  # noqa: TC003 — Typer reads annotation at runtime.
-from typing import Annotated
-from collections.abc import Iterator
+from typing import TYPE_CHECKING, Annotated
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
-
 from pluginify.interfaces.base import BaseClassInterface, BaseYamlInterface
 from lexeme_type.lexeme import Lexeme
 
@@ -25,6 +23,11 @@ from courier.interfaces import (
 )
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from pluginify.interfaces.base import BaseClassInterface, BaseYamlInterface
+
 plugins_app = typer.Typer(
     name="plugins",
     help="Inspect courier's plugins.",
@@ -36,7 +39,9 @@ _CONFIG_OPTION = typer.Option(
     "-c",
     exists=True,
     readable=True,
-    help="Path to a service YAML. Returns only plugins referenced in the service config.",
+    help=(
+        "Path to a service YAML. Returns only plugins referenced in the service config."
+    ),
 )
 _NAMESPACE_OPTION = typer.Option(
     "--namespace",
@@ -95,7 +100,11 @@ def get_plugins(
     for plugin_type, registry in PLUGIN_REGISTRIES.items():
         for plugin in registry.get_plugins():
             plugin_name = plugin.name
-            if not config or _config_references_plugin(config, plugin_type, plugin_name):
+            if not config or _config_references_plugin(
+                config.model_dump(),
+                plugin_type,
+                plugin_name,
+            ):
                 plugins.append([plugin_type, plugin_name])
     return ns, plugins
 

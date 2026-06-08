@@ -39,7 +39,7 @@ class SerialBashConfig(BaseModel, frozen=True):
 
 
 class SerialBashDispatcher(Dispatcher):
-    """Execute a single Jinja2-templated bash script for an entire job.
+    r"""Execute a single Jinja2-templated bash script for an entire job.
 
     One script is rendered and executed per job — all files in the job are
     available in the template as a list. A single :class:`ExecutionLog` is
@@ -120,7 +120,8 @@ class SerialBashDispatcher(Dispatcher):
             return
         self.validated = SerialBashConfig.model_validate(config or {})
         self._template = jinja2.Environment(
-            undefined=jinja2.DebugUndefined, autoescape=False,  # noqa: S701
+            undefined=jinja2.DebugUndefined,
+            autoescape=False,  # noqa: S701
         ).from_string(self.validated.bash_script)
         self._logger.debug(
             "Initialized SerialBashDispatcher with config: "
@@ -135,8 +136,7 @@ class SerialBashDispatcher(Dispatcher):
         """Render the Jinja2 bash template with job and config context."""
         context = {
             "files": [
-                f.to_dict()
-                for f in sorted(job.files, key=lambda f: str(f.file))
+                f.to_dict() for f in sorted(job.files, key=lambda f: str(f.file))
             ],
             "job": {
                 "name": job.name,
@@ -185,7 +185,9 @@ class SerialBashDispatcher(Dispatcher):
         script_path: str | None = None
         try:
             with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".sh", delete=False,
+                mode="w",
+                suffix=".sh",
+                delete=False,
             ) as script_file:
                 script_file.write(script_content)
                 script_path = script_file.name

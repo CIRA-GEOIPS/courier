@@ -26,7 +26,6 @@ from kombu.exceptions import OperationalError
 from courier.cli.config_loader import load_config
 from courier.constants import (
     DISPATCHER_QUEUE,
-    FILE_FOUND_EXCHANGE,
 )
 from courier.routing import build_default_resolver
 
@@ -117,7 +116,10 @@ def list_cmd(
     config: Annotated[Path, _CONFIG_OPTION],
     namespace: Annotated[str | None, _NAMESPACE_OPTION] = None,
 ) -> None:
-    """Print every queue the service is expected to use (exchanges managed separately)."""
+    """Print every queue the service is expected to use.
+
+    Exchanges are managed separately.
+    """
     ns, queues = _expected_queues(config, namespace)
     typer.echo(f"namespace: {ns}")
     for name in sorted(queues):
@@ -145,16 +147,15 @@ def prune_cmd(
     # Fan-out consumers use server-generated exclusive queue names
     # (e.g. amq.gen-xyz...). These are auto-managed by the broker and
     # MUST NOT be deleted --- they carry live consumer state.
-    _SERVER_GEN_PREFIX = "amq."
-    unsafe = [q for q in candidates if q.startswith(_SERVER_GEN_PREFIX)]
+    _server_gen_prefix = "amq."
+    unsafe = [q for q in candidates if q.startswith(_server_gen_prefix)]
     if unsafe:
         typer.echo(
             f"WARNING: refusing to consider {len(unsafe)} server-generated "
-            f"queue(s) (amq.* are auto-managed by the broker): "
-            + ", ".join(unsafe),
+            f"queue(s) (amq.* are auto-managed by the broker): " + ", ".join(unsafe),
             err=True,
         )
-    candidates = [q for q in candidates if not q.startswith(_SERVER_GEN_PREFIX)]
+    candidates = [q for q in candidates if not q.startswith(_server_gen_prefix)]
 
     if not candidates:
         typer.echo("no candidates provided; nothing to prune", err=True)
