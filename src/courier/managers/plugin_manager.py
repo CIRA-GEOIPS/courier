@@ -363,17 +363,20 @@ class PluginManager(ServiceManager):
         """Check if plugin manager is healthy.
 
         Returns True if running and at least one plugin is healthy,
-        or if not running (valid state), or if no plugins are registered.
+        or if not running and no plugins are registered, or if no
+        plugins are registered at all.
 
         Returns
         -------
         bool
             True if manager is healthy, False otherwise.
         """
-        if self._state != PluginRunState.RUNNING:
-            return True
-
         with self._lock:
+            if self._state != PluginRunState.RUNNING:
+                # If plugins are registered but not started, not healthy.
+                # If no plugins are registered, nothing to monitor — healthy.
+                return not bool(self._plugins)
+
             health = [
                 f"{info.plugin.name} is {info.state} and {info.plugin.is_healthy()}"
                 for info in self._plugins.values()
@@ -382,6 +385,8 @@ class PluginManager(ServiceManager):
             healthy_plugins = filter_map(
                 lambda info: (
                     info.state in [PluginRunState.RUNNING, PluginRunState.STARTING]
+                    and info.thread is not None
+                    and info.thread.is_alive()
                 ),
                 lambda info: info.plugin.is_healthy(),
                 self._plugins.values(),

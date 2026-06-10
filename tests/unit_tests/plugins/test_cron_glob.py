@@ -77,17 +77,17 @@ class TestCronGlobConfig:
                 {"glob_pattern": "*.nc", "cron_expression": "* * * * *"}
             )
 
-    def test_missing_glob_pattern_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValidationError):
-            CronGlobConfig.model_validate(
-                {"path": str(tmp_path), "cron_expression": "* * * * *"}
-            )
+    def test_glob_pattern_default_applied(self, tmp_path: Path) -> None:
+        cfg = CronGlobConfig.model_validate(
+            {"path": str(tmp_path), "cron_expression": "* * * * *"}
+        )
+        assert cfg.glob_pattern == "*"
 
-    def test_missing_cron_expression_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValidationError):
-            CronGlobConfig.model_validate(
-                {"path": str(tmp_path), "glob_pattern": "*.nc"}
-            )
+    def test_cron_expression_default_applied(self, tmp_path: Path) -> None:
+        cfg = CronGlobConfig.model_validate(
+            {"path": str(tmp_path), "glob_pattern": "*.nc"}
+        )
+        assert cfg.cron_expression == "0 * * * *"
 
     def test_invalid_cron_expression_raises(self, tmp_path: Path) -> None:
         """A syntactically invalid cron expression must be caught at config time."""

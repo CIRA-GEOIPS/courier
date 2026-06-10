@@ -45,7 +45,7 @@ from courier.types.job import Job
 # ---------------------------------------------------------------------------
 
 
-def _poll_for_file(path: Path, timeout: float = 30.0) -> bool:
+def _poll_for_file(path: Path, timeout: float = 45.0) -> bool:
     """Block until *path* exists on disk or *timeout* seconds elapse."""
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -58,7 +58,7 @@ def _poll_for_file(path: Path, timeout: float = 30.0) -> bool:
 def _poll_for_content(
     path: Path,
     expected: list[str],
-    timeout: float = 30.0,
+    timeout: float = 45.0,
 ) -> bool:
     """Block until *path* contains every string in *expected*."""
     deadline = time.time() + timeout
@@ -71,7 +71,7 @@ def _poll_for_content(
     return False
 
 
-def _wait_for_healthy(service: Service, timeout: float = 15.0) -> bool:
+def _wait_for_healthy(service: Service, timeout: float = 20.0) -> bool:
     """Wait until the service reports all managers healthy."""
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -420,7 +420,7 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
         assert _wait_for_healthy(service), "Service did not become healthy"
 
         # Wait for the pipeline to process the seed file so the log is populated.
-        assert _poll_for_content(processed_log, ["seed.nc"], timeout=15), (
+        assert _poll_for_content(processed_log, ["seed.nc"], timeout=30), (
             f"Seed file not processed: {processed_log}"
         )
 

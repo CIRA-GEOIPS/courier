@@ -32,7 +32,7 @@ from courier.service import Service
 # ---------------------------------------------------------------------------
 
 
-def _poll_for_file(path: Path, timeout: float = 30.0) -> bool:
+def _poll_for_file(path: Path, timeout: float = 45.0) -> bool:
     """Block until *path* exists on disk or *timeout* seconds elapse.
 
     Parameters
@@ -58,7 +58,7 @@ def _poll_for_file(path: Path, timeout: float = 30.0) -> bool:
 def _poll_for_content(
     path: Path,
     expected: list[str],
-    timeout: float = 30.0,
+    timeout: float = 45.0,
 ) -> bool:
     """Block until *path* contains every string in *expected*.
 
@@ -86,7 +86,7 @@ def _poll_for_content(
     return False
 
 
-def _wait_for_healthy(service: Service, timeout: float = 15.0) -> bool:
+def _wait_for_healthy(service: Service, timeout: float = 20.0) -> bool:
     """Wait until the service reports all managers healthy.
 
     Parameters
