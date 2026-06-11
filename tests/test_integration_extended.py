@@ -504,7 +504,7 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
         # Drain a single ExecutionLog from the dispatcher queue.
         # Use a thread with timeout so the test never blocks indefinitely.
         def _consume_one() -> ExecutionLog | None:
-            for raw_message in service.consume(DISPATCHER_QUEUE):
+            for raw_message, _parent_ctx in service.consume(DISPATCHER_QUEUE):
                 return ExecutionLog.from_string(raw_message)
             return None
 

@@ -59,6 +59,31 @@ def _normalize_publish_error(
     )
 
 
+def _normalize_headers(raw_headers: dict | None) -> dict[str, str]:
+    """Normalize Kombu message headers for W3C trace context extraction.
+
+    - None → {}
+    - bytes → str via UTF-8 decode (drop non-UTF-8)
+    - int/float/bool → str via str()
+    - Drop dict, list, and non-serializable values
+    """
+    if raw_headers is None:
+        return {}
+    normalized: dict[str, str] = {}
+    for key, val in raw_headers.items():
+        if isinstance(val, str):
+            normalized[key] = val
+        elif isinstance(val, bytes):
+            try:
+                normalized[key] = val.decode("utf-8")
+            except UnicodeDecodeError:
+                continue  # drop non-UTF-8 bytes
+        elif isinstance(val, (int, float, bool)):
+            normalized[key] = str(val)
+        # else: drop (dict, list, None, etc.)
+    return normalized
+
+
 # ---------------------------------------------------------------------------
 # Pure connection / messaging functions
 # ---------------------------------------------------------------------------
@@ -144,6 +169,7 @@ def publish(
     queue: "kombu.Queue",
     body: str,
     confirm: bool = False,
+    headers: dict | None = None,
 ) -> None:
     """Publish *body* to *queue* using *conn*.
 
@@ -159,6 +185,8 @@ def publish(
         When ``True`` and the transport supports publisher confirms (AMQP),
         block until the broker acknowledges the message. Silently ignored on
         transports that lack the concept (e.g. memory). Default ``False``.
+    headers : dict or None, optional
+        Message headers to attach (used for trace context propagation).
 
     Raises
     ------
@@ -183,6 +211,7 @@ def publish(
                 routing_key=queue.name,
                 exchange="",
                 declare=[queue],
+                headers=headers or {},
             )
     except KombuError as exc:
         raise _normalize_publish_error(exc, queue.name) from exc
@@ -192,7 +221,9 @@ def messages(
     conn: "kombu.Connection",
     queue: "kombu.Queue",
     stop_event: threading.Event | None = None,
-) -> Generator[tuple[str, Callable[[], None], Callable[[], None]], None, None]:
+) -> Generator[
+    tuple[str, Callable[[], None], Callable[[], None], dict[str, str]], None, None
+]:
     """Yield ``(body, ack, reject)`` tuples from *queue* until *stop_event* is set.
 
     Drains the broker connection in 0.5-second windows so that a
@@ -211,10 +242,10 @@ def messages(
 
     Yields
     ------
-    tuple[str, Callable[[], None], Callable[[], None]]
-        ``(body, ack, reject)`` where *body* is the decoded message string,
-        *ack* acknowledges successful processing, and *reject* re-queues the
-        message for retry.
+    tuple[str, Callable[[], None], Callable[[], None], dict[str, str]]
+        ``(body, ack, reject, headers)`` where *body* is the decoded message string,
+        *ack* acknowledges successful processing, *reject* re-queues the
+        message for retry, and *headers* are the normalized message headers.
 
     Notes
     -----
@@ -238,7 +269,8 @@ def messages(
                 def _reject(msg: Any = msg) -> None:
                     msg.reject(requeue=True)
 
-                yield decoded, msg.ack, _reject
+                headers = _normalize_headers(msg.headers)
+                yield decoded, msg.ack, _reject, headers
 
 
 def declare_fanout_exchange(
@@ -275,10 +307,13 @@ def publish_fanout(
     exchange: "kombu.Exchange",
     body: str,
     confirm: bool = False,
+    headers: dict | None = None,
 ) -> None:
     """Publish *body* to a fanout *exchange* using *conn*.
 
     Same error-handling strategy as :func:`publish`.
+    headers : dict or None, optional
+        Message headers to attach (used for trace context propagation).
     """
     scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
     use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
@@ -295,6 +330,7 @@ def publish_fanout(
                 exchange=exchange,
                 routing_key="",
                 declare=[exchange],
+                headers=headers or {},
             )
     except KombuError as exc:
         raise _normalize_publish_error(exc, exchange.name) from exc

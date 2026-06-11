@@ -6,6 +6,7 @@ import threading
 import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from opentelemetry.trace import get_current_span
 from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
@@ -13,6 +14,15 @@ from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
 from courier.schema import DataMonitorConfig
+from courier.tracing import (
+    ATTR_FILE_HOSTNAME,
+    ATTR_FILE_PATH,
+    ATTR_FILE_SOURCE,
+    ATTR_PLUGIN_FAMILY,
+    ATTR_PLUGIN_NAME,
+    ATTR_PLUGIN_VERSION,
+    get_tracer,
+)
 from courier.types.file import File
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
@@ -72,29 +82,74 @@ class DataMonitorBasePlugin(ServicePlugin):
         """Add metadata to file before emitting."""
         from courier.utils.metadata import apply_metadata_from_configs  # noqa: PLC0415
 
-        return apply_metadata_from_configs(
-            file_obj=file,
-            configs=self.metadata_matchers,
-            require_match=False,
-        )
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "data_monitor.add_metadata",
+            attributes={"courier.num_matchers": len(self.metadata_matchers)},
+        ):
+            return apply_metadata_from_configs(
+                file_obj=file,
+                configs=self.metadata_matchers,
+                require_match=False,
+            )
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""
+        tracer = get_tracer(__name__)
         for incoming_file in self.find_file():
-            try:
-                file_with_metadata = self.add_metadata_to_file(incoming_file)
-                self._logger.info(f"Found file: {file_with_metadata}")
-                self.emit(file_with_metadata)
-                self._files_processed.labels(
-                    monitor_name=self.name,
-                    status="success",
-                ).inc()
-            except CourierError:
-                self._files_processed.labels(
-                    monitor_name=self.name,
-                    status="failure",
-                ).inc()
-                self._logger.exception(f"Error processing file {incoming_file}")
+            incoming_path = (
+                str(incoming_file.file) if incoming_file.file else ""
+            )
+            with tracer.start_as_current_span(
+                "data_monitor.process_file",
+                attributes={
+                    ATTR_PLUGIN_NAME: self.name,
+                    ATTR_PLUGIN_VERSION: str(getattr(self, "version", "")),
+                    ATTR_PLUGIN_FAMILY: self.family,
+                    ATTR_FILE_PATH: incoming_path,
+                    ATTR_FILE_SOURCE: incoming_file.source or "",
+                },
+            ):
+                try:
+                    file_with_metadata = self.add_metadata_to_file(incoming_file)
+                    get_current_span().add_event(
+                        "file.found",
+                        attributes={
+                            ATTR_FILE_PATH: incoming_path,
+                        },
+                    )
+                    self._logger.info(f"Found file: {file_with_metadata}")
+                    emitted_path = (
+                        str(file_with_metadata.file)
+                        if file_with_metadata.file
+                        else ""
+                    )
+                    with tracer.start_as_current_span(
+                        "data_monitor.emit_file",
+                        attributes={
+                            ATTR_FILE_PATH: emitted_path,
+                            ATTR_FILE_HOSTNAME: (
+                                file_with_metadata.hostname or ""
+                            ),
+                        },
+                    ):
+                        self.emit(file_with_metadata)
+                        get_current_span().add_event(
+                            "file.emitted",
+                            attributes={
+                                ATTR_FILE_PATH: emitted_path,
+                            },
+                        )
+                    self._files_processed.labels(
+                        monitor_name=self.name,
+                        status="success",
+                    ).inc()
+                except CourierError:
+                    self._files_processed.labels(
+                        monitor_name=self.name,
+                        status="failure",
+                    ).inc()
+                    self._logger.exception(f"Error processing file {incoming_file}")
 
     @log_execution
     def start(self) -> None:

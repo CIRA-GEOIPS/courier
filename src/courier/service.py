@@ -25,6 +25,12 @@ from courier.errors import ConfigurationError
 from courier.managers.plugin_manager import PluginManager
 from courier.managers.prometheus_manager import PrometheusManager
 from courier.routing import TargetResolver, build_default_resolver
+from courier.tracing import (
+    extract_context,
+    init_tracing,
+    inject_trace_headers,
+    shutdown_tracing,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Sequence
@@ -115,6 +121,8 @@ class Service:
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
 
+        init_tracing(self._config)
+
     @property
     def target_resolver(self) -> TargetResolver:
         """Return the service's :class:`TargetResolver`.
@@ -157,7 +165,10 @@ class Service:
             exchange_name = self._broker_manager.get_queue_name(queue)
             with self._broker_manager.get_connection_context() as conn:
                 exchange = declare_fanout_exchange(conn, exchange_name)
-                publish_fanout(conn, exchange, message, confirm=confirm)
+                w3c_headers = inject_trace_headers()
+                publish_fanout(
+                    conn, exchange, message, confirm=confirm, headers=w3c_headers,
+                )
                 BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
             return
         # --- Direct queue path
@@ -169,10 +180,11 @@ class Service:
         with self._broker_manager.get_connection_context() as conn:
             self._logger.debug(f"Emitting message to queue '{queue_name}': {message}")
             q = declare_queue(conn, queue_name, durable=True)
-            publish(conn, q, message, confirm=confirm)
+            w3c_headers = inject_trace_headers()
+            publish(conn, q, message, confirm=confirm, headers=w3c_headers)
             BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
 
-    def consume(self, queue: str) -> Generator[str, None, None]:
+    def consume(self, queue: str) -> Generator[tuple[str, Any], None, None]:
         """Yield messages from a message broker queue.
 
         Parameters
@@ -182,8 +194,9 @@ class Service:
 
         Yields
         ------
-        str
-            The decoded message content from the queue.
+        tuple[str, Any]
+            ``(body, parent_ctx)`` where *body* is the decoded message content
+            and *parent_ctx* is the extracted trace context (or None).
 
         Notes
         -----
@@ -199,7 +212,7 @@ class Service:
             with self._broker_manager.get_connection_context() as conn:
                 exchange = declare_fanout_exchange(conn, exchange_name)
                 q = declare_fanout_queue(conn, exchange)
-                for body, ack, reject in broker_messages(conn, q):
+                for body, ack, reject, headers in broker_messages(conn, q):
                     try:
                         self._logger.debug(
                             f"Received message from exchange '{exchange_name}': {body}",
@@ -207,7 +220,8 @@ class Service:
                         BROKER_MESSAGES_RECEIVED.labels(
                             queue_name=exchange_name,
                         ).inc()
-                        yield body
+                        parent_ctx = extract_context(headers)
+                        yield body, parent_ctx
                         ack()
                     except GeneratorExit:
                         reject()
@@ -227,7 +241,7 @@ class Service:
 
         with self._broker_manager.get_connection_context() as conn:
             q = declare_queue(conn, queue_name, durable=True)
-            for body, ack, reject in broker_messages(conn, q):
+            for body, ack, reject, headers in broker_messages(conn, q):
                 try:
                     self._logger.debug(
                         f"Received message from queue '{queue_name}': {body}",
@@ -235,7 +249,8 @@ class Service:
                     BROKER_MESSAGES_RECEIVED.labels(
                         queue_name=queue_name,
                     ).inc()
-                    yield body
+                    parent_ctx = extract_context(headers)
+                    yield body, parent_ctx
                     ack()
                 except GeneratorExit:
                     reject()
@@ -521,6 +536,7 @@ class Service:
     def _cleanup(self) -> None:
         """Perform complete resource cleanup for service shutdown."""
         self._logger.info("Cleaning up resources...")
+        shutdown_tracing()
         self._stop_managers()
         self._logger.info(f"Service {self._config.service_id} stopped")
 

@@ -13,6 +13,10 @@ from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.managers.base import ServiceManager
 from courier.metrics import PLUGIN_HEALTH, PLUGIN_RESTARTS, PLUGIN_STATE
+from courier.tracing import (
+    ATTR_PLUGIN_NAME,
+    get_tracer,
+)
 from courier.utils.decorators import log_execution
 from courier.utils.functional import filter_map
 from courier.utils.logging import get_logger
@@ -105,6 +109,8 @@ class PluginManager(ServiceManager):
         self._plugin_restart_metric = PLUGIN_RESTARTS
         self._plugin_health_metric = PLUGIN_HEALTH
 
+        self._tracer = get_tracer(__name__)
+
     def register_plugin(
         self,
         plugin: type[ServicePlugin],
@@ -191,6 +197,15 @@ class PluginManager(ServiceManager):
                 self._logger.info(
                     f"Plugin started successfully: {plugin_info.plugin.name}",
                 )
+
+                span = self._tracer.start_span("plugin_lifecycle")
+                span.add_event(
+                    "plugin.started",
+                    attributes={
+                        ATTR_PLUGIN_NAME: plugin_info.plugin.name,
+                    },
+                )
+                span.end()
 
                 plugin_info.ready.set()
 
@@ -280,6 +295,15 @@ class PluginManager(ServiceManager):
 
         self._logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
 
+        span = self._tracer.start_span("plugin_lifecycle")
+        span.add_event(
+            "plugin.stopped",
+            attributes={
+                ATTR_PLUGIN_NAME: plugin_info.plugin.name,
+            },
+        )
+        span.end()
+
     def _monitor_plugins(self) -> None:
         """Monitor plugin health and restart failed plugins."""
         while self._state == PluginRunState.RUNNING:
@@ -323,6 +347,19 @@ class PluginManager(ServiceManager):
                                         )
                                         plugin_info.state = PluginRunState.FAILED
                                         failed_plugins.append(plugin_info)
+
+                                        span = self._tracer.start_span(
+                                            "plugin_lifecycle",
+                                        )
+                                        span.add_event(
+                                            "plugin.health_check_failed",
+                                            attributes={
+                                                ATTR_PLUGIN_NAME: (
+                                                    plugin_info.plugin.name
+                                                ),
+                                            },
+                                        )
+                                        span.end()
 
                     except CourierError:
                         self._logger.exception(
@@ -368,6 +405,15 @@ class PluginManager(ServiceManager):
                     f"(attempt {plugin_info.restart_count + 1}/"
                     f"{self._config.plugin_max_restart_attempts})",
                 )
+
+                span = self._tracer.start_span("plugin_lifecycle")
+                span.add_event(
+                    "plugin.restarting",
+                    attributes={
+                        ATTR_PLUGIN_NAME: plugin_name,
+                    },
+                )
+                span.end()
 
                 plugin_info.state = PluginRunState.RESTARTING
                 plugin_info.restart_count += 1

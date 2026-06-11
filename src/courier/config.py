@@ -4,6 +4,8 @@ import os
 import uuid
 from dataclasses import dataclass, field
 
+from courier.errors import ConfigurationError
+
 
 @dataclass(frozen=True)
 class ServiceConfig:
@@ -56,6 +58,18 @@ class ServiceConfig:
     production_mode : bool, optional
         Enable production mode with enforced minimum INFO log level. Defaults
         to environment variable PRODUCTION or False.
+    tracing_enabled : bool, optional
+        Enable OpenTelemetry tracing. Defaults to environment variable
+        COURIER_TRACING_ENABLED or True. Set to "false" to disable.
+    tracing_endpoint : str, optional
+        OTLP collector endpoint URL. Defaults to OTEL_EXPORTER_OTLP_ENDPOINT,
+        then COURIER_TRACING_ENDPOINT, then http://localhost:4318/v1/traces.
+    tracing_service_name : str, optional
+        OpenTelemetry service name. Defaults to COURIER_TRACING_SERVICE_NAME
+        or empty string (falls back to ``service_id``).
+    tracing_sample_rate : float, optional
+        Trace sampling rate between 0.0 and 1.0. Defaults to
+        COURIER_TRACING_SAMPLE_RATE or 1.0 (always on).
 
     Examples
     --------
@@ -124,3 +138,33 @@ class ServiceConfig:
     production_mode: bool = field(
         default_factory=lambda: os.environ.get("PRODUCTION", "false").lower() == "true",
     )
+    tracing_enabled: bool = field(
+        default_factory=lambda: (
+            os.environ.get("COURIER_TRACING_ENABLED", "true").lower() != "false"
+        ),
+    )
+    tracing_endpoint: str = field(
+        default_factory=lambda: os.environ.get(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            os.environ.get(
+                "COURIER_TRACING_ENDPOINT",
+                "http://localhost:4318/v1/traces",
+            ),
+        ),
+    )
+    tracing_service_name: str = field(
+        default_factory=lambda: os.environ.get("COURIER_TRACING_SERVICE_NAME", ""),
+    )
+    tracing_sample_rate: float = field(
+        default_factory=lambda: float(
+            os.environ.get("COURIER_TRACING_SAMPLE_RATE", "1.0"),
+        ),
+    )
+
+    def __post_init__(self) -> None:
+        """Validate tracing_sample_rate range."""
+        if not (0.0 <= self.tracing_sample_rate <= 1.0):
+            raise ConfigurationError(
+                "tracing_sample_rate must be between 0.0 and 1.0, "
+                f"got {self.tracing_sample_rate}",
+            )

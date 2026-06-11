@@ -8,6 +8,7 @@ import time
 import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from opentelemetry.trace import get_current_span
 from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
@@ -27,6 +28,15 @@ from courier.metrics import (
     JOB_BUILDER_JOBS_DISCARDED,
     JOB_BUILDER_JOBS_EMITTED,
     collect_labeled,
+)
+from courier.tracing import (
+    ATTR_CORRELATION_ID,
+    ATTR_FILE_PATH,
+    ATTR_JOB_GROUP_NAME,
+    ATTR_JOB_ID,
+    ATTR_JOB_NAME,
+    ATTR_TARGET,
+    get_tracer,
 )
 from courier.types.file import FrozenFile
 from courier.utils.decorators import log_execution, retry_with_backoff
@@ -217,41 +227,46 @@ class JobBuilder(ServicePlugin):
         Mutates *succeeded* / *failed* in place so the caller can log a
         single partial-failure line for the whole fan-out.
         """
-        emit_key = f"{job.identifier}::{target}"
-        if self._sync is not None and not self._sync.try_claim_emit(
-            emit_key,
-            job.timeout,
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "job_builder.emit_one",
+            attributes={ATTR_TARGET: target},
         ):
-            self._logger.info(
-                f"Job {job.identifier} target {target} already claimed; skipping",
-                extra={"correlation_id": job.correlation_id},
-            )
-            return
-        queue_name = self._resolve_target(target)
-        try:
-            self._publish_with_retry(queue_name, message)
-        except TransientBrokerError as exc:
-            self._emit_failures.labels(
-                job_builder_name=self.name,
-                target=target,
-                reason="transient",
-            ).inc()
-            failed.append((target, f"transient:{exc!s}"))
-        except FatalBrokerError as exc:
-            self._emit_failures.labels(
-                job_builder_name=self.name,
-                target=target,
-                reason="fatal",
-            ).inc()
-            failed.append((target, f"fatal:{exc!s}"))
-            if self._sync is not None:
-                self._sync.release_emit_claim(emit_key)
-        else:
-            self._jobs_emitted.labels(
-                job_builder_name=self.name,
-                target=target,
-            ).inc()
-            succeeded.append(target)
+            emit_key = f"{job.identifier}::{target}"
+            if self._sync is not None and not self._sync.try_claim_emit(
+                emit_key,
+                job.timeout,
+            ):
+                self._logger.info(
+                    f"Job {job.identifier} target {target} already claimed; skipping",
+                    extra={"correlation_id": job.correlation_id},
+                )
+                return
+            queue_name = self._resolve_target(target)
+            try:
+                self._publish_with_retry(queue_name, message)
+            except TransientBrokerError as exc:
+                self._emit_failures.labels(
+                    job_builder_name=self.name,
+                    target=target,
+                    reason="transient",
+                ).inc()
+                failed.append((target, f"transient:{exc!s}"))
+            except FatalBrokerError as exc:
+                self._emit_failures.labels(
+                    job_builder_name=self.name,
+                    target=target,
+                    reason="fatal",
+                ).inc()
+                failed.append((target, f"fatal:{exc!s}"))
+                if self._sync is not None:
+                    self._sync.release_emit_claim(emit_key)
+            else:
+                self._jobs_emitted.labels(
+                    job_builder_name=self.name,
+                    target=target,
+                ).inc()
+                succeeded.append(target)
 
     def _resolve_target(self, target: str) -> str:
         """Resolve a dispatcher identifier to its broker queue name.
@@ -296,22 +311,30 @@ class JobBuilder(ServicePlugin):
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
         self._logger.debug("Starting to handle incoming files")
-        for file_string in self.parent_service.consume(FILE_FOUND_EXCHANGE):
+        tracer = get_tracer(__name__)
+        for file_string, parent_ctx in self.parent_service.consume(FILE_FOUND_EXCHANGE):
             start_time = time.time()
-            self._files_received.labels(job_builder_name=self.name).inc()
-            self._logger.debug(f"Received file {file_string} from file queue")
             file = FrozenFile.from_string(str(file_string))
-            for job_group in self.job_groups:
-                self._logger.debug(
-                    f"Processing file {file} in job group {job_group.name}",
+            with tracer.start_as_current_span(
+                "job_builder.build_job",
+                context=parent_ctx,
+                attributes={
+                    ATTR_FILE_PATH: str(file.file) if file.file else "",
+                },
+            ):
+                self._files_received.labels(job_builder_name=self.name).inc()
+                self._logger.debug(f"Received file {file_string} from file queue")
+                for job_group in self.job_groups:
+                    self._logger.debug(
+                        f"Processing file {file} in job group {job_group.name}",
+                    )
+                    self._process_job_group(job_group, file)
+                self._file_processing_duration.labels(
+                    job_builder_name=self.name,
+                ).observe(time.time() - start_time)
+                self._active_job_groups.labels(job_builder_name=self.name).set(
+                    len(self.job_groups),
                 )
-                self._process_job_group(job_group, file)
-            self._file_processing_duration.labels(
-                job_builder_name=self.name,
-            ).observe(time.time() - start_time)
-            self._active_job_groups.labels(job_builder_name=self.name).set(
-                len(self.job_groups),
-            )
         self._logger.error("Exiting handle_incoming_files loop unexpectedly")
 
     # ------------------------------------------------------------------
@@ -330,25 +353,52 @@ class JobBuilder(ServicePlugin):
 
     def _process_job_group(self, job_group: JobGroup, file: FrozenFile) -> None:
         """Add a file to a group, emit ready jobs, and prune timed-out ones."""
-        added, ready, updates = self._add_file_locked(job_group, file)
-        if added:
-            self._logger.debug(f"File added to job group {job_group.name}")
-        self._push_updates(job_group.name, updates)
-        targets = self._targets_for_group(job_group)
-        for ready_job in ready:
-            self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
-            self.emit(ready_job, targets)
-            self._jobs_built.labels(
-                status="ready",
-                job_builder_name=self.name,
-            ).inc()
-            self._files_per_job.labels(
-                job_builder_name=self.name,
-            ).observe(len(ready_job.files))
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "job_builder.process_job_group",
+            attributes={ATTR_JOB_GROUP_NAME: job_group.name},
+        ):
+            added, ready, updates = self._add_file_locked(job_group, file)
+            if added:
+                self._logger.debug(f"File added to job group {job_group.name}")
+            self._push_updates(job_group.name, updates)
+            targets = self._targets_for_group(job_group)
+            for ready_job in ready:
+                self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
+                with tracer.start_as_current_span(
+                    "job_builder.emit_job",
+                    attributes={
+                        ATTR_JOB_ID: ready_job.identifier,
+                        ATTR_JOB_NAME: ready_job.name or "",
+                        ATTR_CORRELATION_ID: ready_job.correlation_id,
+                    },
+                ):
+                    self.emit(ready_job, targets)
+                    get_current_span().add_event(
+                        "job.ready",
+                        attributes={
+                            ATTR_JOB_ID: ready_job.identifier,
+                            ATTR_CORRELATION_ID: ready_job.correlation_id,
+                        },
+                    )
+                    get_current_span().add_event(
+                        "job.emitted",
+                        attributes={
+                            ATTR_JOB_ID: ready_job.identifier,
+                            ATTR_CORRELATION_ID: ready_job.correlation_id,
+                        },
+                    )
+                self._jobs_built.labels(
+                    status="ready",
+                    job_builder_name=self.name,
+                ).inc()
+                self._files_per_job.labels(
+                    job_builder_name=self.name,
+                ).observe(len(ready_job.files))
 
-        self._pop_ready_jobs(job_group, ready)
+            self._pop_ready_jobs(job_group, ready)
 
-        self._cleanup_old_jobs(job_group)
+            self._cleanup_old_jobs(job_group)
 
     def _add_file_locked(
         self,

@@ -8,6 +8,7 @@ import types
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from opentelemetry.trace import get_current_span
 from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import (
@@ -27,6 +28,12 @@ from courier.metrics import (
     DISPATCHER_JOBS_PROCESSED,
     DISPATCHER_QUEUE_WAIT_DURATION,
     collect_labeled,
+)
+from courier.tracing import (
+    ATTR_CORRELATION_ID,
+    ATTR_EXECUTION_RETURN_CODE,
+    ATTR_JOB_ID,
+    get_tracer,
 )
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
@@ -90,8 +97,20 @@ class Dispatcher(ServicePlugin):
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
-        self._logger.debug(f"Yielding execution log for job: {job}")
-        return [ExecutionLog(return_code=None, stdout=None, stderr=None, hostname=None)]
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "dispatcher.execute_job",
+            attributes={
+                ATTR_JOB_ID: job.identifier,
+                ATTR_CORRELATION_ID: job.correlation_id,
+            },
+        ):
+            self._logger.debug(f"Yielding execution log for job: {job}")
+            return [
+                ExecutionLog(
+                    return_code=None, stdout=None, stderr=None, hostname=None,
+                ),
+            ]
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
@@ -116,72 +135,98 @@ class Dispatcher(ServicePlugin):
 
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
+        tracer = get_tracer(__name__)
         while True:
-            for job_string in self.parent_service.consume(self.incoming_queue):
+            for job_string, parent_ctx in self.parent_service.consume(
+                self.incoming_queue,
+            ):
                 job = Job.from_string(str(job_string))
-                self._logger.debug(
-                    f"Received Job: {job}",
-                    extra={"correlation_id": job.correlation_id},
-                )
-                self._jobs_consumed.labels(
-                    dispatcher_identifier=self.identifier,
-                ).inc()
-                if job.emit_time is not None:
-                    self._dispatch_latency.labels(
-                        dispatcher_identifier=self.identifier,
-                    ).observe(time.time() - job.emit_time)
-
-                if self._recently_seen(job.identifier):
-                    self._dedupe_skips.labels(
-                        dispatcher_identifier=self.identifier,
-                    ).inc()
-                    self._logger.info(
-                        f"Duplicate job {job.identifier}; skipping",
+                with tracer.start_as_current_span(
+                    "dispatcher.dispatch_job",
+                    context=parent_ctx,
+                    attributes={
+                        ATTR_JOB_ID: job.identifier,
+                        ATTR_CORRELATION_ID: job.correlation_id,
+                    },
+                ):
+                    self._logger.debug(
+                        f"Received Job: {job}",
                         extra={"correlation_id": job.correlation_id},
                     )
-                    continue
+                    self._jobs_consumed.labels(
+                        dispatcher_identifier=self.identifier,
+                    ).inc()
+                    if job.emit_time is not None:
+                        self._dispatch_latency.labels(
+                            dispatcher_identifier=self.identifier,
+                        ).observe(time.time() - job.emit_time)
 
-                start_time = time.time()
-                job_id = job.identifier
-                self.active_job_timestamps[job_id] = start_time
-                self._active_jobs.labels(dispatcher_name=self.name).inc()
-                self._queue_wait_duration.labels(
-                    dispatcher_name=self.name,
-                ).observe(start_time - job.last_modified)
+                    if self._recently_seen(job.identifier):
+                        self._dedupe_skips.labels(
+                            dispatcher_identifier=self.identifier,
+                        ).inc()
+                        self._logger.info(
+                            f"Duplicate job {job.identifier}; skipping",
+                            extra={"correlation_id": job.correlation_id},
+                        )
+                        continue
 
-                try:
-                    execution_logs = self.get_execution_log(job)
-                    for ex_log in execution_logs:
-                        self.emit(ex_log)
-                        self._execution_logs_emitted.labels(
+                    start_time = time.time()
+                    job_id = job.identifier
+                    self.active_job_timestamps[job_id] = start_time
+                    self._active_jobs.labels(dispatcher_name=self.name).inc()
+                    self._queue_wait_duration.labels(
+                        dispatcher_name=self.name,
+                    ).observe(start_time - job.last_modified)
+
+                    try:
+                        execution_logs = self.get_execution_log(job)
+                        get_current_span().add_event(
+                            "job.executed",
+                            attributes={
+                                ATTR_JOB_ID: job.identifier,
+                                ATTR_CORRELATION_ID: job.correlation_id,
+                            },
+                        )
+                        for ex_log in execution_logs:
+                            with tracer.start_as_current_span(
+                                "dispatcher.emit_execution_log",
+                                attributes={
+                                    ATTR_EXECUTION_RETURN_CODE: str(ex_log.return_code)
+                                    if ex_log.return_code is not None
+                                    else "",
+                                },
+                            ):
+                                self.emit(ex_log)
+                            self._execution_logs_emitted.labels(
+                                dispatcher_name=self.name,
+                            ).inc()
+
+                        self._jobs_processed.labels(
+                            status="success",
                             dispatcher_name=self.name,
                         ).inc()
 
-                    self._jobs_processed.labels(
-                        status="success",
-                        dispatcher_name=self.name,
-                    ).inc()
-
-                except CourierError:
-                    self._logger.exception(
-                        f"Error processing job {job_id}",
-                        extra={"correlation_id": job.correlation_id},
-                    )
-                    self._jobs_processed.labels(
-                        status="failure",
-                        dispatcher_name=self.name,
-                    ).inc()
-
-                finally:
-                    if job_id in self.active_job_timestamps:
-                        execution_time = (
-                            time.time() - self.active_job_timestamps[job_id]
+                    except CourierError:
+                        self._logger.exception(
+                            f"Error processing job {job_id}",
+                            extra={"correlation_id": job.correlation_id},
                         )
-                        self._job_execution_duration.labels(
+                        self._jobs_processed.labels(
+                            status="failure",
                             dispatcher_name=self.name,
-                        ).observe(execution_time)
-                        del self.active_job_timestamps[job_id]
-                        self._active_jobs.labels(dispatcher_name=self.name).dec()
+                        ).inc()
+
+                    finally:
+                        if job_id in self.active_job_timestamps:
+                            execution_time = (
+                                time.time() - self.active_job_timestamps[job_id]
+                            )
+                            self._job_execution_duration.labels(
+                                dispatcher_name=self.name,
+                            ).observe(execution_time)
+                            del self.active_job_timestamps[job_id]
+                            self._active_jobs.labels(dispatcher_name=self.name).dec()
 
     @log_execution
     def start(self) -> None:
