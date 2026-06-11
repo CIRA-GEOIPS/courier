@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import contextlib
+import os
 import socket
-import subprocess
-import tempfile
 import types
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 import jinja2
 from jinja2.exceptions import TemplateSyntaxError
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.types.execution_log import ExecutionLog
+from courier.utils.bash_executor import BashExecResult, execute_bash_script
 
 if TYPE_CHECKING:
     from courier.service import Service
@@ -27,6 +27,10 @@ class SerialBashConfig(BaseModel, frozen=True):
 
     bash_script: str
     timeout_seconds: float = Field(default=3600.0, gt=0)
+    log_to_logger: bool = Field(default=False)
+    log_to_file: bool = Field(default=False)
+    log_dir: str = Field(default="")
+    log_only_errors: bool = Field(default=False)
 
     @field_validator("bash_script")
     @classmethod
@@ -36,6 +40,18 @@ class SerialBashConfig(BaseModel, frozen=True):
         except TemplateSyntaxError as exc:
             raise ValueError(f"Invalid bash_script: {exc}") from exc
         return v
+
+    @model_validator(mode="after")
+    def _validate_logging_config(self) -> SerialBashConfig:
+        if self.log_to_file and not self.log_dir:
+            raise ValueError("log_dir is required when log_to_file=True")
+        if self.log_to_file:
+            log_dir_path = Path(self.log_dir)
+            if not log_dir_path.is_dir():
+                log_dir_path.mkdir(parents=True, exist_ok=True)
+            elif not os.access(self.log_dir, os.W_OK):
+                raise ValueError(f"log_dir is not writable: {self.log_dir}")
+        return self
 
 
 class SerialBashDispatcher(Dispatcher):
@@ -182,56 +198,33 @@ class SerialBashDispatcher(Dispatcher):
             ]
 
         self._logger.debug(f"Generated script content:\n{script_content}")
-        script_path: str | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                suffix=".sh",
-                delete=False,
-            ) as script_file:
-                script_file.write(script_content)
-                script_path = script_file.name
 
-            Path(script_path).chmod(0o755)
-            result = subprocess.run(  # noqa: S603
-                ["/bin/bash", script_path],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self.validated.timeout_seconds,
-            )
-            return [
-                ExecutionLog(
-                    return_code=result.returncode,
-                    stdout=result.stdout,
-                    stderr=result.stderr,
-                    hostname=hostname,
-                ),
-            ]
-        except subprocess.TimeoutExpired as e:
-            self._logger.exception("Script execution timed out")
-            return [
-                ExecutionLog(
-                    return_code=-1,
-                    stdout=e.stdout.decode() if e.stdout else "",
-                    stderr=f"Script execution timed out: {e!s}",
-                    hostname=hostname,
-                ),
-            ]
-        except (OSError, subprocess.SubprocessError) as e:
-            self._logger.exception("Error executing script")
-            return [
-                ExecutionLog(
-                    return_code=-1,
-                    stdout="",
-                    stderr=f"Error executing script: {e!s}",
-                    hostname=hostname,
-                ),
-            ]
-        finally:
-            if script_path is not None:
-                with contextlib.suppress(OSError):
-                    Path(script_path).unlink()
+        log_file_path: Path | None = None
+        if self.validated.log_to_file:
+            ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+            log_file_path = Path(self.validated.log_dir) / f"dispatch_{job.identifier}_{ts}.log"
+
+        log_prefix = f"[job: {job.identifier}]" if self.validated.log_to_logger else ""
+
+        result: BashExecResult = execute_bash_script(
+            script_body=script_content,
+            timeout_seconds=self.validated.timeout_seconds,
+            logger=self._logger if self.validated.log_to_logger else None,
+            log_to_logger=self.validated.log_to_logger,
+            log_prefix=log_prefix,
+            log_to_file=self.validated.log_to_file,
+            log_file_path=log_file_path,
+            log_only_errors=self.validated.log_only_errors,
+        )
+        return [
+            ExecutionLog(
+                return_code=result.return_code,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                hostname=hostname,
+                log_file_path=result.log_file_path,
+            ),
+        ]
 
 
 PLUGIN_CLASS = SerialBashDispatcher

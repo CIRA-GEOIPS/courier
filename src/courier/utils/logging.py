@@ -8,8 +8,6 @@ Functions
 ---------
 get_logger
     Create a contextualized logger with optional Loki integration.
-setup_logging
-    Backward-compatible wrapper for get_logger (legacy interface).
 """
 
 from __future__ import annotations
@@ -20,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
-    from courier.interfaces.module_based.service import ServiceConfig
+    from courier.config import ServiceConfig
 
 try:
     import logging_loki  # type: ignore
@@ -213,7 +211,7 @@ def get_logger(
 
     Examples
     --------
-    >>> from courier.interfaces.module_based.service import ServiceConfig
+    >>> from courier.config import ServiceConfig
     >>> config = ServiceConfig()
     >>> logger = get_logger("service", "my-service-id", config)
     >>> logger.info("Service start")  # Logs: [Service: my-service-id] Service start
@@ -302,48 +300,4 @@ def get_logger(
     return adapter
 
 
-def setup_logging(name: str | None = None) -> ContextAdapter:
-    """Configure logger with standardized formatting and return module logger.
 
-    This function provides backward compatibility with the legacy logging
-    interface. New code should prefer get_logger() for better context
-    management and Loki integration.
-
-    Sets up logging configuration with Rich formatting for colorized output,
-    then returns a logger instance. Only configures handlers if the logger
-    doesn't already have any.
-
-    Parameters
-    ----------
-    name : str or None, optional
-        Name for the logger. If None, uses __name__ of the calling module.
-        Default is None.
-
-    Returns
-    -------
-    logging.Logger
-        Configured logger instance with Rich handler and DEBUG level.
-
-    Examples
-    --------
-    >>> logger = setup_logging()
-    >>> logger.name == '__main__'
-    True
-    >>> isinstance(logger, logging.Logger)
-    True
-    >>> logger.level == logging.DEBUG
-    True
-
-    Notes
-    -----
-    This function is maintained for backward compatibility. New code should
-    use get_logger() instead:
-
-    >>> # Prefer this
-    >>> logger = get_logger("module", __name__)
-    >>>
-    >>> # Over this
-    >>> logger = setup_logging(__name__)
-    """
-    module_name = name if name else "__main__"
-    return get_logger("module", module_name, None)

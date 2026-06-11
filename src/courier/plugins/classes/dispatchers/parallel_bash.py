@@ -10,24 +10,26 @@ submissions.
 
 from __future__ import annotations
 
-import contextlib
+import os
 import socket
-import subprocess
-import tempfile
 import types
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import jinja2
 from jinja2.exceptions import TemplateSyntaxError
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.types.execution_log import ExecutionLog
+from courier.utils.bash_executor import execute_bash_script
 
 if TYPE_CHECKING:
+    import logging as logging_module
+
     from courier.service import Service
     from courier.types.file import FrozenFile
     from courier.types.job import Job
@@ -40,6 +42,24 @@ class ParallelBashConfig(BaseModel, frozen=True):
     max_workers: int = Field(default=4, ge=1, le=64)
     timeout_seconds: float = Field(default=3600.0, gt=0)
     fail_fast: bool = False
+    log_to_logger: bool = Field(default=False)
+    log_to_file: bool = Field(default=False)
+    log_dir: str = Field(default="")
+    log_only_errors: bool = Field(default=False)
+
+    @model_validator(mode="after")
+    def _validate_logging(self) -> ParallelBashConfig:
+        if self.log_to_file and not self.log_dir:
+            raise ValueError("log_dir is required when log_to_file=True")
+        if self.log_to_file:
+            log_path = Path(self.log_dir)
+            if not log_path.is_dir():
+                log_path.mkdir(parents=True, exist_ok=True)
+        if self.log_to_file and self.log_dir:
+            log_path = Path(self.log_dir)
+            if not os.access(log_path, os.W_OK):
+                raise ValueError(f"log_dir is not writable: {self.log_dir}")
+        return self
 
     @field_validator("bash_script")
     @classmethod
@@ -51,58 +71,42 @@ class ParallelBashConfig(BaseModel, frozen=True):
         return v
 
 
-def _run_script(
+def _run_script(  # noqa: PLR0913
     script_body: str,
     timeout_seconds: float,
     hostname: str,
+    *,
+    logger: logging_module.Logger | logging_module.LoggerAdapter | None = None,
+    log_to_logger: bool = False,
+    log_prefix: str = "",
+    log_to_file: bool = False,
+    log_file_path: Path | None = None,
+    log_only_errors: bool = False,
 ) -> ExecutionLog:
-    """Write *script_body* to a temp file, exec under bash, return a log.
+    """Execute *script_body* under bash with configurable logging modes.
 
-    Never raises — all failure modes collapse into ``return_code=-1``
-    with diagnostic detail in ``stderr`` so the caller can aggregate
-    logs without needing try/except around each future.
+    Delegates to :func:`courier.utils.bash_executor.execute_bash_script`
+    and maps the result to an :class:`ExecutionLog`.
+
+    Never raises — all failure modes are captured in the returned ExecutionLog.
     """
-    script_path: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".sh",
-            delete=False,
-        ) as script_file:
-            script_file.write(script_body)
-            script_path = script_file.name
-        Path(script_path).chmod(0o755)
-        result = subprocess.run(  # noqa: S603
-            ["/bin/bash", script_path],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-        )
-        return ExecutionLog(
-            return_code=result.returncode,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            hostname=hostname,
-        )
-    except subprocess.TimeoutExpired as e:
-        return ExecutionLog(
-            return_code=-1,
-            stdout=e.stdout.decode() if e.stdout else "",
-            stderr=f"Script execution timed out after {timeout_seconds}s: {e!s}",
-            hostname=hostname,
-        )
-    except (OSError, subprocess.SubprocessError) as e:
-        return ExecutionLog(
-            return_code=-1,
-            stdout="",
-            stderr=f"Error executing script: {e!s}",
-            hostname=hostname,
-        )
-    finally:
-        if script_path is not None:
-            with contextlib.suppress(OSError):
-                Path(script_path).unlink()
+    result = execute_bash_script(
+        script_body=script_body,
+        timeout_seconds=timeout_seconds,
+        logger=logger,
+        log_to_logger=log_to_logger,
+        log_prefix=log_prefix,
+        log_to_file=log_to_file,
+        log_file_path=log_file_path,
+        log_only_errors=log_only_errors,
+    )
+    return ExecutionLog(
+        return_code=result.return_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        hostname=hostname,
+        log_file_path=result.log_file_path,
+    )
 
 
 class ParallelBashDispatcher(Dispatcher):
@@ -261,12 +265,31 @@ class ParallelBashDispatcher(Dispatcher):
                         ),
                     )
                     continue
+                log_prefix = (
+                    f"[job: {job.identifier}] [file: {ff.file}]"
+                    if self.validated.log_to_logger
+                    else ""
+                )
+                log_path = None
+                if self.validated.log_to_file:
+                    ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+                    file_stem = Path(str(ff.file)).stem.replace(" ", "_")
+                    log_path = (
+                        Path(self.validated.log_dir)
+                        / f"dispatch_{job.identifier}_{file_stem}_{ts}.log"
+                    )
                 futures[
                     pool.submit(
                         _run_script,
                         script_body,
                         self.validated.timeout_seconds,
                         hostname,
+                        logger=self._logger if self.validated.log_to_logger else None,
+                        log_to_logger=self.validated.log_to_logger,
+                        log_prefix=log_prefix,
+                        log_to_file=self.validated.log_to_file,
+                        log_file_path=log_path if self.validated.log_to_file else None,
+                        log_only_errors=self.validated.log_only_errors,
                     )
                 ] = ff.file
 

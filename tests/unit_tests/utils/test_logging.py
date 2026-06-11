@@ -29,10 +29,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from courier.config import ServiceConfig  # For mocking in fixtures
-from courier.utils.logging import \
-    setup_logging  # Monkey-patched method on Logger
-from courier.utils.logging import (TRACE_LEVEL, ContextAdapter,
-                                         _create_loki_handler, get_logger)
+from courier.utils.logging import (
+    TRACE_LEVEL,
+    ContextAdapter,
+    _create_loki_handler,
+    get_logger,
+)
 
 
 # Fixtures
@@ -444,32 +446,3 @@ class TestGetLogger:
         with pytest.raises(expected_exception):
             get_logger("service", "edge-case-unique", ServiceConfig(**invalid_config))
 
-
-# Test setup_logging
-def test_setup_logging_as_wrapper() -> None:
-    """Test setup_logging acts as a wrapper around get_logger.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
-
-    Raises
-    ------
-    AssertionError
-        If it doesn't match get_logger(None, name).
-    """
-    result = setup_logging("test_module")
-
-    expected = get_logger("module", "test_module", None)
-
-    # We can't compare directly but we can compare their representations
-    assert repr(result) == repr(expected)  # Both return LoggerAdapter instances with same extra
-
-    # Test default name
-    result_default = setup_logging()
-    assert result_default.extra is not None
-    assert result_default.extra["source_name"] == "__main__"

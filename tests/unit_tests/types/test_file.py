@@ -10,10 +10,11 @@ import pytest
 from courier.types.file import (
     File,
     FrozenFile,
+)
+from courier.utils.datetime_utils import (
     build_timestamp_from_components,
     extract_datetime_from_regex,
 )
-
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -493,7 +494,7 @@ class TestFrozenFileCreation:
         assert ff.timestamp is None
 
     def test_full_construction(
-        self, sample_path: Path, sample_timestamp: datetime
+        self, sample_path: Path, sample_timestamp: datetime,
     ) -> None:
         """FrozenFile can be constructed with all fields."""
         ff = FrozenFile(
@@ -701,7 +702,7 @@ class TestFrozenFileMethods:
         assert thawed.hostname == "modified"
 
     def test_with_updates_returns_new_instance(
-        self, frozen_file: FrozenFile
+        self, frozen_file: FrozenFile,
     ) -> None:
         """with_updates returns a distinct FrozenFile."""
         updated = frozen_file.with_updates(hostname="updated")
@@ -745,7 +746,7 @@ class TestFrozenFileMethods:
         assert thawed.metadata == {"key": "value", "new": "added"}
 
     def test_freeze_with_metadata_roundtrip(self) -> None:
-        """freeze -> thaw roundtrip preserves metadata."""
+        """Freeze -> thaw roundtrip preserves metadata."""
         original = File(
             file=Path("/tmp/f.nc"),
             source="goes16",
@@ -798,7 +799,7 @@ class TestBuildTimestampFromComponents:
         ],
     )
     def test_various_inputs(
-        self, kwargs: dict, expected: datetime | None
+        self, kwargs: dict, expected: datetime | None,
     ) -> None:
         """Test timestamp building with various component combinations."""
         assert build_timestamp_from_components(**kwargs) == expected
@@ -806,7 +807,7 @@ class TestBuildTimestampFromComponents:
     def test_jjj_priority_over_mm_dd(self) -> None:
         """When jjj is provided alongside mm/dd, jjj is used."""
         result = build_timestamp_from_components(
-            yyyy="2023", mm="06", dd="15", jjj="001"
+            yyyy="2023", mm="06", dd="15", jjj="001",
         )
         assert result == datetime(2023, 1, 1)
 
@@ -827,7 +828,7 @@ class TestBuildTimestampFromComponents:
         ],
     )
     def test_julian_day_calculation(
-        self, yyyy: str, jjj: str, expected_yday: int
+        self, yyyy: str, jjj: str, expected_yday: int,
     ) -> None:
         """Julian day maps to the correct day of year."""
         result = build_timestamp_from_components(yyyy=yyyy, jjj=jjj)

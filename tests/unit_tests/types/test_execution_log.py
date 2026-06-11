@@ -86,6 +86,7 @@ def test_round_trip_failure() -> None:
 
 _text = st.one_of(st.none(), st.text(max_size=200))
 _return_code = st.one_of(st.none(), st.integers(min_value=-255, max_value=255))
+_log_file_path = st.one_of(st.none(), st.text(min_size=1, max_size=200))
 
 
 @given(
@@ -93,12 +94,14 @@ _return_code = st.one_of(st.none(), st.integers(min_value=-255, max_value=255))
     stdout=_text,
     stderr=_text,
     hostname=st.one_of(st.none(), st.from_regex(r"[a-zA-Z0-9\-\.]{1,63}", fullmatch=True)),
+    log_file_path=_log_file_path,
 )
 def test_hypothesis_round_trip(
     return_code: int | None,
     stdout: str | None,
     stderr: str | None,
     hostname: str | None,
+    log_file_path: str | None,
 ) -> None:
     """Property: ExecutionLog.from_string(str(log)) == log for all valid inputs."""
     log = ExecutionLog(
@@ -106,5 +109,9 @@ def test_hypothesis_round_trip(
         stdout=stdout,
         stderr=stderr,
         hostname=hostname,
+        log_file_path=log_file_path,
     )
     assert ExecutionLog.from_string(str(log)) == log
+
+
+

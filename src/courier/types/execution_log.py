@@ -18,12 +18,15 @@ class ExecutionLog:
         Standard error from the process.
     hostname : str or None
         Hostname where execution occurred.
+    log_file_path : str or None
+        File-system path to the captured log file, if any.
     """
 
     return_code: int | None = None
     stdout: str | None = None
     stderr: str | None = None
     hostname: str | None = None
+    log_file_path: str | None = None
 
     def __str__(self) -> str:
         """Convert ExecutionLog to JSON string."""
@@ -33,6 +36,7 @@ class ExecutionLog:
                 "stdout": self.stdout,
                 "stderr": self.stderr,
                 "hostname": self.hostname,
+                "log_file_path": self.log_file_path,
             },
         )
 

@@ -11,17 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
 
-from courier.utils.datetime_utils import (
-    build_timestamp_from_components,
-    extract_datetime_from_regex,
-)
-
-# Re-export for backward compatibility
 __all__ = [
     "File",
     "FrozenFile",
-    "build_timestamp_from_components",
-    "extract_datetime_from_regex",
 ]
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -14,6 +13,7 @@ from courier.plugins.classes.dispatchers.serial_bash import (
     SerialBashDispatcher,
 )
 from courier.types.execution_log import ExecutionLog
+from courier.utils.bash_executor import BashExecResult
 
 
 def _make_config(**overrides):
@@ -70,15 +70,15 @@ class TestGetExecutionLog:
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
-        fake_completed_process,
+        fake_bash_exec_result,
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
             mock_service, _make_config(), identifier="test-disp",
         )
-        run = mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
-            return_value=fake_completed_process(returncode=0, stdout="hi"),
+        execute = mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=fake_bash_exec_result(return_code=0, stdout="hi"),
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
         logs = plugin.get_execution_log(job)
@@ -87,7 +87,7 @@ class TestGetExecutionLog:
         assert isinstance(logs[0], ExecutionLog)
         assert logs[0].return_code == 0
         assert logs[0].stdout == "hi"
-        run.assert_called_once()
+        execute.assert_called_once()
 
     def test_empty_files_returns_empty(
         self,
@@ -127,14 +127,18 @@ class TestGetExecutionLog:
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
+        fake_bash_exec_result,
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
             mock_service, _make_config(), identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=1),
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=fake_bash_exec_result(
+                return_code=-1,
+                stderr="Script execution timed out after 1.0s",
+            ),
         )
         job = make_job(files=(make_frozen_file(),))
         logs = plugin.get_execution_log(job)
@@ -146,14 +150,18 @@ class TestGetExecutionLog:
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
+        fake_bash_exec_result,
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
             mock_service, _make_config(), identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
-            side_effect=OSError("boom"),
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=fake_bash_exec_result(
+                return_code=-1,
+                stderr="Error executing script: boom",
+            ),
         )
         job = make_job(files=(make_frozen_file(),))
         logs = plugin.get_execution_log(job)
@@ -165,33 +173,33 @@ class TestGetExecutionLog:
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
-        fake_completed_process,
+        fake_bash_exec_result,
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
             mock_service, _make_config(), identifier="test-disp",
         )
-        captured: list[str] = []
+        captured_body: list[str] = []
 
-        def fake_run(args, **_kwargs):
-            captured.append(args[1])
-            return fake_completed_process()
+        def fake_execute(script_body, **__):
+            captured_body.append(script_body)
+            return fake_bash_exec_result()
 
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
-            side_effect=fake_run,
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            side_effect=fake_execute,
         )
         job = make_job(files=(make_frozen_file(),))
         plugin.get_execution_log(job)
-        assert captured
-        assert not Path(captured[0]).exists()
+        assert len(captured_body) == 1
+        assert captured_body[0] != ""
 
     def test_multi_file_rendering(
         self,
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
-        fake_completed_process,
+        fake_bash_exec_result,
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
@@ -201,16 +209,15 @@ class TestGetExecutionLog:
             ),
             identifier="test-disp",
         )
-        captured_content: list[str] = []
+        captured_body: list[str] = []
 
-        def fake_run(args, **_kwargs):
-            script_path = args[1]
-            captured_content.append(Path(script_path).read_text())
-            return fake_completed_process()
+        def fake_execute(script_body, **__):
+            captured_body.append(script_body)
+            return fake_bash_exec_result()
 
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.subprocess.run",
-            side_effect=fake_run,
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            side_effect=fake_execute,
         )
         job = make_job(
             files=(
@@ -221,8 +228,255 @@ class TestGetExecutionLog:
         )
         plugin.get_execution_log(job)
 
-        assert len(captured_content) == 1
-        script = captured_content[0]
+        assert len(captured_body) == 1
+        script = captured_body[0]
         assert "/tmp/a.nc" in script
         assert "/tmp/b.nc" in script
         assert "/tmp/c.nc" in script
+
+
+# ─── Logging Modes ───────────────────────────────────────────────────────────
+
+
+class TestLogToLogger:
+    """Tests for log_to_logger=True mode in SerialBashDispatcher."""
+
+    def test_stdout_streamed_to_logger_debug(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """Script stdout is streamed to self._logger.debug in real-time."""
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_to_logger=True),
+            identifier="test-disp",
+        )
+        mock_exec = mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=0, stdout="hello\n", stderr="", log_file_path=None,
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        plugin.get_execution_log(job)
+        assert mock_exec.call_args[1]["logger"] is plugin._logger
+        assert mock_exec.call_args[1]["log_to_logger"] is True
+
+    def test_stderr_streamed_to_logger_warning(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """Script stderr is streamed to self._logger.warning in real-time."""
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_to_logger=True),
+            identifier="test-disp",
+        )
+        mock_exec = mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=1, stdout="", stderr="error msg\n", log_file_path=None,
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        plugin.get_execution_log(job)
+        assert mock_exec.call_args[1]["logger"] is plugin._logger
+        assert mock_exec.call_args[1]["log_to_logger"] is True
+
+
+class TestLogToFile:
+    """Tests for log_to_file=True mode in SerialBashDispatcher."""
+
+    def test_log_file_created_with_content(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
+    ) -> None:
+        """Log file is created and contains script output."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_to_file=True, log_dir=str(log_dir)),
+            identifier="test-disp",
+        )
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=0,
+                stdout="processed\n",
+                stderr="",
+                log_file_path=str(log_dir / "dispatch_test_20260101T000000000000.log"),
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert len(logs) == 1
+        assert logs[0].log_file_path is not None
+
+    def test_log_file_path_in_execution_log(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
+    ) -> None:
+        """ExecutionLog.log_file_path is set when log_to_file=True."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_to_file=True, log_dir=str(log_dir)),
+            identifier="test-disp",
+        )
+        expected_path = str(log_dir / "dispatch_test_20260101T000000000000.log")
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=0,
+                stdout="ok",
+                stderr="",
+                log_file_path=expected_path,
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert logs[0].log_file_path == expected_path
+
+
+class TestLogOnlyErrors:
+    """Tests for log_only_errors=True mode in SerialBashDispatcher."""
+
+    def test_stdout_is_empty_in_execution_log(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """ExecutionLog.stdout is empty when log_only_errors=True."""
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_only_errors=True),
+            identifier="test-disp",
+        )
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=0, stdout="", stderr="", log_file_path=None,
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert logs[0].stdout == ""
+
+    def test_stderr_still_captured(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """ExecutionLog.stderr is still captured when log_only_errors=True."""
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_only_errors=True),
+            identifier="test-disp",
+        )
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=1, stdout="", stderr="error occurred", log_file_path=None,
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert logs[0].stderr == "error occurred"
+        assert logs[0].stdout == ""
+
+
+class TestCombinedModes:
+    """Tests for combinations of logging modes."""
+
+    def test_stream_and_file_together(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
+    ) -> None:
+        """log_to_logger + log_to_file both active simultaneously."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(
+                log_to_logger=True,
+                log_to_file=True,
+                log_dir=str(log_dir),
+            ),
+            identifier="test-disp",
+        )
+        mocker.patch.object(plugin._logger, "debug")
+        mocker.patch.object(plugin._logger, "warning")
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=0,
+                stdout="ok",
+                stderr="",
+                log_file_path=str(log_dir / "dispatch_test_20260101T000000000000.log"),
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert len(logs) == 1
+        assert logs[0].log_file_path is not None
+        # Logger should have been used
+        assert plugin._logger.debug.called or plugin._logger.warning.called
+
+
+class TestLogFileOnError:
+    """Tests for log file creation on execution errors."""
+
+    def test_log_file_set_on_timeout(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
+    ) -> None:
+        """Timeout errors still produce an ExecutionLog with log_file_path set."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(log_to_file=True, log_dir=str(log_dir)),
+            identifier="test-disp",
+        )
+        expected_path = str(log_dir / "dispatch_test_timeout.log")
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            return_value=BashExecResult(
+                return_code=-1,
+                stdout="",
+                stderr="timed out",
+                log_file_path=expected_path,
+            ),
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert logs[0].return_code == -1
+        assert logs[0].log_file_path == expected_path

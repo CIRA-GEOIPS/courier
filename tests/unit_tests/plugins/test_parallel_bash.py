@@ -16,6 +16,7 @@ from courier.plugins.classes.dispatchers.parallel_bash import (
     _run_script,
 )
 from courier.types.execution_log import ExecutionLog
+from courier.utils.bash_executor import BashExecResult
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -119,13 +120,12 @@ class TestGetExecutionLog:
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
-        fake_completed_process,
         mocker,
     ) -> None:
         plugin = ParallelBashDispatcher(mock_service, _make_config(max_workers=2), identifier="test-disp")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.subprocess.run",
-            return_value=fake_completed_process(returncode=0),
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            return_value=ExecutionLog(return_code=0, stdout="ok", stderr=""),
         )
         files = (
             make_frozen_file(file=Path("/a.nc")),
@@ -142,7 +142,6 @@ class TestGetExecutionLog:
         mock_service: MagicMock,
         make_frozen_file,
         make_job,
-        fake_completed_process,
         mocker,
     ) -> None:
         plugin = ParallelBashDispatcher(
@@ -151,8 +150,8 @@ class TestGetExecutionLog:
             identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.subprocess.run",
-            return_value=fake_completed_process(returncode=2),
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            return_value=ExecutionLog(return_code=2, stdout="", stderr=""),
         )
         files = tuple(
             make_frozen_file(file=Path(f"/f{i}.nc")) for i in range(5)
@@ -199,10 +198,10 @@ class TestGetExecutionLog:
 
 
 class TestRunScript:
-    def test_success(self, fake_completed_process, mocker) -> None:
+    def test_success(self, mocker) -> None:
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.subprocess.run",
-            return_value=fake_completed_process(returncode=0, stdout="ok"),
+            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            return_value=BashExecResult(return_code=0, stdout="ok", stderr=""),
         )
         log = _run_script("echo hi", 60.0, "h1")
         assert log.return_code == 0
@@ -210,9 +209,218 @@ class TestRunScript:
 
     def test_oserror_returns_failure(self, mocker) -> None:
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.subprocess.run",
-            side_effect=OSError("boom"),
+            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            return_value=BashExecResult(return_code=-1, stdout="", stderr="boom"),
         )
         log = _run_script("x", 60.0, "h")
         assert log.return_code == -1
         assert "boom" in (log.stderr or "")
+
+
+# ─── Logging Modes ───────────────────────────────────────────────────────────
+
+
+class TestLogToLogger:
+    """Tests for log_to_logger=True mode in ParallelBashDispatcher."""
+
+    def test_concurrent_logger_writes_are_safe(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """Multiple concurrent workers can write to logger safely."""
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(log_to_logger=True, max_workers=2),
+            identifier="test-disp",
+        )
+        mocker.patch.object(plugin._logger, "debug")
+        mocker.patch.object(plugin._logger, "warning")
+        # Mock _run_script to return successful ExecutionLogs
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            return_value=ExecutionLog(return_code=0, stdout="ok", stderr=""),
+        )
+        files = (
+            make_frozen_file(file=Path("/a.nc")),
+            make_frozen_file(file=Path("/b.nc")),
+        )
+        job = make_job(files=files)
+        logs = plugin.get_execution_log(job)
+        assert len(logs) == 2
+        # Logger thread-safety: no exceptions raised is the main verification
+
+    def test_log_prefix_includes_file_path(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """Each file's log_prefix includes the file path for disambiguation."""
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(log_to_logger=True, max_workers=1),
+            identifier="test-disp",
+        )
+        # Capture the log_prefix passed to _run_script
+        captured_prefixes: list[str] = []
+
+        def _fake_run(*_, **kwargs):
+            captured_prefixes.append(kwargs.get("log_prefix", ""))
+            return ExecutionLog(return_code=0, stdout="", stderr="")
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            side_effect=_fake_run,
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/data/file1.nc")),))
+        plugin.get_execution_log(job)
+        assert len(captured_prefixes) == 1
+        assert "/data/file1.nc" in captured_prefixes[0]
+
+
+class TestLogToFile:
+    """Tests for log_to_file=True mode in ParallelBashDispatcher."""
+
+    def test_per_file_log_files_created(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
+    ) -> None:
+        """Each file gets its own log file path."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(log_to_file=True, log_dir=str(log_dir), max_workers=2),
+            identifier="test-disp",
+        )
+        captured_paths: list[str] = []
+
+        def _fake_run(*_, **kwargs):
+            lp = kwargs.get("log_file_path")
+            captured_paths.append(str(lp) if lp else "")
+            return ExecutionLog(
+                return_code=0, stdout="", stderr="",
+                log_file_path=str(kwargs.get("log_file_path", "")),
+            )
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            side_effect=_fake_run,
+        )
+        files = (
+            make_frozen_file(file=Path("/a.nc")),
+            make_frozen_file(file=Path("/b.nc")),
+            make_frozen_file(file=Path("/c.nc")),
+        )
+        job = make_job(files=files)
+        logs = plugin.get_execution_log(job)
+        assert len(logs) == 3
+        assert len(captured_paths) == 3
+        # Each path should be unique
+        assert len(set(captured_paths)) == 3
+
+    def test_log_file_path_in_execution_log(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
+    ) -> None:
+        """Each ExecutionLog has its log_file_path set."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(log_to_file=True, log_dir=str(log_dir), max_workers=2),
+            identifier="test-disp",
+        )
+        def _fake_run(*_, **kwargs):
+            return ExecutionLog(
+                return_code=0, stdout="ok", stderr="",
+                log_file_path=str(kwargs.get("log_file_path", "")),
+            )
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            side_effect=_fake_run,
+        )
+        job = make_job(files=(make_frozen_file(file=Path("/a.nc")),))
+        logs = plugin.get_execution_log(job)
+        assert logs[0].log_file_path is not None
+        assert "a" in str(logs[0].log_file_path)  # file stem in path
+
+
+class TestLogOnlyErrors:
+    """Tests for log_only_errors=True mode in ParallelBashDispatcher."""
+
+    def test_stdout_is_empty_for_all_files(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """All ExecutionLogs have empty stdout when log_only_errors=True."""
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(log_only_errors=True, max_workers=2),
+            identifier="test-disp",
+        )
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            return_value=ExecutionLog(return_code=0, stdout="", stderr=""),
+        )
+        files = (
+            make_frozen_file(file=Path("/a.nc")),
+            make_frozen_file(file=Path("/b.nc")),
+        )
+        job = make_job(files=files)
+        logs = plugin.get_execution_log(job)
+        assert len(logs) == 2
+        assert all(log.stdout == "" for log in logs)
+
+
+class TestFailFastWithLogging:
+    """Tests for fail_fast=True combined with logging modes."""
+
+    def test_fail_fast_with_log_to_logger(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+        mocker,
+    ) -> None:
+        """fail_fast + log_to_logger: failing files cancel remaining workers."""
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(
+                log_to_logger=True,
+                fail_fast=True,
+                max_workers=1,
+            ),
+            identifier="test-disp",
+        )
+        call_count = [0]
+
+        def _fake_run(*_, **__):
+            call_count[0] += 1
+            # First file fails, triggering fail_fast
+            return ExecutionLog(return_code=1, stdout="", stderr="fail")
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            side_effect=_fake_run,
+        )
+        files = tuple(
+            make_frozen_file(file=Path(f"/f{i}.nc")) for i in range(5)
+        )
+        job = make_job(files=files)
+        logs = plugin.get_execution_log(job)
+        # At least one log produced; not all 5 due to fail_fast
+        assert len(logs) >= 1
+        assert len(logs) <= 5

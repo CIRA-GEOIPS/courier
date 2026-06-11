@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from subprocess import CompletedProcess
+
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -14,6 +14,7 @@ from prometheus_client import REGISTRY
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job
+from courier.utils.bash_executor import BashExecResult
 
 
 @pytest.fixture(autouse=True)
@@ -91,18 +92,28 @@ def make_job(make_frozen_file):
     return _factory
 
 
+
 @pytest.fixture
-def fake_completed_process():
-    """Build subprocess.CompletedProcess for bash dispatcher tests."""
-    def _factory(returncode: int = 0, stdout: str = "ok", stderr: str = "") -> CompletedProcess:
-        return CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+def fake_bash_exec_result():
+    """Build BashExecResult for bash dispatcher tests."""
+    def _factory(
+        return_code: int = 0,
+        stdout: str = "ok",
+        stderr: str = "",
+        log_file_path: str | None = None,
+    ) -> BashExecResult:
+        return BashExecResult(
+            return_code=return_code,
+            stdout=stdout,
+            stderr=stderr,
+            log_file_path=log_file_path,
+        )
     return _factory
 
 
 __all__ = [
     "ExecutionLog",
     "FrozenFile",
-    "fake_completed_process",
     "make_file",
     "make_frozen_file",
     "make_job",
