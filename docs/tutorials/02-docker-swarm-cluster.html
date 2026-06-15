@@ -1,0 +1,1237 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tutorial 2: Distributed Docker Deployment &mdash; Courier 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=b4795e93" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=fd10adb8"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="High-Availability Job Builder State Sync" href="../operations/high-availability.html" />
+    <link rel="prev" title="Tutorial 1: Simple File Watcher" href="01-simple-file-watcher.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Courier
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#installation-methods">Installation Methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-docker">Using Docker</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#rabbitmq">RabbitMQ</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#prometheus-optional">Prometheus (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#development-setup">Development Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-dev-containers-vs-code">Using Dev Containers (VS Code)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/quick-start.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#what-we-ll-build">What We’ll Build</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-1-prepare-your-data-directory">Step 1: Prepare Your Data Directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-2-create-service-configuration">Step 2: Create Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-3-start-the-service">Step 3: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-4-test-with-data">Step 4: Test with Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-5-monitor-with-prometheus">Step 5: Monitor with Prometheus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-6-stop-the-service">Step 6: Stop the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#need-help">Need Help?</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/init.html">Interactive Service Config Generator</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#usage">Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#options">Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#walkthrough">Walkthrough</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#generated-file-structure">Generated File Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#default-broker">Default Broker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/configuration.html">Configuration Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#minimal-working-example">Minimal Working Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#document-metadata">Document Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#service-spec">Service Spec</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#heartbeat-interval"><code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#run"><code class="docutils literal notranslate"><span class="pre">run</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#broker-configuration">Broker Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#amqp">AMQP</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#amqp-field-reference">AMQP field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#redis">Redis</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#redis-field-reference">Redis field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#in-memory-default">In-Memory (default)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#url-generic-passthrough">URL (generic passthrough)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#examples-for-common-transports">Examples for common transports</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#url-field-reference">URL field reference</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#distributed-deployment-with-only">Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#syntax">Syntax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#example-two-container-split">Example: Two-Container Split</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#important-notes">Important Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#complete-example">Complete Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#production-amqp-with-tls">Production AMQP with TLS</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#validation">Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#configuration-precedence">Configuration Precedence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#jinja2-template-context">Jinja2 Template Context</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="01-simple-file-watcher.html">Tutorial 1: Simple File Watcher</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-1-project-setup">Step 1: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-2-create-test-data">Step 2: Create Test Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-3-write-service-configuration">Step 3: Write Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-4-validate-configuration">Step 4: Validate Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-5-start-the-service">Step 5: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-6-test-file-detection">Step 6: Test File Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-7-examine-metadata-extraction">Step 7: Examine Metadata Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-8-monitor-with-prometheus">Step 8: Monitor with Prometheus</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="01-simple-file-watcher.html#service-health">Service health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="01-simple-file-watcher.html#files-processed">Files processed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="01-simple-file-watcher.html#jobs-built">Jobs built</a></li>
+<li class="toctree-l3"><a class="reference internal" href="01-simple-file-watcher.html#jobs-executed">Jobs executed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-9-experiment-with-multiple-files">Step 9: Experiment with Multiple Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#step-10-clean-shutdown">Step 10: Clean Shutdown</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="01-simple-file-watcher.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Tutorial 2: Distributed Docker Deployment</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-1-architecture-overview">Step 1: Architecture Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-2-project-setup">Step 2: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-3-rabbitmq-service">Step 3: RabbitMQ Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-4-data-monitor-container">Step 4: Data Monitor Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-5-builder-and-dispatcher-container">Step 5: Builder and Dispatcher Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-6-prometheus-and-grafana">Step 6: Prometheus and Grafana</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#prometheus">Prometheus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#grafana-dashboard-generation">Grafana Dashboard Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#complete-compose-file-so-far">Complete Compose File So Far</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#step-7-distributed-tracing">Step 7: Distributed Tracing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#complete-compose-file">Complete Compose File</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#step-8-deploy-and-verify">Step 8: Deploy and Verify</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#start-the-stack">Start the Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#check-service-status">Check Service Status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#verify-the-data-monitor">Verify the Data Monitor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#browse-the-uis">Browse the UIs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#test-file-processing">Test File Processing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#verify-the-trace">Verify the Trace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#clean-shutdown">Clean Shutdown</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#complete-code">Complete Code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Operations</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../operations/high-availability.html">High-Availability Job Builder State Sync</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#when-to-enable-state-sync">When to Enable State Sync</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#architecture">Architecture</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#redis-data-layout">Redis Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#how-a-mutation-propagates">How a Mutation Propagates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#conflict-resolution">Conflict Resolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#duplicate-dispatch-prevention">Duplicate-Dispatch Prevention</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#startup-state-recovery">Startup State Recovery</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#field-reference">Field Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#multi-tenant-isolation">Multi-Tenant Isolation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#complete-example">Complete Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#failsafe-behavior-at-startup">Failsafe Behavior at Startup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#observability">Observability</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#useful-queries">Useful Queries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#trade-offs-and-limitations">Trade-offs and Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../operations/tracing.html">Courier Distributed Tracing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#tracing-architecture-overview">1. Tracing Architecture Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#pipeline-integration">Pipeline Integration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#boundary-pattern">Boundary Pattern</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#trace-root-semantics">Trace Root Semantics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#correlation">Correlation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#relationship-to-existing-observability">Relationship to Existing Observability</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#configuration-reference">2. Configuration Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#fields">Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#disabling-tracing">Disabling Tracing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#sampling-behavior">Sampling Behavior</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#service-name-fallback">Service Name Fallback</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#endpoint-format">Endpoint Format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#span-naming-conventions-attribute-schema">3. Span Naming Conventions &amp; Attribute Schema</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#span-types">Span Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#attribute-keys">Attribute Keys</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#span-events">Span Events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#opentelemetry-messaging-semantic-conventions">OpenTelemetry Messaging Semantic Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#development-guide">4. Development Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#writing-tests-with-listexporter">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#test-isolation-with-reset-tracing-and-force-noop-global-provider">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#adding-tracing-to-a-new-plugin-type">4.3 Adding Tracing to a New Plugin Type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#the-trace-plugin-method-decorator">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#operations-guide">5. Operations Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#slow-detection-thresholds">5.1 Slow Detection Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#setting-up-an-otlp-collector">5.2 Setting Up an OTLP Collector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#querying-traces">5.3 Querying Traces</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#follow-a-file-through-the-pipeline">Follow a File Through the Pipeline</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#identifying-slow-plugins">Identifying Slow Plugins</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#monitoring-otlp-export-health">5.4 Monitoring OTLP Export Health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#production-monitoring-workflows">5.5 Production Monitoring Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#what-to-monitor-day-to-day">What to Monitor Day-to-Day</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#spotting-degradation">Spotting Degradation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#setting-up-alerts">Setting Up Alerts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#root-causing-with-span-hierarchy">Root-Causing With Span Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#common-operational-queries">Common Operational Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#correlating-traces-with-logs">Correlating Traces With Logs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#production-readiness-checklist">Production Readiness Checklist</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#audit-trail-workflows">5.6 Audit Trail Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#building-an-audit-trail-for-a-specific-file">Building an Audit Trail for a Specific File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#data-lineage-queries">Data Lineage Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#exporting-audit-data">Exporting Audit Data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#compliance-considerations">Compliance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#chain-of-custody">Chain of Custody</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#tamper-evidence">Tamper Evidence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#example-audit-report-query">Example Audit Report Query</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#quick-reference">6. Quick Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#environment-variables">Environment Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#span-name-quick-index">Span Name Quick Index</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../concepts/index.html">Design Concepts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../concepts/index.html#architecture-decision-records-adrs">Architecture Decision Records (ADRs)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html">ADR-0001: Kombu-Based Message Broker Abstraction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html">ADR-0002: Redis-Based HA State Sync for Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html">ADR-0003: PluginRunState Enum for Plugin Lifecycle</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html">ADR-0004: File / FrozenFile Type Split</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html">ADR-0005: Segregated Plugin Protocols</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html">ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#alternatives-considered">Alternatives considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#consequences">Consequences</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Contribute</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../contribute/code-style.html">Code Style Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api-reference/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api-reference/plugins.html">Plugins API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-data-monitors">Standard Data Monitors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#file-system-poller-watchdog">file_system_poller_watchdog</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-dispatchers">Standard Dispatchers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#serial-bash">serial_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#parallel-bash">parallel_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-job-builders">Standard Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#dummyjobbuilder">DummyJobBuilder</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#filter-and-group">filter_and_group</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#metadatarouterbuilder">MetadataRouterBuilder</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api-reference/types.html">Types API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#file">File</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/types.html#key-methods">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#frozenfile">FrozenFile</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/types.html#id1">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#breaking-changes">Breaking Changes</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Courier</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Tutorial 2: Distributed Docker Deployment</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/tutorials/02-docker-swarm-cluster.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="01-simple-file-watcher.html" class="btn btn-neutral float-left" title="Tutorial 1: Simple File Watcher" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../operations/high-availability.html" class="btn btn-neutral float-right" title="High-Availability Job Builder State Sync" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="tutorial-2-distributed-docker-deployment">
+<h1>Tutorial 2: Distributed Docker Deployment<a class="headerlink" href="#tutorial-2-distributed-docker-deployment" title="Link to this heading"></a></h1>
+<p><strong>Level:</strong> Intermediate | <strong>Time:</strong> 30 minutes</p>
+<p>In this tutorial, you’ll deploy a Courier pipeline across multiple Docker
+containers — each running a subset of plugins — connected by a shared
+RabbitMQ broker. You’ll also set up Prometheus, Grafana, and Jaeger for
+full observability.</p>
+<section id="learning-objectives">
+<h2>Learning Objectives<a class="headerlink" href="#learning-objectives" title="Link to this heading"></a></h2>
+<p>By the end of this tutorial, you will:</p>
+<ul class="simple">
+<li><p>Split a Courier config across multiple containers using <code class="docutils literal notranslate"><span class="pre">--only</span></code></p></li>
+<li><p>Deploy RabbitMQ as the shared message broker</p></li>
+<li><p>Configure Prometheus metrics ports per container</p></li>
+<li><p>Generate and provision a Grafana dashboard</p></li>
+<li><p>Enable distributed tracing with Jaeger</p></li>
+<li><p>Verify end-to-end file processing across containers</p></li>
+</ul>
+</section>
+<section id="prerequisites">
+<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Courier installed (<a class="reference internal" href="../getting-started/installation.html"><span class="doc">Installation</span></a>)</p></li>
+<li><p>Docker and Docker Compose installed</p></li>
+<li><p>Completion of <a class="reference internal" href="01-simple-file-watcher.html"><span class="doc">Tutorial 1: Simple File Watcher</span></a> (recommended)</p></li>
+<li><p>Basic familiarity with YAML and Docker concepts</p></li>
+</ul>
+</section>
+<section id="step-1-architecture-overview">
+<h2>Step 1: Architecture Overview<a class="headerlink" href="#step-1-architecture-overview" title="Link to this heading"></a></h2>
+<p>In a single-machine deployment, all plugins run in one process. In a
+clustered deployment, you split them across containers:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>                   ┌──────────────────────┐
+                   │      RabbitMQ         │
+                   │   (message broker)    │
+                   └──────┬───────┬────────┘
+                          │       │
+            ┌─────────────┘       └─────────────┐
+            ▼                                   ▼
+   ┌─────────────────┐                 ┌─────────────────┐
+   │  data-monitor    │                 │  builder +       │
+   │  (--only watch-  │                 │  dispatcher      │
+   │   files)         │                 │  (--only create- │
+   │                  │                 │   jobs,process-  │
+   │  Prom :8001      │                 │   files)         │
+   └─────────────────┘                 │  Prom :8002      │
+                                       └─────────────────┘
+
+     Observability stack (optional):
+     ┌──────────┐  ┌─────────┐  ┌────────┐
+     │Prometheus│  │ Grafana │  │ Jaeger │
+     └──────────┘  └─────────┘  └────────┘
+</pre></div>
+</div>
+<blockquote>
+<div><p><strong>Note:</strong> This tutorial uses <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span></code> for simplicity. For
+Docker Swarm mode, use <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">stack</span> <span class="pre">deploy</span> <span class="pre">-c</span> <span class="pre">docker-compose.yml</span> <span class="pre">courier</span></code> instead and add <code class="docutils literal notranslate"><span class="pre">deploy:</span></code> keys to service definitions.</p>
+</div></blockquote>
+<p>One configuration file defines the entire pipeline. Each container runs
+only its assigned plugins via the <code class="docutils literal notranslate"><span class="pre">--only</span></code> flag, using the YAML keys from
+<code class="docutils literal notranslate"><span class="pre">spec.run</span></code> as identifiers. Plugins communicate through RabbitMQ, which
+decouples the containers: you can start, stop, and scale them independently.</p>
+</section>
+<section id="step-2-project-setup">
+<h2>Step 2: Project Setup<a class="headerlink" href="#step-2-project-setup" title="Link to this heading"></a></h2>
+<p>Create a directory for this tutorial:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mkdir</span> <span class="o">~/</span><span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span>
+<span class="n">cd</span> <span class="o">~/</span><span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span>
+</pre></div>
+</div>
+<p>Create the required subdirectories:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mkdir</span> <span class="o">-</span><span class="n">p</span> <span class="n">data</span><span class="o">/</span><span class="n">incoming</span>
+<span class="n">mkdir</span> <span class="o">-</span><span class="n">p</span> <span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="o">/</span><span class="n">dashboards</span>
+<span class="n">mkdir</span> <span class="o">-</span><span class="n">p</span> <span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="o">/</span><span class="n">datasources</span>
+<span class="n">mkdir</span> <span class="o">-</span><span class="n">p</span> <span class="n">prometheus</span>
+</pre></div>
+</div>
+<p>Create the service configuration at <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">apiVersion</span><span class="p">:</span> <span class="n">runcourier</span><span class="o">.</span><span class="n">dev</span><span class="o">/</span><span class="n">v1alpha1</span>
+<span class="n">kind</span><span class="p">:</span> <span class="n">Service</span>
+<span class="n">metadata</span><span class="p">:</span>
+  <span class="n">name</span><span class="p">:</span> <span class="n">tutorial</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span>
+  <span class="n">namespace</span><span class="p">:</span> <span class="n">tutorial02</span>
+  <span class="n">description</span><span class="p">:</span> <span class="n">Distributed</span> <span class="n">pipeline</span> <span class="n">across</span> <span class="n">Docker</span> <span class="n">containers</span> <span class="k">for</span> <span class="n">tutorial</span> <span class="mf">02.</span>
+  <span class="n">docstring</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">This</span> <span class="n">service</span> <span class="n">demonstrates</span> <span class="n">a</span> <span class="n">multi</span><span class="o">-</span><span class="n">container</span> <span class="n">Courier</span> <span class="n">deployment</span>
+    <span class="n">using</span> <span class="n">Docker</span> <span class="n">Compose</span><span class="o">.</span> <span class="n">The</span> <span class="n">data</span> <span class="n">monitor</span> <span class="n">runs</span> <span class="ow">in</span> <span class="n">one</span> <span class="n">container</span><span class="p">,</span>
+    <span class="k">while</span> <span class="n">the</span> <span class="n">job</span> <span class="n">builder</span> <span class="ow">and</span> <span class="n">dispatcher</span> <span class="n">share</span> <span class="n">a</span> <span class="n">second</span> <span class="n">container</span><span class="o">.</span>
+
+<span class="n">spec</span><span class="p">:</span>
+  <span class="n">heartbeat_interval</span><span class="p">:</span> <span class="mi">30</span>
+
+  <span class="n">broker</span><span class="p">:</span>
+    <span class="n">host</span><span class="p">:</span> <span class="n">rabbitmq</span>
+    <span class="n">port</span><span class="p">:</span> <span class="mi">5672</span>
+    <span class="n">username</span><span class="p">:</span> <span class="n">admin</span>
+    <span class="n">password</span><span class="p">:</span> <span class="n">admin_test</span>
+
+  <span class="n">run</span><span class="p">:</span>
+    <span class="c1"># Data monitor — watches for files</span>
+    <span class="o">-</span> <span class="n">watch</span><span class="o">-</span><span class="n">files</span><span class="p">:</span>
+        <span class="n">kind</span><span class="p">:</span> <span class="n">data_monitor</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">file_system_poller_watchdog</span>
+        <span class="n">config</span><span class="p">:</span>
+          <span class="n">path</span><span class="p">:</span> <span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">incoming</span>
+          <span class="n">metadata</span><span class="o">-</span><span class="n">tools</span><span class="p">:</span>
+            <span class="o">-</span> <span class="n">goes18_abi</span>
+
+    <span class="c1"># Job builder — one file = one job</span>
+    <span class="o">-</span> <span class="n">create</span><span class="o">-</span><span class="n">jobs</span><span class="p">:</span>
+        <span class="n">kind</span><span class="p">:</span> <span class="n">job_builder</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">DummyJobBuilder</span>
+        <span class="n">config</span><span class="p">:</span> <span class="n">null</span>
+
+    <span class="c1"># Dispatcher — echo file details</span>
+    <span class="o">-</span> <span class="n">process</span><span class="o">-</span><span class="n">files</span><span class="p">:</span>
+        <span class="n">kind</span><span class="p">:</span> <span class="n">dispatcher</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">serial_bash</span>
+        <span class="n">config</span><span class="p">:</span>
+          <span class="n">bash_script</span><span class="p">:</span> <span class="o">|</span>
+            <span class="c1">#!/bin/bash</span>
+            <span class="n">echo</span> <span class="s2">&quot;==========================================&quot;</span>
+            <span class="n">echo</span> <span class="s2">&quot;File detected: </span><span class="si">{file}</span><span class="s2">&quot;</span>
+            <span class="n">echo</span> <span class="s2">&quot;Timestamp: $(date &#39;+%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M:%S&#39;)&quot;</span>
+            <span class="n">echo</span> <span class="s2">&quot;==========================================&quot;</span>
+</pre></div>
+</div>
+<p>Key differences from <a class="reference internal" href="01-simple-file-watcher.html"><span class="doc">Tutorial 1: Simple File Watcher</span></a>:</p>
+<ul class="simple">
+<li><p>The broker <code class="docutils literal notranslate"><span class="pre">host</span></code> is <code class="docutils literal notranslate"><span class="pre">rabbitmq</span></code> (the Docker Compose service name)
+instead of <code class="docutils literal notranslate"><span class="pre">localhost</span></code>.</p></li>
+<li><p>The data monitor’s <code class="docutils literal notranslate"><span class="pre">path</span></code> is <code class="docutils literal notranslate"><span class="pre">/data/incoming</span></code> (an absolute path inside
+the container volume).</p></li>
+<li><p>The dispatcher run key is <code class="docutils literal notranslate"><span class="pre">process-files</span></code> (the YAML identifier used
+with <code class="docutils literal notranslate"><span class="pre">--only</span></code>).</p></li>
+</ul>
+</section>
+<section id="step-3-rabbitmq-service">
+<h2>Step 3: RabbitMQ Service<a class="headerlink" href="#step-3-rabbitmq-service" title="Link to this heading"></a></h2>
+<p>Create <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code> with a RabbitMQ service first:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># docker-compose.yml</span>
+<span class="n">services</span><span class="p">:</span>
+  <span class="n">rabbitmq</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">rabbitmq</span><span class="p">:</span><span class="n">management</span>
+    <span class="n">hostname</span><span class="p">:</span> <span class="n">rabbitmq</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;5672:5672&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;15672:15672&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">RABBITMQ_DEFAULT_USER</span><span class="p">:</span> <span class="n">admin</span>
+      <span class="n">RABBITMQ_DEFAULT_PASS</span><span class="p">:</span> <span class="n">admin_test</span>
+</pre></div>
+</div>
+<p><strong>What the ports do:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Port</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">5672</span></code></p></td>
+<td><p>AMQP protocol — Courier plugins use this to publish and consume messages</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">15672</span></code></p></td>
+<td><p>Management UI — browse exchanges, queues, and message rates at <a class="reference external" href="http://localhost:15672">http://localhost:15672</a></p></td>
+</tr>
+</tbody>
+</table>
+<p>Credentials must match those in <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code>. The <code class="docutils literal notranslate"><span class="pre">hostname</span></code> setting
+(<code class="docutils literal notranslate"><span class="pre">rabbitmq</span></code>) is the name Courier uses to reach the broker inside the
+Docker network.</p>
+</section>
+<section id="step-4-data-monitor-container">
+<h2>Step 4: Data Monitor Container<a class="headerlink" href="#step-4-data-monitor-container" title="Link to this heading"></a></h2>
+<p>Add a service for the data monitor. This container runs only the file
+watcher:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;courier&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;run&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;/config/service.yaml&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;--only&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;watch-files&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COURIER_PROMETHEUS_PORT</span><span class="p">:</span> <span class="s2">&quot;8001&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">config</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">service</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="n">ro</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">data</span><span class="p">:</span><span class="o">/</span><span class="n">data</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;8001:8001&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">rabbitmq</span>
+</pre></div>
+</div>
+<p><strong>What’s happening here:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--only</span> <span class="pre">watch-files</span></code> tells Courier to start only the plugin listed
+under the YAML key <code class="docutils literal notranslate"><span class="pre">watch-files</span></code> in <code class="docutils literal notranslate"><span class="pre">spec.run</span></code>. All other plugins are
+skipped.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">COURIER_PROMETHEUS_PORT=8001</span></code> overrides the default Prometheus port
+(8000). Each container needs a unique port so Prometheus can scrape
+both.</p></li>
+<li><p>The config file is mounted read-only at <code class="docutils literal notranslate"><span class="pre">/config/service.yaml</span></code>. The
+data directory is mounted at <code class="docutils literal notranslate"><span class="pre">/data</span></code> (matching the <code class="docutils literal notranslate"><span class="pre">path</span></code> setting in
+the data monitor config).</p></li>
+<li><p>Port <code class="docutils literal notranslate"><span class="pre">8001</span></code> is exposed so Prometheus can scrape metrics from this
+container.</p></li>
+</ul>
+<blockquote>
+<div><p>The <code class="docutils literal notranslate"><span class="pre">--only</span></code> flag tells Courier to start only the listed pipeline steps using YAML key identifiers from <code class="docutils literal notranslate"><span class="pre">spec.run</span></code> — not plugin class names. For full semantics including duplicate dispatcher warnings, see <a class="reference internal" href="../getting-started/configuration.html"><span class="doc">Configuration Reference</span></a> (Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code>).</p>
+</div></blockquote>
+</section>
+<section id="step-5-builder-and-dispatcher-container">
+<h2>Step 5: Builder and Dispatcher Container<a class="headerlink" href="#step-5-builder-and-dispatcher-container" title="Link to this heading"></a></h2>
+<p>Add a second Courier container that runs the job builder and dispatcher
+together:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  <span class="n">courier</span><span class="o">-</span><span class="n">processor</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;courier&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;run&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;/config/service.yaml&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;--only&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;create-jobs,process-files&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COURIER_PROMETHEUS_PORT</span><span class="p">:</span> <span class="s2">&quot;8002&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">config</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">service</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="n">ro</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">data</span><span class="p">:</span><span class="o">/</span><span class="n">data</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;8002:8002&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">rabbitmq</span>
+</pre></div>
+</div>
+<p>This container runs two plugins (<code class="docutils literal notranslate"><span class="pre">create-jobs</span></code> and <code class="docutils literal notranslate"><span class="pre">process-files</span></code>) in a
+single process. They share one Prometheus endpoint on port 8002.</p>
+<p><strong>Why split this way?</strong> The data monitor (file watcher) is I/O-bound — it
+polls the filesystem — while the builder and dispatcher are CPU-bound
+(processing and executing). Splitting them lets you scale each role
+independently. In a production swarm, you might run three watcher
+replicas and five processor replicas.</p>
+</section>
+<section id="step-6-prometheus-and-grafana">
+<h2>Step 6: Prometheus and Grafana<a class="headerlink" href="#step-6-prometheus-and-grafana" title="Link to this heading"></a></h2>
+<p>Add observability services to <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code>.</p>
+<section id="prometheus">
+<h3>Prometheus<a class="headerlink" href="#prometheus" title="Link to this heading"></a></h3>
+<p>Create <code class="docutils literal notranslate"><span class="pre">prometheus/prometheus.yml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">global</span><span class="p">:</span>
+  <span class="n">scrape_interval</span><span class="p">:</span> <span class="mi">15</span><span class="n">s</span>
+
+<span class="n">scrape_configs</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">job_name</span><span class="p">:</span> <span class="s2">&quot;courier-watcher&quot;</span>
+    <span class="n">static_configs</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">targets</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;courier-watcher:8001&quot;</span><span class="p">]</span>
+
+  <span class="o">-</span> <span class="n">job_name</span><span class="p">:</span> <span class="s2">&quot;courier-processor&quot;</span>
+    <span class="n">static_configs</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">targets</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;courier-processor:8002&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>Add the Prometheus service to <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  <span class="n">prometheus</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">prom</span><span class="o">/</span><span class="n">prometheus</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;--config.file=/etc/prometheus/prometheus.yml&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">prometheus</span><span class="o">/</span><span class="n">prometheus</span><span class="o">.</span><span class="n">yml</span><span class="p">:</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">prometheus</span><span class="o">/</span><span class="n">prometheus</span><span class="o">.</span><span class="n">yml</span><span class="p">:</span><span class="n">ro</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;9090:9090&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span>
+      <span class="o">-</span> <span class="n">courier</span><span class="o">-</span><span class="n">processor</span>
+</pre></div>
+</div>
+</section>
+<section id="grafana-dashboard-generation">
+<h3>Grafana Dashboard Generation<a class="headerlink" href="#grafana-dashboard-generation" title="Link to this heading"></a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">dashboard</span></code> command reads your config and generates Grafana
+dashboard JSON tailored to your pipeline:</p>
+<p>Run this on your <strong>host machine</strong> (not inside a container), in the same
+directory as your config:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">courier</span><span class="p">[</span><span class="n">grafana</span><span class="p">]</span>
+<span class="n">courier</span> <span class="n">dashboard</span> <span class="n">config</span><span class="o">.</span><span class="n">yaml</span> <span class="o">-</span><span class="n">o</span> <span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="o">/</span><span class="n">dashboards</span><span class="o">/</span><span class="n">courier</span><span class="o">.</span><span class="n">json</span>
+</pre></div>
+</div>
+<p>This produces a dashboard with panels for service health, data monitor
+throughput, job builder metrics, and dispatcher execution stats — only
+the panels relevant to your configured plugins.</p>
+<p>Create a Grafana datasource provisioning file at
+<code class="docutils literal notranslate"><span class="pre">grafana/provisioning/datasources/prometheus.yml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">apiVersion</span><span class="p">:</span> <span class="mi">1</span>
+
+<span class="n">datasources</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">name</span><span class="p">:</span> <span class="n">Prometheus</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">prometheus</span>
+    <span class="n">access</span><span class="p">:</span> <span class="n">proxy</span>
+    <span class="n">url</span><span class="p">:</span> <span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">prometheus</span><span class="p">:</span><span class="mi">9090</span>
+    <span class="n">isDefault</span><span class="p">:</span> <span class="n">true</span>
+</pre></div>
+</div>
+<p>Add the Grafana service to <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  <span class="n">grafana</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">grafana</span><span class="o">/</span><span class="n">grafana</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;3000:3000&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="p">:</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="p">:</span><span class="n">ro</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">GF_AUTH_ANONYMOUS_ENABLED</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">prometheus</span>
+</pre></div>
+</div>
+<p>Grafana will auto-provision the Prometheus datasource and the Courier
+dashboard on startup. Access the dashboard at <a class="reference external" href="http://localhost:3000">http://localhost:3000</a>.</p>
+</section>
+<section id="complete-compose-file-so-far">
+<h3>Complete Compose File So Far<a class="headerlink" href="#complete-compose-file-so-far" title="Link to this heading"></a></h3>
+<p>Your <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code> should now contain:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># docker-compose.yml</span>
+<span class="n">services</span><span class="p">:</span>
+  <span class="n">rabbitmq</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">rabbitmq</span><span class="p">:</span><span class="n">management</span>
+    <span class="n">hostname</span><span class="p">:</span> <span class="n">rabbitmq</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;5672:5672&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;15672:15672&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">RABBITMQ_DEFAULT_USER</span><span class="p">:</span> <span class="n">admin</span>
+      <span class="n">RABBITMQ_DEFAULT_PASS</span><span class="p">:</span> <span class="n">admin_test</span>
+
+  <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;courier&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;run&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;/config/service.yaml&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;--only&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;watch-files&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COURIER_PROMETHEUS_PORT</span><span class="p">:</span> <span class="s2">&quot;8001&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">config</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">service</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="n">ro</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">data</span><span class="p">:</span><span class="o">/</span><span class="n">data</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;8001:8001&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">rabbitmq</span>
+
+  <span class="n">courier</span><span class="o">-</span><span class="n">processor</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;courier&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;run&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;/config/service.yaml&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;--only&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;create-jobs,process-files&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COURIER_PROMETHEUS_PORT</span><span class="p">:</span> <span class="s2">&quot;8002&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">config</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">service</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="n">ro</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">data</span><span class="p">:</span><span class="o">/</span><span class="n">data</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;8002:8002&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">rabbitmq</span>
+
+  <span class="n">prometheus</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">prom</span><span class="o">/</span><span class="n">prometheus</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;--config.file=/etc/prometheus/prometheus.yml&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">prometheus</span><span class="o">/</span><span class="n">prometheus</span><span class="o">.</span><span class="n">yml</span><span class="p">:</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">prometheus</span><span class="o">/</span><span class="n">prometheus</span><span class="o">.</span><span class="n">yml</span><span class="p">:</span><span class="n">ro</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;9090:9090&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span>
+      <span class="o">-</span> <span class="n">courier</span><span class="o">-</span><span class="n">processor</span>
+
+  <span class="n">grafana</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">grafana</span><span class="o">/</span><span class="n">grafana</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;3000:3000&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="p">:</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="p">:</span><span class="n">ro</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">GF_AUTH_ANONYMOUS_ENABLED</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">prometheus</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="step-7-distributed-tracing">
+<h2>Step 7: Distributed Tracing<a class="headerlink" href="#step-7-distributed-tracing" title="Link to this heading"></a></h2>
+<p>Courier instruments its plugin pipeline with OpenTelemetry tracing.
+Courier enables traces by default. They follow each file from detection to
+execution across all containers. For details, see
+<a class="reference internal" href="../operations/tracing.html"><span class="doc">Courier Distributed Tracing</span></a>.</p>
+<p>Add a Jaeger all-in-one service to <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>  <span class="n">jaeger</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">jaegertracing</span><span class="o">/</span><span class="nb">all</span><span class="o">-</span><span class="ow">in</span><span class="o">-</span><span class="n">one</span><span class="p">:</span><span class="mf">1.68</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;16686:16686&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;4318:4318&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COLLECTOR_OTLP_ENABLED</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Port</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">16686</span></code></p></td>
+<td><p>Jaeger UI — search and visualize traces</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">4318</span></code></p></td>
+<td><p>OTLP HTTP receiver — Courier sends spans here</p></td>
+</tr>
+</tbody>
+</table>
+<p>Add the tracing environment variable to <strong>both</strong> Courier containers.
+Append to each container’s <code class="docutils literal notranslate"><span class="pre">environment</span></code> block:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>      <span class="n">OTEL_EXPORTER_OTLP_ENDPOINT</span><span class="p">:</span> <span class="s2">&quot;http://jaeger:4318/v1/traces&quot;</span>
+</pre></div>
+</div>
+<p>Courier sends spans via OTLP HTTP to the Jaeger collector. Each file
+traversal produces a single distributed trace linked by <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code>,
+with parent-child span relationships propagated across broker messages.
+For span naming conventions, sampling configuration, and production query
+workflows, see <a class="reference internal" href="../operations/tracing.html"><span class="doc">Courier Distributed Tracing</span></a>.</p>
+<p>After restarting the stack, the Jaeger UI is available at
+<a class="reference external" href="http://localhost:16686">http://localhost:16686</a>. Select the <code class="docutils literal notranslate"><span class="pre">courier</span></code> service to see traces with
+spans from both containers linked by a shared <code class="docutils literal notranslate"><span class="pre">trace_id</span></code>.</p>
+<section id="complete-compose-file">
+<h3>Complete Compose File<a class="headerlink" href="#complete-compose-file" title="Link to this heading"></a></h3>
+<p>At this point your full <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code> should look like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># docker-compose.yml</span>
+<span class="n">services</span><span class="p">:</span>
+  <span class="n">rabbitmq</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">rabbitmq</span><span class="p">:</span><span class="n">management</span>
+    <span class="n">hostname</span><span class="p">:</span> <span class="n">rabbitmq</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;5672:5672&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;15672:15672&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">RABBITMQ_DEFAULT_USER</span><span class="p">:</span> <span class="n">admin</span>
+      <span class="n">RABBITMQ_DEFAULT_PASS</span><span class="p">:</span> <span class="n">admin_test</span>
+
+  <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;courier&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;run&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;/config/service.yaml&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;--only&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;watch-files&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COURIER_PROMETHEUS_PORT</span><span class="p">:</span> <span class="s2">&quot;8001&quot;</span>
+      <span class="n">OTEL_EXPORTER_OTLP_ENDPOINT</span><span class="p">:</span> <span class="s2">&quot;http://jaeger:4318/v1/traces&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">config</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">service</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="n">ro</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">data</span><span class="p">:</span><span class="o">/</span><span class="n">data</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;8001:8001&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">rabbitmq</span>
+
+  <span class="n">courier</span><span class="o">-</span><span class="n">processor</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;courier&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;run&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;/config/service.yaml&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;--only&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;create-jobs,process-files&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COURIER_PROMETHEUS_PORT</span><span class="p">:</span> <span class="s2">&quot;8002&quot;</span>
+      <span class="n">OTEL_EXPORTER_OTLP_ENDPOINT</span><span class="p">:</span> <span class="s2">&quot;http://jaeger:4318/v1/traces&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">config</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="o">/</span><span class="n">config</span><span class="o">/</span><span class="n">service</span><span class="o">.</span><span class="n">yaml</span><span class="p">:</span><span class="n">ro</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">data</span><span class="p">:</span><span class="o">/</span><span class="n">data</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;8002:8002&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">rabbitmq</span>
+
+  <span class="n">prometheus</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">prom</span><span class="o">/</span><span class="n">prometheus</span>
+    <span class="n">command</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;--config.file=/etc/prometheus/prometheus.yml&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">prometheus</span><span class="o">/</span><span class="n">prometheus</span><span class="o">.</span><span class="n">yml</span><span class="p">:</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">prometheus</span><span class="o">/</span><span class="n">prometheus</span><span class="o">.</span><span class="n">yml</span><span class="p">:</span><span class="n">ro</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;9090:9090&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span>
+      <span class="o">-</span> <span class="n">courier</span><span class="o">-</span><span class="n">processor</span>
+
+  <span class="n">grafana</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">grafana</span><span class="o">/</span><span class="n">grafana</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;3000:3000&quot;</span>
+    <span class="n">volumes</span><span class="p">:</span>
+      <span class="o">-</span> <span class="o">./</span><span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="p">:</span><span class="o">/</span><span class="n">etc</span><span class="o">/</span><span class="n">grafana</span><span class="o">/</span><span class="n">provisioning</span><span class="p">:</span><span class="n">ro</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">GF_AUTH_ANONYMOUS_ENABLED</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span>
+    <span class="n">depends_on</span><span class="p">:</span>
+      <span class="o">-</span> <span class="n">prometheus</span>
+
+  <span class="n">jaeger</span><span class="p">:</span>
+    <span class="n">image</span><span class="p">:</span> <span class="n">jaegertracing</span><span class="o">/</span><span class="nb">all</span><span class="o">-</span><span class="ow">in</span><span class="o">-</span><span class="n">one</span><span class="p">:</span><span class="mf">1.68</span>
+    <span class="n">ports</span><span class="p">:</span>
+      <span class="o">-</span> <span class="s2">&quot;16686:16686&quot;</span>
+      <span class="o">-</span> <span class="s2">&quot;4318:4318&quot;</span>
+    <span class="n">environment</span><span class="p">:</span>
+      <span class="n">COLLECTOR_OTLP_ENABLED</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="step-8-deploy-and-verify">
+<h2>Step 8: Deploy and Verify<a class="headerlink" href="#step-8-deploy-and-verify" title="Link to this heading"></a></h2>
+<section id="start-the-stack">
+<h3>Start the Stack<a class="headerlink" href="#start-the-stack" title="Link to this heading"></a></h3>
+<p>From the tutorial directory, bring everything up:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">up</span> <span class="o">-</span><span class="n">d</span>
+</pre></div>
+</div>
+<p>Docker Compose pulls images (if needed) and starts all six services:
+RabbitMQ, two Courier containers, Prometheus, Grafana, and Jaeger.</p>
+<blockquote>
+<div><p><strong>Note:</strong> The <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">up</span></code> command demonstrated here runs in
+Compose mode, which ignores <code class="docutils literal notranslate"><span class="pre">deploy.replicas</span></code> and other Swarm-specific
+settings. To run as a true Swarm stack with replica support, use
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">stack</span> <span class="pre">deploy</span> <span class="pre">-c</span> <span class="pre">docker-compose.yml</span> <span class="pre">courier</span></code>.</p>
+</div></blockquote>
+</section>
+<section id="check-service-status">
+<h3>Check Service Status<a class="headerlink" href="#check-service-status" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">ps</span>
+</pre></div>
+</div>
+<p>Expected output shows all services with <code class="docutils literal notranslate"><span class="pre">Up</span></code> status:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">NAME</span>                    <span class="n">STATUS</span>
+<span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="o">-</span><span class="n">rabbitmq</span><span class="o">-</span><span class="mi">1</span>            <span class="n">Up</span>
+<span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="o">-</span><span class="n">courier</span><span class="o">-</span><span class="n">watcher</span><span class="o">-</span><span class="mi">1</span>     <span class="n">Up</span>
+<span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="o">-</span><span class="n">courier</span><span class="o">-</span><span class="n">processor</span><span class="o">-</span><span class="mi">1</span>   <span class="n">Up</span>
+<span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="o">-</span><span class="n">prometheus</span><span class="o">-</span><span class="mi">1</span>          <span class="n">Up</span>
+<span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="o">-</span><span class="n">grafana</span><span class="o">-</span><span class="mi">1</span>             <span class="n">Up</span>
+<span class="n">tutorial02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="o">-</span><span class="n">jaeger</span><span class="o">-</span><span class="mi">1</span>              <span class="n">Up</span>
+</pre></div>
+</div>
+<p>Names may vary slightly depending on your directory name. If any service
+is restarting, check its logs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">logs</span> <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span>
+<span class="n">docker</span> <span class="n">compose</span> <span class="n">logs</span> <span class="n">courier</span><span class="o">-</span><span class="n">processor</span>
+</pre></div>
+</div>
+</section>
+<section id="verify-the-data-monitor">
+<h3>Verify the Data Monitor<a class="headerlink" href="#verify-the-data-monitor" title="Link to this heading"></a></h3>
+<p>Look for the watcher’s startup logs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">logs</span> <span class="n">courier</span><span class="o">-</span><span class="n">watcher</span>
+</pre></div>
+</div>
+<p>You should see:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">Service</span><span class="p">:</span> <span class="n">tutorial</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="p">]</span> <span class="n">Starting</span> <span class="n">Service</span> <span class="n">tutorial</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span>
+<span class="p">[</span><span class="n">Manager</span><span class="p">:</span> <span class="n">PrometheusManager</span><span class="p">]</span> <span class="n">Starting</span> <span class="n">Prometheus</span> <span class="n">server</span> <span class="n">on</span> <span class="n">port</span> <span class="mi">8001</span>
+<span class="p">[</span><span class="n">Manager</span><span class="p">:</span> <span class="n">RabbitMQManager</span><span class="p">]</span> <span class="n">Successfully</span> <span class="n">connected</span> <span class="n">to</span> <span class="n">RabbitMQ</span>
+<span class="p">[</span><span class="n">Plugin</span><span class="p">:</span> <span class="n">file_system_poller_watchdog</span><span class="p">]</span> <span class="n">Starting</span> <span class="n">to</span> <span class="n">watch</span> <span class="n">directory</span><span class="p">:</span> <span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">incoming</span>
+<span class="p">[</span><span class="n">Service</span><span class="p">:</span> <span class="n">tutorial</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span><span class="p">]</span> <span class="n">Service</span> <span class="n">tutorial</span><span class="o">-</span><span class="mi">02</span><span class="o">-</span><span class="n">docker</span><span class="o">-</span><span class="n">swarm</span> <span class="n">started</span> <span class="n">successfully</span>
+</pre></div>
+</div>
+<p>Repeat for the processor container — it should show port 8002 and both
+plugins starting.</p>
+</section>
+<section id="browse-the-uis">
+<h3>Browse the UIs<a class="headerlink" href="#browse-the-uis" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Service</p></th>
+<th class="head"><p>URL</p></th>
+<th class="head"><p>What to Check</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>RabbitMQ</p></td>
+<td><p><a class="reference external" href="http://localhost:15672">http://localhost:15672</a></p></td>
+<td><p>Login <code class="docutils literal notranslate"><span class="pre">admin</span></code>/<code class="docutils literal notranslate"><span class="pre">admin_test</span></code>. Look for the fanout exchange and auto-created queues under the Exchanges and Queues tabs.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Prometheus</p></td>
+<td><p><a class="reference external" href="http://localhost:9090/targets">http://localhost:9090/targets</a></p></td>
+<td><p>Both Courier targets should show State <code class="docutils literal notranslate"><span class="pre">UP</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Grafana</p></td>
+<td><p><a class="reference external" href="http://localhost:3000">http://localhost:3000</a></p></td>
+<td><p>The Courier dashboard auto-loads. If not visible, browse Dashboards and select “Courier Service”.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Jaeger</p></td>
+<td><p><a class="reference external" href="http://localhost:16686">http://localhost:16686</a></p></td>
+<td><p>Select service <code class="docutils literal notranslate"><span class="pre">courier</span></code> from the dropdown. Traces appear once files are processed.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="test-file-processing">
+<h3>Test File Processing<a class="headerlink" href="#test-file-processing" title="Link to this heading"></a></h3>
+<p>Create a test file in the shared data directory:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">touch</span> <span class="n">data</span><span class="o">/</span><span class="n">incoming</span><span class="o">/</span><span class="n">OR_ABI</span><span class="o">-</span><span class="n">L1b</span><span class="o">-</span><span class="n">RadF</span><span class="o">-</span><span class="n">M6C01_G18_s20240151200000_e20240151209310_c20240151209360</span><span class="o">.</span><span class="n">nc</span>
+</pre></div>
+</div>
+<p>The watcher container detects it, extracts metadata, and publishes it to
+RabbitMQ. The processor container’s job builder receives it, creates a
+job, and the dispatcher executes the echo script.</p>
+<p>Check the processor logs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">logs</span> <span class="n">courier</span><span class="o">-</span><span class="n">processor</span>
+</pre></div>
+</div>
+<p>You should see:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="n">Plugin</span><span class="p">:</span> <span class="n">DummyJobBuilder</span><span class="p">]</span> <span class="n">Received</span> <span class="n">file</span> <span class="kn">from</span><span class="w"> </span><span class="nn">file</span> <span class="n">queue</span>
+<span class="p">[</span><span class="n">Plugin</span><span class="p">:</span> <span class="n">DummyJobBuilder</span><span class="p">]</span> <span class="n">Job</span> <span class="n">job_</span><span class="o">...</span> <span class="ow">is</span> <span class="n">ready</span><span class="p">;</span> <span class="n">emitting</span>
+<span class="p">[</span><span class="n">Plugin</span><span class="p">:</span> <span class="n">serial_bash</span><span class="p">]</span> <span class="n">Executing</span> <span class="n">job</span>
+<span class="o">==========================================</span>
+<span class="n">File</span> <span class="n">detected</span><span class="p">:</span> <span class="o">/</span><span class="n">data</span><span class="o">/</span><span class="n">incoming</span><span class="o">/</span><span class="n">OR_ABI</span><span class="o">-</span><span class="n">L1b</span><span class="o">-</span><span class="n">RadF</span><span class="o">-</span><span class="n">M6C01_G18_s20240151200000</span><span class="o">...</span>
+<span class="n">Timestamp</span><span class="p">:</span> <span class="mi">2026</span><span class="o">-</span><span class="mi">06</span><span class="o">-</span><span class="mi">12</span> <span class="o">...</span>
+<span class="o">==========================================</span>
+</pre></div>
+</div>
+</section>
+<section id="verify-the-trace">
+<h3>Verify the Trace<a class="headerlink" href="#verify-the-trace" title="Link to this heading"></a></h3>
+<p>Open Jaeger at <a class="reference external" href="http://localhost:16686">http://localhost:16686</a>, select the <code class="docutils literal notranslate"><span class="pre">courier</span></code> service,
+and click <strong>Find Traces</strong>. You should see a trace containing spans from
+both containers:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code> (from <code class="docutils literal notranslate"><span class="pre">courier-watcher</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">job_builder.build_job</span></code> (from <code class="docutils literal notranslate"><span class="pre">courier-processor</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dispatcher.dispatch_job</span></code> (from <code class="docutils literal notranslate"><span class="pre">courier-processor</span></code>)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code> (from <code class="docutils literal notranslate"><span class="pre">courier-processor</span></code>)</p></li>
+</ul>
+<p>Expand the trace to see span durations and attributes, including
+<code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> and <code class="docutils literal notranslate"><span class="pre">courier.file.path</span></code>.</p>
+<p>A typical trace will appear in the Jaeger UI as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>┌─────────────────────────────────────────────────────────────────┐
+│ courier: data_monitor.process_file         3.45s                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ├─ data_monitor.add_metadata              0.12s                 │
+│  ├─ data_monitor.emit_file                 0.89s                 │
+│  ├─ file.found                              event                │
+│  └─ file.emitted                            event                │
+├─────────────────────────────────────────────────────────────────┤
+│ courier: job_builder.build_job             1.23s                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ├─ job_builder.process_job_group          0.45s                 │
+│  ├─ job_builder.emit_job                   0.31s                 │
+│  │   └─ job_builder.emit_one               0.28s                 │
+│  ├─ job.ready                               event                │
+│  └─ job.emitted                             event                │
+├─────────────────────────────────────────────────────────────────┤
+│ courier: dispatcher.dispatch_job          28.10s                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ├─ dispatcher.execute_job                27.80s                 │
+│  │   └─ job.executed                        event                │
+│  └─ dispatcher.emit_execution_log          0.05s                 │
+├─────────────────────────────────────────────────────────────────┤
+│ Attributes:                                                      │
+│  courier.correlation_id: a1b2c3d4-...                          │
+│  courier.file.path: /data/incoming/OR_ABI-...                   │
+│  plugin.name: file_system_poller_watchdog                       │
+│  courier.execution_log.return_code: 0                           │
+└─────────────────────────────────────────────────────────────────┘
+</pre></div>
+</div>
+<p>The spans are ordered chronologically and linked by parent-child
+relationships. The <code class="docutils literal notranslate"><span class="pre">data_monitor.*</span></code> spans originate from
+<code class="docutils literal notranslate"><span class="pre">courier-watcher</span></code>, while <code class="docutils literal notranslate"><span class="pre">job_builder.*</span></code> and <code class="docutils literal notranslate"><span class="pre">dispatcher.*</span></code> spans
+originate from <code class="docutils literal notranslate"><span class="pre">courier-processor</span></code> — all part of the same distributed
+trace identified by a shared <code class="docutils literal notranslate"><span class="pre">trace_id</span></code>.</p>
+</section>
+<section id="clean-shutdown">
+<h3>Clean Shutdown<a class="headerlink" href="#clean-shutdown" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">compose</span> <span class="n">down</span>
+</pre></div>
+</div>
+<p>This stops and removes all containers while preserving your config files
+and data directory.</p>
+</section>
+</section>
+<section id="common-issues">
+<h2>Common Issues<a class="headerlink" href="#common-issues" title="Link to this heading"></a></h2>
+<p><strong>Files not detected</strong></p>
+<ul class="simple">
+<li><p>The file watcher only detects files created or moved <strong>after</strong> the service starts (see the note above about watchdog file detection timing).</p></li>
+<li><p>Check file permissions: <code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">-la</span> <span class="pre">&lt;watched-directory&gt;</span></code>.</p></li>
+<li><p>Verify the watched path matches the <code class="docutils literal notranslate"><span class="pre">config.path</span></code> setting.</p></li>
+</ul>
+<p><strong>RabbitMQ connection failed</strong></p>
+<ul class="simple">
+<li><p>Verify RabbitMQ is running: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">ps</span> <span class="pre">|</span> <span class="pre">grep</span> <span class="pre">rabbitmq</span></code> (Docker) or <code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">systemctl</span> <span class="pre">status</span> <span class="pre">rabbitmq-server</span></code> (system service).</p></li>
+<li><p>Check credentials match your RabbitMQ setup (default: <code class="docutils literal notranslate"><span class="pre">admin</span></code>/<code class="docutils literal notranslate"><span class="pre">admin_test</span></code>).</p></li>
+<li><p>Try <code class="docutils literal notranslate"><span class="pre">http://localhost:15672</span></code> to access the RabbitMQ management UI.</p></li>
+</ul>
+<p><strong>Grafana dashboard not showing:</strong></p>
+<ul class="simple">
+<li><p>Run <code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">dashboard</span> <span class="pre">config.yaml</span></code> locally to verify the dashboard
+JSON is valid.</p></li>
+<li><p>Ensure <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">courier[grafana]</span></code> completed successfully.</p></li>
+<li><p>Check that <code class="docutils literal notranslate"><span class="pre">grafana/provisioning/dashboards/courier.json</span></code> exists and
+contains valid JSON.</p></li>
+</ul>
+<p><strong>No traces in Jaeger:</strong></p>
+<ul class="simple">
+<li><p>Verify <code class="docutils literal notranslate"><span class="pre">OTEL_EXPORTER_OTLP_ENDPOINT</span></code> is set on both Courier containers.</p></li>
+<li><p>Check the endpoint is <code class="docutils literal notranslate"><span class="pre">http://jaeger:4318/v1/traces</span></code> (not localhost).</p></li>
+<li><p>Jaeger’s OTLP receiver must be enabled — the
+<code class="docutils literal notranslate"><span class="pre">COLLECTOR_OTLP_ENABLED=true</span></code> environment variable does this.</p></li>
+</ul>
+<p><strong>Port conflicts:</strong></p>
+<ul class="simple">
+<li><p>If port 3000, 9090, 8001, 8002, or 16686 is already in use, change the
+host-side port in <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code> (e.g., <code class="docutils literal notranslate"><span class="pre">&quot;8003:8001&quot;</span></code>). Update
+Prometheus targets to match.</p></li>
+</ul>
+</section>
+<section id="what-you-learned">
+<h2>What You Learned<a class="headerlink" href="#what-you-learned" title="Link to this heading"></a></h2>
+<p>You’ve completed all the learning objectives listed at the start of this tutorial. You can now split a Courier config across Docker containers using <code class="docutils literal notranslate"><span class="pre">--only</span></code>, deploy RabbitMQ as a shared broker, assign unique Prometheus ports per container, generate and provision Grafana dashboards, and enable OpenTelemetry distributed tracing across containers.</p>
+</section>
+<section id="next-steps">
+<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../operations/high-availability.html"><span class="doc">High-Availability Job Builder State Sync</span></a> — Run multiple processor replicas
+with shared state</p></li>
+<li><p><a class="reference internal" href="../operations/tracing.html"><span class="doc">Courier Distributed Tracing</span></a> — Deep dive into span hierarchy and audit
+workflows</p></li>
+</ul>
+</section>
+<section id="challenge-exercises">
+<h2>Challenge Exercises<a class="headerlink" href="#challenge-exercises" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Scale the processor.</strong> Add <code class="docutils literal notranslate"><span class="pre">deploy:</span> <span class="pre">replicas:</span> <span class="pre">2</span></code> to the
+<code class="docutils literal notranslate"><span class="pre">courier-processor</span></code> service. Note: this requires deploying with
+<code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">stack</span> <span class="pre">deploy</span> <span class="pre">-c</span> <span class="pre">docker-compose.yml</span> <span class="pre">courier</span></code> (not <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">compose</span> <span class="pre">up</span></code>, which ignores <code class="docutils literal notranslate"><span class="pre">deploy.replicas</span></code>). Observe how both
+replicas consume from the same RabbitMQ queues.</p></li>
+<li><p><strong>Add a second data monitor.</strong> Add another YAML key under <code class="docutils literal notranslate"><span class="pre">spec.run</span></code>
+(e.g., <code class="docutils literal notranslate"><span class="pre">watch-backup</span></code>) pointing to a different directory. Spin up a
+third Courier container with <code class="docutils literal notranslate"><span class="pre">--only</span> <span class="pre">watch-backup</span></code>.</p></li>
+<li><p><strong>Enable state sync.</strong> Add a Redis service and a <code class="docutils literal notranslate"><span class="pre">state_sync</span></code> block to
+the <code class="docutils literal notranslate"><span class="pre">create-jobs</span></code> builder config. Run two processor replicas and
+verify only one dispatches each job (see
+<a class="reference internal" href="../operations/high-availability.html"><span class="doc">High-Availability Job Builder State Sync</span></a>).</p></li>
+<li><p><strong>Adjust the sampling rate.</strong> Set
+<code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_SAMPLE_RATE=0.25</span></code> on both Courier containers, process
+20 files, and verify roughly 5 complete traces appear in Jaeger.</p></li>
+<li><p><strong>Split Prometheus per kind.</strong> Use <code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">dashboard</span> <span class="pre">config.yaml</span> <span class="pre">--split-by</span> <span class="pre">kind</span> <span class="pre">-o</span> <span class="pre">grafana/provisioning/dashboards/</span></code> to generate
+separate dashboards for the data monitor and dispatcher.</p></li>
+</ol>
+</section>
+<section id="complete-code">
+<h2>Complete Code<a class="headerlink" href="#complete-code" title="Link to this heading"></a></h2>
+<p>The complete configuration and compose file are available in the tutorial
+repository:</p>
+<p><a class="reference external" href="https://github.com/biosafetylvl5/courier/tree/main/examples/tutorials/02-docker-swarm">tutorial02-docker-swarm/</a></p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="01-simple-file-watcher.html" class="btn btn-neutral float-left" title="Tutorial 1: Simple File Watcher" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../operations/high-availability.html" class="btn btn-neutral float-right" title="High-Availability Job Builder State Sync" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

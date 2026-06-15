@@ -1,0 +1,1028 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuration Reference &mdash; Courier 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=b4795e93" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=fd10adb8"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Tutorial 1: Simple File Watcher" href="../tutorials/01-simple-file-watcher.html" />
+    <link rel="prev" title="Interactive Service Config Generator" href="init.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Courier
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#installation-methods">Installation Methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#using-docker">Using Docker</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#rabbitmq">RabbitMQ</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#prometheus-optional">Prometheus (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#development-setup">Development Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#using-dev-containers-vs-code">Using Dev Containers (VS Code)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="quick-start.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#what-we-ll-build">What We’ll Build</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#step-1-prepare-your-data-directory">Step 1: Prepare Your Data Directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#step-2-create-service-configuration">Step 2: Create Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#step-3-start-the-service">Step 3: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#step-4-test-with-data">Step 4: Test with Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#step-5-monitor-with-prometheus">Step 5: Monitor with Prometheus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#step-6-stop-the-service">Step 6: Stop the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick-start.html#need-help">Need Help?</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="init.html">Interactive Service Config Generator</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="init.html#usage">Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="init.html#options">Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="init.html#walkthrough">Walkthrough</a></li>
+<li class="toctree-l2"><a class="reference internal" href="init.html#generated-file-structure">Generated File Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="init.html#default-broker">Default Broker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="init.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#minimal-working-example">Minimal Working Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#document-metadata">Document Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#service-spec">Service Spec</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#heartbeat-interval"><code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#run"><code class="docutils literal notranslate"><span class="pre">run</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#broker-configuration">Broker Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#amqp">AMQP</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#amqp-field-reference">AMQP field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#redis">Redis</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#redis-field-reference">Redis field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#in-memory-default">In-Memory (default)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#url-generic-passthrough">URL (generic passthrough)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#examples-for-common-transports">Examples for common transports</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#url-field-reference">URL field reference</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#distributed-deployment-with-only">Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#syntax">Syntax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#example-two-container-split">Example: Two-Container Split</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#important-notes">Important Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#complete-example">Complete Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#production-amqp-with-tls">Production AMQP with TLS</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#validation">Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-precedence">Configuration Precedence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#jinja2-template-context">Jinja2 Template Context</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html">Tutorial 1: Simple File Watcher</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-1-project-setup">Step 1: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-2-create-test-data">Step 2: Create Test Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-3-write-service-configuration">Step 3: Write Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-4-validate-configuration">Step 4: Validate Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-5-start-the-service">Step 5: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-6-test-file-detection">Step 6: Test File Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-7-examine-metadata-extraction">Step 7: Examine Metadata Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-8-monitor-with-prometheus">Step 8: Monitor with Prometheus</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#service-health">Service health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#files-processed">Files processed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#jobs-built">Jobs built</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#jobs-executed">Jobs executed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-9-experiment-with-multiple-files">Step 9: Experiment with Multiple Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-10-clean-shutdown">Step 10: Clean Shutdown</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html">Tutorial 2: Distributed Docker Deployment</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-1-architecture-overview">Step 1: Architecture Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-2-project-setup">Step 2: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-3-rabbitmq-service">Step 3: RabbitMQ Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-4-data-monitor-container">Step 4: Data Monitor Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-5-builder-and-dispatcher-container">Step 5: Builder and Dispatcher Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-6-prometheus-and-grafana">Step 6: Prometheus and Grafana</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#prometheus">Prometheus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#grafana-dashboard-generation">Grafana Dashboard Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#complete-compose-file-so-far">Complete Compose File So Far</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-7-distributed-tracing">Step 7: Distributed Tracing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#complete-compose-file">Complete Compose File</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-8-deploy-and-verify">Step 8: Deploy and Verify</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#start-the-stack">Start the Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#check-service-status">Check Service Status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#verify-the-data-monitor">Verify the Data Monitor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#browse-the-uis">Browse the UIs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#test-file-processing">Test File Processing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#verify-the-trace">Verify the Trace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#clean-shutdown">Clean Shutdown</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Operations</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../operations/high-availability.html">High-Availability Job Builder State Sync</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#when-to-enable-state-sync">When to Enable State Sync</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#architecture">Architecture</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#redis-data-layout">Redis Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#how-a-mutation-propagates">How a Mutation Propagates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#conflict-resolution">Conflict Resolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#duplicate-dispatch-prevention">Duplicate-Dispatch Prevention</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#startup-state-recovery">Startup State Recovery</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#field-reference">Field Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#multi-tenant-isolation">Multi-Tenant Isolation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#complete-example">Complete Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#failsafe-behavior-at-startup">Failsafe Behavior at Startup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#observability">Observability</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/high-availability.html#useful-queries">Useful Queries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#trade-offs-and-limitations">Trade-offs and Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/high-availability.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../operations/tracing.html">Courier Distributed Tracing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#tracing-architecture-overview">1. Tracing Architecture Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#pipeline-integration">Pipeline Integration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#boundary-pattern">Boundary Pattern</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#trace-root-semantics">Trace Root Semantics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#correlation">Correlation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#relationship-to-existing-observability">Relationship to Existing Observability</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#configuration-reference">2. Configuration Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#fields">Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#disabling-tracing">Disabling Tracing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#sampling-behavior">Sampling Behavior</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#service-name-fallback">Service Name Fallback</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#endpoint-format">Endpoint Format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#span-naming-conventions-attribute-schema">3. Span Naming Conventions &amp; Attribute Schema</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#span-types">Span Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#attribute-keys">Attribute Keys</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#span-events">Span Events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#opentelemetry-messaging-semantic-conventions">OpenTelemetry Messaging Semantic Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#development-guide">4. Development Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#writing-tests-with-listexporter">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#test-isolation-with-reset-tracing-and-force-noop-global-provider">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#adding-tracing-to-a-new-plugin-type">4.3 Adding Tracing to a New Plugin Type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#the-trace-plugin-method-decorator">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#operations-guide">5. Operations Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#slow-detection-thresholds">5.1 Slow Detection Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#setting-up-an-otlp-collector">5.2 Setting Up an OTLP Collector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#querying-traces">5.3 Querying Traces</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#follow-a-file-through-the-pipeline">Follow a File Through the Pipeline</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#identifying-slow-plugins">Identifying Slow Plugins</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#monitoring-otlp-export-health">5.4 Monitoring OTLP Export Health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#production-monitoring-workflows">5.5 Production Monitoring Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#what-to-monitor-day-to-day">What to Monitor Day-to-Day</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#spotting-degradation">Spotting Degradation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#setting-up-alerts">Setting Up Alerts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#root-causing-with-span-hierarchy">Root-Causing With Span Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#common-operational-queries">Common Operational Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#correlating-traces-with-logs">Correlating Traces With Logs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#production-readiness-checklist">Production Readiness Checklist</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#audit-trail-workflows">5.6 Audit Trail Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#building-an-audit-trail-for-a-specific-file">Building an Audit Trail for a Specific File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#data-lineage-queries">Data Lineage Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#exporting-audit-data">Exporting Audit Data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#compliance-considerations">Compliance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#chain-of-custody">Chain of Custody</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#tamper-evidence">Tamper Evidence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../operations/tracing.html#example-audit-report-query">Example Audit Report Query</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../operations/tracing.html#quick-reference">6. Quick Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#environment-variables">Environment Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../operations/tracing.html#span-name-quick-index">Span Name Quick Index</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../concepts/index.html">Design Concepts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../concepts/index.html#architecture-decision-records-adrs">Architecture Decision Records (ADRs)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html">ADR-0001: Kombu-Based Message Broker Abstraction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html">ADR-0002: Redis-Based HA State Sync for Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html">ADR-0003: PluginRunState Enum for Plugin Lifecycle</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html">ADR-0004: File / FrozenFile Type Split</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html">ADR-0005: Segregated Plugin Protocols</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html">ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#alternatives-considered">Alternatives considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#consequences">Consequences</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Contribute</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../contribute/code-style.html">Code Style Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api-reference/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api-reference/plugins.html">Plugins API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-data-monitors">Standard Data Monitors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#file-system-poller-watchdog">file_system_poller_watchdog</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-dispatchers">Standard Dispatchers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#serial-bash">serial_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#parallel-bash">parallel_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-job-builders">Standard Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#dummyjobbuilder">DummyJobBuilder</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#filter-and-group">filter_and_group</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#metadatarouterbuilder">MetadataRouterBuilder</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api-reference/types.html">Types API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#file">File</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/types.html#key-methods">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#frozenfile">FrozenFile</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/types.html#id1">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#breaking-changes">Breaking Changes</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Courier</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Configuration Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/getting-started/configuration.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="init.html" class="btn btn-neutral float-left" title="Interactive Service Config Generator" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../tutorials/01-simple-file-watcher.html" class="btn btn-neutral float-right" title="Tutorial 1: Simple File Watcher" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="configuration-reference">
+<h1>Configuration Reference<a class="headerlink" href="#configuration-reference" title="Link to this heading"></a></h1>
+<p>This guide covers the service configuration file format and all
+broker transport options available in Courier.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>Courier services are configured through YAML (or JSON) files that
+describe <strong>what</strong> the service does and <strong>how</strong> it connects to
+infrastructure. A single file contains:</p>
+<ol class="arabic simple">
+<li><p><strong>Document metadata</strong> – apiVersion, kind, and a <code class="docutils literal notranslate"><span class="pre">metadata</span></code> block (name, namespace, description)</p></li>
+<li><p><strong>Service spec</strong> – heartbeat, broker, and pipeline steps</p></li>
+</ol>
+<p>Run <code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">validate</span> <span class="pre">&lt;file&gt;</span></code> to check a file before starting the
+service.</p>
+</section>
+<section id="minimal-working-example">
+<h2>Minimal Working Example<a class="headerlink" href="#minimal-working-example" title="Link to this heading"></a></h2>
+<p>You don’t need an external broker to get started. Omit the <code class="docutils literal notranslate"><span class="pre">broker</span></code>
+section entirely and Courier uses the in-memory transport:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">runcourier.dev/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Service</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-service</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">A minimal Courier service.</span>
+
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">watch</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data_monitor</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">file_system_poller_watchdog</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/incoming</span>
+
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">build</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">job_builder</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DummyJobBuilder</span>
+
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">dispatch</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">echo &quot;Processing {{ files[0].file }}&quot;</span>
+</pre></div>
+</div>
+<p>To connect to a real broker instead, add connection details. When
+<code class="docutils literal notranslate"><span class="pre">host</span></code> is present, Courier infers the transport as AMQP:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="w">  </span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">localhost</span>
+<span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5672</span>
+<span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">guest</span>
+<span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">guest</span>
+</pre></div>
+</div>
+</section>
+<section id="document-metadata">
+<h2>Document Metadata<a class="headerlink" href="#document-metadata" title="Link to this heading"></a></h2>
+<p>The top-level fields identify the configuration document. The
+<code class="docutils literal notranslate"><span class="pre">apiVersion</span></code> must follow the <code class="docutils literal notranslate"><span class="pre">&lt;group&gt;/v&lt;N&gt;[alphaN|betaN]</span></code> format
+(e.g. <code class="docutils literal notranslate"><span class="pre">runcourier.dev/v1alpha1</span></code>).</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">runcourier.dev/v1alpha1</span><span class="w">  </span><span class="c1"># Required. CRD-style API version.</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Service</span><span class="w">                      </span><span class="c1"># Required. Must be a non-empty string.</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-service</span><span class="w">                 </span><span class="c1"># Required. DNS subdomain name (lowercase, digits, hyphens).</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span><span class="w">            </span><span class="c1"># Optional. Groups queues and metrics.</span>
+<span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Short summary.</span><span class="w">      </span><span class="c1"># Required. One-line description.</span>
+<span class="w">  </span><span class="nt">docstring</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span><span class="w">                     </span><span class="c1"># Optional. Long-form documentation.</span>
+<span class="w">    </span><span class="no">Multi-line explanation of what</span>
+<span class="w">    </span><span class="no">this service does and why.</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w">                          </span><span class="c1"># Optional. Key/value pairs for selection.</span>
+<span class="w">    </span><span class="nt">app.kubernetes.io/part-of</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">geoips</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span><span class="w">                  </span><span class="c1"># Optional. Non-identifying metadata.</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">name</span></code> and <code class="docutils literal notranslate"><span class="pre">namespace</span></code> fields must be valid DNS subdomain names:
+lowercase letters, digits, and hyphens only (max 63 chars, no
+leading/trailing hyphens). All required string fields must be
+non-empty after trimming whitespace.</p>
+</section>
+<section id="service-spec">
+<h2>Service Spec<a class="headerlink" href="#service-spec" title="Link to this heading"></a></h2>
+<p>Everything under <code class="docutils literal notranslate"><span class="pre">spec:</span></code> controls runtime behavior.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">heartbeat_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span><span class="w">   </span><span class="c1"># Optional. Seconds between heartbeats. Default: 30.</span>
+<span class="w">  </span><span class="nt">broker</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">          </span><span class="c1"># Optional. Defaults to in-memory. See &quot;Broker Configuration&quot; below.</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">]</span><span class="w">             </span><span class="c1"># Required. At least one pipeline step.</span>
+</pre></div>
+</div>
+<section id="heartbeat-interval">
+<h3><code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span></code><a class="headerlink" href="#heartbeat-interval" title="Link to this heading"></a></h3>
+<p>How often the service publishes health metrics, in seconds. Defaults
+to <code class="docutils literal notranslate"><span class="pre">30</span></code> when omitted.</p>
+</section>
+<section id="run">
+<span id="run-section"></span><h3><code class="docutils literal notranslate"><span class="pre">run</span></code><a class="headerlink" href="#run" title="Link to this heading"></a></h3>
+<p>An ordered list of pipeline steps. Each step is a mapping from an
+identifier (unique within the file) to a plugin definition:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">run</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">my_step_name</span><span class="p">:</span><span class="w">            </span><span class="c1"># Unique identifier for this step.</span>
+<span class="w">      </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data_monitor</span><span class="w">     </span><span class="c1"># Plugin kind: data_monitor, job_builder, or dispatcher.</span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">plugin_name</span><span class="w">      </span><span class="c1"># Registered plugin name.</span>
+<span class="w">      </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">        </span><span class="c1"># Optional. Plugin-specific configuration. Defaults to null when omitted.</span>
+</pre></div>
+</div>
+<p>Step identifiers must be unique. Duplicate identifiers cause a
+validation error.</p>
+</section>
+</section>
+<section id="broker-configuration">
+<h2>Broker Configuration<a class="headerlink" href="#broker-configuration" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">broker</span></code> section tells the service how to connect to its message
+broker. Courier uses <a class="reference external" href="https://docs.celeryq.dev/projects/kombu/">Kombu</a>
+under the hood, so <strong>any Kombu transport</strong> is supported.</p>
+<p>There are four configuration styles, selected by the <code class="docutils literal notranslate"><span class="pre">transport</span></code> field.
+When <code class="docutils literal notranslate"><span class="pre">transport</span></code> is omitted, the default depends on context:</p>
+<ul class="simple">
+<li><p>If <code class="docutils literal notranslate"><span class="pre">host</span></code> is present, Courier infers AMQP (backward compatibility).</p></li>
+<li><p>Otherwise, Courier uses the in-memory transport (no external broker needed).</p></li>
+</ul>
+<section id="amqp">
+<h3>AMQP<a class="headerlink" href="#amqp" title="Link to this heading"></a></h3>
+<p>For RabbitMQ and other AMQP brokers. This is the most common
+production setup.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">amqp</span><span class="w">             </span><span class="c1"># Inferred when `host` is present.</span>
+<span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rabbitmq.example.com</span><span class="w"> </span><span class="c1"># Required. Hostname or IP.</span>
+<span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5672</span><span class="w">                 </span><span class="c1"># Default: 5672.</span>
+<span class="w">  </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin</span><span class="w">            </span><span class="c1"># Required.</span>
+<span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secret</span><span class="w">           </span><span class="c1"># Required.</span>
+<span class="w">  </span><span class="nt">vhost</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/</span><span class="w">                   </span><span class="c1"># Default: &quot;/&quot;. AMQP virtual host.</span>
+<span class="w">  </span><span class="nt">ssl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">                 </span><span class="c1"># Default: false. Set true for amqps://.</span>
+<span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">             </span><span class="c1"># Default: 5. Connection retry attempts (&gt;= 0).</span>
+</pre></div>
+</div>
+<p>The resulting Kombu URL is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">amqp</span><span class="p">:</span><span class="o">//</span><span class="n">admin</span><span class="p">:</span><span class="n">secret</span><span class="nd">@rabbitmq</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="mi">5672</span><span class="o">/</span>
+</pre></div>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">ssl:</span> <span class="pre">true</span></code> and <code class="docutils literal notranslate"><span class="pre">vhost:</span> <span class="pre">production</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">amqps</span><span class="p">:</span><span class="o">//</span><span class="n">admin</span><span class="p">:</span><span class="n">secret</span><span class="nd">@rabbitmq</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="mi">5672</span><span class="o">/</span><span class="n">production</span>
+</pre></div>
+</div>
+<section id="amqp-field-reference">
+<h4>AMQP field reference<a class="headerlink" href="#amqp-field-reference" title="Link to this heading"></a></h4>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">transport</span></code></p></td>
+<td><p>string</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;amqp&quot;</span></code></p></td>
+<td><p>Inferred when <code class="docutils literal notranslate"><span class="pre">host</span></code> is present.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">host</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Yes</p></td>
+<td><p>–</p></td>
+<td><p>Broker hostname or IP address.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">port</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5672</span></code></p></td>
+<td><p>TCP port (1–65535).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">username</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Yes</p></td>
+<td><p>–</p></td>
+<td><p>Authentication username.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">password</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Yes</p></td>
+<td><p>–</p></td>
+<td><p>Authentication password.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vhost</span></code></p></td>
+<td><p>string</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;/&quot;</span></code></p></td>
+<td><p>AMQP virtual host.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ssl</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Use TLS (<code class="docutils literal notranslate"><span class="pre">amqps://</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_retries</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5</span></code></p></td>
+<td><p>Max connection retry attempts.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="redis">
+<h3>Redis<a class="headerlink" href="#redis" title="Link to this heading"></a></h3>
+<p>For Redis-backed message queues.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">redis</span>
+<span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">redis.example.com</span><span class="w">   </span><span class="c1"># Default: &quot;localhost&quot;.</span>
+<span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">6379</span><span class="w">                </span><span class="c1"># Default: 6379.</span>
+<span class="w">  </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secret</span><span class="w">           </span><span class="c1"># Default: &quot;&quot; (no auth).</span>
+<span class="w">  </span><span class="nt">db</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">                     </span><span class="c1"># Default: 0. Redis database index.</span>
+<span class="w">  </span><span class="nt">ssl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">                </span><span class="c1"># Default: false. Set true for rediss://.</span>
+<span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">            </span><span class="c1"># Default: 5.</span>
+</pre></div>
+</div>
+<p>The resulting Kombu URL is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">redis</span><span class="p">:</span><span class="o">//</span><span class="p">:</span><span class="n">secret</span><span class="nd">@redis</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="mi">6379</span><span class="o">/</span><span class="mi">0</span>
+</pre></div>
+</div>
+<p>When <code class="docutils literal notranslate"><span class="pre">password</span></code> is empty the URL omits the auth segment:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">redis</span><span class="p">:</span><span class="o">//</span><span class="n">redis</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="mi">6379</span><span class="o">/</span><span class="mi">0</span>
+</pre></div>
+</div>
+<section id="redis-field-reference">
+<h4>Redis field reference<a class="headerlink" href="#redis-field-reference" title="Link to this heading"></a></h4>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">transport</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Yes</p></td>
+<td><p>–</p></td>
+<td><p>Must be <code class="docutils literal notranslate"><span class="pre">&quot;redis&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">host</span></code></p></td>
+<td><p>string</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;localhost&quot;</span></code></p></td>
+<td><p>Redis server hostname.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">port</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">6379</span></code></p></td>
+<td><p>TCP port (1–65535).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">password</span></code></p></td>
+<td><p>string</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
+<td><p>AUTH password (empty to skip).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">db</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Database index (&gt;= 0).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ssl</span></code></p></td>
+<td><p>boolean</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Use TLS (<code class="docutils literal notranslate"><span class="pre">rediss://</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_retries</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5</span></code></p></td>
+<td><p>Max connection retry attempts.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="in-memory-default">
+<h3>In-Memory (default)<a class="headerlink" href="#in-memory-default" title="Link to this heading"></a></h3>
+<p>A testing transport that passes messages between threads without any
+external broker. This is the default when the <code class="docutils literal notranslate"><span class="pre">broker</span></code> section is
+omitted entirely, or when <code class="docutils literal notranslate"><span class="pre">transport</span></code> and <code class="docutils literal notranslate"><span class="pre">host</span></code> are both absent.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">memory</span>
+<span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">            </span><span class="c1"># Default: 5.</span>
+</pre></div>
+</div>
+<p>The resulting Kombu URL is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">memory</span><span class="p">:</span><span class="o">//</span>
+</pre></div>
+</div>
+<p>No other fields are accepted.</p>
+</section>
+<section id="url-generic-passthrough">
+<h3>URL (generic passthrough)<a class="headerlink" href="#url-generic-passthrough" title="Link to this heading"></a></h3>
+<p>For <strong>any other Kombu transport</strong> – Amazon SQS, Kafka, MongoDB,
+SQLAlchemy, Filesystem, Azure Service Bus, Google Cloud Pub/Sub,
+Consul, etcd, Zookeeper, and more. Provide the full Kombu connection
+URL directly.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sqs://&quot;</span>
+<span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+</pre></div>
+</div>
+<p>Courier passes the URL to Kombu unchanged.</p>
+<section id="examples-for-common-transports">
+<h4>Examples for common transports<a class="headerlink" href="#examples-for-common-transports" title="Link to this heading"></a></h4>
+<p><strong>Amazon SQS:</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sqs://&quot;</span>
+<span class="w">  </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+</pre></div>
+</div>
+<p>SQS credentials are typically provided through environment variables
+or IAM roles rather than the URL.</p>
+<p><strong>Confluent Kafka:</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;confluentkafka://localhost:9092&quot;</span>
+</pre></div>
+</div>
+<p><strong>MongoDB:</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;mongodb://user:password@mongo.example.com:27017/kombu_default&quot;</span>
+</pre></div>
+</div>
+<p><strong>SQLAlchemy (PostgreSQL):</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;sqla+postgresql://user:password@db.example.com:5432/mydb&quot;</span>
+</pre></div>
+</div>
+<p><strong>Filesystem (no external service):</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;filesystem://&quot;</span>
+</pre></div>
+</div>
+<p>Filesystem transport requires Kombu <code class="docutils literal notranslate"><span class="pre">transport_options</span></code> to be set
+at the application level (<code class="docutils literal notranslate"><span class="pre">data_folder_in</span></code>, <code class="docutils literal notranslate"><span class="pre">data_folder_out</span></code>).</p>
+<p><strong>Azure Service Bus:</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;azureservicebus://policy_name:policy_key@my-namespace&quot;</span>
+</pre></div>
+</div>
+<p><strong>Google Cloud Pub/Sub:</strong></p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">url</span>
+<span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;gcpubsub://projects/my-gcp-project&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="url-field-reference">
+<h4>URL field reference<a class="headerlink" href="#url-field-reference" title="Link to this heading"></a></h4>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">transport</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Yes</p></td>
+<td><p>–</p></td>
+<td><p>Must be <code class="docutils literal notranslate"><span class="pre">&quot;url&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">url</span></code></p></td>
+<td><p>string</p></td>
+<td><p>Yes</p></td>
+<td><p>–</p></td>
+<td><p>Full Kombu connection URL.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_retries</span></code></p></td>
+<td><p>integer</p></td>
+<td><p>No</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">5</span></code></p></td>
+<td><p>Max connection retry attempts.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+</section>
+<section id="distributed-deployment-with-only">
+<h2>Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code><a class="headerlink" href="#distributed-deployment-with-only" title="Link to this heading"></a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This section covers operational deployment across containers. For the
+configuration format reference, see <a class="reference internal" href="#run-section"><span class="std std-ref">run</span></a> above.</p>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">--only</span></code> flag on <code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">run</span></code> lets you split a single service
+configuration across multiple containers. Each container runs a subset
+of the pipeline steps defined in <code class="docutils literal notranslate"><span class="pre">spec.run[]</span></code>, sharing the same broker
+and configuration file.</p>
+<p>This is the foundation of Docker clustering: one <code class="docutils literal notranslate"><span class="pre">config.yaml</span></code> deployed
+to several containers, each responsible for a different part of the
+pipeline.</p>
+<section id="syntax">
+<h3>Syntax<a class="headerlink" href="#syntax" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">courier</span> <span class="n">run</span> <span class="o">&lt;</span><span class="n">config</span><span class="o">-</span><span class="n">file</span><span class="o">&gt;</span> <span class="o">--</span><span class="n">only</span> <span class="o">&lt;</span><span class="n">id1</span><span class="p">,</span><span class="n">id2</span><span class="p">,</span><span class="o">...&gt;</span>
+</pre></div>
+</div>
+<p>The flag accepts a comma-separated list of step identifiers. Courier starts only steps whose YAML keys match one of the listed
+identifiers and skips the rest. Order in the list does not matter – steps run in
+their original <code class="docutils literal notranslate"><span class="pre">spec.run[]</span></code> order.</p>
+</section>
+<section id="example-two-container-split">
+<h3>Example: Two-Container Split<a class="headerlink" href="#example-two-container-split" title="Link to this heading"></a></h3>
+<p>Using the identifiers from the minimal configuration above (<code class="docutils literal notranslate"><span class="pre">watch</span></code>,
+<code class="docutils literal notranslate"><span class="pre">build</span></code>, <code class="docutils literal notranslate"><span class="pre">dispatch</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Container 1: data monitor only</span>
+<span class="n">courier</span> <span class="n">run</span> <span class="n">service</span><span class="o">.</span><span class="n">yaml</span> <span class="o">--</span><span class="n">only</span> <span class="n">watch</span>
+
+<span class="c1"># Container 2: job builder + dispatcher</span>
+<span class="n">courier</span> <span class="n">run</span> <span class="n">service</span><span class="o">.</span><span class="n">yaml</span> <span class="o">--</span><span class="n">only</span> <span class="n">build</span><span class="p">,</span><span class="n">dispatch</span>
+</pre></div>
+</div>
+<p>Both containers read the same <code class="docutils literal notranslate"><span class="pre">service.yaml</span></code> and connect to the same
+broker. Container 1 watches for new data and publishes file events.
+Container 2 picks up those events, builds jobs, and dispatches them.</p>
+</section>
+<section id="important-notes">
+<h3>Important Notes<a class="headerlink" href="#important-notes" title="Link to this heading"></a></h3>
+<p><strong>Identifiers, not plugin names.</strong> The values passed to <code class="docutils literal notranslate"><span class="pre">--only</span></code> are
+the YAML keys under <code class="docutils literal notranslate"><span class="pre">spec.run[]</span></code> – the short, unique names like
+<code class="docutils literal notranslate"><span class="pre">watch</span></code> or <code class="docutils literal notranslate"><span class="pre">dispatch</span></code>. Do not use plugin class names such as
+<code class="docutils literal notranslate"><span class="pre">file_system_poller_watchdog</span></code> or <code class="docutils literal notranslate"><span class="pre">serial_bash</span></code>.</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">data_monitor_configs</span></code> identifiers are excluded.</strong> Step identifiers
+that belong to <code class="docutils literal notranslate"><span class="pre">data_monitor_configs</span></code> (inline configuration templates)
+cannot be used with <code class="docutils literal notranslate"><span class="pre">--only</span></code>. The flag controls runtime plugins
+(<code class="docutils literal notranslate"><span class="pre">data_monitor</span></code>, <code class="docutils literal notranslate"><span class="pre">job_builder</span></code>, <code class="docutils literal notranslate"><span class="pre">dispatcher</span></code>), not YAML metadata
+configs.</p>
+<p><strong>Avoid duplicate dispatchers.</strong> A dispatcher consumes jobs from a
+shared queue. Running the same dispatcher identifier in two containers
+creates a split-brain scenario where both compete for the same messages.
+Each dispatcher identifier should appear in exactly one <code class="docutils literal notranslate"><span class="pre">--only</span></code> list
+across your deployment.</p>
+<p><strong>Empty <code class="docutils literal notranslate"><span class="pre">--only</span></code> runs everything.</strong> Omitting the flag, or passing an
+empty value (<code class="docutils literal notranslate"><span class="pre">--only</span> <span class="pre">&quot;&quot;</span></code>), starts all steps defined in <code class="docutils literal notranslate"><span class="pre">spec.run[]</span></code>.</p>
+</section>
+</section>
+<section id="complete-example">
+<h2>Complete Example<a class="headerlink" href="#complete-example" title="Link to this heading"></a></h2>
+<p>The following shows a production-ready configuration with AMQP and TLS.
+For in-memory and Redis broker blocks, see the field reference tables
+above.</p>
+<section id="production-amqp-with-tls">
+<h3>Production AMQP with TLS<a class="headerlink" href="#production-amqp-with-tls" title="Link to this heading"></a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">runcourier.dev/v1alpha1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Service</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">goes18-processor</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">production</span>
+<span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Production GOES-18 data processing with TLS.</span>
+
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">broker</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">amqp</span>
+<span class="w">    </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rabbitmq.prod.internal</span>
+<span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5671</span>
+<span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">svc_goes18</span>
+<span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;${RABBITMQ_PASSWORD}&quot;</span>
+<span class="w">    </span><span class="nt">vhost</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/geoips</span>
+<span class="w">    </span><span class="nt">ssl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">    </span><span class="nt">max_retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">watch</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data_monitor</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">file_system_poller_watchdog</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/goes18/incoming</span>
+
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">build</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">job_builder</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DummyJobBuilder</span>
+
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">dispatch</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">run_geoips.sh {{ files[0].file }}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="validation">
+<h2>Validation<a class="headerlink" href="#validation" title="Link to this heading"></a></h2>
+<p>Always validate configuration files before deploying:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>courier<span class="w"> </span>validate<span class="w"> </span>my_service.yaml
+</pre></div>
+</div>
+<p>Common validation errors:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Error</p></th>
+<th class="head"><p>Cause</p></th>
+<th class="head"><p>Fix</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Field</span> <span class="pre">'host'</span> <span class="pre">must</span> <span class="pre">be</span> <span class="pre">a</span> <span class="pre">non-empty</span> <span class="pre">string</span></code></p></td>
+<td><p>Missing or blank <code class="docutils literal notranslate"><span class="pre">host</span></code></p></td>
+<td><p>Add <code class="docutils literal notranslate"><span class="pre">host:</span> <span class="pre">your-broker-hostname</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Unable</span> <span class="pre">to</span> <span class="pre">extract</span> <span class="pre">tag</span> <span class="pre">using</span> <span class="pre">discriminator</span></code></p></td>
+<td><p>Invalid <code class="docutils literal notranslate"><span class="pre">transport</span></code> value</p></td>
+<td><p>Use <code class="docutils literal notranslate"><span class="pre">amqp</span></code>, <code class="docutils literal notranslate"><span class="pre">redis</span></code>, <code class="docutils literal notranslate"><span class="pre">memory</span></code>, or <code class="docutils literal notranslate"><span class="pre">url</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Extra</span> <span class="pre">inputs</span> <span class="pre">are</span> <span class="pre">not</span> <span class="pre">permitted</span></code></p></td>
+<td><p>Unknown field in broker config</p></td>
+<td><p>Remove the unrecognized field</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Duplicate</span> <span class="pre">run</span> <span class="pre">step</span> <span class="pre">identifiers</span></code></p></td>
+<td><p>Two steps share the same name</p></td>
+<td><p>Rename one of the step identifiers</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Input</span> <span class="pre">should</span> <span class="pre">be</span> <span class="pre">greater</span> <span class="pre">than</span> <span class="pre">or</span> <span class="pre">equal</span> <span class="pre">to</span> <span class="pre">0</span></code></p></td>
+<td><p>Negative <code class="docutils literal notranslate"><span class="pre">max_retries</span></code> or <code class="docutils literal notranslate"><span class="pre">db</span></code></p></td>
+<td><p>Use a non-negative integer</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="configuration-precedence">
+<h2>Configuration Precedence<a class="headerlink" href="#configuration-precedence" title="Link to this heading"></a></h2>
+<p>At startup, Courier resolves configuration from multiple
+sources in ascending priority:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">defaults</span>  <span class="o">&lt;</span>  <span class="n">YAML</span> <span class="n">file</span>  <span class="o">&lt;</span>  <span class="n">environment</span> <span class="n">variables</span>  <span class="o">&lt;</span>  <span class="n">CLI</span> <span class="n">flags</span>
+</pre></div>
+</div>
+<p>For example, you can override <code class="docutils literal notranslate"><span class="pre">max_retries:</span> <span class="pre">5</span></code> in the YAML by setting the <code class="docutils literal notranslate"><span class="pre">BROKER_MAX_RETRIES</span></code> environment variable.</p>
+</section>
+<section id="jinja2-template-context">
+<h2>Jinja2 Template Context<a class="headerlink" href="#jinja2-template-context" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">serial_bash</span></code> and <code class="docutils literal notranslate"><span class="pre">parallel_bash</span></code> dispatchers use
+<a class="reference external" href="https://jinja.palletsprojects.com/">Jinja2</a> for script templates,
+replacing the legacy <code class="docutils literal notranslate"><span class="pre">{file}</span></code> placeholder. Every template has access
+to <code class="docutils literal notranslate"><span class="pre">files</span></code> (list of file dicts), <code class="docutils literal notranslate"><span class="pre">job</span></code> (metadata), and <code class="docutils literal notranslate"><span class="pre">config</span></code>
+(convenience alias for <code class="docutils literal notranslate"><span class="pre">job.config</span></code>). All standard Jinja2 features –
+variables, filters, conditionals, and loops – are available. Courier catches syntax
+errors at config load time, and undefined variables render
+as empty strings (<code class="docutils literal notranslate"><span class="pre">DebugUndefined</span></code>) rather than raising errors.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="init.html" class="btn btn-neutral float-left" title="Interactive Service Config Generator" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../tutorials/01-simple-file-watcher.html" class="btn btn-neutral float-right" title="Tutorial 1: Simple File Watcher" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

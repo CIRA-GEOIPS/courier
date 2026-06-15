@@ -1,0 +1,626 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues &mdash; Courier 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=b4795e93" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../_static/copybutton.js?v=fd10adb8"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Code Style Guide" href="../../contribute/code-style.html" />
+    <link rel="prev" title="ADR-0005: Segregated Plugin Protocols" href="0005-segregated-plugin-protocols.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Courier
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#installation-methods">Installation Methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-docker">Using Docker</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#rabbitmq">RabbitMQ</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#prometheus-optional">Prometheus (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#development-setup">Development Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-dev-containers-vs-code">Using Dev Containers (VS Code)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/quick-start.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#what-we-ll-build">What We’ll Build</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-1-prepare-your-data-directory">Step 1: Prepare Your Data Directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-2-create-service-configuration">Step 2: Create Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-3-start-the-service">Step 3: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-4-test-with-data">Step 4: Test with Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-5-monitor-with-prometheus">Step 5: Monitor with Prometheus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-6-stop-the-service">Step 6: Stop the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#need-help">Need Help?</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/init.html">Interactive Service Config Generator</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#usage">Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#options">Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#walkthrough">Walkthrough</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#generated-file-structure">Generated File Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#default-broker">Default Broker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/configuration.html">Configuration Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#minimal-working-example">Minimal Working Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#document-metadata">Document Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#service-spec">Service Spec</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#heartbeat-interval"><code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#run"><code class="docutils literal notranslate"><span class="pre">run</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#broker-configuration">Broker Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#amqp">AMQP</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#amqp-field-reference">AMQP field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#redis">Redis</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#redis-field-reference">Redis field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#in-memory-default">In-Memory (default)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#url-generic-passthrough">URL (generic passthrough)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#examples-for-common-transports">Examples for common transports</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#url-field-reference">URL field reference</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#distributed-deployment-with-only">Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#syntax">Syntax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#example-two-container-split">Example: Two-Container Split</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#important-notes">Important Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#complete-example">Complete Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#production-amqp-with-tls">Production AMQP with TLS</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#validation">Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#configuration-precedence">Configuration Precedence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#jinja2-template-context">Jinja2 Template Context</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html">Tutorial 1: Simple File Watcher</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-1-project-setup">Step 1: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-2-create-test-data">Step 2: Create Test Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-3-write-service-configuration">Step 3: Write Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-4-validate-configuration">Step 4: Validate Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-5-start-the-service">Step 5: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-6-test-file-detection">Step 6: Test File Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-7-examine-metadata-extraction">Step 7: Examine Metadata Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-8-monitor-with-prometheus">Step 8: Monitor with Prometheus</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#service-health">Service health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#files-processed">Files processed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#jobs-built">Jobs built</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#jobs-executed">Jobs executed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-9-experiment-with-multiple-files">Step 9: Experiment with Multiple Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-10-clean-shutdown">Step 10: Clean Shutdown</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html">Tutorial 2: Distributed Docker Deployment</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-1-architecture-overview">Step 1: Architecture Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-2-project-setup">Step 2: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-3-rabbitmq-service">Step 3: RabbitMQ Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-4-data-monitor-container">Step 4: Data Monitor Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-5-builder-and-dispatcher-container">Step 5: Builder and Dispatcher Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-6-prometheus-and-grafana">Step 6: Prometheus and Grafana</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#prometheus">Prometheus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#grafana-dashboard-generation">Grafana Dashboard Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#complete-compose-file-so-far">Complete Compose File So Far</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-7-distributed-tracing">Step 7: Distributed Tracing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#complete-compose-file">Complete Compose File</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-8-deploy-and-verify">Step 8: Deploy and Verify</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#start-the-stack">Start the Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#check-service-status">Check Service Status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#verify-the-data-monitor">Verify the Data Monitor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#browse-the-uis">Browse the UIs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#test-file-processing">Test File Processing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#verify-the-trace">Verify the Trace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#clean-shutdown">Clean Shutdown</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Operations</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../operations/high-availability.html">High-Availability Job Builder State Sync</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#when-to-enable-state-sync">When to Enable State Sync</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#architecture">Architecture</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#redis-data-layout">Redis Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#how-a-mutation-propagates">How a Mutation Propagates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#conflict-resolution">Conflict Resolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#duplicate-dispatch-prevention">Duplicate-Dispatch Prevention</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#startup-state-recovery">Startup State Recovery</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#field-reference">Field Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#multi-tenant-isolation">Multi-Tenant Isolation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#complete-example">Complete Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#failsafe-behavior-at-startup">Failsafe Behavior at Startup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#observability">Observability</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#useful-queries">Useful Queries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#trade-offs-and-limitations">Trade-offs and Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../operations/tracing.html">Courier Distributed Tracing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#tracing-architecture-overview">1. Tracing Architecture Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#pipeline-integration">Pipeline Integration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#boundary-pattern">Boundary Pattern</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#trace-root-semantics">Trace Root Semantics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#correlation">Correlation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#relationship-to-existing-observability">Relationship to Existing Observability</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#configuration-reference">2. Configuration Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#fields">Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#disabling-tracing">Disabling Tracing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#sampling-behavior">Sampling Behavior</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#service-name-fallback">Service Name Fallback</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#endpoint-format">Endpoint Format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#span-naming-conventions-attribute-schema">3. Span Naming Conventions &amp; Attribute Schema</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#span-types">Span Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#attribute-keys">Attribute Keys</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#span-events">Span Events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#opentelemetry-messaging-semantic-conventions">OpenTelemetry Messaging Semantic Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#development-guide">4. Development Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#writing-tests-with-listexporter">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#test-isolation-with-reset-tracing-and-force-noop-global-provider">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#adding-tracing-to-a-new-plugin-type">4.3 Adding Tracing to a New Plugin Type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#the-trace-plugin-method-decorator">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#operations-guide">5. Operations Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#slow-detection-thresholds">5.1 Slow Detection Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#setting-up-an-otlp-collector">5.2 Setting Up an OTLP Collector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#querying-traces">5.3 Querying Traces</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#follow-a-file-through-the-pipeline">Follow a File Through the Pipeline</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#identifying-slow-plugins">Identifying Slow Plugins</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#monitoring-otlp-export-health">5.4 Monitoring OTLP Export Health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#production-monitoring-workflows">5.5 Production Monitoring Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#what-to-monitor-day-to-day">What to Monitor Day-to-Day</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#spotting-degradation">Spotting Degradation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#setting-up-alerts">Setting Up Alerts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#root-causing-with-span-hierarchy">Root-Causing With Span Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#common-operational-queries">Common Operational Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#correlating-traces-with-logs">Correlating Traces With Logs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#production-readiness-checklist">Production Readiness Checklist</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#audit-trail-workflows">5.6 Audit Trail Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#building-an-audit-trail-for-a-specific-file">Building an Audit Trail for a Specific File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#data-lineage-queries">Data Lineage Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#exporting-audit-data">Exporting Audit Data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#compliance-considerations">Compliance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#chain-of-custody">Chain of Custody</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#tamper-evidence">Tamper Evidence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#example-audit-report-query">Example Audit Report Query</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#quick-reference">6. Quick Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#environment-variables">Environment Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#span-name-quick-index">Span Name Quick Index</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">Design Concepts</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html#architecture-decision-records-adrs">Architecture Decision Records (ADRs)</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html">ADR-0001: Kombu-Based Message Broker Abstraction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0001-kombu-message-broker-abstraction.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="0002-redis-ha-state-sync.html">ADR-0002: Redis-Based HA State Sync for Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="0002-redis-ha-state-sync.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0002-redis-ha-state-sync.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0002-redis-ha-state-sync.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0002-redis-ha-state-sync.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0002-redis-ha-state-sync.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0002-redis-ha-state-sync.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="0003-plugin-run-state-enum.html">ADR-0003: PluginRunState Enum for Plugin Lifecycle</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="0003-plugin-run-state-enum.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0003-plugin-run-state-enum.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0003-plugin-run-state-enum.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0003-plugin-run-state-enum.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0003-plugin-run-state-enum.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0003-plugin-run-state-enum.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html">ADR-0004: File / FrozenFile Type Split</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0004-frozen-file-mutable-file-split.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="0005-segregated-plugin-protocols.html">ADR-0005: Segregated Plugin Protocols</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="0005-segregated-plugin-protocols.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0005-segregated-plugin-protocols.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0005-segregated-plugin-protocols.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0005-segregated-plugin-protocols.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0005-segregated-plugin-protocols.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="0005-segregated-plugin-protocols.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#alternatives-considered">Alternatives considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#consequences">Consequences</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Contribute</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../contribute/code-style.html">Code Style Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api-reference/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../api-reference/plugins.html">Plugins API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api-reference/plugins.html#standard-data-monitors">Standard Data Monitors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#file-system-poller-watchdog">file_system_poller_watchdog</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api-reference/plugins.html#standard-dispatchers">Standard Dispatchers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#serial-bash">serial_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#parallel-bash">parallel_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api-reference/plugins.html#standard-job-builders">Standard Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#dummyjobbuilder">DummyJobBuilder</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#filter-and-group">filter_and_group</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/plugins.html#metadatarouterbuilder">MetadataRouterBuilder</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../api-reference/types.html">Types API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../api-reference/types.html#file">File</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/types.html#key-methods">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api-reference/types.html#frozenfile">FrozenFile</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../api-reference/types.html#id1">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../api-reference/types.html#breaking-changes">Breaking Changes</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Courier</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Design Concepts</a></li>
+      <li class="breadcrumb-item active">ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/concepts/adr/0006-dispatcher-routing.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="0005-segregated-plugin-protocols.html" class="btn btn-neutral float-left" title="ADR-0005: Segregated Plugin Protocols" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../contribute/code-style.html" class="btn btn-neutral float-right" title="Code Style Guide" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="adr-0006-dispatcher-routing-via-named-per-dispatcher-queues">
+<h1>ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues<a class="headerlink" href="#adr-0006-dispatcher-routing-via-named-per-dispatcher-queues" title="Link to this heading"></a></h1>
+<section id="status">
+<h2>Status<a class="headerlink" href="#status" title="Link to this heading"></a></h2>
+<p>Accepted</p>
+</section>
+<section id="context">
+<h2>Context<a class="headerlink" href="#context" title="Link to this heading"></a></h2>
+<p>Before this ADR, every <code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code> published emitted jobs to a single
+hardcoded <code class="docutils literal notranslate"><span class="pre">JOB_READY_QUEUE</span></code> (<code class="docutils literal notranslate"><span class="pre">constants.QueueName.JOB_READY</span></code>). Every
+<code class="docutils literal notranslate"><span class="pre">Dispatcher</span></code> consumed from that same queue. AMQP competing-consumer
+semantics meant jobs were stolen by whichever dispatcher happened to
+win — there was no way for a builder to direct a specific job at a
+specific executor.</p>
+<p>This broke two realistic deployments:</p>
+<ol class="arabic simple">
+<li><p><strong>Mixed-cost workloads.</strong> A service that runs both a cheap
+<code class="docutils literal notranslate"><span class="pre">serial_bash</span></code> workflow and an expensive <code class="docutils literal notranslate"><span class="pre">slurm_dispatcher</span></code> cannot
+send the SLURM-eligible jobs to the right executor.</p></li>
+<li><p><strong>Fan-out / audit traffic.</strong> A deployment that wants every job
+mirrored to an audit dispatcher alongside its primary executor had
+no mechanism to do so.</p></li>
+</ol>
+<p>We also needed routing to work identically on:</p>
+<ul class="simple">
+<li><p><strong>Laptop</strong> — memory transport, single process, zero configuration.</p></li>
+<li><p><strong>HA cluster</strong> — RabbitMQ, N replicas of each dispatcher competing
+for its own queue, crash-safe.</p></li>
+</ul>
+</section>
+<section id="decision">
+<h2>Decision<a class="headerlink" href="#decision" title="Link to this heading"></a></h2>
+<p>Route jobs by <strong>selecting the queue at publish time</strong>. Each dispatcher
+consumes from a queue named <code class="docutils literal notranslate"><span class="pre">JobReady-&lt;identifier&gt;</span></code> (namespaced to
+<code class="docutils literal notranslate"><span class="pre">&lt;namespace&gt;-JobReady-&lt;identifier&gt;</span></code> by <code class="docutils literal notranslate"><span class="pre">MessageBrokerManager</span></code>).
+Builders declare a <code class="docutils literal notranslate"><span class="pre">targets:</span> <span class="pre">list[str]</span></code> of dispatcher identifiers in
+YAML; the builder’s <code class="docutils literal notranslate"><span class="pre">emit()</span></code> fans the job out to each target queue.</p>
+<section id="key-properties">
+<h3>Key properties<a class="headerlink" href="#key-properties" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Routing is queue selection</strong>, not a field on <code class="docutils literal notranslate"><span class="pre">Job</span></code> used for
+dispatch. Keeps <code class="docutils literal notranslate"><span class="pre">Job</span></code> narrow and makes routing visible in broker
+introspection.</p></li>
+<li><p><strong>Target identity = <code class="docutils literal notranslate"><span class="pre">MicroserviceModel.identifier</span></code></strong> — no new
+identity concept.</p></li>
+<li><p><strong>Per-target idempotency</strong> — the emit-claim key is
+<code class="docutils literal notranslate"><span class="pre">f&quot;{job.identifier}::{target}&quot;</span></code>. A crash between two fan-out targets
+leaves completed targets claimed and incomplete ones free for
+resume; neither duplicates nor silently loses deliveries.</p></li>
+<li><p><strong>Publisher confirms on AMQP</strong> — <code class="docutils literal notranslate"><span class="pre">Service.emit</span></code> accepts
+<code class="docutils literal notranslate"><span class="pre">confirm:</span> <span class="pre">bool</span></code>; the Kombu broker enables publisher confirms on
+non-memory transports. Transient failures (<code class="docutils literal notranslate"><span class="pre">TransientBrokerError</span></code>)
+are retried with backoff; fatal failures
+(<code class="docutils literal notranslate"><span class="pre">FatalBrokerError</span></code>) release the emit claim and log an ERROR so
+restart (or a human) can retake them.</p></li>
+<li><p><strong>Preflight validation is essential to correctness.</strong> Unknown targets, invalid identifiers,
+oversized queue names, and duplicate targets all fail before any
+thread starts.</p></li>
+<li><p><strong>Producer-side queue predeclaration.</strong> Preflight registers every
+dispatcher queue on the broker manager, so the first <code class="docutils literal notranslate"><span class="pre">emit()</span></code> cannot
+race a dispatcher starting after the builder.</p></li>
+<li><p><strong>Consumer-side LRU-based deduplication.</strong> Each dispatcher replica maintains a
+bounded <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code> of recent job identifiers and skips duplicates
+(e.g. redelivery after a broker-level nack). Cross-replica strict
+exactly-once is opt-in via the sync-backed dedupe path.</p></li>
+<li><p><strong>Zero-config laptop.</strong> <code class="docutils literal notranslate"><span class="pre">allow_implicit_target:</span> <span class="pre">true</span></code> (default)
+auto-wires a single builder to a single dispatcher and emits a
+startup WARNING so silent auto-wiring is always visible. Two or
+more dispatchers requires explicit <code class="docutils literal notranslate"><span class="pre">targets</span></code>.</p></li>
+</ul>
+</section>
+<section id="identifier-safety">
+<h3>Identifier safety<a class="headerlink" href="#identifier-safety" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">validate_dispatcher_identifier(ident)</span></code> in <code class="docutils literal notranslate"><span class="pre">constants.py</span></code> enforces
+<code class="docutils literal notranslate"><span class="pre">^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$</span></code> — matches Kubernetes resource
+names so operator muscle memory carries over. Preflight also rejects
+<code class="docutils literal notranslate"><span class="pre">&lt;namespace&gt;-&lt;queue&gt;</span></code> names exceeding RabbitMQ’s 255-character limit
+(<code class="docutils literal notranslate"><span class="pre">MAX_QUEUE_NAME_LENGTH</span></code>).</p>
+</section>
+<section id="targetresolver-adapter-layer">
+<h3><code class="docutils literal notranslate"><span class="pre">TargetResolver</span></code> adapter layer<a class="headerlink" href="#targetresolver-adapter-layer" title="Link to this heading"></a></h3>
+<p>A thin <code class="docutils literal notranslate"><span class="pre">TargetResolver</span></code> (<code class="docutils literal notranslate"><span class="pre">courier.routing</span></code>) sits between
+builder-declared target identifiers and the physical queue name used
+for publish. The default <code class="docutils literal notranslate"><span class="pre">IdentityTargetResolver</span></code> returns
+<code class="docutils literal notranslate"><span class="pre">job_ready_queue_for(identifier)</span></code>. Constructed once at service
+startup from the full validated config, injected into every builder,
+and reused by <code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">queues</span> <span class="pre">prune</span></code> so the CLI and runtime agree on
+the mapping.</p>
+<p>Even without a second concrete implementation, the indirection keeps
+<code class="docutils literal notranslate"><span class="pre">Job.targets</span></code> as a stable operator-facing label and avoids reworking
+every builder later if operators need multi-cluster routing, aliasing,
+or shadow traffic.</p>
+</section>
+</section>
+<section id="alternatives-considered">
+<h2>Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Label/selector matching (Kubernetes-style).</strong> Rejected per
+<code class="docutils literal notranslate"><span class="pre">design-principles.md</span></code> — speculative abstraction with only one
+concrete use case today. Revisit if a second genuine need surfaces.</p></li>
+<li><p><strong>Broker-native topic exchange with routing-key patterns.</strong> Works
+on RabbitMQ, not on the memory transport. Breaks the laptop story.</p></li>
+<li><p><strong>Job-carried <code class="docutils literal notranslate"><span class="pre">dispatcher</span></code> field + single shared queue + client-side
+filtering.</strong> Breaks competing-consumer HA (every replica sees every
+message) and wastes network.</p></li>
+</ul>
+<section id="external-comparison">
+<h3>External comparison<a class="headerlink" href="#external-comparison" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Celery</strong> routes via exchange + routing key.</p></li>
+<li><p><strong>Airflow</strong> uses executor classes bound to queue names per task
+(<code class="docutils literal notranslate"><span class="pre">queue=</span></code> task attribute).</p></li>
+</ul>
+<p>Our design is closest to Airflow’s <code class="docutils literal notranslate"><span class="pre">queue=</span></code> attribute — the queue name
+IS the target identity. Celery-style topic routing is the natural next
+step if label/selector demand materializes.</p>
+</section>
+</section>
+<section id="consequences">
+<h2>Consequences<a class="headerlink" href="#consequences" title="Link to this heading"></a></h2>
+<section id="accepted-tradeoffs">
+<h3>Accepted tradeoffs<a class="headerlink" href="#accepted-tradeoffs" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Delivery</strong> — at-least-once per target. Strict exactly-once
+requires opting into the sync-backed dedupe.</p></li>
+<li><p><strong>Ordering</strong> — no cross-target ordering. Within a single target
+queue, ordering is whatever the broker provides (RabbitMQ FIFO per
+queue with one consumer, non-deterministic with multiple competing
+consumers).</p></li>
+<li><p><strong>Idempotency</strong> — jobs should be idempotent. Consumer-side LRU
+dedupe catches same-replica duplicates; sync-backed dedupe (opt-in)
+catches cross-replica.</p></li>
+<li><p><strong>Queue proliferation</strong> — M dispatchers means M queues. Deployments
+with more than 100 dispatchers should review broker limits.</p></li>
+<li><p><strong>Retired queue cleanup</strong> — removing a dispatcher from config does
+not delete its queue from RabbitMQ. Operators run
+<code class="docutils literal notranslate"><span class="pre">courier</span> <span class="pre">queues</span> <span class="pre">prune</span> <span class="pre">--config</span> <span class="pre">PATH</span></code> (same <code class="docutils literal notranslate"><span class="pre">ServiceConfigModel</span></code> +
+<code class="docutils literal notranslate"><span class="pre">TargetResolver</span></code> the runtime uses; dry-run default, <code class="docutils literal notranslate"><span class="pre">--apply</span></code>
+required to delete).</p></li>
+</ul>
+</section>
+<section id="observability">
+<h3>Observability<a class="headerlink" href="#observability" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Metrics:</strong> <code class="docutils literal notranslate"><span class="pre">courier_job_builder_jobs_emitted_total{target}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">courier_job_builder_emit_failures_total{target,reason}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">courier_dispatcher_jobs_consumed_total{dispatcher_identifier}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">courier_dispatcher_dispatch_latency_seconds{dispatcher_identifier}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">courier_dispatcher_queue_depth{dispatcher_identifier}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">courier_dispatcher_dedupe_skips_total{dispatcher_identifier}</span></code>.</p></li>
+<li><p><strong>Logs:</strong> INFO on emit (succeeded targets + <code class="docutils literal notranslate"><span class="pre">correlation_id</span></code>);
+single ERROR on partial fan-out listing succeeded and failed targets;
+WARNING on implicit-target auto-wire.</p></li>
+<li><p><strong>Health checks:</strong> dispatcher <code class="docutils literal notranslate"><span class="pre">is_healthy()</span></code> fails if its own
+queue is undeclarable; <code class="docutils literal notranslate"><span class="pre">preflight_check</span></code> fails if any target queue
+is undeclarable.</p></li>
+<li><p><strong>Distributed deployment</strong>: The queue-per-dispatcher design enables the <code class="docutils literal notranslate"><span class="pre">--only</span></code> flag to safely split pipelines across containers. See <a class="reference internal" href="../../getting-started/configuration.html"><span class="doc">Configuration Reference</span></a> (Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code>) for usage.</p></li>
+</ul>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="0005-segregated-plugin-protocols.html" class="btn btn-neutral float-left" title="ADR-0005: Segregated Plugin Protocols" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../contribute/code-style.html" class="btn btn-neutral float-right" title="Code Style Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

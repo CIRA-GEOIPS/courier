@@ -1,0 +1,1941 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Courier Distributed Tracing &mdash; Courier 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=b4795e93" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=fd10adb8"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Design Concepts" href="../concepts/index.html" />
+    <link rel="prev" title="High-Availability Job Builder State Sync" href="high-availability.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Courier
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#installation-methods">Installation Methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-docker">Using Docker</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#rabbitmq">RabbitMQ</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#prometheus-optional">Prometheus (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#development-setup">Development Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-dev-containers-vs-code">Using Dev Containers (VS Code)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/quick-start.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#what-we-ll-build">What We’ll Build</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-1-prepare-your-data-directory">Step 1: Prepare Your Data Directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-2-create-service-configuration">Step 2: Create Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-3-start-the-service">Step 3: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-4-test-with-data">Step 4: Test with Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-5-monitor-with-prometheus">Step 5: Monitor with Prometheus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#step-6-stop-the-service">Step 6: Stop the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/quick-start.html#need-help">Need Help?</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/init.html">Interactive Service Config Generator</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#usage">Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#options">Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#walkthrough">Walkthrough</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#generated-file-structure">Generated File Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#default-broker">Default Broker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/init.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../getting-started/configuration.html">Configuration Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#minimal-working-example">Minimal Working Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#document-metadata">Document Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#service-spec">Service Spec</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#heartbeat-interval"><code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#run"><code class="docutils literal notranslate"><span class="pre">run</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#broker-configuration">Broker Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#amqp">AMQP</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#amqp-field-reference">AMQP field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#redis">Redis</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#redis-field-reference">Redis field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#in-memory-default">In-Memory (default)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#url-generic-passthrough">URL (generic passthrough)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#examples-for-common-transports">Examples for common transports</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../getting-started/configuration.html#url-field-reference">URL field reference</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#distributed-deployment-with-only">Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#syntax">Syntax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#example-two-container-split">Example: Two-Container Split</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#important-notes">Important Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#complete-example">Complete Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#production-amqp-with-tls">Production AMQP with TLS</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#validation">Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#configuration-precedence">Configuration Precedence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#jinja2-template-context">Jinja2 Template Context</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html">Tutorial 1: Simple File Watcher</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-1-project-setup">Step 1: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-2-create-test-data">Step 2: Create Test Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-3-write-service-configuration">Step 3: Write Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-4-validate-configuration">Step 4: Validate Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-5-start-the-service">Step 5: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-6-test-file-detection">Step 6: Test File Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-7-examine-metadata-extraction">Step 7: Examine Metadata Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-8-monitor-with-prometheus">Step 8: Monitor with Prometheus</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#service-health">Service health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#files-processed">Files processed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#jobs-built">Jobs built</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#jobs-executed">Jobs executed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-9-experiment-with-multiple-files">Step 9: Experiment with Multiple Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#step-10-clean-shutdown">Step 10: Clean Shutdown</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/01-simple-file-watcher.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html">Tutorial 2: Distributed Docker Deployment</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-1-architecture-overview">Step 1: Architecture Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-2-project-setup">Step 2: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-3-rabbitmq-service">Step 3: RabbitMQ Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-4-data-monitor-container">Step 4: Data Monitor Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-5-builder-and-dispatcher-container">Step 5: Builder and Dispatcher Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-6-prometheus-and-grafana">Step 6: Prometheus and Grafana</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#prometheus">Prometheus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#grafana-dashboard-generation">Grafana Dashboard Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#complete-compose-file-so-far">Complete Compose File So Far</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-7-distributed-tracing">Step 7: Distributed Tracing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#complete-compose-file">Complete Compose File</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#step-8-deploy-and-verify">Step 8: Deploy and Verify</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#start-the-stack">Start the Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#check-service-status">Check Service Status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#verify-the-data-monitor">Verify the Data Monitor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#browse-the-uis">Browse the UIs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#test-file-processing">Test File Processing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#verify-the-trace">Verify the Trace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#clean-shutdown">Clean Shutdown</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Operations</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="high-availability.html">High-Availability Job Builder State Sync</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#when-to-enable-state-sync">When to Enable State Sync</a></li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#architecture">Architecture</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#redis-data-layout">Redis Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#how-a-mutation-propagates">How a Mutation Propagates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#conflict-resolution">Conflict Resolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#duplicate-dispatch-prevention">Duplicate-Dispatch Prevention</a></li>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#startup-state-recovery">Startup State Recovery</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#field-reference">Field Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#multi-tenant-isolation">Multi-Tenant Isolation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#complete-example">Complete Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#failsafe-behavior-at-startup">Failsafe Behavior at Startup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#observability">Observability</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="high-availability.html#useful-queries">Useful Queries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#trade-offs-and-limitations">Trade-offs and Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="high-availability.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Courier Distributed Tracing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#tracing-architecture-overview">1. Tracing Architecture Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#pipeline-integration">Pipeline Integration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#boundary-pattern">Boundary Pattern</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#trace-root-semantics">Trace Root Semantics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#correlation">Correlation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#relationship-to-existing-observability">Relationship to Existing Observability</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-reference">2. Configuration Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#fields">Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#disabling-tracing">Disabling Tracing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#sampling-behavior">Sampling Behavior</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#service-name-fallback">Service Name Fallback</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#endpoint-format">Endpoint Format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#span-naming-conventions-attribute-schema">3. Span Naming Conventions &amp; Attribute Schema</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#span-types">Span Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#attribute-keys">Attribute Keys</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#span-events">Span Events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#opentelemetry-messaging-semantic-conventions">OpenTelemetry Messaging Semantic Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#development-guide">4. Development Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#writing-tests-with-listexporter">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#test-isolation-with-reset-tracing-and-force-noop-global-provider">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#adding-tracing-to-a-new-plugin-type">4.3 Adding Tracing to a New Plugin Type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-trace-plugin-method-decorator">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#operations-guide">5. Operations Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#slow-detection-thresholds">5.1 Slow Detection Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#setting-up-an-otlp-collector">5.2 Setting Up an OTLP Collector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#querying-traces">5.3 Querying Traces</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#follow-a-file-through-the-pipeline">Follow a File Through the Pipeline</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#identifying-slow-plugins">Identifying Slow Plugins</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#monitoring-otlp-export-health">5.4 Monitoring OTLP Export Health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#production-monitoring-workflows">5.5 Production Monitoring Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#what-to-monitor-day-to-day">What to Monitor Day-to-Day</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#spotting-degradation">Spotting Degradation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#setting-up-alerts">Setting Up Alerts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#root-causing-with-span-hierarchy">Root-Causing With Span Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#common-operational-queries">Common Operational Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#correlating-traces-with-logs">Correlating Traces With Logs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#production-readiness-checklist">Production Readiness Checklist</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#audit-trail-workflows">5.6 Audit Trail Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#building-an-audit-trail-for-a-specific-file">Building an Audit Trail for a Specific File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#data-lineage-queries">Data Lineage Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#exporting-audit-data">Exporting Audit Data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#compliance-considerations">Compliance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#chain-of-custody">Chain of Custody</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#tamper-evidence">Tamper Evidence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#example-audit-report-query">Example Audit Report Query</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#quick-reference">6. Quick Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#environment-variables">Environment Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#span-name-quick-index">Span Name Quick Index</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../concepts/index.html">Design Concepts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../concepts/index.html#architecture-decision-records-adrs">Architecture Decision Records (ADRs)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html">ADR-0001: Kombu-Based Message Broker Abstraction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0001-kombu-message-broker-abstraction.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html">ADR-0002: Redis-Based HA State Sync for Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0002-redis-ha-state-sync.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html">ADR-0003: PluginRunState Enum for Plugin Lifecycle</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0003-plugin-run-state-enum.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html">ADR-0004: File / FrozenFile Type Split</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0004-frozen-file-mutable-file-split.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html">ADR-0005: Segregated Plugin Protocols</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0005-segregated-plugin-protocols.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html">ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#alternatives-considered">Alternatives considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../concepts/adr/0006-dispatcher-routing.html#consequences">Consequences</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Contribute</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../contribute/code-style.html">Code Style Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api-reference/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api-reference/plugins.html">Plugins API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-data-monitors">Standard Data Monitors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#file-system-poller-watchdog">file_system_poller_watchdog</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-dispatchers">Standard Dispatchers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#serial-bash">serial_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#parallel-bash">parallel_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-job-builders">Standard Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#dummyjobbuilder">DummyJobBuilder</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#filter-and-group">filter_and_group</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#metadatarouterbuilder">MetadataRouterBuilder</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api-reference/types.html">Types API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#file">File</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/types.html#key-methods">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#frozenfile">FrozenFile</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/types.html#id1">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api-reference/types.html#breaking-changes">Breaking Changes</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Courier</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Courier Distributed Tracing</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/operations/tracing.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="high-availability.html" class="btn btn-neutral float-left" title="High-Availability Job Builder State Sync" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../concepts/index.html" class="btn btn-neutral float-right" title="Design Concepts" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="courier-distributed-tracing">
+<h1>Courier Distributed Tracing<a class="headerlink" href="#courier-distributed-tracing" title="Link to this heading"></a></h1>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#tracing-architecture-overview" id="id1">1. Tracing Architecture Overview</a></p>
+<ul>
+<li><p><a class="reference internal" href="#pipeline-integration" id="id2">Pipeline Integration</a></p></li>
+<li><p><a class="reference internal" href="#boundary-pattern" id="id3">Boundary Pattern</a></p></li>
+<li><p><a class="reference internal" href="#trace-root-semantics" id="id4">Trace Root Semantics</a></p></li>
+<li><p><a class="reference internal" href="#correlation" id="id5">Correlation</a></p></li>
+<li><p><a class="reference internal" href="#relationship-to-existing-observability" id="id6">Relationship to Existing Observability</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#configuration-reference" id="id7">2. Configuration Reference</a></p>
+<ul>
+<li><p><a class="reference internal" href="#fields" id="id8">Fields</a></p></li>
+<li><p><a class="reference internal" href="#disabling-tracing" id="id9">Disabling Tracing</a></p></li>
+<li><p><a class="reference internal" href="#sampling-behavior" id="id10">Sampling Behavior</a></p></li>
+<li><p><a class="reference internal" href="#service-name-fallback" id="id11">Service Name Fallback</a></p></li>
+<li><p><a class="reference internal" href="#endpoint-format" id="id12">Endpoint Format</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#span-naming-conventions-attribute-schema" id="id13">3. Span Naming Conventions &amp; Attribute Schema</a></p>
+<ul>
+<li><p><a class="reference internal" href="#span-types" id="id14">Span Types</a></p></li>
+<li><p><a class="reference internal" href="#attribute-keys" id="id15">Attribute Keys</a></p></li>
+<li><p><a class="reference internal" href="#span-events" id="id16">Span Events</a></p></li>
+<li><p><a class="reference internal" href="#opentelemetry-messaging-semantic-conventions" id="id17">OpenTelemetry Messaging Semantic Conventions</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#development-guide" id="id18">4. Development Guide</a></p>
+<ul>
+<li><p><a class="reference internal" href="#writing-tests-with-listexporter" id="id19">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a></p></li>
+<li><p><a class="reference internal" href="#test-isolation-with-reset-tracing-and-force-noop-global-provider" id="id20">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a></p></li>
+<li><p><a class="reference internal" href="#adding-tracing-to-a-new-plugin-type" id="id21">4.3 Adding Tracing to a New Plugin Type</a></p></li>
+<li><p><a class="reference internal" href="#the-trace-plugin-method-decorator" id="id22">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#operations-guide" id="id23">5. Operations Guide</a></p>
+<ul>
+<li><p><a class="reference internal" href="#slow-detection-thresholds" id="id24">5.1 Slow Detection Thresholds</a></p></li>
+<li><p><a class="reference internal" href="#setting-up-an-otlp-collector" id="id25">5.2 Setting Up an OTLP Collector</a></p></li>
+<li><p><a class="reference internal" href="#querying-traces" id="id26">5.3 Querying Traces</a></p></li>
+<li><p><a class="reference internal" href="#monitoring-otlp-export-health" id="id27">5.4 Monitoring OTLP Export Health</a></p></li>
+<li><p><a class="reference internal" href="#production-monitoring-workflows" id="id28">5.5 Production Monitoring Workflows</a></p></li>
+<li><p><a class="reference internal" href="#audit-trail-workflows" id="id29">5.6 Audit Trail Workflows</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#quick-reference" id="id30">6. Quick Reference</a></p>
+<ul>
+<li><p><a class="reference internal" href="#environment-variables" id="id31">Environment Variables</a></p></li>
+<li><p><a class="reference internal" href="#span-name-quick-index" id="id32">Span Name Quick Index</a></p></li>
+</ul>
+</li>
+</ul>
+</nav>
+<p>Courier instruments its plugin pipeline with <a class="reference external" href="https://opentelemetry.io/">OpenTelemetry</a>
+distributed tracing so operators can follow a file from detection to execution
+across all services and plugin instances. Every message traversal produces a
+single distributed trace, linked by <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> and parent-child
+span relationships propagated via <a class="reference external" href="https://www.w3.org/TR/trace-context/">W3C Trace Context</a>
+headers on every broker message.</p>
+<section id="tracing-architecture-overview">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">1. Tracing Architecture Overview</a><a class="headerlink" href="#tracing-architecture-overview" title="Link to this heading"></a></h2>
+<section id="pipeline-integration">
+<h3><a class="toc-backref" href="#id2" role="doc-backlink">Pipeline Integration</a><a class="headerlink" href="#pipeline-integration" title="Link to this heading"></a></h3>
+<p>Tracing is inserted at the Courier plugin pipeline at two precise boundaries —
+<code class="docutils literal notranslate"><span class="pre">Service.emit()</span></code> and <code class="docutils literal notranslate"><span class="pre">Service.consume()</span></code> — and nowhere else. Plugins never
+touch W3C headers directly; they receive a parsed <code class="docutils literal notranslate"><span class="pre">Context</span></code> object and create
+child spans from it.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>┌──────────────┐     emit() + headers      ┌──────────────┐
+│              │ ──────────────────────────▶│              │
+│ Data Monitor │  FILE_FOUND fanout exch.   │ Job Builder  │
+│   (root)     │                            │  (child)     │
+│              │                            │              │
+└──────────────┘                            └──────┬───────┘
+                                                   │
+                                           emit() + headers
+                                                   │ JobReady-* queue
+                                                   ▼
+                                            ┌──────────────┐
+                                            │              │
+                                            │  Dispatcher  │
+                                            │   (child)    │
+                                            │              │
+                                            └──────────────┘
+</pre></div>
+</div>
+</section>
+<section id="boundary-pattern">
+<h3><a class="toc-backref" href="#id3" role="doc-backlink">Boundary Pattern</a><a class="headerlink" href="#boundary-pattern" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Boundary</p></th>
+<th class="head"><p>Function</p></th>
+<th class="head"><p>Role</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Producer side</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Service.emit()</span></code></p></td>
+<td><p>Calls <code class="docutils literal notranslate"><span class="pre">inject_trace_headers()</span></code>, attaches W3C <code class="docutils literal notranslate"><span class="pre">traceparent</span></code> / <code class="docutils literal notranslate"><span class="pre">tracestate</span></code> to every broker message header</p></td>
+</tr>
+<tr class="row-odd"><td><p>Consumer side</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Service.consume()</span></code></p></td>
+<td><p>Calls <code class="docutils literal notranslate"><span class="pre">extract_context(headers)</span></code>, returns a parsed OpenTelemetry <code class="docutils literal notranslate"><span class="pre">Context</span></code> as <code class="docutils literal notranslate"><span class="pre">(body,</span> <span class="pre">parent_ctx)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Plugin entry point</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">handle_incoming_files</span></code> / <code class="docutils literal notranslate"><span class="pre">handle_incoming_jobs</span></code></p></td>
+<td><p>Passes <code class="docutils literal notranslate"><span class="pre">parent_ctx</span></code> to <code class="docutils literal notranslate"><span class="pre">tracer.start_as_current_span(…,</span> <span class="pre">context=parent_ctx)</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>This design means:</p>
+<ul class="simple">
+<li><p><strong>Plugins are oblivious to wire format</strong> — they work with a typed <code class="docutils literal notranslate"><span class="pre">Context</span></code>, not raw headers.</p></li>
+<li><p><strong>A single injection/extraction pair per message</strong> — no scattered propagation logic.</p></li>
+<li><p><strong>Fail-safe extraction</strong> — garbage <code class="docutils literal notranslate"><span class="pre">traceparent</span></code> values never crash the pipeline; <code class="docutils literal notranslate"><span class="pre">extract_context()</span></code> degrades to an empty <code class="docutils literal notranslate"><span class="pre">Context</span></code> and logs a DEBUG message.</p></li>
+</ul>
+</section>
+<section id="trace-root-semantics">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">Trace Root Semantics</a><a class="headerlink" href="#trace-root-semantics" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Data monitors</strong> produce <strong>fresh root traces</strong>. Their <code class="docutils literal notranslate"><span class="pre">find_and_emit_files()</span></code> loop creates spans without a parent context, because file detection is the origin of each trace.</p></li>
+<li><p><strong>Job builders</strong> inherit parent context via <code class="docutils literal notranslate"><span class="pre">parent_ctx</span></code> extracted from incoming broker messages. Every <code class="docutils literal notranslate"><span class="pre">job_builder.build_job</span></code> span is a child of the data monitor’s <code class="docutils literal notranslate"><span class="pre">data_monitor.emit_file</span></code> span.</p></li>
+<li><p><strong>Dispatchers</strong> inherit parent context from the builder’s <code class="docutils literal notranslate"><span class="pre">job_builder.emit_job</span></code> span. Every <code class="docutils literal notranslate"><span class="pre">dispatcher.dispatch_job</span></code> span continues the same trace.</p></li>
+</ul>
+</section>
+<section id="correlation">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">Correlation</a><a class="headerlink" href="#correlation" title="Link to this heading"></a></h3>
+<p>Each distributed trace is linked by:</p>
+<ol class="arabic simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code></strong> — a unique per-file identifier carried as a span attribute on every span in the trace. Set by the data monitor when a file is first detected. This is the primary key for trace-to-trace queries.</p></li>
+<li><p><strong>Parent-child span relationships</strong> — enforced by W3C <code class="docutils literal notranslate"><span class="pre">traceparent</span></code> propagation, forming a causal DAG from data monitor → builder → dispatcher.</p></li>
+</ol>
+</section>
+<section id="relationship-to-existing-observability">
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">Relationship to Existing Observability</a><a class="headerlink" href="#relationship-to-existing-observability" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Pillar</p></th>
+<th class="head"><p>System</p></th>
+<th class="head"><p>Role</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Metrics</strong></p></td>
+<td><p>Prometheus (via <code class="docutils literal notranslate"><span class="pre">prometheus_client</span></code>)</p></td>
+<td><p>Counts, durations, health gauges — aggregated view</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Logs</strong></p></td>
+<td><p>Structured logging (optionally Grafana Loki)</p></td>
+<td><p>Per-event detail, stack traces, diagnostic messages</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Traces</strong></p></td>
+<td><p>OpenTelemetry OTLP</p></td>
+<td><p>Causal chain of spans across service boundaries, enriched with attributes</p></td>
+</tr>
+</tbody>
+</table>
+<p>Traces do not replace metrics or logs. They complement them: use Prometheus for dashboards and alerts, use tracing when you need to follow <strong>a single file</strong> through the pipeline to understand latency breakdown or failure propagation.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="configuration-reference">
+<h2><a class="toc-backref" href="#id7" role="doc-backlink">2. Configuration Reference</a><a class="headerlink" href="#configuration-reference" title="Link to this heading"></a></h2>
+<section id="fields">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Fields</a><a class="headerlink" href="#fields" title="Link to this heading"></a></h3>
+<p>All four tracing fields live on the immutable <code class="docutils literal notranslate"><span class="pre">ServiceConfig</span></code> dataclass (<code class="docutils literal notranslate"><span class="pre">src/courier/config.py</span></code>).</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Environment Variable</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tracing_enabled</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_ENABLED</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Master toggle. Set to <code class="docutils literal notranslate"><span class="pre">&quot;false&quot;</span></code> to disable all tracing.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tracing_endpoint</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">OTEL_EXPORTER_OTLP_ENDPOINT</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">http://localhost:4318/v1/traces</span></code></p></td>
+<td><p>Primary OTLP HTTP collector endpoint. Takes precedence over the Courier-specific variable.</p></td>
+</tr>
+<tr class="row-even"><td><p></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_ENDPOINT</span></code></p></td>
+<td><p>(same default as above)</p></td>
+<td><p>Courier-specific OTLP endpoint. Used only when <code class="docutils literal notranslate"><span class="pre">OTEL_EXPORTER_OTLP_ENDPOINT</span></code> is not set.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tracing_service_name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_SERVICE_NAME</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> (falls back to <code class="docutils literal notranslate"><span class="pre">service_id</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">service.name</span></code> resource attribute for all exported spans.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">tracing_sample_rate</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_SAMPLE_RATE</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1.0</span></code></p></td>
+<td><p>Float between 0.0 and 1.0. Controls the root sampling decision; children inherit the decision via <code class="docutils literal notranslate"><span class="pre">ParentBased</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="disabling-tracing">
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">Disabling Tracing</a><a class="headerlink" href="#disabling-tracing" title="Link to this heading"></a></h3>
+<p>Two independent mechanisms disable tracing:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Method 1: Courier&#39;s own toggle</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">COURIER_TRACING_ENABLED</span><span class="o">=</span><span class="nb">false</span>
+
+<span class="c1"># Method 2: OpenTelemetry SDK convention</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">OTEL_TRACES_EXPORTER</span><span class="o">=</span>none
+</pre></div>
+</div>
+<p>When either is active, <code class="docutils literal notranslate"><span class="pre">init_tracing()</span></code> installs a <code class="docutils literal notranslate"><span class="pre">NoOpTracerProvider</span></code>. All <code class="docutils literal notranslate"><span class="pre">get_tracer()</span></code> calls return no-op tracers whose spans have invalid span contexts and are never exported. No network traffic leaves the process.</p>
+</section>
+<section id="sampling-behavior">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Sampling Behavior</a><a class="headerlink" href="#sampling-behavior" title="Link to this heading"></a></h3>
+<p>Sampling is controlled by <code class="docutils literal notranslate"><span class="pre">tracing_sample_rate</span></code> and uses OpenTelemetry’s <code class="docutils literal notranslate"><span class="pre">ParentBased</span></code> composite sampler:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Rate</p></th>
+<th class="head"><p>Sampler Configuration</p></th>
+<th class="head"><p>Behavior</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">1.0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ParentBased(root=ALWAYS_ON)</span></code></p></td>
+<td><p>All new root spans are sampled. Children always sampled if parent was.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">0.5</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ParentBased(root=TraceIdRatioBased(0.5))</span></code></p></td>
+<td><p>~50% of root spans sampled. Children inherit decision.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ParentBased(root=TraceIdRatioBased(0.0))</span></code></p></td>
+<td><p>No root spans sampled. <code class="docutils literal notranslate"><span class="pre">ParentBased</span></code> still samples children of sampled remote parents (none, at this rate).</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key property</strong>: When a root span is sampled, every child span in the same trace is also sampled (guaranteed by <code class="docutils literal notranslate"><span class="pre">ParentBased</span></code>). This means you always get complete traces, never fragments.</p>
+</section>
+<section id="service-name-fallback">
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">Service Name Fallback</a><a class="headerlink" href="#service-name-fallback" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">service_name</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">tracing_service_name</span> <span class="ow">or</span> <span class="n">config</span><span class="o">.</span><span class="n">service_id</span>
+</pre></div>
+</div>
+<p>If <code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_SERVICE_NAME</span></code> is unset or empty, the <code class="docutils literal notranslate"><span class="pre">service_id</span></code> field is used as the <code class="docutils literal notranslate"><span class="pre">service.name</span></code> resource attribute. The <code class="docutils literal notranslate"><span class="pre">service_id</span></code> itself defaults to <code class="docutils literal notranslate"><span class="pre">watcher-service-&lt;random-hex8&gt;</span></code> when <code class="docutils literal notranslate"><span class="pre">SERVICE_ID</span></code> is not set.</p>
+</section>
+<section id="endpoint-format">
+<h3><a class="toc-backref" href="#id12" role="doc-backlink">Endpoint Format</a><a class="headerlink" href="#endpoint-format" title="Link to this heading"></a></h3>
+<p>The endpoint must be an OTLP HTTP endpoint. Example values:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">localhost</span><span class="p">:</span><span class="mi">4318</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">traces</span>           <span class="c1"># Default (local collector)</span>
+<span class="n">http</span><span class="p">:</span><span class="o">//</span><span class="n">jaeger</span><span class="p">:</span><span class="mi">4318</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">traces</span>              <span class="c1"># Docker Compose service</span>
+<span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">otel</span><span class="o">-</span><span class="n">collector</span><span class="o">.</span><span class="n">example</span><span class="o">.</span><span class="n">com</span><span class="p">:</span><span class="mi">4318</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">traces</span>  <span class="c1"># Production</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">OTEL_EXPORTER_OTLP_ENDPOINT</span></code> environment variable takes precedence over <code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_ENDPOINT</span></code>, following the standard OpenTelemetry SDK environment variable convention.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="span-naming-conventions-attribute-schema">
+<h2><a class="toc-backref" href="#id13" role="doc-backlink">3. Span Naming Conventions &amp; Attribute Schema</a><a class="headerlink" href="#span-naming-conventions-attribute-schema" title="Link to this heading"></a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This section documents the span structure for developers extending Courier.
+For operational monitoring and tracing workflows, see
+<a class="reference internal" href="#operations-guide">Section 5: Operations Guide</a>.</p>
+</div>
+<section id="span-types">
+<h3><a class="toc-backref" href="#id14" role="doc-backlink">Span Types</a><a class="headerlink" href="#span-types" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Span Name</p></th>
+<th class="head"><p>Emitting Plugin Type</p></th>
+<th class="head"><p>What It Wraps</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DataMonitorBasePlugin</span></code></p></td>
+<td><p>Full lifecycle of processing a single detected file: metadata enrichment + emission</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.add_metadata</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DataMonitorBasePlugin</span></code></p></td>
+<td><p>Applying metadata matchers to a file (child of <code class="docutils literal notranslate"><span class="pre">process_file</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.emit_file</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DataMonitorBasePlugin</span></code></p></td>
+<td><p>Publishing a file message to the fanout exchange (child of <code class="docutils literal notranslate"><span class="pre">process_file</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.build_job</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code></p></td>
+<td><p>Processing an incoming file across all job groups</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.process_job_group</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code></p></td>
+<td><p>Adding a file to one job group and emitting ready jobs (child of <code class="docutils literal notranslate"><span class="pre">build_job</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.emit_job</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code></p></td>
+<td><p>Fan-out emission of a ready job to all targets (child of <code class="docutils literal notranslate"><span class="pre">process_job_group</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.emit_one</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code></p></td>
+<td><p>Publishing a job to a single target queue (child of <code class="docutils literal notranslate"><span class="pre">emit_job</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.dispatch_job</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Dispatcher</span></code></p></td>
+<td><p>Consuming a job from the ready queue and orchestrating execution</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Dispatcher</span></code></p></td>
+<td><p>Running the plugin’s <code class="docutils literal notranslate"><span class="pre">get_execution_log()</span></code> logic (child of <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.emit_execution_log</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Dispatcher</span></code></p></td>
+<td><p>Publishing an execution log record (child of <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">metadata_router.route_file</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">MetadataRouterBuilder</span></code></p></td>
+<td><p>Routing an incoming file to the first matching route’s job group</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Note on <code class="docutils literal notranslate"><span class="pre">metadata_router.route_file</span></code></strong>: The <code class="docutils literal notranslate"><span class="pre">MetadataRouterBuilder</span></code> (a <code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code> subclass in <code class="docutils literal notranslate"><span class="pre">src/courier/plugins/classes/job_builders/metadata_router.py</span></code>) replaces <code class="docutils literal notranslate"><span class="pre">job_builder.build_job</span></code> with its own top-level span. It does not emit <code class="docutils literal notranslate"><span class="pre">build_job</span></code> or <code class="docutils literal notranslate"><span class="pre">process_job_group</span></code> — those are only used by the base <code class="docutils literal notranslate"><span class="pre">JobBuilder</span></code>.</p>
+</section>
+<section id="attribute-keys">
+<h3><a class="toc-backref" href="#id15" role="doc-backlink">Attribute Keys</a><a class="headerlink" href="#attribute-keys" title="Link to this heading"></a></h3>
+<p>All Courier-specific attributes use the <code class="docutils literal notranslate"><span class="pre">courier.*</span></code> namespace. Plugin identity attributes use <code class="docutils literal notranslate"><span class="pre">plugin.*</span></code>.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Carried By</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_job</span></code>, <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code>, <code class="docutils literal notranslate"><span class="pre">execute_job</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.file.path</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process_file</span></code>, <code class="docutils literal notranslate"><span class="pre">emit_file</span></code>, <code class="docutils literal notranslate"><span class="pre">build_job</span></code>, <code class="docutils literal notranslate"><span class="pre">route_file</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.file.hostname</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_file</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.file.source</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process_file</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.file.instrument</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><em>(reserved — not yet emitted by built-in plugins)</em></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.num_matchers</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">add_metadata</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.job.id</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_job</span></code>, <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code>, <code class="docutils literal notranslate"><span class="pre">execute_job</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.job.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_job</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.job.targets</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><em>(reserved — intended for multi-target fan-out spans)</em></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.job.file_count</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p><em>(reserved — intended for job composition spans)</em></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.job_group.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process_job_group</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.execution_log.return_code</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_execution_log</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.execution_log.hostname</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><em>(reserved — intended for execution host tracking)</em></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.dispatch_latency</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p><em>(reserved — intended for builder-to-dispatcher latency recording)</em></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.target</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">emit_one</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process_file</span></code>, span events (<code class="docutils literal notranslate"><span class="pre">plugin.started</span></code>, <code class="docutils literal notranslate"><span class="pre">plugin.stopped</span></code>, etc.)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.version</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process_file</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.family</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">process_file</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reserved attributes</strong>: Keys marked “reserved” are defined in <code class="docutils literal notranslate"><span class="pre">src/courier/tracing.py</span></code> and available for use by custom plugins but not yet emitted by any built-in plugin. Third-party plugin authors should use these constants rather than inventing their own keys so traces remain queryable across plugins.</p>
+</section>
+<section id="span-events">
+<h3><a class="toc-backref" href="#id16" role="doc-backlink">Span Events</a><a class="headerlink" href="#span-events" title="Link to this heading"></a></h3>
+<p>Span events represent discrete moments within a span’s lifetime. They are additive — a span may carry zero or more events.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Event Name</p></th>
+<th class="head"><p>Location</p></th>
+<th class="head"><p>Trigger Condition</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.started</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">PluginManager._start_plugin()</span></code></p></td>
+<td><p>Plugin thread reaches <code class="docutils literal notranslate"><span class="pre">RUNNING</span></code> state after health check passes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.stopped</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">PluginManager._stop_plugin()</span></code></p></td>
+<td><p>Plugin has been stopped gracefully and thread joined</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.health_check_failed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">PluginManager._monitor_plugins()</span></code></p></td>
+<td><p>Periodic health check returns <code class="docutils literal notranslate"><span class="pre">False</span></code> for a <code class="docutils literal notranslate"><span class="pre">RUNNING</span></code> plugin</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.restarting</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">PluginManager._handle_failed_plugin()</span></code></p></td>
+<td><p>Failed plugin is within restart budget; restart is being attempted</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">file.found</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DataMonitorBasePlugin.find_and_emit_files()</span></code></p></td>
+<td><p>File passed metadata enrichment successfully, before emit</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">file.emitted</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DataMonitorBasePlugin.find_and_emit_files()</span></code></p></td>
+<td><p>File message published to the fanout exchange</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job.ready</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobBuilder._process_job_group()</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobGroup.ready_jobs()</span></code> returned this job as ready for dispatch</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job.emitted</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">JobBuilder._process_job_group()</span></code></p></td>
+<td><p>Job published to all target dispatcher queues</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job.executed</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Dispatcher.handle_incoming_jobs()</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">get_execution_log()</span></code> returned execution results</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>PluginManager events</strong> use standalone spans (<code class="docutils literal notranslate"><span class="pre">plugin_lifecycle</span></code>) rather than being attached to pipeline spans, because plugin lifecycle management is a separate concern from message processing.</p>
+</section>
+<section id="opentelemetry-messaging-semantic-conventions">
+<h3><a class="toc-backref" href="#id17" role="doc-backlink">OpenTelemetry Messaging Semantic Conventions</a><a class="headerlink" href="#opentelemetry-messaging-semantic-conventions" title="Link to this heading"></a></h3>
+<p>Courier targets alignment with the <a class="reference external" href="https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/">OTel messaging semantic conventions</a> where practical. The following conventional attributes are relevant to Courier’s workflow and may be added in a future release:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">messaging.system</span></code> — <code class="docutils literal notranslate"><span class="pre">&quot;rabbitmq&quot;</span></code> (or the name of the broker in use)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">messaging.destination</span></code> — queue or exchange name</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">messaging.destination_kind</span></code> — <code class="docutils literal notranslate"><span class="pre">&quot;queue&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;topic&quot;</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">messaging.operation</span></code> — <code class="docutils literal notranslate"><span class="pre">&quot;process&quot;</span></code> (for consumers), <code class="docutils literal notranslate"><span class="pre">&quot;publish&quot;</span></code> (for producers)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">messaging.message.id</span></code> — correlation ID or job identifier</p></li>
+</ul>
+<p>These are not currently emitted. The <code class="docutils literal notranslate"><span class="pre">courier.*</span></code> namespace attributes provide equivalent information today.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="development-guide">
+<h2><a class="toc-backref" href="#id18" role="doc-backlink">4. Development Guide</a><a class="headerlink" href="#development-guide" title="Link to this heading"></a></h2>
+<section id="writing-tests-with-listexporter">
+<h3><a class="toc-backref" href="#id19" role="doc-backlink">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a><a class="headerlink" href="#writing-tests-with-listexporter" title="Link to this heading"></a></h3>
+<p>Courier’s test suite uses a custom <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code> (defined in <code class="docutils literal notranslate"><span class="pre">tests/unit_tests/test_tracing.py</span></code>) because OpenTelemetry SDK 1.42+ removed <code class="docutils literal notranslate"><span class="pre">InMemorySpanExporter</span></code>. The pattern:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.trace.export</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpanExportResult</span><span class="p">,</span> <span class="n">SpanExporter</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_make_list_exporter</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a span exporter + span list pair for round-trip verification.&quot;&quot;&quot;</span>
+    <span class="n">spans</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">class</span><span class="w"> </span><span class="nc">_ListExporter</span><span class="p">(</span><span class="n">SpanExporter</span><span class="p">):</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">export</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">span_data</span><span class="p">):</span>
+            <span class="n">spans</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">span_data</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">SpanExportResult</span><span class="o">.</span><span class="n">SUCCESS</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+            <span class="k">pass</span>
+
+    <span class="k">return</span> <span class="n">_ListExporter</span><span class="p">(),</span> <span class="n">spans</span>
+</pre></div>
+</div>
+<p>Usage in tests:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">exporter</span><span class="p">,</span> <span class="n">captured_spans</span> <span class="o">=</span> <span class="n">_make_list_exporter</span><span class="p">()</span>
+<span class="n">provider</span> <span class="o">=</span> <span class="n">TracerProvider</span><span class="p">(</span>
+    <span class="n">active_span_processor</span><span class="o">=</span><span class="n">SimpleSpanProcessor</span><span class="p">(</span><span class="n">exporter</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="c1"># ... exercise code that creates spans ...</span>
+<span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">captured_spans</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code> is in-process and synchronous (<code class="docutils literal notranslate"><span class="pre">SimpleSpanProcessor</span></code>), so spans are available for assertion immediately after the operations under test complete.</p>
+</section>
+<section id="test-isolation-with-reset-tracing-and-force-noop-global-provider">
+<h3><a class="toc-backref" href="#id20" role="doc-backlink">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a><a class="headerlink" href="#test-isolation-with-reset-tracing-and-force-noop-global-provider" title="Link to this heading"></a></h3>
+<p>The tracing module stores a global <code class="docutils literal notranslate"><span class="pre">_tracer_provider</span></code> singleton. Without cleanup, one test’s initialized provider leaks into the next test. Two utilities enforce isolation:</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code></strong> — clears Courier’s own module-level singleton:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">courier.tracing</span><span class="w"> </span><span class="kn">import</span> <span class="n">reset_tracing</span>
+<span class="n">reset_tracing</span><span class="p">()</span>  <span class="c1"># calls shutdown_tracing(), clears _tracer_provider</span>
+</pre></div>
+</div>
+<p><strong><code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></strong> — resets the OpenTelemetry API’s process-wide gate (<code class="docutils literal notranslate"><span class="pre">_TRACER_PROVIDER_SET_ONCE</span></code>) and installs a fresh <code class="docutils literal notranslate"><span class="pre">NoOpTracerProvider</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_force_noop_global_provider</span><span class="p">():</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.util._once</span><span class="w"> </span><span class="kn">import</span> <span class="n">Once</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">opentelemetry.trace</span>
+    <span class="n">opentelemetry</span><span class="o">.</span><span class="n">trace</span><span class="o">.</span><span class="n">_TRACER_PROVIDER_SET_ONCE</span> <span class="o">=</span> <span class="n">Once</span><span class="p">()</span>
+    <span class="n">set_tracer_provider</span><span class="p">(</span><span class="n">NoOpTracerProvider</span><span class="p">())</span>
+</pre></div>
+</div>
+<p>The test suite uses both in an <code class="docutils literal notranslate"><span class="pre">autouse</span></code> fixture:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span><span class="p">(</span><span class="n">autouse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_reset_tracing_after_test</span><span class="p">():</span>
+    <span class="n">reset_tracing</span><span class="p">()</span>
+    <span class="n">_force_noop_global_provider</span><span class="p">()</span>
+    <span class="k">yield</span>
+    <span class="n">reset_tracing</span><span class="p">()</span>
+    <span class="n">_force_noop_global_provider</span><span class="p">()</span>
+</pre></div>
+</div>
+<p><strong>Important</strong>: <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code> reaches into the <code class="docutils literal notranslate"><span class="pre">opentelemetry.util._once</span></code> private module. This is a necessary workaround — the OTel API intentionally prevents replacing the global provider after the first call. Tests that need to re-initialize tracing must use this pattern.</p>
+</section>
+<section id="adding-tracing-to-a-new-plugin-type">
+<h3><a class="toc-backref" href="#id21" role="doc-backlink">4.3 Adding Tracing to a New Plugin Type</a><a class="headerlink" href="#adding-tracing-to-a-new-plugin-type" title="Link to this heading"></a></h3>
+<p>To instrument a new plugin with tracing:</p>
+<ol class="arabic">
+<li><p><strong>Get a tracer</strong> at module level or in <code class="docutils literal notranslate"><span class="pre">__init__</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">courier.tracing</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_tracer</span>
+<span class="n">tracer</span> <span class="o">=</span> <span class="n">get_tracer</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Create a span</strong> with <code class="docutils literal notranslate"><span class="pre">start_as_current_span</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
+    <span class="s2">&quot;my_plugin.do_work&quot;</span><span class="p">,</span>
+    <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;courier.correlation_id&quot;</span><span class="p">:</span> <span class="n">correlation_id</span><span class="p">},</span>
+<span class="p">):</span>
+    <span class="n">do_work</span><span class="p">()</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Add attributes</strong> on every span:</p>
+<ul class="simple">
+<li><p>Always include <code class="docutils literal notranslate"><span class="pre">ATTR_CORRELATION_ID</span></code> if the work is tied to a specific file or job.</p></li>
+<li><p>Use the constants from <code class="docutils literal notranslate"><span class="pre">courier.tracing</span></code> — never hard-code attribute key strings.</p></li>
+</ul>
+</li>
+<li><p><strong>Add span events</strong> for lifecycle milestones:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_current_span</span>
+
+<span class="n">get_current_span</span><span class="p">()</span><span class="o">.</span><span class="n">add_event</span><span class="p">(</span>
+    <span class="s2">&quot;work.completed&quot;</span><span class="p">,</span>
+    <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;result.count&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Pass parent context</strong> when consuming messages:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">body</span><span class="p">,</span> <span class="n">parent_ctx</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">parent_service</span><span class="o">.</span><span class="n">consume</span><span class="p">(</span><span class="n">QUEUE</span><span class="p">):</span>
+    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
+        <span class="s2">&quot;my_plugin.handle_message&quot;</span><span class="p">,</span>
+        <span class="n">context</span><span class="o">=</span><span class="n">parent_ctx</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">process</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+</ol>
+</section>
+<section id="the-trace-plugin-method-decorator">
+<h3><a class="toc-backref" href="#id22" role="doc-backlink">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a><a class="headerlink" href="#the-trace-plugin-method-decorator" title="Link to this heading"></a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> decorator wraps a regular (non-generator) method in a span:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">courier.tracing</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace_plugin_method</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">MyPlugin</span><span class="p">:</span>
+    <span class="nd">@trace_plugin_method</span><span class="p">(</span><span class="s2">&quot;my_plugin.process&quot;</span><span class="p">,</span> <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">})</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">transform</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Behavior</strong>:</p>
+<ul class="simple">
+<li><p>Creates a span named <code class="docutils literal notranslate"><span class="pre">&quot;my_plugin.process&quot;</span></code> with the given attributes.</p></li>
+<li><p>Returns the original function’s result unchanged.</p></li>
+<li><p>Preserves <code class="docutils literal notranslate"><span class="pre">__name__</span></code>, <code class="docutils literal notranslate"><span class="pre">__qualname__</span></code>, and <code class="docutils literal notranslate"><span class="pre">__doc__</span></code> on the wrapper.</p></li>
+<li><p>Sets <code class="docutils literal notranslate"><span class="pre">__wrapped__</span></code> for introspection.</p></li>
+</ul>
+<p><strong>Generator Exclusion Rule</strong>:
+The decorator <strong>raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code> at decoration time</strong> if applied to a generator function:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># THIS RAISES TypeError:</span>
+<span class="nd">@trace_plugin_method</span><span class="p">(</span><span class="s2">&quot;my_plugin.stream&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">my_generator</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">yield</span> <span class="mi">1</span>
+</pre></div>
+</div>
+<p>This is intentional: generator functions are suspended at each <code class="docutils literal notranslate"><span class="pre">yield</span></code>, and the span’s <code class="docutils literal notranslate"><span class="pre">__exit__</span></code> would close the span on the first <code class="docutils literal notranslate"><span class="pre">yield</span></code> rather than on generator exhaustion. Generator methods must use inline <code class="docutils literal notranslate"><span class="pre">start_as_current_span</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Correct: inline span for generator</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">my_generator</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="n">tracer</span> <span class="o">=</span> <span class="n">get_tracer</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span><span class="s2">&quot;my_plugin.stream&quot;</span><span class="p">):</span>
+        <span class="k">yield</span> <span class="mi">1</span>
+        <span class="k">yield</span> <span class="mi">2</span>
+</pre></div>
+</div>
+<p>The reason this works inline but not via a decorator is that the inline <code class="docutils literal notranslate"><span class="pre">with</span></code> block wraps the entire generator body, while a decorator would wrap only the function call (which returns immediately with the generator object).</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="operations-guide">
+<h2><a class="toc-backref" href="#id23" role="doc-backlink">5. Operations Guide</a><a class="headerlink" href="#operations-guide" title="Link to this heading"></a></h2>
+<section id="slow-detection-thresholds">
+<h3><a class="toc-backref" href="#id24" role="doc-backlink">5.1 Slow Detection Thresholds</a><a class="headerlink" href="#slow-detection-thresholds" title="Link to this heading"></a></h3>
+<p>Operators can detect slow plugins by filtering spans by duration in their tracing backend. The following thresholds serve as starting points for alerting:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Pipeline Stage</p></th>
+<th class="head"><p>Span Name(s)</p></th>
+<th class="head"><p>Threshold</p></th>
+<th class="head"><p>Rationale</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>File scan</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code></p></td>
+<td><p>10 s</p></td>
+<td><p>Covers filesystem I/O + metadata enrichment</p></td>
+</tr>
+<tr class="row-odd"><td><p>Job build</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">job_builder.build_job</span></code></p></td>
+<td><p>5 s</p></td>
+<td><p>Covers grouping logic + across all job groups</p></td>
+</tr>
+<tr class="row-even"><td><p>Message emit</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">job_builder.emit_one</span></code></p></td>
+<td><p>2 s</p></td>
+<td><p>Single broker publish with publisher confirm</p></td>
+</tr>
+<tr class="row-odd"><td><p>Execution</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code></p></td>
+<td><p>30 s</p></td>
+<td><p>Plugin execution (e.g. script run, API call)</p></td>
+</tr>
+</tbody>
+</table>
+<p>These are not hard-coded into Courier; they are recommended query filters for tracing backends (Jaeger, Grafana Tempo, Honeycomb, etc.).</p>
+</section>
+<section id="setting-up-an-otlp-collector">
+<h3><a class="toc-backref" href="#id25" role="doc-backlink">5.2 Setting Up an OTLP Collector</a><a class="headerlink" href="#setting-up-an-otlp-collector" title="Link to this heading"></a></h3>
+<p>The simplest way to get started is Jaeger’s all-in-one Docker image, which bundles an OTLP collector and query UI:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># docker-compose.yml</span>
+<span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3.8&quot;</span>
+<span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">jaeger</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jaegertracing/all-in-one:1.68</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;16686:16686&quot;</span><span class="w">   </span><span class="c1"># Jaeger UI</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;4318:4318&quot;</span><span class="w">     </span><span class="c1"># OTLP HTTP receiver</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">COLLECTOR_OTLP_ENABLED=true</span>
+</pre></div>
+</div>
+<p>With this running, Courier’s default <code class="docutils literal notranslate"><span class="pre">tracing_endpoint</span></code> (<code class="docutils literal notranslate"><span class="pre">http://localhost:4318/v1/traces</span></code>) connects directly. Open <code class="docutils literal notranslate"><span class="pre">http://localhost:16686</span></code> to access the Jaeger UI.</p>
+<p>For production, deploy the <a class="reference external" href="https://opentelemetry.io/docs/collector/">OpenTelemetry Collector</a> as a sidecar or daemonset pointed at your tracing backend (Grafana Tempo, Honeycomb, Datadog, etc.).</p>
+</section>
+<section id="querying-traces">
+<h3><a class="toc-backref" href="#id26" role="doc-backlink">5.3 Querying Traces</a><a class="headerlink" href="#querying-traces" title="Link to this heading"></a></h3>
+<section id="follow-a-file-through-the-pipeline">
+<h4>Follow a File Through the Pipeline<a class="headerlink" href="#follow-a-file-through-the-pipeline" title="Link to this heading"></a></h4>
+<p>To trace a specific file’s journey, filter by the <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> attribute:</p>
+<p><strong>Jaeger UI</strong>:</p>
+<ol class="arabic simple">
+<li><p>Open the <strong>Search</strong> tab.</p></li>
+<li><p>In the <strong>Tags</strong> field, enter: <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span> <span class="pre">=</span> <span class="pre">&lt;your-correlation-id&gt;</span></code></p></li>
+<li><p>Click <strong>Find Traces</strong>.</p></li>
+</ol>
+<p><strong>Jaeger HTTP API</strong>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;tags=%7B%22courier.correlation_id%22%3A%22&lt;id&gt;%22%7D&quot;</span>
+</pre></div>
+</div>
+<p>The resulting trace shows every span from file detection (<code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code>) through builder (<code class="docutils literal notranslate"><span class="pre">job_builder.*</span></code>) to dispatcher (<code class="docutils literal notranslate"><span class="pre">dispatcher.*</span></code>), with their parent-child nesting and durations.</p>
+</section>
+<section id="identifying-slow-plugins">
+<h4>Identifying Slow Plugins<a class="headerlink" href="#identifying-slow-plugins" title="Link to this heading"></a></h4>
+<p>To find spans that exceeded the slow thresholds:</p>
+<p><strong>In Jaeger UI</strong>:</p>
+<ol class="arabic simple">
+<li><p>Set <strong>Min Duration</strong> to the threshold (e.g., <code class="docutils literal notranslate"><span class="pre">10s</span></code> for file scan).</p></li>
+<li><p>Optionally filter by <strong>Operation</strong> = <code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code>.</p></li>
+<li><p>Sort by <strong>Longest First</strong>.</p></li>
+<li><p>Expand a slow span to see its child spans and pinpoint which sub-operation consumed the most time.</p></li>
+</ol>
+<p><strong>In Grafana Tempo</strong> (TraceQL):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span> <span class="n">span</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;data_monitor.process_file&quot;</span> <span class="o">&amp;&amp;</span> <span class="n">duration</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="n">s</span> <span class="p">}</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="monitoring-otlp-export-health">
+<h3><a class="toc-backref" href="#id27" role="doc-backlink">5.4 Monitoring OTLP Export Health</a><a class="headerlink" href="#monitoring-otlp-export-health" title="Link to this heading"></a></h3>
+<p>The OTLP exporter logs a <code class="docutils literal notranslate"><span class="pre">WARNING</span></code> message when span export fails:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">WARNING</span>  <span class="n">courier</span><span class="o">.</span><span class="n">tracing</span>  <span class="n">Failed</span> <span class="n">to</span> <span class="n">export</span> <span class="n">N</span> <span class="n">spans</span> <span class="n">to</span> <span class="n">OTLP</span> <span class="n">endpoint</span> <span class="n">http</span><span class="p">:</span><span class="o">//...</span><span class="p">:</span><span class="mi">4318</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">traces</span>
+</pre></div>
+</div>
+<p>This is triggered by the custom error callback installed on the <code class="docutils literal notranslate"><span class="pre">OTLPSpanExporter</span></code>. No spans are lost silently — the <code class="docutils literal notranslate"><span class="pre">BatchSpanProcessor</span></code> retries on transient failures. Monitor for these warnings in your log aggregation.</p>
+<p>Cross-reference with Prometheus metrics:</p>
+<ul class="simple">
+<li><p>If <code class="docutils literal notranslate"><span class="pre">courier_tracing</span></code> WARNINGs correlate with the Jaeger/Collector target being down (<code class="docutils literal notranslate"><span class="pre">up{job=&quot;jaeger&quot;}</span> <span class="pre">==</span> <span class="pre">0</span></code>), investigate the collector.</p></li>
+<li><p>If WARNINGs appear without collector downtime, check network latency or collector throughput limits.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">BatchSpanProcessor</span></code> buffers spans in memory; a sustained export outage causes gradual memory growth until spans are dropped (also logged).</p></li>
+</ul>
+</section>
+<hr class="docutils" />
+<section id="production-monitoring-workflows">
+<h3><a class="toc-backref" href="#id28" role="doc-backlink">5.5 Production Monitoring Workflows</a><a class="headerlink" href="#production-monitoring-workflows" title="Link to this heading"></a></h3>
+<p>This section covers day-to-day monitoring for operators with an OTLP collector
+and a query backend (Jaeger, Grafana Tempo, or equivalent).</p>
+<section id="what-to-monitor-day-to-day">
+<h4>What to Monitor Day-to-Day<a class="headerlink" href="#what-to-monitor-day-to-day" title="Link to this heading"></a></h4>
+<p>Operators should establish a baseline across three dimensions and watch for deviations:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Dimension</p></th>
+<th class="head"><p>What to Watch</p></th>
+<th class="head"><p>Why It Matters</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Latency trends</strong></p></td>
+<td><p>P50/P95/P99 span duration per plugin type, over time</p></td>
+<td><p>Reveals gradual degradation before it becomes an outage</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Error rates</strong></p></td>
+<td><p>Count of spans containing an <code class="docutils literal notranslate"><span class="pre">exception.escaped</span></code> event or <code class="docutils literal notranslate"><span class="pre">courier.execution_log.return_code</span> <span class="pre">!=</span> <span class="pre">&quot;0&quot;</span></code></p></td>
+<td><p>Signals failing file processing that may not trigger a service-level alert</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Throughput</strong></p></td>
+<td><p>Spans created per minute, broken down by span name</p></td>
+<td><p>Drops indicate a stalled plugin or broker backpressure</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Quick Jaeger dashboard query</strong> — show all spans in the last hour with their durations:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;lookback=1h&amp;limit=100&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.data[].spans[] | {name: .operationName, duration_ms: (.duration / 1000)}&#39;</span>
+</pre></div>
+</div>
+<p><strong>Grafana with Tempo</strong> — use Explore to run a TraceQL query that surfaces every slow
+operation across all services:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span> <span class="n">duration</span> <span class="o">&gt;</span> <span class="mi">30</span><span class="n">s</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>Pair this with a time-series panel in Grafana that plots span count per plugin type,
+using a Prometheus metric or the Tempo metrics-generator.</p>
+</section>
+<section id="spotting-degradation">
+<h4>Spotting Degradation<a class="headerlink" href="#spotting-degradation" title="Link to this heading"></a></h4>
+<p><strong>Spans trending slower over time.</strong> Compare current P95 latency to a 7-day rolling
+average. In Jaeger, this is a manual comparison across two time windows; in Grafana
+Tempo with the metrics-generator, use a query like:</p>
+<div class="highlight-promql notranslate"><div class="highlight"><pre><span></span><span class="kr">histogram_quantile</span><span class="o">(</span><span class="mf">0.95</span><span class="p">,</span><span class="w"> </span><span class="k">sum</span><span class="o">(</span><span class="kr">rate</span><span class="o">(</span><span class="nv">span_latency_bucket</span><span class="p">{</span><span class="nl">span_name</span><span class="o">=~</span><span class="p">&quot;</span><span class="s">dispatcher.*</span><span class="p">&quot;}[</span><span class="s">5m</span><span class="p">]</span><span class="o">))</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="o">(</span><span class="nv">le</span><span class="o">))</span>
+</pre></div>
+</div>
+<p>If the P95 crosses your threshold (the recommended starting point is 30 s for
+<code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code>), investigate the span’s child spans to isolate the cause.</p>
+<p><strong>Gap detection — missing stages in a trace.</strong> A healthy file trace contains at least:
+<code class="docutils literal notranslate"><span class="pre">process_file</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">build_job</span></code>/<code class="docutils literal notranslate"><span class="pre">route_file</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code> -&gt; <code class="docutils literal notranslate"><span class="pre">execute_job</span></code>.
+Missing stages indicate:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Missing Span</p></th>
+<th class="head"><p>Likely Cause</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>No <code class="docutils literal notranslate"><span class="pre">build_job</span></code> after <code class="docutils literal notranslate"><span class="pre">emit_file</span></code></p></td>
+<td><p>Job Builder is down or the fanout exchange routing is broken</p></td>
+</tr>
+<tr class="row-odd"><td><p>No <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code> after <code class="docutils literal notranslate"><span class="pre">emit_job</span></code></p></td>
+<td><p>Dispatcher is not consuming its queue, or routing key mismatch</p></td>
+</tr>
+<tr class="row-even"><td><p>No <code class="docutils literal notranslate"><span class="pre">execute_job</span></code> under <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code></p></td>
+<td><p>The plugin crashed before invocation or raised an unhandled exception</p></td>
+</tr>
+<tr class="row-odd"><td><p>No <code class="docutils literal notranslate"><span class="pre">emit_execution_log</span></code> after <code class="docutils literal notranslate"><span class="pre">execute_job</span></code></p></td>
+<td><p>Plugin completed but the log publish failed (broker issue)</p></td>
+</tr>
+</tbody>
+</table>
+<p>To detect gaps programmatically, query for traces that have a <code class="docutils literal notranslate"><span class="pre">data_monitor.emit_file</span></code>
+span but are missing a corresponding <code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code> within a configurable
+window (e.g., 5 minutes after the file was emitted). This is most easily done with a
+script that queries the Jaeger API:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1"># find-orphaned-files.sh — detect file traces without a dispatcher</span>
+<span class="nv">END</span><span class="o">=</span><span class="k">$(</span>date<span class="w"> </span>-u<span class="w"> </span>+%s<span class="k">)</span><span class="m">000000</span><span class="w">  </span><span class="c1"># microseconds</span>
+<span class="nv">START</span><span class="o">=</span><span class="k">$(</span>date<span class="w"> </span>-u<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;1 hour ago&#39;</span><span class="w"> </span>+%s<span class="k">)</span><span class="m">000000</span>
+
+<span class="c1"># Get all file-emitted traces</span>
+curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=data_monitor.emit_file&amp;start=</span><span class="nv">$START</span><span class="s2">&amp;end=</span><span class="nv">$END</span><span class="s2">&amp;limit=500&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data[].traceID&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>/tmp/all_file_traces.txt
+
+<span class="c1"># Get all dispatched traces</span>
+curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=dispatcher.execute_job&amp;start=</span><span class="nv">$START</span><span class="s2">&amp;end=</span><span class="nv">$END</span><span class="s2">&amp;limit=500&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data[].traceID&#39;</span><span class="w"> </span>&gt;<span class="w"> </span>/tmp/all_dispatch_traces.txt
+
+<span class="c1"># Comm shows traceIDs present in file traces but absent from dispatch traces</span>
+comm<span class="w"> </span>-23<span class="w"> </span>&lt;<span class="o">(</span>sort<span class="w"> </span>/tmp/all_file_traces.txt<span class="o">)</span><span class="w"> </span>&lt;<span class="o">(</span>sort<span class="w"> </span>/tmp/all_dispatch_traces.txt<span class="o">)</span>
+</pre></div>
+</div>
+<p><strong>Backpressure signals.</strong> Courier does not expose queue depth as a span attribute (see
+the reserved <code class="docutils literal notranslate"><span class="pre">courier.dispatch_latency</span></code> key), but you can infer backpressure by
+measuring the wall-clock gap between <code class="docutils literal notranslate"><span class="pre">job_builder.emit_one</span></code> and
+<code class="docutils literal notranslate"><span class="pre">dispatcher.dispatch_job</span></code> within the same trace. If this gap grows over time, the
+dispatcher is falling behind the builder. In Jaeger, expand a trace and note the
+timestamps of these two spans; a gap exceeding 30 seconds warrants investigation.</p>
+<p>For environments with Prometheus, correlate with broker metrics:</p>
+<div class="highlight-promql notranslate"><div class="highlight"><pre><span></span><span class="nv">rabbitmq_queue_messages</span><span class="p">{</span><span class="nl">queue</span><span class="o">=~</span><span class="p">&quot;</span><span class="s">JobReady-.*</span><span class="p">&quot;}</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">100</span>
+</pre></div>
+</div>
+<p>A sustained queue depth above 100 messages means the dispatcher pool is undersized or a
+plugin is blocking.</p>
+</section>
+<section id="setting-up-alerts">
+<h4>Setting Up Alerts<a class="headerlink" href="#setting-up-alerts" title="Link to this heading"></a></h4>
+<p>Translate span conditions into actionable alerts. All examples below assume your
+tracing backend feeds a time-series database (Prometheus via Tempo metrics-generator,
+or Mimir), but the logic applies to any alerting system.</p>
+<p><strong>Alert 1: Slow plugin execution</strong></p>
+<p>Condition: P95 duration of <code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code> exceeds 30 s for 5 minutes.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># Prometheus alert rule</span>
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CourierSlowExecution</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">histogram_quantile(0.95, rate(span_latency_bucket{span_name=&quot;dispatcher.execute_job&quot;}[5m])) &gt; 30</span>
+<span class="w">  </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">warning</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Dispatcher</span><span class="nv"> </span><span class="s">execution</span><span class="nv"> </span><span class="s">P95</span><span class="nv"> </span><span class="s">&gt;</span><span class="nv"> </span><span class="s">30</span><span class="nv"> </span><span class="s">s&quot;</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;P95</span><span class="nv"> </span><span class="s">of</span><span class="nv"> </span><span class="s">dispatcher.execute_job</span><span class="nv"> </span><span class="s">is</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">}}s.</span><span class="nv"> </span><span class="s">Check</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">dispatcher&#39;s</span><span class="nv"> </span><span class="s">host</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">plugin</span><span class="nv"> </span><span class="s">health.&quot;</span>
+</pre></div>
+</div>
+<p><strong>Alert 2: Span with error status</strong></p>
+<p>Condition: Any span has <code class="docutils literal notranslate"><span class="pre">status_code</span> <span class="pre">=</span> <span class="pre">STATUS_CODE_ERROR</span></code> (2). In TraceQL:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span> <span class="n">status</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="mi">2</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>Prometheus rule:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CourierSpanError</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rate(span_status_code_total{status_code=&quot;2&quot;}[5m]) &gt; 0</span>
+<span class="w">  </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1m</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Spans</span><span class="nv"> </span><span class="s">with</span><span class="nv"> </span><span class="s">error</span><span class="nv"> </span><span class="s">status</span><span class="nv"> </span><span class="s">detected&quot;</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">}}</span><span class="nv"> </span><span class="s">spans/sec</span><span class="nv"> </span><span class="s">with</span><span class="nv"> </span><span class="s">ERROR</span><span class="nv"> </span><span class="s">status</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">last</span><span class="nv"> </span><span class="s">5</span><span class="nv"> </span><span class="s">minutes.</span><span class="nv"> </span><span class="s">Query</span><span class="nv"> </span><span class="s">TraceQL:</span><span class="nv"> </span><span class="s">{</span><span class="nv"> </span><span class="s">status.code</span><span class="nv"> </span><span class="s">=</span><span class="nv"> </span><span class="s">2</span><span class="nv"> </span><span class="s">}&quot;</span>
+</pre></div>
+</div>
+<p><strong>Alert 3: Plugin health check failures</strong></p>
+<p>Condition: The span event <code class="docutils literal notranslate"><span class="pre">plugin.health_check_failed</span></code> appears more than twice in 10
+minutes for the same plugin instance.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CourierPluginUnhealthy</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rate(span_event_total{event_name=&quot;plugin.health_check_failed&quot;}[10m]) &gt; 0.2</span>
+<span class="w">  </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Plugin</span><span class="nv"> </span><span class="s">health</span><span class="nv"> </span><span class="s">check</span><span class="nv"> </span><span class="s">failing</span><span class="nv"> </span><span class="s">repeatedly&quot;</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Event</span><span class="nv"> </span><span class="s">plugin.health_check_failed</span><span class="nv"> </span><span class="s">triggered</span><span class="nv"> </span><span class="s">{{</span><span class="nv"> </span><span class="s">$value</span><span class="nv"> </span><span class="s">}}/s.</span><span class="nv"> </span><span class="s">The</span><span class="nv"> </span><span class="s">plugin</span><span class="nv"> </span><span class="s">may</span><span class="nv"> </span><span class="s">be</span><span class="nv"> </span><span class="s">restarting</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">loop.&quot;</span>
+</pre></div>
+</div>
+<p><strong>Alert 4: Export pipeline stalled</strong></p>
+<p>Condition: The Jaeger/Tempo backend receives zero spans from Courier for 5 minutes,
+but the Courier process is still running (check via separate uptime metric).</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">alert</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CourierTracingSilent</span>
+<span class="w">  </span><span class="nt">expr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">absent(span_latency_count) == 1</span>
+<span class="w">  </span><span class="nt">for</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span>
+<span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;No</span><span class="nv"> </span><span class="s">spans</span><span class="nv"> </span><span class="s">received</span><span class="nv"> </span><span class="s">from</span><span class="nv"> </span><span class="s">Courier&quot;</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;No</span><span class="nv"> </span><span class="s">spans</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">5</span><span class="nv"> </span><span class="s">minutes.</span><span class="nv"> </span><span class="s">Check</span><span class="nv"> </span><span class="s">COURIER_TRACING_ENABLED</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">OTLP</span><span class="nv"> </span><span class="s">collector</span><span class="nv"> </span><span class="s">health.&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="root-causing-with-span-hierarchy">
+<h4>Root-Causing With Span Hierarchy<a class="headerlink" href="#root-causing-with-span-hierarchy" title="Link to this heading"></a></h4>
+<p>When an alert fires, use the span tree to isolate the bottleneck. The general process:</p>
+<ol class="arabic simple">
+<li><p><strong>Find a representative slow trace.</strong> Use Jaeger search with <code class="docutils literal notranslate"><span class="pre">Min</span> <span class="pre">Duration</span> <span class="pre">&gt;</span> <span class="pre">30s</span></code>
+sorted by Longest First.</p></li>
+<li><p><strong>Expand the trace and read top-down.</strong> A <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code> span that is 45 s long
+with an <code class="docutils literal notranslate"><span class="pre">execute_job</span></code> child of 44 s tells you the execution itself is slow. If
+<code class="docutils literal notranslate"><span class="pre">execute_job</span></code> is 2 s but <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code> is 45 s, the time was spent waiting —
+inspect upstream spans.</p></li>
+<li><p><strong>Follow parent spans upstream.</strong> If the dispatcher is slow but execution is fast,
+check the builder span. Does <code class="docutils literal notranslate"><span class="pre">job_builder.process_job_group</span></code> show excessive
+duration? That would indicate the builder is queuing work or blocked on broker
+publishes.</p></li>
+<li><p><strong>Check sibling spans for fan-out skew.</strong> The <code class="docutils literal notranslate"><span class="pre">job_builder.emit_job</span></code> span may
+contain multiple <code class="docutils literal notranslate"><span class="pre">emit_one</span></code> children targeting different queues. If one child is
+much slower than the others, the target queue or its consumer is the bottleneck.</p></li>
+<li><p><strong>Cross-reference with span events.</strong> Look for <code class="docutils literal notranslate"><span class="pre">job.ready</span></code>, <code class="docutils literal notranslate"><span class="pre">job.emitted</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">job.executed</span></code> events within the trace. The wall time between <code class="docutils literal notranslate"><span class="pre">job.emitted</span></code> and
+<code class="docutils literal notranslate"><span class="pre">job.executed</span></code> is the queue waiting time. If it dominates the trace, the dispatcher
+is starved or the broker is slow.</p></li>
+</ol>
+<p><strong>Concrete TraceQL root-cause queries:</strong></p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Is the execution itself slow?</span>
+<span class="p">{</span> <span class="n">span</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;dispatcher.execute_job&quot;</span> <span class="o">&amp;&amp;</span> <span class="n">duration</span> <span class="o">&gt;</span> <span class="mi">30</span><span class="n">s</span> <span class="p">}</span>
+
+<span class="c1"># Or is the builder queuing?</span>
+<span class="p">{</span> <span class="n">span</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;job_builder.build_job&quot;</span> <span class="o">&amp;&amp;</span> <span class="n">duration</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="n">s</span> <span class="p">}</span>
+
+<span class="c1"># Find traces where the queue wait dominates</span>
+<span class="p">{</span> <span class="n">span</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;dispatcher.dispatch_job&quot;</span> <span class="o">&amp;&amp;</span> <span class="n">duration</span> <span class="o">&gt;</span> <span class="mi">30</span><span class="n">s</span> <span class="p">}</span> <span class="o">&gt;&gt;</span> <span class="p">{</span> <span class="n">span</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;dispatcher.execute_job&quot;</span> <span class="o">&amp;&amp;</span> <span class="n">duration</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="n">s</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>This last query uses TraceQL’s <code class="docutils literal notranslate"><span class="pre">&gt;&gt;</span></code> (child-of) operator: it finds traces where the
+parent <code class="docutils literal notranslate"><span class="pre">dispatch_job</span></code> is long but the child <code class="docutils literal notranslate"><span class="pre">execute_job</span></code> is short, pointing to queue
+wait time as the culprit.</p>
+</section>
+<section id="common-operational-queries">
+<h4>Common Operational Queries<a class="headerlink" href="#common-operational-queries" title="Link to this heading"></a></h4>
+<p><strong>“Show me all traces where execution took more than 30 seconds”</strong></p>
+<p>Jaeger UI: set <code class="docutils literal notranslate"><span class="pre">Min</span> <span class="pre">Duration</span> <span class="pre">=</span> <span class="pre">30s</span></code>, <code class="docutils literal notranslate"><span class="pre">Operation</span> <span class="pre">=</span> <span class="pre">dispatcher.execute_job</span></code>, click Find
+Traces.</p>
+<p>TraceQL (Grafana Tempo):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span> <span class="n">span</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;dispatcher.execute_job&quot;</span> <span class="o">&amp;&amp;</span> <span class="n">duration</span> <span class="o">&gt;</span> <span class="mi">30</span><span class="n">s</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>curl equivalent:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=dispatcher.execute_job&amp;minDuration=30s&amp;limit=50&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.data[] | {traceID, spans: [.spans[] | {name: .operationName, dur: (.duration / 1e6)}]}&#39;</span>
+</pre></div>
+</div>
+<p><strong>“Which plugins are producing the most spans?”</strong></p>
+<p>Aggregate span count by <code class="docutils literal notranslate"><span class="pre">plugin.name</span></code> attribute. Use a PromQL query from the
+metrics-generator:</p>
+<div class="highlight-promql notranslate"><div class="highlight"><pre><span></span><span class="k">topk</span><span class="o">(</span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="k">sum</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="o">(</span><span class="nv">plugin_name</span><span class="o">)</span><span class="w"> </span><span class="o">(</span><span class="kr">rate</span><span class="o">(</span><span class="nv">span_latency_count</span><span class="p">[</span><span class="s">1h</span><span class="p">]</span><span class="o">)))</span>
+</pre></div>
+</div>
+<p>To get this from raw Jaeger data, iterate traces and count by the <code class="docutils literal notranslate"><span class="pre">plugin.name</span></code>
+attribute on <code class="docutils literal notranslate"><span class="pre">process_file</span></code> spans:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=data_monitor.process_file&amp;limit=500&amp;lookback=1h&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;[.data[].spans[] | select(.operationName == &quot;data_monitor.process_file&quot;) | .tags[] | select(.key == &quot;plugin.name&quot;) | .value] | group_by(.) | map({plugin: .[0], count: length}) | sort_by(-.count)&#39;</span>
+</pre></div>
+</div>
+<p><strong>“What is the P95 latency per plugin type?”</strong></p>
+<p>If using Tempo metrics-generator with <code class="docutils literal notranslate"><span class="pre">plugin.name</span></code> as a span attribute promoted to a
+metric label:</p>
+<div class="highlight-promql notranslate"><div class="highlight"><pre><span></span><span class="kr">histogram_quantile</span><span class="o">(</span><span class="mf">0.95</span><span class="p">,</span><span class="w"> </span><span class="k">sum</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="o">(</span><span class="nv">plugin_name</span><span class="o">)</span><span class="w"> </span><span class="o">(</span><span class="kr">rate</span><span class="o">(</span><span class="nv">span_latency_bucket</span><span class="p">{</span><span class="nl">span_name</span><span class="o">=</span><span class="p">&quot;</span><span class="s">dispatcher.execute_job</span><span class="p">&quot;}[</span><span class="s">1h</span><span class="p">]</span><span class="o">)))</span>
+</pre></div>
+</div>
+<p>Without the metrics-generator, export raw span data and compute percentiles offline
+(see the audit export scripts in Section 5.6 for the extraction pattern).</p>
+</section>
+<section id="correlating-traces-with-logs">
+<h4>Correlating Traces With Logs<a class="headerlink" href="#correlating-traces-with-logs" title="Link to this heading"></a></h4>
+<p><strong>Trace -&gt; Logs.</strong> Every Courier span carries the W3C <code class="docutils literal notranslate"><span class="pre">trace_id</span></code> and <code class="docutils literal notranslate"><span class="pre">span_id</span></code>.
+Configure your logging framework to include these in structured log entries. With
+Courier’s structured logging, add a log filter in Loki or your log aggregator:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>{courier_trace_id=&quot;a1b2c3d4e5f67890&quot;}
+</pre></div>
+</div>
+<p>In Jaeger, expand any span and copy the Trace ID. Paste it into your log search tool
+to see every log line emitted during that trace’s lifetime.</p>
+<p><strong>Logs -&gt; Trace.</strong> When you find an error in logs, extract the trace ID and search
+Jaeger:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># From a log line containing the trace ID</span>
+<span class="nv">TRACE_ID</span><span class="o">=</span><span class="k">$(</span>grep<span class="w"> </span><span class="s2">&quot;FileNotFoundError&quot;</span><span class="w"> </span>/var/log/courier/*.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.courier_trace_id&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+
+<span class="c1"># Open the trace in Jaeger</span>
+curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces/</span><span class="nv">$TRACE_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.data[0].spans[] | {name: .operationName, duration_ms: (.duration / 1000)}&#39;</span>
+</pre></div>
+</div>
+<p><strong>Automated correlation.</strong> To automate trace-log correlation, pipe Courier’s
+structured JSON logs through your log aggregator (Loki, Elasticsearch, Splunk)
+with the <code class="docutils literal notranslate"><span class="pre">courier_trace_id</span></code> field indexed. Then use the trace ID from any
+Jaeger span to query all log lines for that trace.</p>
+</section>
+<section id="production-readiness-checklist">
+<h4>Production Readiness Checklist<a class="headerlink" href="#production-readiness-checklist" title="Link to this heading"></a></h4>
+<p>Before enabling tracing in production, verify each item:</p>
+<ul class="simple">
+<li><p>[ ] <strong>Collector HA.</strong> The OTLP collector is deployed with at least two replicas. A
+single Jaeger all-in-one is acceptable for dev; for production, use the OpenTelemetry
+Collector with a highly available backend (Grafana Tempo with MinIO/S3, or a
+commercial vendor).</p></li>
+<li><p>[ ] <strong>Sampling rate tuned for volume.</strong> Measure your peak file throughput
+(files/minute). Each file produces 5–12 spans. At 10,000 files/hour with 8 spans
+each, that is 80,000 spans/hour. Adjust <code class="docutils literal notranslate"><span class="pre">COURIER_TRACING_SAMPLE_RATE</span></code> so your
+collector and backend can handle the write volume. Start with <code class="docutils literal notranslate"><span class="pre">1.0</span></code> (100%) in
+staging, then reduce in production if needed. Never sample below <code class="docutils literal notranslate"><span class="pre">0.1</span></code> (10%) without
+confirming audit requirements are still met.</p></li>
+<li><p>[ ] <strong>Retention policy aligned with audit needs.</strong> Tempo’s default retention is 24 h.
+For compliance use cases (see Section 5.6), configure retention to at least 90 days.
+For operational monitoring only, 7 days is usually sufficient.</p></li>
+<li><p>[ ] <strong>Resource limits on the collector.</strong> The OTLP collector’s <code class="docutils literal notranslate"><span class="pre">BatchSpanProcessor</span></code>
+in Courier buffers spans client-side. If the collector is slow, Courier’s memory
+grows. Set a memory limit on the collector pod/container and monitor
+<code class="docutils literal notranslate"><span class="pre">otelcol_exporter_send_failed_spans</span></code>.</p></li>
+<li><p>[ ] <strong>End-to-end test trace.</strong> Before declaring production ready, manually inject a
+test file and verify the complete trace appears in Jaeger/Tempo with all expected
+spans from <code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code> through <code class="docutils literal notranslate"><span class="pre">dispatcher.emit_execution_log</span></code>.</p></li>
+<li><p>[ ] <strong>Alert rules deployed.</strong> At minimum, deploy the “Span with error status” and
+“Slow plugin execution” alerts described above.</p></li>
+<li><p>[ ] <strong>Dashboard bookmarked.</strong> Save a direct link to the P95 latency dashboard and
+the “orphaned file” script output (see gap detection above) in your runbook.</p></li>
+</ul>
+</section>
+</section>
+<hr class="docutils" />
+<section id="audit-trail-workflows">
+<h3><a class="toc-backref" href="#id29" role="doc-backlink">5.6 Audit Trail Workflows</a><a class="headerlink" href="#audit-trail-workflows" title="Link to this heading"></a></h3>
+<p>Distributed tracing is also Courier’s audit trail system. Because every file is
+assigned a <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> and every processing stage emits a span in a
+causal chain, the trace DAG doubles as a tamper-evident processing record. This
+section covers compliance and data lineage workflows.</p>
+<section id="building-an-audit-trail-for-a-specific-file">
+<h4>Building an Audit Trail for a Specific File<a class="headerlink" href="#building-an-audit-trail-for-a-specific-file" title="Link to this heading"></a></h4>
+<p>Given a file path, reconstruct its complete processing history:</p>
+<ol class="arabic">
+<li><p><strong>Identify the file.</strong> Locate your file within the monitored directory. The file’s
+hostname and path together uniquely identify it.</p></li>
+<li><p><strong>Find the trace.</strong> Search Jaeger for the <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> if you have it.
+If you only have the filename, search by <code class="docutils literal notranslate"><span class="pre">courier.file.path</span></code>:</p>
+<p><strong>Jaeger UI:</strong> Tags field: <code class="docutils literal notranslate"><span class="pre">courier.file.path</span> <span class="pre">=</span> <span class="pre">/data/incoming/report_2026-06-11.csv</span></code></p>
+<p><strong>HTTP API:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;tags=%7B%22courier.file.path%22%3A%22/data/incoming/report_2026-06-11.csv%22%7D&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.data[] | {traceID, spans: [.spans[] | {name: .operationName, start: (.startTime / 1000 | strftime(&quot;%Y-%m-%dT%H:%M:%SZ&quot;)), dur_ms: (.duration / 1000)}]}&#39;</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Reconstruct the timeline.</strong> Each span has a <code class="docutils literal notranslate"><span class="pre">startTime</span></code> and <code class="docutils literal notranslate"><span class="pre">duration</span></code> in
+microseconds. Sort spans by start time to produce the processing chronology:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example timeline for /data/incoming/report_2026-06-11.csv</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">01.123</span>  <span class="n">data_monitor</span><span class="o">.</span><span class="n">process_file</span>       <span class="p">(</span><span class="mf">5.2</span> <span class="n">s</span><span class="p">)</span>   <span class="n">File</span> <span class="n">detected</span><span class="p">,</span> <span class="n">metadata</span> <span class="n">applied</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">01.450</span>  <span class="n">data_monitor</span><span class="o">.</span><span class="n">add_metadata</span>        <span class="p">(</span><span class="mf">0.3</span> <span class="n">s</span><span class="p">)</span>   <span class="n">Metadata</span> <span class="n">matchers</span> <span class="n">evaluated</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">04.890</span>  <span class="n">data_monitor</span><span class="o">.</span><span class="n">emit_file</span>           <span class="p">(</span><span class="mf">1.2</span> <span class="n">s</span><span class="p">)</span>   <span class="n">File</span> <span class="n">published</span> <span class="n">to</span> <span class="n">fanout</span> <span class="n">exchange</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">06.100</span>  <span class="n">metadata_router</span><span class="o">.</span><span class="n">route_file</span>       <span class="p">(</span><span class="mf">0.8</span> <span class="n">s</span><span class="p">)</span>   <span class="n">Routed</span> <span class="n">to</span> <span class="s2">&quot;reports&quot;</span> <span class="n">job</span> <span class="n">group</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">06.950</span>  <span class="n">job_builder</span><span class="o">.</span><span class="n">emit_job</span>             <span class="p">(</span><span class="mf">0.5</span> <span class="n">s</span><span class="p">)</span>   <span class="n">Job</span> <span class="n">fanned</span> <span class="n">out</span> <span class="n">to</span> <span class="n">dispatcher</span> <span class="n">queue</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">07.500</span>  <span class="n">dispatcher</span><span class="o">.</span><span class="n">dispatch_job</span>          <span class="p">(</span><span class="mf">28.1</span> <span class="n">s</span><span class="p">)</span>  <span class="n">Job</span> <span class="n">consumed</span> <span class="ow">and</span> <span class="n">executed</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">35.600</span>  <span class="n">dispatcher</span><span class="o">.</span><span class="n">execute_job</span>           <span class="p">(</span><span class="mf">27.8</span> <span class="n">s</span><span class="p">)</span>  <span class="n">Script</span> <span class="n">executed</span> <span class="n">against</span> <span class="n">the</span> <span class="n">file</span>
+<span class="mi">14</span><span class="p">:</span><span class="mi">32</span><span class="p">:</span><span class="mf">35.650</span>  <span class="n">dispatcher</span><span class="o">.</span><span class="n">emit_execution_log</span>    <span class="p">(</span><span class="mf">0.05</span> <span class="n">s</span><span class="p">)</span>  <span class="n">Execution</span> <span class="n">log</span> <span class="n">published</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Record the trace.</strong> Export the full trace as JSON (see “Exporting Audit Data”
+below) and store it alongside your compliance records.</p></li>
+</ol>
+</section>
+<section id="data-lineage-queries">
+<h4>Data Lineage Queries<a class="headerlink" href="#data-lineage-queries" title="Link to this heading"></a></h4>
+<p>These queries answer “what happened to this data?” — the core of any data lineage
+system.</p>
+<p><strong>“Which files did this dispatcher execute in the last hour?”</strong></p>
+<p>Find all <code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code> spans and extract the <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> and
+<code class="docutils literal notranslate"><span class="pre">courier.file.path</span></code> attributes:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=dispatcher.execute_job&amp;lookback=1h&amp;limit=200&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;[.data[].spans[] | select(.operationName == &quot;dispatcher.execute_job&quot;) | {</span>
+<span class="s1">      traceID: .traceID,</span>
+<span class="s1">      correlation_id: (.tags[]? | select(.key == &quot;courier.correlation_id&quot;) | .value),</span>
+<span class="s1">      file_path: (.tags[]? | select(.key == &quot;courier.file.path&quot;) | .value),</span>
+<span class="s1">      timestamp: (.startTime / 1000 | strftime(&quot;%Y-%m-%dT%H:%M:%SZ&quot;))</span>
+<span class="s1">    }]&#39;</span>
+</pre></div>
+</div>
+<p><strong>“Show me every file that passed through the metadata_router.”</strong></p>
+<p>Filter by <code class="docutils literal notranslate"><span class="pre">span.name</span> <span class="pre">=</span> <span class="pre">metadata_router.route_file</span></code> and collect file paths:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=metadata_router.route_file&amp;lookback=1h&amp;limit=200&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;[.data[].spans[] | select(.operationName == &quot;metadata_router.route_file&quot;) | {</span>
+<span class="s1">      traceID: .traceID,</span>
+<span class="s1">      file_path: (.tags[]? | select(.key == &quot;courier.file.path&quot;) | .value),</span>
+<span class="s1">      job_group: (.tags[]? | select(.key == &quot;courier.job_group.name&quot;) | .value)</span>
+<span class="s1">    }] | unique_by(.traceID)&#39;</span>
+</pre></div>
+</div>
+<p><strong>“What is the complete processing history of file X?”</strong></p>
+<p>Expands the first query in “Building an Audit Trail” into a fully attributed record:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">FILE_PATH</span><span class="o">=</span><span class="s2">&quot;/data/incoming/report_2026-06-11.csv&quot;</span>
+<span class="nv">ENCODED</span><span class="o">=</span><span class="k">$(</span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import urllib.parse; print(urllib.parse.quote(&#39;{\&quot;courier.file.path\&quot;:\&quot;&#39; + &#39;</span><span class="nv">$FILE_PATH</span><span class="s2">&#39; + &#39;\&quot;}&#39;))&quot;</span><span class="k">)</span>
+
+curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;tags=</span><span class="nv">$ENCODED</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>--arg<span class="w"> </span>fp<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FILE_PATH</span><span class="s2">&quot;</span><span class="w"> </span><span class="s1">&#39;</span>
+<span class="s1">    .data[] | {</span>
+<span class="s1">      file: $fp,</span>
+<span class="s1">      correlation_id: ([.spans[].tags[] | select(.key == &quot;courier.correlation_id&quot;) | .value] | first),</span>
+<span class="s1">      timeline: [.spans[] | {</span>
+<span class="s1">        stage: .operationName,</span>
+<span class="s1">        start: (.startTime / 1000 | strftime(&quot;%Y-%m-%dT%H:%M:%S.%fZ&quot;)),</span>
+<span class="s1">        duration_ms: (.duration / 1000),</span>
+<span class="s1">        return_code: ([.tags[]? | select(.key == &quot;courier.execution_log.return_code&quot;) | .value] | first // &quot;N/A&quot;),</span>
+<span class="s1">        hostname: ([.tags[]? | select(.key == &quot;courier.file.hostname&quot;) | .value] | first // &quot;N/A&quot;)</span>
+<span class="s1">      }] | sort_by(.start)</span>
+<span class="s1">    }&#39;</span>
+</pre></div>
+</div>
+</section>
+<section id="exporting-audit-data">
+<h4>Exporting Audit Data<a class="headerlink" href="#exporting-audit-data" title="Link to this heading"></a></h4>
+<p><strong>Via Jaeger HTTP API — span-level export to NDJSON.</strong></p>
+<p>This script exports every span in a time window as newline-delimited JSON (NDJSON),
+one span per line, suitable for ingestion into a SIEM, data warehouse, or long-term
+archive:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1"># export-audit-spans.sh — export Courier spans as NDJSON for audit archive</span>
+<span class="c1"># Usage: ./export-audit-spans.sh 2026-06-11T00:00:00Z 2026-06-11T23:59:59Z &gt; audit_20260611.ndjson</span>
+
+<span class="nv">START</span><span class="o">=</span><span class="k">$(</span>date<span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span><span class="w"> </span>+%s<span class="k">)</span><span class="m">000000</span>
+<span class="nv">END</span><span class="o">=</span><span class="k">$(</span>date<span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$2</span><span class="s2">&quot;</span><span class="w"> </span>+%s<span class="k">)</span><span class="m">000000</span>
+<span class="nv">BASE</span><span class="o">=</span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;start=</span><span class="nv">$START</span><span class="s2">&amp;end=</span><span class="nv">$END</span><span class="s2">&amp;limit=200&quot;</span>
+
+<span class="nv">cursor_start</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$START</span><span class="s2">&quot;</span>
+<span class="k">while</span><span class="w"> </span>true<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span><span class="nv">resp</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">BASE</span><span class="si">}</span><span class="s2">&amp;start=</span><span class="si">${</span><span class="nv">cursor_start</span><span class="si">}</span><span class="s2">&quot;</span><span class="k">)</span>
+<span class="w">    </span><span class="nv">count</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$resp</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.data | length&#39;</span><span class="k">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$count</span><span class="s2">&quot;</span><span class="w"> </span>-eq<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">        </span><span class="k">break</span>
+<span class="w">    </span><span class="k">fi</span>
+
+<span class="w">    </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$resp</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;</span>
+<span class="s1">      .data[].spans[] | {</span>
+<span class="s1">        trace_id: .traceID,</span>
+<span class="s1">        span_id: .spanID,</span>
+<span class="s1">        parent_span_id: (.references[]? | select(.refType == &quot;CHILD_OF&quot;) | .spanID // null),</span>
+<span class="s1">        operation: .operationName,</span>
+<span class="s1">        start_time_us: .startTime,</span>
+<span class="s1">        duration_us: .duration,</span>
+<span class="s1">        correlation_id: ([.tags[]? | select(.key == &quot;courier.correlation_id&quot;) | .value] | first // null),</span>
+<span class="s1">        file_path: ([.tags[]? | select(.key == &quot;courier.file.path&quot;) | .value] | first // null),</span>
+<span class="s1">        job_id: ([.tags[]? | select(.key == &quot;courier.job.id&quot;) | .value] | first // null),</span>
+<span class="s1">        return_code: ([.tags[]? | select(.key == &quot;courier.execution_log.return_code&quot;) | .value] | first // null),</span>
+<span class="s1">        hostname: ([.tags[]? | select(.key == &quot;courier.file.hostname&quot;) | .value] | first // null),</span>
+<span class="s1">        plugin_name: ([.tags[]? | select(.key == &quot;plugin.name&quot;) | .value] | first // null),</span>
+<span class="s1">        plugin_version: ([.tags[]? | select(.key == &quot;plugin.version&quot;) | .value] | first // null)</span>
+<span class="s1">      }</span>
+<span class="s1">    &#39;</span>
+
+<span class="w">    </span><span class="c1"># Advance cursor using the startTime of the last span</span>
+<span class="w">    </span><span class="nv">last_start</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$resp</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;[.data[-1].spans[].startTime] | max&#39;</span><span class="k">)</span>
+<span class="w">    </span><span class="nv">cursor_start</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$last_start</span><span class="s2">&quot;</span>
+<span class="w">    </span>sleep<span class="w"> </span><span class="m">0</span>.2<span class="w">  </span><span class="c1"># polite rate limiting</span>
+<span class="k">done</span>
+</pre></div>
+</div>
+<p><strong>Via OTLP Collector — pipeline to SIEM or data warehouse.</strong></p>
+<p>Configure the OpenTelemetry Collector to fan-out traces to both your query backend and
+a long-term store. Example collector config that exports to Tempo for querying AND
+writes spans to a file (which can be ingested by a SIEM):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># otel-collector-config.yaml</span>
+<span class="nt">receivers</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">protocols</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">http</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0.0.0:4318</span>
+
+<span class="nt">exporters</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">otlp/tempo</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tempo:4317</span>
+<span class="w">    </span><span class="nt">tls</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">insecure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">file/audit</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/log/otel/spans.ndjson</span>
+<span class="w">    </span><span class="nt">rotation</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">max_megabytes</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">500</span>
+<span class="w">      </span><span class="nt">max_backups</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+
+<span class="nt">service</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">pipelines</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">traces</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">receivers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">otlp</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">exporters</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">otlp/tempo</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">file/audit</span><span class="p p-Indicator">]</span>
+</pre></div>
+</div>
+<p>For direct SIEM ingestion, replace <code class="docutils literal notranslate"><span class="pre">file/audit</span></code> with the appropriate exporter
+(<code class="docutils literal notranslate"><span class="pre">kafka</span></code>, <code class="docutils literal notranslate"><span class="pre">splunk_hec</span></code>, <code class="docutils literal notranslate"><span class="pre">elasticsearch</span></code>, or the <code class="docutils literal notranslate"><span class="pre">otlphttp</span></code> exporter pointed at your
+SIEM’s OTLP ingest endpoint).</p>
+</section>
+<section id="compliance-considerations">
+<h4>Compliance Considerations<a class="headerlink" href="#compliance-considerations" title="Link to this heading"></a></h4>
+<p><strong>What constitutes a complete audit record?</strong></p>
+<p>A single file’s processing is auditable when the trace contains all of these attributes
+across its spans:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Attribute</p></th>
+<th class="head"><p>Source Span(s)</p></th>
+<th class="head"><p>Required For</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code></p></td>
+<td><p>Present on all pipeline spans</p></td>
+<td><p>Uniquely identifies the file’s processing event</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.file.path</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code>, <code class="docutils literal notranslate"><span class="pre">emit_file</span></code></p></td>
+<td><p>What file was processed</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.file.hostname</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.emit_file</span></code></p></td>
+<td><p>Which machine detected the file</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">plugin.name</span></code> / <code class="docutils literal notranslate"><span class="pre">plugin.version</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code></p></td>
+<td><p>Which plugin processed it, and at what version</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">courier.job_group.name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">job_builder.process_job_group</span></code></p></td>
+<td><p>Which pipeline rule routed the file</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">courier.execution_log.return_code</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.emit_execution_log</span></code></p></td>
+<td><p>Whether execution succeeded or failed</p></td>
+</tr>
+<tr class="row-even"><td><p>Start time and duration (per span)</p></td>
+<td><p>Every span</p></td>
+<td><p>When each stage occurred and how long it took</p></td>
+</tr>
+<tr class="row-odd"><td><p>W3C <code class="docutils literal notranslate"><span class="pre">trace_id</span></code> + <code class="docutils literal notranslate"><span class="pre">span_id</span></code></p></td>
+<td><p>Every span (intrinsic to OTLP)</p></td>
+<td><p>Chain-of-custody proof (see below)</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Retention requirements by regime:</strong></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Regime</p></th>
+<th class="head"><p>Minimum Trace Retention</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>General operations</p></td>
+<td><p>7 days</p></td>
+<td><p>Enough for incident response and trend analysis</p></td>
+</tr>
+<tr class="row-odd"><td><p>SOC 2</p></td>
+<td><p>90 days</p></td>
+<td><p>Aligns with typical log retention requirements</p></td>
+</tr>
+<tr class="row-even"><td><p>HIPAA</p></td>
+<td><p>Consult compliance officer</p></td>
+<td><p>Requirements vary. May require exporting to WORM-compliant storage</p></td>
+</tr>
+<tr class="row-odd"><td><p>GDPR (processing)</p></td>
+<td><p>Aligned with data retention policy</p></td>
+<td><p>Delete traces when the associated file data is deleted</p></td>
+</tr>
+<tr class="row-even"><td><p>Internal audit</p></td>
+<td><p>1 year</p></td>
+<td><p>Common enterprise standard</p></td>
+</tr>
+</tbody>
+</table>
+<p>Configure your tracing backend’s retention accordingly. For Tempo:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># tempo.yaml</span>
+<span class="nt">compactor</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">compaction</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">block_retention</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2160h</span><span class="w">   </span><span class="c1"># 90 days</span>
+</pre></div>
+</div>
+<p>For Jaeger with Elasticsearch backend, configure index lifecycle management (ILM) to
+match.</p>
+</section>
+<section id="chain-of-custody">
+<h4>Chain of Custody<a class="headerlink" href="#chain-of-custody" title="Link to this heading"></a></h4>
+<p>The combination of W3C Trace Context propagation and parent-child span relationships
+provides a cryptographic-strength chain of custody:</p>
+<ol class="arabic simple">
+<li><p><strong>Root span creation.</strong> When a Data Monitor detects a file, it creates a root span
+with a new W3C <code class="docutils literal notranslate"><span class="pre">trace_id</span></code> (128-bit random) and a <code class="docutils literal notranslate"><span class="pre">span_id</span></code> (64-bit random).</p></li>
+<li><p><strong>Context injection.</strong> <code class="docutils literal notranslate"><span class="pre">Service.emit()</span></code> serializes the current span context into a
+<code class="docutils literal notranslate"><span class="pre">traceparent</span></code> header (<code class="docutils literal notranslate"><span class="pre">00-{trace_id}-{span_id}-01</span></code>) and attaches it to the broker
+message.</p></li>
+<li><p><strong>Context extraction.</strong> <code class="docutils literal notranslate"><span class="pre">Service.consume()</span></code> extracts the <code class="docutils literal notranslate"><span class="pre">traceparent</span></code> header and
+produces a parent <code class="docutils literal notranslate"><span class="pre">Context</span></code> object. The consuming plugin creates a child span with
+its own new <code class="docutils literal notranslate"><span class="pre">span_id</span></code> and the same <code class="docutils literal notranslate"><span class="pre">trace_id</span></code>, recording the parent’s <code class="docutils literal notranslate"><span class="pre">span_id</span></code> in
+a <code class="docutils literal notranslate"><span class="pre">CHILD_OF</span></code> reference.</p></li>
+<li><p><strong>Continuous chain.</strong> Every hop repeats steps 2–3. The result is an unbroken
+sequence of parent-child links from file detection to execution log.</p></li>
+</ol>
+<p>This proves that <strong>file A detected at stage 1 is the same file A processed at stage
+3</strong> because:</p>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">trace_id</span></code> is invariant across all stages.</p></li>
+<li><p>The parent-child references form a directed, acyclic graph with no missing edges
+(if any stage is skipped, the trace DAG has a visible gap).</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> on every span provides a human-readable secondary key
+that cross-validates the W3C chain.</p></li>
+</ul>
+<p>To verify chain integrity for a specific audit:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Verify that a trace has no missing stages by checking span references</span>
+curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces/</span><span class="nv">$TRACE_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;</span>
+<span class="s1">  .data[0].spans | map({</span>
+<span class="s1">    name: .operationName,</span>
+<span class="s1">    has_parent: (.references | any(.refType == &quot;CHILD_OF&quot;)),</span>
+<span class="s1">    children: [.[] | select(.references[]?.refType == &quot;CHILD_OF&quot; and .references[]?.spanID == .spanID) | .operationName]</span>
+<span class="s1">  })</span>
+<span class="s1">&#39;</span>
+</pre></div>
+</div>
+</section>
+<section id="tamper-evidence">
+<h4>Tamper Evidence<a class="headerlink" href="#tamper-evidence" title="Link to this heading"></a></h4>
+<p>Distributed tracing is inherently tamper-evident because:</p>
+<ol class="arabic simple">
+<li><p><strong>Missing spans are visible holes.</strong> The trace DAG for a file must contain specific
+stages. An operator or auditor can enumerate expected spans and flag traces where
+required spans are absent (see the gap detection script in Section 5.5).</p></li>
+<li><p><strong>Span order is chronological.</strong> <code class="docutils literal notranslate"><span class="pre">startTime</span></code> is set by the SDK at span creation and
+cannot be retroactively modified in an exported trace (the collector timestamps
+spans on receive, but the span’s own <code class="docutils literal notranslate"><span class="pre">startTime</span></code> is preserved as client-side
+evidence).</p></li>
+<li><p><strong>Correlation ID immutability.</strong> <code class="docutils literal notranslate"><span class="pre">courier.correlation_id</span></code> is set once by the data
+monitor and carried as an attribute — if it changes mid-trace, the spans with the
+new value will belong to a different trace. Any attempt to splice spans from
+different traces is detectable by comparing correlation IDs.</p></li>
+<li><p><strong>OTLP delivery provides completeness.</strong> The <code class="docutils literal notranslate"><span class="pre">BatchSpanProcessor</span></code> retries failed
+exports and logs WARNINGs on persistent failure. If a span was created but not
+delivered, the log gap is evidence of the delivery failure.</p></li>
+</ol>
+<p>A script to audit trace completeness across a batch of correlation IDs:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1"># audit-trace-completeness.sh — check that every correlation_id has all required stages</span>
+<span class="nv">REQUIRED_STAGES</span><span class="o">=(</span><span class="s2">&quot;data_monitor.process_file&quot;</span><span class="w"> </span><span class="s2">&quot;dispatcher.execute_job&quot;</span><span class="w"> </span><span class="s2">&quot;dispatcher.emit_execution_log&quot;</span><span class="o">)</span>
+
+<span class="k">for</span><span class="w"> </span>corr_id<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$@</span><span class="s2">&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">    </span><span class="nv">ENCODED</span><span class="o">=</span><span class="k">$(</span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import urllib.parse; print(urllib.parse.quote(&#39;{\&quot;courier.correlation_id\&quot;:\&quot;&#39; + &#39;</span><span class="nv">$corr_id</span><span class="s2">&#39; + &#39;\&quot;}&#39;))&quot;</span><span class="k">)</span>
+<span class="w">    </span><span class="nv">stages</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;tags=</span><span class="nv">$ENCODED</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data[0].spans[].operationName&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-u<span class="k">)</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span>required<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">REQUIRED_STAGES</span><span class="p">[@]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span>!<span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$stages</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-qx<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$required</span><span class="s2">&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<span class="w">            </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;MISSING: correlation_id=</span><span class="nv">$corr_id</span><span class="s2"> is missing stage </span><span class="nv">$required</span><span class="s2">&quot;</span>
+<span class="w">        </span><span class="k">fi</span>
+<span class="w">    </span><span class="k">done</span>
+<span class="k">done</span>
+</pre></div>
+</div>
+</section>
+<section id="example-audit-report-query">
+<h4>Example Audit Report Query<a class="headerlink" href="#example-audit-report-query" title="Link to this heading"></a></h4>
+<p>Generate a CSV of all files processed by a specific dispatcher between two timestamps,
+with their complete processing timeline:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/bash</span>
+<span class="c1"># audit-dispatcher-report.sh — CSV report for compliance</span>
+<span class="c1"># Usage: ./audit-dispatcher-report.sh &quot;2026-06-11T08:00:00Z&quot; &quot;2026-06-11T12:00:00Z&quot;</span>
+
+<span class="nv">START</span><span class="o">=</span><span class="k">$(</span>date<span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$1</span><span class="s2">&quot;</span><span class="w"> </span>+%s<span class="k">)</span><span class="m">000000</span>
+<span class="nv">END</span><span class="o">=</span><span class="k">$(</span>date<span class="w"> </span>-d<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$2</span><span class="s2">&quot;</span><span class="w"> </span>+%s<span class="k">)</span><span class="m">000000</span>
+
+<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;correlation_id,file_path,stage,start_time,duration_ms,return_code,hostname&quot;</span>
+
+curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://localhost:16686/api/traces?service=courier&amp;operation=dispatcher.execute_job&amp;start=</span><span class="nv">$START</span><span class="s2">&amp;end=</span><span class="nv">$END</span><span class="s2">&amp;limit=500&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;</span>
+<span class="s1">    .data[] | . as $trace |</span>
+<span class="s1">    $trace.spans[] | {</span>
+<span class="s1">      corr: ([.tags[]? | select(.key == &quot;courier.correlation_id&quot;) | .value] | first // &quot;N/A&quot;),</span>
+<span class="s1">      file: ([.tags[]? | select(.key == &quot;courier.file.path&quot;) | .value] | first // &quot;N/A&quot;),</span>
+<span class="s1">      stage: .operationName,</span>
+<span class="s1">      start: (.startTime / 1000 | strftime(&quot;%Y-%m-%dT%H:%M:%S.%fZ&quot;)),</span>
+<span class="s1">      dur_ms: (.duration / 1000),</span>
+<span class="s1">      rc: ([.tags[]? | select(.key == &quot;courier.execution_log.return_code&quot;) | .value] | first // &quot;N/A&quot;),</span>
+<span class="s1">      host: ([.tags[]? | select(.key == &quot;courier.file.hostname&quot;) | .value] | first // &quot;N/A&quot;)</span>
+<span class="s1">    } | [</span>
+<span class="s1">      .corr, .file, .stage, .start, (.dur_ms | tostring), .rc, .host</span>
+<span class="s1">    ] | @csv</span>
+<span class="s1">  &#39;</span>
+</pre></div>
+</div>
+<p>The output is a CSV with one row per span, ready for import into Excel, a database, or
+a compliance reporting system. Each row captures the correlation ID, file path, stage
+name, precise timestamp, duration in milliseconds, return code, and originating
+hostname — the full processing fingerprint of every file.</p>
+<p>For a complete file-centric view (all stages for each file, not just dispatcher
+spans), retrieve the full trace by correlation ID and flatten all spans. This is the
+pattern used by the “complete processing history” query earlier in this section,
+piped through <code class="docutils literal notranslate"><span class="pre">jq</span></code> with <code class="docutils literal notranslate"><span class="pre">&#64;csv</span></code> output formatting.</p>
+</section>
+</section>
+</section>
+<hr class="docutils" />
+<section id="quick-reference">
+<h2><a class="toc-backref" href="#id30" role="doc-backlink">6. Quick Reference</a><a class="headerlink" href="#quick-reference" title="Link to this heading"></a></h2>
+<section id="environment-variables">
+<h3><a class="toc-backref" href="#id31" role="doc-backlink">Environment Variables</a><a class="headerlink" href="#environment-variables" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">COURIER_TRACING_ENABLED</span><span class="o">=</span><span class="nb">true</span><span class="w">          </span><span class="c1"># Enable tracing (default)</span>
+<span class="nv">COURIER_TRACING_ENABLED</span><span class="o">=</span><span class="nb">false</span><span class="w">         </span><span class="c1"># Disable tracing</span>
+<span class="nv">OTEL_TRACES_EXPORTER</span><span class="o">=</span>none<span class="w">             </span><span class="c1"># Alternative disable (SDK convention)</span>
+<span class="nv">COURIER_TRACING_ENDPOINT</span><span class="o">=</span>http://...<span class="w">   </span><span class="c1"># OTLP collector URL</span>
+<span class="nv">OTEL_EXPORTER_OTLP_ENDPOINT</span><span class="o">=</span>http://...<span class="w"> </span><span class="c1"># OTLP collector URL (takes precedence)</span>
+<span class="nv">COURIER_TRACING_SERVICE_NAME</span><span class="o">=</span>courier<span class="w">  </span><span class="c1"># Service name in traces</span>
+<span class="nv">COURIER_TRACING_SAMPLE_RATE</span><span class="o">=</span><span class="m">0</span>.5<span class="w">       </span><span class="c1"># 50% sampling</span>
+</pre></div>
+</div>
+</section>
+<section id="span-name-quick-index">
+<h3><a class="toc-backref" href="#id32" role="doc-backlink">Span Name Quick Index</a><a class="headerlink" href="#span-name-quick-index" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Span</p></th>
+<th class="head"><p>Plugin</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.process_file</span></code></p></td>
+<td><p>DataMonitorBasePlugin</p></td>
+<td><p>File detection + processing</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.add_metadata</span></code></p></td>
+<td><p>DataMonitorBasePlugin</p></td>
+<td><p>Metadata enrichment</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">data_monitor.emit_file</span></code></p></td>
+<td><p>DataMonitorBasePlugin</p></td>
+<td><p>File publication</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.build_job</span></code></p></td>
+<td><p>JobBuilder</p></td>
+<td><p>Incoming file consumption</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.process_job_group</span></code></p></td>
+<td><p>JobBuilder</p></td>
+<td><p>Per-group file processing</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.emit_job</span></code></p></td>
+<td><p>JobBuilder</p></td>
+<td><p>Fan-out job emission</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_builder.emit_one</span></code></p></td>
+<td><p>JobBuilder</p></td>
+<td><p>Single target publish</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.dispatch_job</span></code></p></td>
+<td><p>Dispatcher</p></td>
+<td><p>Job consumption + execution</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.execute_job</span></code></p></td>
+<td><p>Dispatcher</p></td>
+<td><p>Plugin execution logic</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dispatcher.emit_execution_log</span></code></p></td>
+<td><p>Dispatcher</p></td>
+<td><p>Log publication</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">metadata_router.route_file</span></code></p></td>
+<td><p>Router</p></td>
+<td><p>Route-first-match</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="high-availability.html" class="btn btn-neutral float-left" title="High-Availability Job Builder State Sync" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../concepts/index.html" class="btn btn-neutral float-right" title="Design Concepts" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
