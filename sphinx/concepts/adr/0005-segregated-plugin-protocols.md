@@ -51,4 +51,4 @@ to opt out of health checking.
 - **Future work**: When a plugin needs to opt out of health checking, the
   `HealthCheckable` protocol will be extracted and the `PluginManager` updated to use
   `isinstance` checks, superseding this ADR.
-- **Health check semantics**: The `is_healthy()` method checks `self._state == PluginRunState.RUNNING`. For the full state machine, see {doc}`../0003-plugin-run-state-enum`.
+- **Health check semantics**: The `is_healthy()` method checks `self._state == PluginRunState.RUNNING`. For the full state machine, see {doc}`./0003-plugin-run-state-enum`.

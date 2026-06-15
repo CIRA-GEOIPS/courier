@@ -101,7 +101,7 @@ spec:
 How often the service publishes health metrics, in seconds. Defaults
 to `30` when omitted.
 
-(`run`)=
+(run-section)=
 ### `run`
 
 An ordered list of pipeline steps. Each step is a mapping from an
@@ -324,7 +324,7 @@ broker:
 
 ```{note}
 This section covers operational deployment across containers. For the
-configuration format reference, see {ref}`run` above.
+configuration format reference, see {ref}`run-section` above.
 ```
 
 The `--only` flag on `courier run` lets you split a single service

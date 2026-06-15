@@ -731,7 +731,7 @@ Without the metrics-generator, export raw span data and compute percentiles offl
 Configure your logging framework to include these in structured log entries. With
 Courier's structured logging, add a log filter in Loki or your log aggregator:
 
-```logql
+```text
 {courier_trace_id="a1b2c3d4e5f67890"}
 ```
 
