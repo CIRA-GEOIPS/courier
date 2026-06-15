@@ -9,7 +9,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: docs-deploy
@@ -18,10 +20,13 @@ concurrency:
 jobs:
   docs:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+
+      - uses: actions/configure-pages@v5
 
       - uses: actions/setup-python@v5
         with:
@@ -36,31 +41,22 @@ jobs:
         run: |
           cd sphinx
           sphinx-build -M html . _build -W --keep-going -n
-        # sphinx-build directly (not make html) to skip the hardcoded -n flag
-        # -W: warnings are errors   --keep-going: don't stop on first error   -n: nit-picky mode (warn on all missing references)
 
-      - name: Upload documentation artifact
+      - name: Upload build artifact (for debugging)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sphinx-docs
           path: sphinx/_build/html/
           retention-days: 3
 
-      - name: Deploy to docs/
+      - name: Upload Pages artifact
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
-        run: |
-          git fetch origin main
-          git checkout main
-          rm -rf docs/
-          mkdir -p docs/
-          cp -r sphinx/_build/html/* docs/
-          touch docs/.nojekyll
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "docs: deploy for ${{ github.ref_name }}"
-            git push origin main
-          fi
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: sphinx/_build/html
+
+      - name: Deploy to GitHub Pages
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || github.event_name == 'workflow_dispatch'
+        id: deploy
+        uses: actions/deploy-pages@v4
