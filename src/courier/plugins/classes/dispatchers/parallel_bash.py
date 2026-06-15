@@ -24,10 +24,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
-from courier.plugins.classes.dispatchers._output_file_pattern import (  # noqa: TC001
+from courier.dispatchers._output_file_pattern import (  # noqa: TC001
     OutputFilePattern,
 )
-from courier.plugins.classes.dispatchers._output_scanner import (
+from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
 from courier.types.execution_log import ExecutionLog
