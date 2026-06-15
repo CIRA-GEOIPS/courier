@@ -8,6 +8,7 @@ with metadata, and forwards them via an ``emit_file`` callback.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -24,18 +25,45 @@ if TYPE_CHECKING:
 # ── Recognised File field names from OutputFilePattern ──────────────────
 # Named regex groups matching these keys are applied as field overrides
 # rather than being placed in metadata.
+#
+# ``timestamp`` was added to support multi-stage pipelines where a downstream
+# ``filter_and_group`` builder uses ``time_grouping`` to pair files by
+# observation time.  Without a timestamp on the re-emitted File object,
+# ``time_grouping`` silently drops the file (``get_job_ids_from_file`` returns
+# ``[]`` when ``timestamp is None``), breaking pairing stages such as the
+# GOES-18 3D cloud pipeline where a CLAVR-x file and its CWC counterpart
+# must arrive in the same time bucket.  The regex pattern captures a compact
+# ``YYYYmmddTHHMM`` string via a ``(?P<timestamp>...)`` named group and the
+# transform below parses it into a :class:`datetime`.
 _FILE_FIELD_KEYS: frozenset[str] = frozenset(
-    {"source", "instrument", "processing_stage", "domain"},
+    {"source", "instrument", "processing_stage", "domain", "timestamp"},
 )
+
 
 # ── Case transforms for regex-extracted File field values ──────────────
 # Regex-extracted values receive the same case normalisation that
 # OutputFilePattern's static field validators apply.
-_FIELD_TRANSFORMS: dict[str, Callable[[str], str]] = {
+def _parse_compact_timestamp(raw: str) -> datetime | None:
+    """Parse a ``YYYYmmddTHHMM`` string into a timezone-naive :class:`datetime`.
+
+    Output files produced by cwc_prof, unetcomp, and the L1b preprocessor
+    follow the naming convention ``{SENSOR}_{PRODUCT}_{YYYYmmdd}T{HHMM}Z[_v{V}].h5``.
+    The ``(?P<timestamp>...)`` named group in an output_files pattern captures
+    the compact ``YYYYmmddTHHMM`` token; this transform converts it so the
+    re-emitted :class:`File` carries a real timestamp for ``time_grouping``.
+    """
+    try:
+        return datetime.strptime(raw, "%Y%m%dT%H%M")
+    except (ValueError, TypeError):
+        return None
+
+
+_FIELD_TRANSFORMS: dict[str, Callable[[str], str | datetime | None]] = {
     "source": str.lower,
     "instrument": str.lower,
     "processing_stage": str.lower,
     "domain": str.upper,
+    "timestamp": _parse_compact_timestamp,
 }
 
 
