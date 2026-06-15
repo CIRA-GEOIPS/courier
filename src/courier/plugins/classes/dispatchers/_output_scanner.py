@@ -173,3 +173,9 @@ def _scan_and_emit_output_files(  # noqa: PLR0913
             updates = _collect_updates_from_match(entry, match_obj)
             file_obj = file_obj.with_updates(**updates)
             emit_file(file_obj)
+
+
+# ---------------------------------------------------------------------------
+# Exclude from plugin discovery — this is a utility module, not a plugin.
+# ---------------------------------------------------------------------------
+PLUGIN_CLASS = None

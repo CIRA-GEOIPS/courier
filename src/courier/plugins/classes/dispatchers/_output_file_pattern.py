@@ -84,3 +84,7 @@ class OutputFilePattern(BaseModel):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Exclude from plugin discovery — this is a Pydantic model, not a plugin.
+# ---------------------------------------------------------------------------
+PLUGIN_CLASS = None
