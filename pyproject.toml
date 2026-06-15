@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "runcourier"
-version = "0.6.0"
+version = "0.7.0"
 description = "A plugin-based, event-driven orchestration framework for building data processing pipelines"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Evan Rose <none@email.com>"]
 repository = "https://github.com/biosafetylvl5/courier"
@@ -341,7 +341,7 @@ line-ending = "lf"
 
 [project]
 name = "runcourier"
-version = "0.6.0"
+version = "0.7.0"
 requires-python = ">=3.11,<3.15"
 
 [build-system]
