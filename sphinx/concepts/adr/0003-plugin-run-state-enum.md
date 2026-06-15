@@ -8,7 +8,7 @@ Accepted
 
 Plugin lifecycle originally used a `self._running: bool` flag (True = running,
 False = stopped/failed). This conflates three distinct states — stopped, failed, and
-restarting — into a single bit, making state transitions invisible in logs and
+restarting — into a single bit, making state transitions opaque to operators and
 preventing the plugin manager from distinguishing a clean stop from a crash.
 
 ## Decision
@@ -35,3 +35,17 @@ rather than `self._running: bool`.
 - The `STARTING` and `STOPPING` states are defined but not yet set by the base plugin
   classes; they are reserved for a future `StateMachine` implementation.
 - The enum is serialized as an integer in the Prometheus metric, not by name.
+
+## Consequences
+
+- **State visibility**: The `PluginManager` now stores and exports a typed
+  `PluginRunState` per plugin via the `courier_plugin_state` Prometheus gauge, replacing
+  the opaque boolean flag. Operators can distinguish `FAILED` from `STOPPED` at a
+  glance.
+- **Codebase impact**: All base plugin interfaces (`DataMonitorBasePlugin`,
+  `JobBuilder`, `Dispatcher`) and the `PluginManager` itself use `self._state:
+  PluginRunState` instead of `self._running: bool`. Plugin authors writing custom
+  plugins should use the enum rather than a boolean.
+- **Forward compatibility**: `STARTING` and `STOPPING` enum values are reserved for a
+  future `StateMachine` implementation with transition guards.
+- **Tracing visibility**: These states are surfaced as span events in distributed tracing. See {doc}`../../operations/tracing` for the span events reference.

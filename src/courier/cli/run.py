@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
@@ -13,6 +14,8 @@ from courier.cli.config_loader import load_config
 from courier.cli.plugins import PLUGIN_REGISTRIES
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from courier.interfaces.plugin_protocol import ServicePlugin
@@ -41,7 +44,12 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     return out
 
 
-def run_service(config: Any, log_level: str | None = None) -> None:
+def run_service(
+    config: Any,
+    log_level: str | None = None,
+    *,
+    only_set: set[str] | None = None,
+) -> None:
     """Build and start the service from a validated config model.
 
     Parameters
@@ -51,6 +59,9 @@ def run_service(config: Any, log_level: str | None = None) -> None:
     log_level : str or None, optional
         Log level from CLI --log-level flag. If None, uses
         ServiceConfig default (env var COURIER_LOG_LEVEL or 'DEBUG').
+    only_set : set[str] or None, optional
+        If set, only run plugins whose identifiers are in this set.
+        Keyword-only; passed from the ``--only`` CLI flag.
     """
     if log_level is not None:
         service_config = ServiceConfig(
@@ -73,7 +84,32 @@ def run_service(config: Any, log_level: str | None = None) -> None:
     plugin_registrations: list[
         tuple[type[ServicePlugin], dict[str, Any], str | None]
     ] = []
+
+    # --only validation
+    if only_set is not None:
+        all_ids = {e.identifier for e in config.spec.run}
+        unknown = only_set - all_ids
+        if unknown:
+            raise ValueError(
+                f"Unknown plugin identifiers: {', '.join(sorted(unknown))}. "
+                f"Available: {', '.join(sorted(all_ids))}",
+            )
+        dmc_ids = {
+            e.identifier for e in config.spec.run
+            if e.spec.kind == "data_monitor_configs"
+        }
+        dmc_in_only = only_set & dmc_ids
+        if dmc_in_only:
+            raise ValueError(
+                f"'data_monitor_configs' entries cannot be run with --only: "
+                f"{', '.join(sorted(dmc_in_only))}. "
+                "Use --only with data_monitor,"
+                " job_builder, or dispatcher identifiers.",
+            )
+
     for entry in config.spec.run:
+        if only_set is not None and entry.identifier not in only_set:
+            continue
         if entry.spec.kind == "data_monitor_configs":
             continue  # YAML-based config, not a ServicePlugin
         registry = PLUGIN_REGISTRIES.get(entry.spec.kind)
@@ -91,11 +127,25 @@ def run_service(config: Any, log_level: str | None = None) -> None:
         plugin_registrations,
     )
     dispatcher_ids = {
-        entry.identifier for entry in config.spec.run if entry.spec.kind == "dispatcher"
+        e.identifier for e in config.spec.run
+        if e.spec.kind == "dispatcher"
+        and (only_set is None or e.identifier in only_set)
     }
+    # Union: add any dispatcher targeted by builders in the filtered set
+    builder_targets = _collect_builder_targets(config)
+    if only_set is not None:
+        # Filter builder_targets to only builders in only_set
+        builder_targets = {
+            bid: targets for bid, targets in builder_targets.items()
+            if bid in only_set
+        }
+        # Add targets of included builders to dispatcher_ids
+        # (queues must be pre-declared on broker even if dispatcher runs elsewhere)
+        for targets in builder_targets.values():
+            dispatcher_ids.update(targets)
     service.configure_routing(
         dispatcher_identifiers=dispatcher_ids,
-        builder_targets=_collect_builder_targets(config),
+        builder_targets=builder_targets,
         allow_implicit_target=getattr(
             config.spec,
             "allow_implicit_target",
@@ -108,6 +158,15 @@ def run_service(config: Any, log_level: str | None = None) -> None:
 def run(
     ctx: typer.Context,
     config_file: Path,
+    only: str | None = typer.Option(
+        None,
+        "--only",
+        help="Comma-separated plugin identifiers to run. "
+             "Allows one config to serve multiple containers: "
+             "e.g. 'courier run config.yaml --only my-dm' for the data monitor, "
+             "'courier run config.yaml --only my-builder,my-dispatcher'"
+             " for processing.",
+    ),
 ) -> None:
     """Run the service with a config file."""
     if not config_file.exists():
@@ -116,4 +175,15 @@ def run(
 
     config = load_config(config_file)
     log_level = ctx.obj.get("log_level") if ctx.obj else None
-    run_service(config, log_level=log_level)
+
+    # Parse --only
+    if only is None:
+        only_set = None
+    elif not only.strip():
+        logger.debug("empty --only, running all plugins")
+        only_set = None
+    else:
+        parts = [p.strip().lower() for p in only.split(",") if p.strip()]
+        only_set = set(parts)  # deduplicate via set
+
+    run_service(config, log_level=log_level, only_set=only_set)

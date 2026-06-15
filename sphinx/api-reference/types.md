@@ -1,6 +1,6 @@
 # Types API Reference
 
-The core data types that flow through Lazy Lemon's pipeline:
+The core data types that flow through Courier's pipeline:
 :class:`~courier.types.file.File` (mutable) and
 :class:`~courier.types.file.FrozenFile` (immutable).
 
@@ -105,8 +105,8 @@ All attributes are read-only after construction.
      - ``str`` | ``None``
      - Domain or sector.
    * - ``metadata``
-     - :py:class:`collections.abc.Mapping`\ ``[str, Any]``
-     - Immutable view of the metadata dictionary. Wrapped with :py:class:`types.MappingProxyType` during :func:`~courier.types.file.File.freeze`; calling :func:`~courier.types.file.FrozenFile.thaw` unwraps it back to a mutable ``dict``.
+      - :py:class:`collections.abc.Mapping`\ ``[str, Any]``
+      - Metadata dictionary. When the ``FrozenFile`` is created via :py:func:`~courier.types.file.File.freeze`, metadata is wrapped with :py:class:`types.MappingProxyType` for true immutability. When created directly or via :py:func:`~courier.types.file.FrozenFile.from_dict`, metadata is stored as a plain ``dict``. Calling :py:func:`~courier.types.file.FrozenFile.thaw` unwraps any ``MappingProxyType`` back to a mutable ``dict``.
    * - ``num_expected``
      - ``int``
      - Expected number of files.
@@ -144,19 +144,12 @@ The internal :func:`_file_fields_from_dict` helper **no longer recognizes
 legacy fallback keys**. If your configuration or serialized data uses any
 of the following, update to the canonical attribute names:
 
-.. list-table::
-   :header-rows: 1
+```{include} ../includes/breaking-changes.md
+```
 
-   * - Legacy Key
-     - Canonical ``File`` Attribute
-   * - ``platform``
-     - ``source``
-   * - ``sensor``
-     - ``instrument``
-   * - ``level``
-     - ``processing_stage``
-   * - ``sector``
-     - ``domain``
+The table below maps legacy metadata keys to the current `File` attribute
+names. These legacy keys are no longer recognized by the field access
+helper.
 
 Only ``source``, ``instrument``, ``processing_stage``, ``domain``,
 ``hostname``, ``file``, ``metadata``, ``num_expected``, and ``timestamp``

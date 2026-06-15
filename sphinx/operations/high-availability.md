@@ -1,6 +1,6 @@
 # High-Availability Job Builder State Sync
 
-Lazy Lemon supports running multiple instances of a service simultaneously
+Courier supports running multiple instances of a service simultaneously
 for **fault tolerance** and **increased throughput**. When two or more
 instances share the same input data stream, their job builders must agree on
 which files belong to which job — otherwise one instance can dispatch a
@@ -19,7 +19,7 @@ deployment does not need Redis and the ``redis`` package is not imported unless
 
 ## When to Enable State Sync
 
-Enable state sync when you run **more than one Lazy Lemon instance** pointing
+Enable state sync when you run **more than one Courier instance** pointing
 at the same data source. Common scenarios:
 
 - Active-active redundancy where either instance can take over if the other
@@ -30,7 +30,7 @@ at the same data source. Common scenarios:
   a restart.
 
 A **single-instance** deployment does not benefit from state sync and should
-leave it not configured.
+leave it unconfigured.
 
 ## Architecture
 
@@ -126,7 +126,7 @@ Add a `state_sync` block to the job builder's `config` section:
     name: filter_and_group
     config:
       state_sync:
-        host: redis.internal      # Required. Redis hostname or IP.
+        host: redis.internal      # Optional. Default: "localhost".
         port: 6379                # Default: 6379.
         db: 1                     # Default: 0.  Redis database index.
         password: "${REDIS_PASS}" # Default: null (no auth).
@@ -293,3 +293,8 @@ have lost its Redis connection or have a misconfigured `channel_prefix`.
 | **Crash recovery**          | Restarting instances reload state from Redis and resume without losing accumulated file groupings.                                                                                                              |
 | **Stale claim keys**        | Claim keys expire via TTL. If the dispatching instance crashes before the TTL expires, the job will not be re-dispatched until the TTL elapses. Size the TTL to match your job processing time.                 |
 | **Single Redis**            | There is no built-in Redis Sentinel or Cluster support. Point `host` at a Redis Sentinel-aware proxy or a load-balanced endpoint for Redis HA.                                                                  |
+
+## Next Steps
+
+- {doc}`Docker Swarm Cluster Tutorial <../tutorials/02-docker-swarm-cluster>`
+- {doc}`Distributed Tracing Setup <tracing>`

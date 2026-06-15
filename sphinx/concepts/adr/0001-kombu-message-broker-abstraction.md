@@ -34,3 +34,18 @@ directly.
 - Kombu is untyped (`py.typed` marker absent) — all imports carry `# type: ignore[import-untyped]`.
 - Connection-error handling and retry logic must be implemented manually
   (`rabbit_mq_watcher.py` implements exponential backoff on `OperationalError`).
+
+## Consequences
+
+- **Dependency**: All plugins transitively depend on Kombu through the
+  `MessageBrokerManager` facade. Plugin authors never import Kombu directly, keeping
+  the broker abstraction sealed behind the `Service` layer.
+- **Testability**: The `memory://` transport enables the full integration test suite to
+  run without a broker daemon. CI pipelines require no external services for the core
+  test matrix.
+- **Type safety**: Kombu's lack of a `py.typed` marker means every Kombu import carries
+  `# type: ignore[import-untyped]`. This is a known, accepted limitation on type safety
+  within the broker module.
+- **Resilience**: Connection-error handling and exponential-backoff retry logic live in
+  `rabbit_mq_watcher.py` rather than being provided by the library. This gives the team
+  full control over reconnection policy but must be maintained as Kombu evolves.

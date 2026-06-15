@@ -2,6 +2,8 @@
 
 **Level:** Beginner | **Time:** 15 minutes
 
+> **Prerequisite:** This tutorial expands on the {doc}`../getting-started/quick-start`. Complete the quick start first for the basic file watcher setup.
+
 In this tutorial, you'll create a basic file watcher service that
 monitors a directory for GOES-18 ABI data files and logs when they
 appear.
@@ -13,12 +15,12 @@ By the end of this tutorial, you will:
 - Create a service configuration from scratch
 - Configure the file system poller data monitor
 - Test file detection with GOES-18 data
-- Understand basic metadata extraction
+- Extract metadata from GOES-18 filenames automatically
 - Monitor service health with Prometheus
 
 ## Prerequisites
 
-- Lazy Lemon installed ({doc}\[../getting-started/installation\`)
+- Courier installed ({doc}`../getting-started/installation`)
 - RabbitMQ running on localhost
 - Basic familiarity with YAML
 - A sample GOES-18 ABI file (or ability to create a test file)
@@ -30,9 +32,11 @@ Create a directory for this tutorial:
 ```
 mkdir ~/tutorial01-file-watcher
 cd ~/tutorial01-file-watcher
+```
 
-Create directories for data
-===========================
+Create directories for data:
+
+```
 mkdir -p data/incoming
 mkdir -p data/processed
 ```
@@ -43,8 +47,6 @@ If you don't have real GOES-18 files, create a test file with the
 correct naming pattern:
 
 ```
-Create a dummy file with GOES-18 naming convention
-==================================================
 touch data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc
 ```
 
@@ -119,53 +121,9 @@ spec:
             # mv {file} ./data/processed/
 ```
 
-Let's break down this configuration:
-
-**Data Monitor Configuration:**
-
-```
-- watch-files:
-    kind: data_monitor
-    name: file_system_poller_watchdog
-    config:
-      path: ./data/incoming           # Directory to watch
-      metadata-tools:
-        - goes18_abi                  # Use GOES-18 metadata patterns
-```
-
-This configures the watchdog-based file monitor to:
-
-- Watch `./data/incoming` (relative to where you run the service)
-- Use the `goes18_abi` metadata configuration to extract:
-  - platform: goes18
-  - sensor: abi
-  - level: L1B
-  - sector: Full-Disk (from filename pattern RadF)
-  - timestamp: 2024-01-15 12:00:00
-
-**Job Builder:**
-
-```
-- create-jobs:
-    kind: job_builder
-    name: DummyJobBuilder
-    config: null
-```
-
-For this simple tutorial, each file becomes its own job immediately.
-
-**Dispatcher:**
-
-```
-- log-files:
-    kind: dispatcher
-    name: serial_bash
-    config:
-      bash_script: |
-        echo "File detected: {file}"
-```
-
-The `{file}` template variable is replaced with the actual file path.
+> **Template syntax:** This tutorial uses the simple `{file}` placeholder.
+> For advanced templating with conditionals and loops, see the
+> {doc}`../getting-started/configuration` Jinja2 section.
 
 ## Step 4: Validate Configuration
 
@@ -178,7 +136,7 @@ courier validate watcher.yaml
 Expected output:
 
 ```
-✅ Config valid
+Config valid
 ```
 
 If you see errors, check your YAML syntax and indentation.
@@ -212,15 +170,17 @@ In another terminal, copy a file to the watched directory:
 
 ```
 cd ~/tutorial01-file-watcher
+```
 
-Copy the test file
-==================
+Copy the test file:
+
+```
 cp data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc \
    data/incoming/test_$(date +%s).nc
 ```
 
-**Note:** The watchdog library only detects *new* files. If you want to
-test again, you must create a file with a different name.
+```{include} ../includes/watchdog-new-files-only.md
+```
 
 In the service logs, you'll see:
 
@@ -267,21 +227,27 @@ Open <http://localhost:8000/metrics> in your browser.
 
 Look for these metrics:
 
+### Service health
+
 ```
-Service health
-==============
 service_health 1.0
+```
 
-Files processed
-===============
+### Files processed
+
+```
 files_processed_file_system_poller_watchdog{status="success"} 1.0
+```
 
-Jobs built
-==========
+### Jobs built
+
+```
 job_builder_jobs_built_total{status="ready",job_builder_name="DummyJobBuilder"} 1.0
+```
 
-Jobs executed
-=============
+### Jobs executed
+
+```
 dispatcher_jobs_processed_total{status="success",dispatcher_name="serial_bash"} 1.0
 ```
 
@@ -291,10 +257,11 @@ These metrics update in real-time as files are processed.
 
 Test with multiple files:
 
+**Note:** The filenames below use a simplified pattern. Real GOES-18 files follow the naming convention shown in Step 2.
+
 ```
-Create multiple test files
-==========================
-for i in {1..5}; do
+# Uses explicit list instead of {1..5} for portability across shells
+for i in 1 2 3 4 5; do
   touch data/incoming/OR_ABI-L1b-RadF-M6C$(printf %02d $i)_G18_s20240151200000_e20240151209310_c20240151209360_${i}.nc
   sleep 1  # Wait 1 second between files
 done
@@ -325,40 +292,30 @@ Stop the service gracefully with `Ctrl+C`:
 
 ## Common Issues
 
-**Files not detected:**
+```{include} ../includes/watchdog-new-files-only.md
+```
 
-- Watchdog only detects files created/copied *after* service starts
-- Check file permissions: `ls -la data/incoming`
-- Verify path in config matches actual directory
-- On some filesystems, use `mv` instead of `cp` for more reliable
-  detection
+```{include} ../includes/common-troubleshooting.md
+```
 
 **Metadata not extracted:**
 
 - Check filename matches GOES-18 pattern
 - View available metadata configs:
-  `from courier.interfaces import data_monitor_configs; print(data_monitor_configs.plugins)`
-- See :doc:`../user-guide/metadata-matching` for pattern details
-
-**RabbitMQ connection failed:**
-
-- Verify RabbitMQ is running: `docker ps | grep rabbitmq`
-- Check credentials match your RabbitMQ setup
-- Try <http://localhost:15672> to access RabbitMQ management UI
+  `from courier.interfaces import data_monitor_configs; print(data_monitor_configs.get_plugins())`
+- See the `goes18_abi` metadata config in `src/courier/plugins/yaml/data_monitor_configs/goes18_abi.yaml` for pattern details.
 
 ## What You Learned
 
-✅ How to create a service configuration ✅ How to configure the file
-system poller ✅ How metadata extraction works ✅ How to validate
-configurations ✅ How to monitor services with Prometheus ✅ How the
-processing pipeline flows
+You've completed all the learning objectives listed at the start of this tutorial. You can now:
+- Create service configurations from scratch
+- Configure the file system poller data monitor
+- Extract metadata from GOES-18 filenames
+- Validate configurations and monitor services with Prometheus
 
 ## Next Steps
 
-- `` `02-adding-metadata ``\` - Configure custom metadata patterns
-- `` `03-custom-job-builder ``\` - Group files by sector or time
-- `` `04-bash-dispatcher ``\` - Create more sophisticated bash scripts
-- `` `07-monitoring-with-prometheus ``\` - Set up Grafana dashboards
+- {doc}`02-docker-swarm-cluster` — Deploy across multiple Docker containers
 
 ## Challenge Exercises
 
@@ -375,5 +332,4 @@ processing pipeline flows
 
 The complete configuration is available in the tutorial repository:
 
-\`tutorial01-file-watcher/watcher.yaml
-\](<https://github.com/biosafetylvl5/courier/tree/main/examples/tutorials/01-file-watcher>)
+[tutorial01-file-watcher/watcher.yaml](https://github.com/biosafetylvl5/courier/tree/main/examples/tutorials/01-file-watcher)

@@ -33,4 +33,18 @@ entirely disabled when no `state_sync` key is present in the config.
 - `SET NX` provides at-most-once emission per job ID within the Redis TTL window. Very
   long-running jobs (beyond the TTL) could theoretically be re-emitted.
 - State sync is tested in isolation (`tests/unit_tests/sync/`) but integration tests
-  with multiple real instances are not yet present.
+  with multiple real instances have not been implemented.
+
+## Consequences
+
+- **Infrastructure**: HA deployments now require a running Redis instance and the `ha`
+  extra (`pip install courier[ha]`). Single-instance deployments are unaffected.
+  - **Optional dependency**: The Redis client package is only required when
+  `state_sync` is configured. Services that do not use state sync have
+  no Redis dependency at all.
+- **Deduplication**: `SET NX` guarantees per-job-id at-most-once emission within the
+  Redis key TTL window. Operators must ensure the TTL exceeds the maximum expected job
+  lifetime to prevent re-emission.
+- **Observability**: `JobBuilderStateSync` exposes `courier_job_builder_sync_attempts`
+  and `courier_job_builder_sync_success` Prometheus metrics for monitoring sync health.
+- **Operations guide**: For full configuration, observability, and trade-off analysis, see {doc}`../../operations/high-availability`.

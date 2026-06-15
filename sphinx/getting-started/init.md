@@ -5,7 +5,7 @@ an interactive prompt-based workflow. It guides you step-by-step through
 selecting data monitors, job builders, and dispatchers, then generates a
 validated YAML file ready to run.
 
-## Quick Start
+## Usage
 
 ```bash
 courier init
@@ -84,6 +84,17 @@ Output path [./my-processor-service.yaml]:
 ╰──────────────────────────────────────────────╯
 ```
 
+```{note}
+**Configuration format compatibility**
+
+`courier init` generates pipeline steps using the nested `identifier:` /
+`spec:` format. Other examples throughout these docs use a flat
+`- <name>:` singleton mapping. Both formats are valid. For
+hand-written configurations, use the flat mapping style — it's shorter
+and matches the examples in {doc}`quick-start`, {doc}`configuration`,
+and the tutorials.
+```
+
 ## Generated File Structure
 
 The generated YAML follows the `runcourier.dev/v1alpha1` API version:
@@ -113,7 +124,7 @@ spec:
         kind: dispatcher
         name: serial_bash
         config:
-          command: echo "processing ${JOB_FILES}"
+          command: echo "Files assigned: {{ files | length }}"
 ```
 
 Each pipeline step has an `identifier` (a DNS-safe name derived from
@@ -122,9 +133,7 @@ any configuration values you provided during the prompts.
 
 ## Default Broker
 
-By default, the generated configuration uses the in-memory message broker.
-This is ideal for local development and testing. For production deployments,
-add a `broker` section to `spec`:
+By default, the generated configuration uses the in-memory transport (no external broker). For production, add a `broker:` block. For all transport options — AMQP, Redis, in-memory, and generic Kombu URLs — see the {doc}`configuration` reference.
 
 ```yaml
 spec:
@@ -138,12 +147,9 @@ spec:
     ...
 ```
 
-When `host` is present the transport is inferred as AMQP. See
-{doc}`configuration` for all broker transport options.
+## Next Steps
 
-## See Also
-
-- {doc}`installation` — Install Lazy Lemon
+- {doc}`installation` — Install Courier
 - {doc}`quick-start` — Your first pipeline step by step
 - {doc}`configuration` — Full configuration reference
 - {doc}`../operations/high-availability` — HA deployment guide

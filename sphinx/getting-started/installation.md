@@ -1,21 +1,21 @@
 # Installation
 
-This guide covers installing Lazy Lemon in different environments.
+This guide covers installing Courier in different environments.
 
 ## Requirements
 
 **System Requirements:**
 
 - Python 3.11, 3.12, or 3.13
-- RabbitMQ 3.x or later (for message passing)
+- RabbitMQ 3.x or later (required for multi-container deployments; the in-memory broker is sufficient for single-process testing)
 - 4GB RAM minimum (8GB recommended)
 - Linux, macOS, or Windows (with WSL2)
 
 **Python Dependencies:**
 
-Lazy Lemon depends on:
+Courier depends on:
 
-- RabbitMQ (pika)
+- RabbitMQ (Kombu)
 - Prometheus client
 - Pydantic for configuration validation
 - Rich for enhanced logging
@@ -32,87 +32,45 @@ Install the latest stable release from PyPI:
 pip install courier
 ```
 
-Or install with optional dependencies:
+> **Note:** The Python package is named `runcourier` but is installed and imported as `courier`. The CLI command is `courier`.
 
-```
-With documentation tools
-========================
-pip install courier[doc]
-
-With development tools
-======================
-pip install courier[dev,lint,test]
-
-With all extras
-===============
-pip install courier[doc,lint,test]
-```
+Optional extras: `courier[doc]` for documentation tools, `courier[test]` for testing, `courier[doc,lint,test]` for development.
 
 ### Using Poetry (Recommended for Developers)
 
 For development work:
 
 ```
-Clone the repository
-====================
 git clone https://github.com/biosafetylvl5/courier.git
 cd courier
-
-Install with poetry
-===================
 poetry install --all-extras
-
-Activate the virtual environment
-================================
 poetry shell
 ```
 
 ### Using Docker
 
-Run Lazy Lemon in a container:
-
+Pull the image:
 ```
-Pull the image
-==============
 docker pull ghcr.io/biosafetylvl5/courier:latest
-
-Run with docker compose (recommended)
-=====================================
-docker compose up
 ```
 
-See :doc:`../user-guide/deployment` for complete Docker deployment
-guide.
+For a full deployment with RabbitMQ, Prometheus, Grafana, and Jaeger, see
+{doc}`../tutorials/02-docker-swarm-cluster`.
 
-### From Source
-
-Install the latest development version:
-
+For quick testing, start RabbitMQ locally:
 ```
-git clone https://github.com/biosafetylvl5/courier.git
-cd courier
-pip install -e .
+docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 \
+  -e RABBITMQ_DEFAULT_USER=admin -e RABBITMQ_DEFAULT_PASS=admin_test \
+  rabbitmq:management
 ```
 
 ## Setting Up Dependencies
 
 ### RabbitMQ
 
-Lazy Lemon requires RabbitMQ for message passing between components.
+Courier uses RabbitMQ for inter-plugin communication in production. For development and testing, the built-in in-memory broker works without external services.
 
-**Using Docker (Easiest):**
-
-```
-docker run -d \
-  --name rabbitmq \
-  -p 5672:5672 \
-  -p 15672:15672 \
-  -e RABBITMQ_DEFAULT_USER=admin \
-  -e RABBITMQ_DEFAULT_PASS=admin_password \
-  rabbitmq:3-management
-```
-
-Access the management UI at <http://localhost:15672>
+> **Note:** For Docker users, see the previous section.
 
 **Using Package Manager:**
 
@@ -134,17 +92,7 @@ brew services start rabbitmq
 
 ### Prometheus (Optional)
 
-For monitoring and metrics collection:
-
-```
-docker run -d \
-  --name prometheus \
-  -p 9090:9090 \
-  -v $(pwd)/prometheus.yml:/etc/prometheus/prometheus.yml \
-  prom/prometheus
-```
-
-See :doc:`../tutorials/07-monitoring-with-prometheus` for setup guide.
+For monitoring and metrics collection, Courier exposes a Prometheus endpoint on port 8000 by default. To set up a full Prometheus + Grafana observability stack, see the {doc}`../tutorials/02-docker-swarm-cluster` tutorial, which includes a complete `docker-compose.yml` with Prometheus, Grafana, and Jaeger.
 
 ### Grafana Loki (Optional)
 
@@ -157,52 +105,43 @@ docker run -d \
   grafana/loki:latest
 ```
 
+> **Note:** `latest` pulls the most recent image. Pin to a specific version tag for production.
+
+> **Note:** Courier sends logs to Loki using the `python-logging-loki` package, which is installed by default.
+
 ## Verification
 
 Verify your installation:
 
+**Check version:**
 ```
-Check version
-=============
 python -c "import courier; print(courier.__version__)"
+```
 
-Verify RabbitMQ connection
-==========================
-python -c "import pika; pika.BlockingConnection(pika.URLParameters('amqp://admin:admin_password@localhost:5672/'))"
+**Verify RabbitMQ is running:**
+```
+docker ps | grep rabbitmq
+```
 
-List available plugins
-======================
-python -c "from courier.interfaces import data_monitors; print(data_monitors.plugins)"
+**List available plugins:**
+```
+python -c "from courier.interfaces import data_monitor_configs; print(data_monitor_configs.get_plugins())"
 ```
 
 You should see output without errors.
 
 ## Development Setup
 
-For development and contributing:
+For development and contributing, install with Poetry as described above, then set up pre-commit hooks and run the tests:
 
 ```
-Clone and install
-=================
-git clone https://github.com/biosafetylvl5/courier.git
-cd courier
-poetry install --all-extras
-
-Install pre-commit hooks
-========================
 poetry run pre-commit install
-
-Run tests to verify
-===================
 poetry run pytest
-
-Run linters
-===========
 poetry run ruff check .
 poetry run mypy src
 ```
 
-See :doc:`../developer-guide/contributing` for more details.
+See {doc}`../contribute/code-style` for full conventions.
 
 ### Using Dev Containers (VS Code)
 
@@ -219,13 +158,13 @@ The repository includes a dev container configuration:
 
 Make sure you've activated your virtual environment:
 
+Poetry:
 ```
-Poetry
-======
 poetry shell
+```
 
-venv
-====
+venv:
+```
 source venv/bin/activate
 ```
 
@@ -233,13 +172,13 @@ source venv/bin/activate
 
 Check that RabbitMQ is running:
 
+Docker:
 ```
-Docker
-======
 docker ps | grep rabbitmq
+```
 
-System service
-==============
+System service:
+```
 sudo systemctl status rabbitmq-server
 ```
 
@@ -249,13 +188,13 @@ On Linux, you may need to add your user to the docker group:
 
 ```
 sudo usermod -aG docker $USER
-Log out and back in for changes to take effect
-==============================================
 ```
+
+Log out and back in for changes to take effect.
 
 **Python Version Issues**
 
-Lazy Lemon requires Python 3.11+. Check your version:
+Courier requires Python 3.11+. Check your version:
 
 ```
 python --version
@@ -265,6 +204,6 @@ Use pyenv or conda to install a compatible version if needed.
 
 ## Next Steps
 
-- `` `quick-start ``\` - Create your first file watcher service
-- `` `configuration-basics ``\` - Learn about YAML configuration
-- `` `concepts ``\` - Understand core concepts
+- {doc}`quick-start` — Create your first file watcher service
+- {doc}`configuration` — Learn about YAML configuration
+- {doc}`../concepts/index` — Understand core concepts

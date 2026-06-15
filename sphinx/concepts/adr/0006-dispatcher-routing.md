@@ -48,18 +48,18 @@ YAML; the builder's `emit()` fans the job out to each target queue.
   leaves completed targets claimed and incomplete ones free for
   resume; neither duplicates nor silently loses deliveries.
 - **Publisher confirms on AMQP** — `Service.emit` accepts
-  `confirm: bool`; the kombu broker enables publisher confirms on
+  `confirm: bool`; the Kombu broker enables publisher confirms on
   non-memory transports. Transient failures (`TransientBrokerError`)
   are retried with backoff; fatal failures
   (`FatalBrokerError`) release the emit claim and log an ERROR so
   restart (or a human) can retake them.
-- **Preflight is load-bearing.** Unknown targets, invalid identifiers,
+- **Preflight validation is essential to correctness.** Unknown targets, invalid identifiers,
   oversized queue names, and duplicate targets all fail before any
   thread starts.
 - **Producer-side queue predeclaration.** Preflight registers every
   dispatcher queue on the broker manager, so the first `emit()` cannot
   race a dispatcher starting after the builder.
-- **Consumer-side LRU dedupe.** Each dispatcher replica maintains a
+- **Consumer-side LRU-based deduplication.** Each dispatcher replica maintains a
   bounded `OrderedDict` of recent job identifiers and skips duplicates
   (e.g. redelivery after a broker-level nack). Cross-replica strict
   exactly-once is opt-in via the sync-backed dedupe path.
@@ -87,7 +87,7 @@ and reused by `courier queues prune` so the CLI and runtime agree on
 the mapping.
 
 Even without a second concrete implementation, the indirection keeps
-`Job.targets` as a stable operator-facing label and avoids rethreading
+`Job.targets` as a stable operator-facing label and avoids reworking
 every builder later if operators need multi-cluster routing, aliasing,
 or shadow traffic.
 
@@ -126,9 +126,9 @@ step if label/selector demand materializes.
   dedupe catches same-replica duplicates; sync-backed dedupe (opt-in)
   catches cross-replica.
 - **Queue proliferation** — M dispatchers means M queues. Deployments
-  with >100 dispatchers should review broker limits.
+  with more than 100 dispatchers should review broker limits.
 - **Retired queue cleanup** — removing a dispatcher from config does
-  NOT delete its queue from RabbitMQ. Operators run
+  not delete its queue from RabbitMQ. Operators run
   `courier queues prune --config PATH` (same `ServiceConfigModel` +
   `TargetResolver` the runtime uses; dry-run default, `--apply`
   required to delete).
@@ -147,3 +147,4 @@ step if label/selector demand materializes.
 - **Health checks:** dispatcher `is_healthy()` fails if its own
   queue is undeclarable; `preflight_check` fails if any target queue
   is undeclarable.
+- **Distributed deployment**: The queue-per-dispatcher design enables the `--only` flag to safely split pipelines across containers. See {doc}`../../getting-started/configuration` (Distributed Deployment with `--only`) for usage.

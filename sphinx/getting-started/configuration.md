@@ -1,11 +1,11 @@
 # Configuration Reference
 
 This guide covers the service configuration file format and all
-broker transport options available in Lazy Lemon.
+broker transport options available in Courier.
 
 ## Overview
 
-Lazy Lemon services are configured through YAML (or JSON) files that
+Courier services are configured through YAML (or JSON) files that
 describe **what** the service does and **how** it connects to
 infrastructure. A single file contains:
 
@@ -17,8 +17,8 @@ service.
 
 ## Minimal Working Example
 
-No external broker is required to get started. Omit the `broker`
-section entirely and Lazy Lemon uses the in-memory transport:
+You don't need an external broker to get started. Omit the `broker`
+section entirely and Courier uses the in-memory transport:
 
 ```yaml
 apiVersion: runcourier.dev/v1alpha1
@@ -26,7 +26,7 @@ kind: Service
 metadata:
   name: my-service
   namespace: default
-  description: A minimal Lazy Lemon service.
+  description: A minimal Courier service.
 
 spec:
   run:
@@ -49,7 +49,7 @@ spec:
 ```
 
 To connect to a real broker instead, add connection details. When
-`host` is present the transport is inferred as AMQP:
+`host` is present, Courier infers the transport as AMQP:
 
 ```yaml
   broker:
@@ -83,7 +83,7 @@ metadata:
 The `name` and `namespace` fields must be valid DNS subdomain names:
 lowercase letters, digits, and hyphens only (max 63 chars, no
 leading/trailing hyphens). All required string fields must be
-non-empty after whitespace is trimmed.
+non-empty after trimming whitespace.
 
 ## Service Spec
 
@@ -101,6 +101,7 @@ spec:
 How often the service publishes health metrics, in seconds. Defaults
 to `30` when omitted.
 
+(`run`)=
 ### `run`
 
 An ordered list of pipeline steps. Each step is a mapping from an
@@ -120,14 +121,14 @@ validation error.
 ## Broker Configuration
 
 The `broker` section tells the service how to connect to its message
-broker. Lazy Lemon uses [Kombu](https://docs.celeryq.dev/projects/kombu/)
+broker. Courier uses [Kombu](https://docs.celeryq.dev/projects/kombu/)
 under the hood, so **any Kombu transport** is supported.
 
 There are four configuration styles, selected by the `transport` field.
 When `transport` is omitted, the default depends on context:
 
-- If `host` is present, AMQP is inferred (backward compatibility).
-- Otherwise, the in-memory transport is used (no external broker needed).
+- If `host` is present, Courier infers AMQP (backward compatibility).
+- Otherwise, Courier uses the in-memory transport (no external broker needed).
 
 ### AMQP
 
@@ -244,7 +245,7 @@ broker:
   max_retries: 10
 ```
 
-The URL is passed to Kombu unchanged.
+Courier passes the URL to Kombu unchanged.
 
 #### Examples for common transports
 
@@ -319,77 +320,76 @@ broker:
 | `url`         | string  | Yes      | --      | Full Kombu connection URL.     |
 | `max_retries` | integer | No       | `5`     | Max connection retry attempts. |
 
-## Complete Examples
+## Distributed Deployment with `--only`
 
-### In-memory for local development
-
-The simplest configuration — no external services required:
-
-```yaml
-apiVersion: runcourier.dev/v1alpha1
-kind: Service
-metadata:
-  name: test-pipeline
-  namespace: test
-  description: In-memory broker for local dev and tests.
-
-spec:
-  run:
-    - watch:
-        kind: data_monitor
-        name: file_system_poller_watchdog
-        config:
-          path: /tmp/test-data
-
-    - build:
-        kind: job_builder
-        name: DummyJobBuilder
-
-    - dispatch:
-        kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            echo "Test: {{ files[0].file }}"
+```{note}
+This section covers operational deployment across containers. For the
+configuration format reference, see {ref}`run` above.
 ```
 
-### Redis for simple deployments
+The `--only` flag on `courier run` lets you split a single service
+configuration across multiple containers. Each container runs a subset
+of the pipeline steps defined in `spec.run[]`, sharing the same broker
+and configuration file.
 
-```yaml
-apiVersion: runcourier.dev/v1alpha1
-kind: Service
-metadata:
-  name: himawari-watcher
-  namespace: himawari
-  description: Himawari-9 watcher backed by Redis.
+This is the foundation of Docker clustering: one `config.yaml` deployed
+to several containers, each responsible for a different part of the
+pipeline.
 
-spec:
-  broker:
-    transport: redis
-    host: redis.local
-    port: 6379
-    password: redis_secret
-    db: 1
-    ssl: false
+### Syntax
 
-  run:
-    - watch:
-        kind: data_monitor
-        name: file_system_poller_watchdog
-        config:
-          path: /data/himawari9/incoming
-
-    - build:
-        kind: job_builder
-        name: DummyJobBuilder
-
-    - dispatch:
-        kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            echo "Received {{ files[0].file }}"
 ```
+courier run <config-file> --only <id1,id2,...>
+```
+
+The flag accepts a comma-separated list of step identifiers. Courier starts only steps whose YAML keys match one of the listed
+identifiers and skips the rest. Order in the list does not matter -- steps run in
+their original `spec.run[]` order.
+
+### Example: Two-Container Split
+
+Using the identifiers from the minimal configuration above (`watch`,
+`build`, `dispatch`):
+
+```
+# Container 1: data monitor only
+courier run service.yaml --only watch
+
+# Container 2: job builder + dispatcher
+courier run service.yaml --only build,dispatch
+```
+
+Both containers read the same `service.yaml` and connect to the same
+broker. Container 1 watches for new data and publishes file events.
+Container 2 picks up those events, builds jobs, and dispatches them.
+
+### Important Notes
+
+**Identifiers, not plugin names.** The values passed to `--only` are
+the YAML keys under `spec.run[]` -- the short, unique names like
+`watch` or `dispatch`. Do not use plugin class names such as
+`file_system_poller_watchdog` or `serial_bash`.
+
+**`data_monitor_configs` identifiers are excluded.** Step identifiers
+that belong to `data_monitor_configs` (inline configuration templates)
+cannot be used with `--only`. The flag controls runtime plugins
+(`data_monitor`, `job_builder`, `dispatcher`), not YAML metadata
+configs.
+
+**Avoid duplicate dispatchers.** A dispatcher consumes jobs from a
+shared queue. Running the same dispatcher identifier in two containers
+creates a split-brain scenario where both compete for the same messages.
+Each dispatcher identifier should appear in exactly one `--only` list
+across your deployment.
+
+**Empty `--only` runs everything.** Omitting the flag, or passing an
+empty value (`--only ""`), starts all steps defined in `spec.run[]`.
+
+## Complete Example
+
+The following shows a production-ready configuration with AMQP and TLS.
+For in-memory and Redis broker blocks, see the field reference tables
+above.
 
 ### Production AMQP with TLS
 
@@ -451,116 +451,22 @@ Common validation errors:
 
 ## Configuration Precedence
 
-When the service starts, configuration is resolved from multiple
+At startup, Courier resolves configuration from multiple
 sources in ascending priority:
 
 ```
 defaults  <  YAML file  <  environment variables  <  CLI flags
 ```
 
-For example, `max_retries: 5` in the YAML can be overridden by
-setting the `BROKER_MAX_RETRIES` environment variable.
+For example, you can override `max_retries: 5` in the YAML by setting the `BROKER_MAX_RETRIES` environment variable.
 
 ## Jinja2 Template Context
 
 The ``serial_bash`` and ``parallel_bash`` dispatchers use
-[Jinja2](https://jinja.palletsprojects.com/) for script templates.
-This replaces the old ``{file}`` placeholder with a full template context.
-
-### Why Jinja2?
-
-- **Multiple files**: Iterate over all files in a job with ``{% for %}``
-- **Rich metadata**: Access any ``FrozenFile`` field (hostname, source, instrument, etc.)
-- **Config variables**: Use ``{{ config.my_key }}`` to parameterize scripts
-- **Fail-fast validation**: Syntax errors are caught at config load time, not at runtime
-- **Conditional logic**: ``{% if %}`` blocks for dynamic script generation
-
-### Migration from Legacy Format
-
-.. list-table::
-   :header-rows: 1
-
-   * - Legacy (str.format)
-     - Modern (Jinja2)
-   * - ``echo {file}``
-     - ``echo {{ files[0].file }}``
-   * - ``cp {file} /output/``
-     - ``cp {{ files[0].file }} /output/``
-   * - (not possible)
-     - ``{% for f in files %}cp {{ f.file }} /output/;{% endfor %}``
-   * - ``${{input_file}}`` (bash variable)
-     - ``$input_file`` (plain bash — no double braces needed)
-
-### SerialBash Context
-
-Available in every template for ``serial_bash``:
-
-.. list-table::
-   :header-rows: 1
-
-   * - Variable
-     - Type
-     - Description
-    * - ``files``
-      - List[dict]
-      - All files in the job. Each dict has keys: ``file``, ``hostname``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``metadata``, ``num_expected``, ``timestamp``.
-   * - ``job``
-     - dict
-     - Job metadata: ``name``, ``identifier``, ``config``, ``last_modified``, ``timeout``, ``correlation_id``, ``emit_time``.
-   * - ``config``
-     - dict
-     - Alias for ``job.config`` (convenience).
-
-### ParallelBash Context
-
-Available for each file in ``parallel_bash``:
-
-.. list-table::
-   :header-rows: 1
-
-   * - Variable
-     - Type
-     - Description
-    * - ``file``
-      - dict
-      - The current file's :class:`FrozenFile` dict with keys: ``file``, ``hostname``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``metadata``, ``num_expected``, ``timestamp``.
-   * - ``files``
-     - List[dict]
-     - ALL files in the job (for cross-reference/manifest generation).
-   * - ``job``
-     - dict
-     - Job metadata (same keys as SerialBash).
-   * - ``config``
-     - dict
-     - Alias for ``job.config``.
-
-### Undefined Variable Behavior
-
-Templates use ``jinja2.DebugUndefined``:
-
-- ``{{ missing }}`` — renders as empty string (no error)
-- ``{{ missing.attr }}`` — raises ``jinja2.TemplateError`` at render time, captured as ``ExecutionLog(return_code=-1)``
-
-### Template Examples
-
-**Serial: Process all files with a loop:**
-
-```yaml
-bash_script: |
-  #!/bin/bash
-  echo "Processing {{ job.name }} ({{ files|length }} files)"
-  {% for f in files %}
-  echo "File: {{ f.file }} from {{ f.source }}"
-  cp {{ f.file }} /output/
-  {% endfor %}
-```
-
-**Parallel: One execution per file:**
-
-```yaml
-bash_script: |
-  #!/bin/bash
-  echo "Processing {{ file.file }}"
-  echo "Source: {{ file.source }}, Instrument: {{ file.instrument }}"
-  cp {{ file.file }} /output/
-```
+[Jinja2](https://jinja.palletsprojects.com/) for script templates,
+replacing the legacy ``{file}`` placeholder. Every template has access
+to ``files`` (list of file dicts), ``job`` (metadata), and ``config``
+(convenience alias for ``job.config``). All standard Jinja2 features --
+variables, filters, conditionals, and loops -- are available. Courier catches syntax
+errors at config load time, and undefined variables render
+as empty strings (``DebugUndefined``) rather than raising errors.

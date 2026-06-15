@@ -1,5 +1,10 @@
 # Courier Distributed Tracing
 
+```{contents}
+:depth: 2
+:local:
+```
+
 Courier instruments its plugin pipeline with [OpenTelemetry](https://opentelemetry.io/)
 distributed tracing so operators can follow a file from detection to execution
 across all services and plugin instances. Every message traversal produces a
@@ -11,7 +16,7 @@ headers on every broker message.
 
 ### Pipeline Integration
 
-Tracing is woven into the Courier plugin pipeline at two precise boundaries —
+Tracing is inserted at the Courier plugin pipeline at two precise boundaries —
 `Service.emit()` and `Service.consume()` — and nowhere else. Plugins never
 touch W3C headers directly; they receive a parsed `Context` object and create
 child spans from it.
@@ -83,7 +88,8 @@ All four tracing fields live on the immutable `ServiceConfig` dataclass (`src/co
 | Field                      | Environment Variable               | Default                                    | Description                                                      |
 |----------------------------|------------------------------------|--------------------------------------------|------------------------------------------------------------------|
 | `tracing_enabled`          | `COURIER_TRACING_ENABLED`          | `true`                                     | Master toggle. Set to `"false"` to disable all tracing.         |
-| `tracing_endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`      | `http://localhost:4318/v1/traces`          | OTLP HTTP collector endpoint. Falls back through `COURIER_TRACING_ENDPOINT` then the default. |
+| `tracing_endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`      | `http://localhost:4318/v1/traces`          | Primary OTLP HTTP collector endpoint. Takes precedence over the Courier-specific variable. |
+|                            | `COURIER_TRACING_ENDPOINT`         | (same default as above)                   | Courier-specific OTLP endpoint. Used only when `OTEL_EXPORTER_OTLP_ENDPOINT` is not set. |
 | `tracing_service_name`     | `COURIER_TRACING_SERVICE_NAME`     | `""` (falls back to `service_id`)          | `service.name` resource attribute for all exported spans.        |
 | `tracing_sample_rate`      | `COURIER_TRACING_SAMPLE_RATE`      | `1.0`                                      | Float between 0.0 and 1.0. Controls the root sampling decision; children inherit the decision via `ParentBased`. |
 
@@ -137,13 +143,19 @@ The `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable takes precedence over `CO
 
 ## 3. Span Naming Conventions & Attribute Schema
 
+```{note}
+This section documents the span structure for developers extending Courier.
+For operational monitoring and tracing workflows, see
+[Section 5: Operations Guide](#5-operations-guide).
+```
+
 ### Span Types
 
 | Span Name                            | Emitting Plugin Type | What It Wraps                                            |
 |--------------------------------------|-----------------------|----------------------------------------------------------|
-| `data_monitor.process_file`          | `DataMonitor`         | Full lifecycle of processing a single detected file: metadata enrichment + emission |
-| `data_monitor.add_metadata`          | `DataMonitor`         | Applying metadata matchers to a file (child of `process_file`) |
-| `data_monitor.emit_file`             | `DataMonitor`         | Publishing a file message to the fanout exchange (child of `process_file`) |
+| `data_monitor.process_file`          | `DataMonitorBasePlugin` | Full lifecycle of processing a single detected file: metadata enrichment + emission |
+| `data_monitor.add_metadata`          | `DataMonitorBasePlugin` | Applying metadata matchers to a file (child of `process_file`) |
+| `data_monitor.emit_file`             | `DataMonitorBasePlugin` | Publishing a file message to the fanout exchange (child of `process_file`) |
 | `job_builder.build_job`              | `JobBuilder`          | Processing an incoming file across all job groups        |
 | `job_builder.process_job_group`      | `JobBuilder`          | Adding a file to one job group and emitting ready jobs (child of `build_job`) |
 | `job_builder.emit_job`               | `JobBuilder`          | Fan-out emission of a ready job to all targets (child of `process_job_group`) |
@@ -180,7 +192,7 @@ All Courier-specific attributes use the `courier.*` namespace. Plugin identity a
 | `plugin.version`                 | `str`    | `process_file`                                                                                         |
 | `plugin.family`                  | `str`    | `process_file`                                                                                         |
 
-**Reserved attributes**: Keys marked "reserved" are defined in `src/courier/tracing.py` and available for use by custom plugins but not yet emitted by any built-in plugin. Third-party plugin authors should use these constants rather than inventing their own keys to ensure cross-plugin trace queryability.
+**Reserved attributes**: Keys marked "reserved" are defined in `src/courier/tracing.py` and available for use by custom plugins but not yet emitted by any built-in plugin. Third-party plugin authors should use these constants rather than inventing their own keys so traces remain queryable across plugins.
 
 ### Span Events
 
@@ -192,26 +204,13 @@ Span events represent discrete moments within a span's lifetime. They are additi
 | `plugin.stopped`             | `PluginManager._stop_plugin()`                | Plugin has been stopped gracefully and thread joined                |
 | `plugin.health_check_failed` | `PluginManager._monitor_plugins()`            | Periodic health check returns `False` for a `RUNNING` plugin       |
 | `plugin.restarting`          | `PluginManager._handle_failed_plugin()`       | Failed plugin is within restart budget; restart is being attempted  |
-| `file.found`                 | `DataMonitor.find_and_emit_files()`           | File passed metadata enrichment successfully, before emit           |
-| `file.emitted`               | `DataMonitor.find_and_emit_files()`           | File message published to the fanout exchange                       |
+| `file.found`                 | `DataMonitorBasePlugin.find_and_emit_files()` | File passed metadata enrichment successfully, before emit           |
+| `file.emitted`               | `DataMonitorBasePlugin.find_and_emit_files()` | File message published to the fanout exchange                       |
 | `job.ready`                  | `JobBuilder._process_job_group()`             | `JobGroup.ready_jobs()` returned this job as ready for dispatch     |
 | `job.emitted`                | `JobBuilder._process_job_group()`             | Job published to all target dispatcher queues                       |
 | `job.executed`               | `Dispatcher.handle_incoming_jobs()`           | `get_execution_log()` returned execution results                    |
 
 **PluginManager events** use standalone spans (`plugin_lifecycle`) rather than being attached to pipeline spans, because plugin lifecycle management is a separate concern from message processing.
-
-### Slow Detection Thresholds
-
-Operators can detect slow plugins by filtering spans by duration in their tracing backend. The following thresholds serve as starting points for alerting:
-
-| Pipeline Stage      | Span Name(s)                         | Threshold | Rationale                                      |
-|---------------------|--------------------------------------|-----------|------------------------------------------------|
-| File scan           | `data_monitor.process_file`          | 10 s      | Covers filesystem I/O + metadata enrichment    |
-| Job build           | `job_builder.build_job`              | 5 s       | Covers grouping logic + across all job groups  |
-| Message emit        | `job_builder.emit_one`               | 2 s       | Single broker publish with publisher confirm   |
-| Execution           | `dispatcher.execute_job`             | 30 s      | Plugin execution (e.g. script run, API call)   |
-
-These are not hard-coded into Courier; they are recommended query filters for tracing backends (Jaeger, Grafana Tempo, Honeycomb, etc.).
 
 ### OpenTelemetry Messaging Semantic Conventions
 
@@ -227,9 +226,178 @@ These are not currently emitted. The `courier.*` namespace attributes provide eq
 
 ---
 
-## 4. Operations Guide
+## 4. Development Guide
 
-### 4.1 Setting Up an OTLP Collector
+### 4.1 Writing Tests with `_ListExporter`
+
+Courier's test suite uses a custom `_ListExporter` (defined in `tests/unit_tests/test_tracing.py`) because OpenTelemetry SDK 1.42+ removed `InMemorySpanExporter`. The pattern:
+
+```python
+from opentelemetry.sdk.trace.export import SpanExportResult, SpanExporter
+
+def _make_list_exporter():
+    """Create a span exporter + span list pair for round-trip verification."""
+    spans: list = []
+
+    class _ListExporter(SpanExporter):
+        def export(self, span_data):
+            spans.extend(span_data)
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self):
+            pass
+
+    return _ListExporter(), spans
+```
+
+Usage in tests:
+
+```python
+exporter, captured_spans = _make_list_exporter()
+provider = TracerProvider(
+    active_span_processor=SimpleSpanProcessor(exporter),
+)
+# ... exercise code that creates spans ...
+assert len(captured_spans) == 2
+```
+
+The `_ListExporter` is in-process and synchronous (`SimpleSpanProcessor`), so spans are available for assertion immediately after the operations under test complete.
+
+### 4.2 Test Isolation with `reset_tracing()` and `_force_noop_global_provider()`
+
+The tracing module stores a global `_tracer_provider` singleton. Without cleanup, one test's initialized provider leaks into the next test. Two utilities enforce isolation:
+
+**`reset_tracing()`** — clears Courier's own module-level singleton:
+```python
+from courier.tracing import reset_tracing
+reset_tracing()  # calls shutdown_tracing(), clears _tracer_provider
+```
+
+**`_force_noop_global_provider()`** — resets the OpenTelemetry API's process-wide gate (`_TRACER_PROVIDER_SET_ONCE`) and installs a fresh `NoOpTracerProvider`:
+```python
+def _force_noop_global_provider():
+    from opentelemetry.util._once import Once
+    import opentelemetry.trace
+    opentelemetry.trace._TRACER_PROVIDER_SET_ONCE = Once()
+    set_tracer_provider(NoOpTracerProvider())
+```
+
+The test suite uses both in an `autouse` fixture:
+```python
+@pytest.fixture(autouse=True)
+def _reset_tracing_after_test():
+    reset_tracing()
+    _force_noop_global_provider()
+    yield
+    reset_tracing()
+    _force_noop_global_provider()
+```
+
+**Important**: `_force_noop_global_provider()` reaches into the `opentelemetry.util._once` private module. This is a necessary workaround — the OTel API intentionally prevents replacing the global provider after the first call. Tests that need to re-initialize tracing must use this pattern.
+
+### 4.3 Adding Tracing to a New Plugin Type
+
+To instrument a new plugin with tracing:
+
+1. **Get a tracer** at module level or in `__init__`:
+   ```python
+   from courier.tracing import get_tracer
+   tracer = get_tracer(__name__)
+   ```
+
+2. **Create a span** with `start_as_current_span`:
+   ```python
+   with tracer.start_as_current_span(
+       "my_plugin.do_work",
+       attributes={"courier.correlation_id": correlation_id},
+   ):
+       do_work()
+   ```
+
+3. **Add attributes** on every span:
+   - Always include `ATTR_CORRELATION_ID` if the work is tied to a specific file or job.
+   - Use the constants from `courier.tracing` — never hard-code attribute key strings.
+
+4. **Add span events** for lifecycle milestones:
+   ```python
+   from opentelemetry.trace import get_current_span
+
+   get_current_span().add_event(
+       "work.completed",
+       attributes={"result.count": str(n)},
+   )
+   ```
+
+5. **Pass parent context** when consuming messages:
+   ```python
+   for body, parent_ctx in self.parent_service.consume(QUEUE):
+       with tracer.start_as_current_span(
+           "my_plugin.handle_message",
+           context=parent_ctx,
+       ):
+           process(body)
+   ```
+
+### 4.4 The `@trace_plugin_method` Decorator
+
+The `@trace_plugin_method` decorator wraps a regular (non-generator) method in a span:
+
+```python
+from courier.tracing import trace_plugin_method
+
+class MyPlugin:
+    @trace_plugin_method("my_plugin.process", attributes={"key": "value"})
+    def process(self, data):
+        return transform(data)
+```
+
+**Behavior**:
+- Creates a span named `"my_plugin.process"` with the given attributes.
+- Returns the original function's result unchanged.
+- Preserves `__name__`, `__qualname__`, and `__doc__` on the wrapper.
+- Sets `__wrapped__` for introspection.
+
+**Generator Exclusion Rule**:
+The decorator **raises `TypeError` at decoration time** if applied to a generator function:
+
+```python
+# THIS RAISES TypeError:
+@trace_plugin_method("my_plugin.stream")
+def my_generator(self):
+    yield 1
+```
+
+This is intentional: generator functions are suspended at each `yield`, and the span's `__exit__` would close the span on the first `yield` rather than on generator exhaustion. Generator methods must use inline `start_as_current_span`:
+
+```python
+# Correct: inline span for generator
+def my_generator(self):
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span("my_plugin.stream"):
+        yield 1
+        yield 2
+```
+
+The reason this works inline but not via a decorator is that the inline `with` block wraps the entire generator body, while a decorator would wrap only the function call (which returns immediately with the generator object).
+
+---
+
+## 5. Operations Guide
+
+### 5.1 Slow Detection Thresholds
+
+Operators can detect slow plugins by filtering spans by duration in their tracing backend. The following thresholds serve as starting points for alerting:
+
+| Pipeline Stage      | Span Name(s)                         | Threshold | Rationale                                      |
+|---------------------|--------------------------------------|-----------|------------------------------------------------|
+| File scan           | `data_monitor.process_file`          | 10 s      | Covers filesystem I/O + metadata enrichment    |
+| Job build           | `job_builder.build_job`              | 5 s       | Covers grouping logic + across all job groups  |
+| Message emit        | `job_builder.emit_one`               | 2 s       | Single broker publish with publisher confirm   |
+| Execution           | `dispatcher.execute_job`             | 30 s      | Plugin execution (e.g. script run, API call)   |
+
+These are not hard-coded into Courier; they are recommended query filters for tracing backends (Jaeger, Grafana Tempo, Honeycomb, etc.).
+
+### 5.2 Setting Up an OTLP Collector
 
 The simplest way to get started is Jaeger's all-in-one Docker image, which bundles an OTLP collector and query UI:
 
@@ -250,7 +418,7 @@ With this running, Courier's default `tracing_endpoint` (`http://localhost:4318/
 
 For production, deploy the [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) as a sidecar or daemonset pointed at your tracing backend (Grafana Tempo, Honeycomb, Datadog, etc.).
 
-### 4.2 Querying Traces
+### 5.3 Querying Traces
 
 #### Follow a File Through the Pipeline
 
@@ -283,7 +451,7 @@ To find spans that exceeded the slow thresholds:
 { span.name = "data_monitor.process_file" && duration > 10s }
 ```
 
-### 4.3 Monitoring OTLP Export Health
+### 5.4 Monitoring OTLP Export Health
 
 The OTLP exporter logs a `WARNING` message when span export fails:
 
@@ -301,11 +469,10 @@ Cross-reference with Prometheus metrics:
 
 ---
 
-### 4.4 Production Monitoring Workflows
+### 5.5 Production Monitoring Workflows
 
-This section covers day-to-day monitoring practices for operators running Courier in
-production. It assumes you have an OTLP collector receiving spans and a query backend
-(Jaeger, Grafana Tempo, or equivalent) available.
+This section covers day-to-day monitoring for operators with an OTLP collector
+and a query backend (Jaeger, Grafana Tempo, or equivalent).
 
 #### What to Monitor Day-to-Day
 
@@ -377,7 +544,7 @@ curl -s "http://localhost:16686/api/traces?service=courier&operation=data_monito
 curl -s "http://localhost:16686/api/traces?service=courier&operation=dispatcher.execute_job&start=$START&end=$END&limit=500" \
   | jq -r '.data[].traceID' > /tmp/all_dispatch_traces.txt
 
-# Comm shows tracelDs present in file traces but absent from dispatch traces
+# Comm shows traceIDs present in file traces but absent from dispatch traces
 comm -23 <(sort /tmp/all_file_traces.txt) <(sort /tmp/all_dispatch_traces.txt)
 ```
 
@@ -556,7 +723,7 @@ histogram_quantile(0.95, sum by (plugin_name) (rate(span_latency_bucket{span_nam
 ```
 
 Without the metrics-generator, export raw span data and compute percentiles offline
-(see the audit export scripts in Section 4.5 for the extraction pattern).
+(see the audit export scripts in Section 5.6 for the extraction pattern).
 
 #### Correlating Traces With Logs
 
@@ -582,21 +749,10 @@ TRACE_ID=$(grep "FileNotFoundError" /var/log/courier/*.log | jq -r '.courier_tra
 curl -s "http://localhost:16686/api/traces/$TRACE_ID" | jq '.data[0].spans[] | {name: .operationName, duration_ms: (.duration / 1000)}'
 ```
 
-**Enabling trace context in Courier logs.** Courier's logging module can include trace
-context automatically when it detects an active span. If your deployment uses the
-`courier.tracing` module, ensure the log handler extracts span context via
-OpenTelemetry's logging integration. A minimal setup in Python:
-
-```python
-from opentelemetry import trace
-from opentelemetry.trace import format_trace_id
-
-def trace_log_filter(record):
-    span = trace.get_current_span()
-    if span.get_span_context().is_valid:
-        record.courier_trace_id = format_trace_id(span.get_span_context().trace_id)
-    return True
-```
+**Automated correlation.** To automate trace-log correlation, pipe Courier's
+structured JSON logs through your log aggregator (Loki, Elasticsearch, Splunk)
+with the `courier_trace_id` field indexed. Then use the trace ID from any
+Jaeger span to query all log lines for that trace.
 
 #### Production Readiness Checklist
 
@@ -613,7 +769,7 @@ Before enabling tracing in production, verify each item:
   staging, then reduce in production if needed. Never sample below `0.1` (10%) without
   confirming audit requirements are still met.
 - [ ] **Retention policy aligned with audit needs.** Tempo's default retention is 24 h.
-  For compliance use cases (see Section 4.5), configure retention to at least 90 days.
+  For compliance use cases (see Section 5.6), configure retention to at least 90 days.
   For operational monitoring only, 7 days is usually sufficient.
 - [ ] **Resource limits on the collector.** The OTLP collector's `BatchSpanProcessor`
   in Courier buffers spans client-side. If the collector is slow, Courier's memory
@@ -629,7 +785,7 @@ Before enabling tracing in production, verify each item:
 
 ---
 
-### 4.5 Audit Trail Workflows
+### 5.6 Audit Trail Workflows
 
 Distributed tracing is also Courier's audit trail system. Because every file is
 assigned a `courier.correlation_id` and every processing stage emits a span in a
@@ -837,7 +993,7 @@ across its spans:
 |--------------------|-------------------------|--------------------------------------------------------|
 | General operations | 7 days                  | Enough for incident response and trend analysis        |
 | SOC 2              | 90 days                 | Aligns with typical log retention requirements         |
-| HIPAA              | 6 years                 | May require exporting traces to WORM-compliant storage |
+| HIPAA              | Consult compliance officer | Requirements vary. May require exporting to WORM-compliant storage |
 | GDPR (processing) | Aligned with data retention policy | Delete traces when the associated file data is deleted |
 | Internal audit     | 1 year                  | Common enterprise standard                             |
 
@@ -897,7 +1053,7 @@ Distributed tracing is inherently tamper-evident because:
 
 1. **Missing spans are visible holes.** The trace DAG for a file must contain specific
    stages. An operator or auditor can enumerate expected spans and flag traces where
-   required spans are absent (see the gap detection script in Section 4.4).
+   required spans are absent (see the gap detection script in Section 5.5).
 2. **Span order is chronological.** `startTime` is set by the SDK at span creation and
    cannot be retroactively modified in an exported trace (the collector timestamps
    spans on receive, but the span's own `startTime` is preserved as client-side
@@ -974,163 +1130,7 @@ piped through `jq` with `@csv` output formatting.
 
 ---
 
-## 5. Development Guide
-
-### Writing Tests with `_ListExporter`
-
-Courier's test suite uses a custom `_ListExporter` (defined in `tests/unit_tests/test_tracing.py`) because OpenTelemetry SDK 1.42+ removed `InMemorySpanExporter`. The pattern:
-
-```python
-from opentelemetry.sdk.trace.export import SpanExportResult, SpanExporter
-
-def _make_list_exporter():
-    """Create a span exporter + span list pair for round-trip verification."""
-    spans: list = []
-
-    class _ListExporter(SpanExporter):
-        def export(self, span_data):
-            spans.extend(span_data)
-            return SpanExportResult.SUCCESS
-
-        def shutdown(self):
-            pass
-
-    return _ListExporter(), spans
-```
-
-Usage in tests:
-
-```python
-exporter, captured_spans = _make_list_exporter()
-provider = TracerProvider(
-    active_span_processor=SimpleSpanProcessor(exporter),
-)
-# ... exercise code that creates spans ...
-assert len(captured_spans) == 2
-```
-
-The `_ListExporter` is in-process and synchronous (`SimpleSpanProcessor`), so spans are available for assertion immediately after the operations under test complete.
-
-### Test Isolation with `reset_tracing()` and `_force_noop_global_provider()`
-
-The tracing module stores a global `_tracer_provider` singleton. Without cleanup, one test's initialized provider leaks into the next test. Two utilities enforce isolation:
-
-**`reset_tracing()`** — clears Courier's own module-level singleton:
-```python
-from courier.tracing import reset_tracing
-reset_tracing()  # calls shutdown_tracing(), clears _tracer_provider
-```
-
-**`_force_noop_global_provider()`** — resets the OpenTelemetry API's process-wide gate (`_TRACER_PROVIDER_SET_ONCE`) and installs a fresh `NoOpTracerProvider`:
-```python
-def _force_noop_global_provider():
-    from opentelemetry.util._once import Once
-    import opentelemetry.trace
-    opentelemetry.trace._TRACER_PROVIDER_SET_ONCE = Once()
-    set_tracer_provider(NoOpTracerProvider())
-```
-
-The test suite uses both in an `autouse` fixture:
-```python
-@pytest.fixture(autouse=True)
-def _reset_tracing_after_test():
-    reset_tracing()
-    _force_noop_global_provider()
-    yield
-    reset_tracing()
-    _force_noop_global_provider()
-```
-
-**Important**: `_force_noop_global_provider()` reaches into the `opentelemetry.util._once` private module. This is a necessary workaround — the OTel API intentionally prevents replacing the global provider after the first call. Tests that need to re-initialize tracing must use this pattern.
-
-### Adding Tracing to a New Plugin Type
-
-To instrument a new plugin with tracing:
-
-1. **Get a tracer** at module level or in `__init__`:
-   ```python
-   from courier.tracing import get_tracer
-   tracer = get_tracer(__name__)
-   ```
-
-2. **Create a span** with `start_as_current_span`:
-   ```python
-   with tracer.start_as_current_span(
-       "my_plugin.do_work",
-       attributes={"courier.correlation_id": correlation_id},
-   ):
-       do_work()
-   ```
-
-3. **Add attributes** on every span:
-   - Always include `ATTR_CORRELATION_ID` if the work is tied to a specific file or job.
-   - Use the constants from `courier.tracing` — never hard-code attribute key strings.
-
-4. **Add span events** for lifecycle milestones:
-   ```python
-   from opentelemetry.trace import get_current_span
-
-   get_current_span().add_event(
-       "work.completed",
-       attributes={"result.count": str(n)},
-   )
-   ```
-
-5. **Pass parent context** when consuming messages:
-   ```python
-   for body, parent_ctx in self.parent_service.consume(QUEUE):
-       with tracer.start_as_current_span(
-           "my_plugin.handle_message",
-           context=parent_ctx,
-       ):
-           process(body)
-   ```
-
-### The `@trace_plugin_method` Decorator
-
-The `@trace_plugin_method` decorator wraps a regular (non-generator) method in a span:
-
-```python
-from courier.tracing import trace_plugin_method
-
-class MyPlugin:
-    @trace_plugin_method("my_plugin.process", attributes={"key": "value"})
-    def process(self, data):
-        return transform(data)
-```
-
-**Behavior**:
-- Creates a span named `"my_plugin.process"` with the given attributes.
-- Returns the original function's result unchanged.
-- Preserves `__name__`, `__qualname__`, and `__doc__` on the wrapper.
-- Sets `__wrapped__` for introspection.
-
-**Generator Exclusion Rule**:
-The decorator **raises `TypeError` at decoration time** if applied to a generator function:
-
-```python
-# THIS RAISES TypeError:
-@trace_plugin_method("my_plugin.stream")
-def my_generator(self):
-    yield 1
-```
-
-This is intentional: generator functions are suspended at each `yield`, and the span's `__exit__` would close the span on the first `yield` rather than on generator exhaustion. Generator methods must use inline `start_as_current_span`:
-
-```python
-# Correct: inline span for generator
-def my_generator(self):
-    tracer = get_tracer(__name__)
-    with tracer.start_as_current_span("my_plugin.stream"):
-        yield 1
-        yield 2
-```
-
-The reason this works inline but not via a decorator is that the inline `with` block wraps the entire generator body, while a decorator would wrap only the function call (which returns immediately with the generator object).
-
----
-
-## Quick Reference
+## 6. Quick Reference
 
 ### Environment Variables
 
@@ -1148,9 +1148,9 @@ COURIER_TRACING_SAMPLE_RATE=0.5       # 50% sampling
 
 | Span                             | Plugin       | Purpose                       |
 |----------------------------------|--------------|-------------------------------|
-| `data_monitor.process_file`      | DataMonitor  | File detection + processing   |
-| `data_monitor.add_metadata`      | DataMonitor  | Metadata enrichment           |
-| `data_monitor.emit_file`         | DataMonitor  | File publication              |
+| `data_monitor.process_file`      | DataMonitorBasePlugin | File detection + processing   |
+| `data_monitor.add_metadata`      | DataMonitorBasePlugin | Metadata enrichment           |
+| `data_monitor.emit_file`         | DataMonitorBasePlugin | File publication              |
 | `job_builder.build_job`          | JobBuilder   | Incoming file consumption     |
 | `job_builder.process_job_group`  | JobBuilder   | Per-group file processing     |
 | `job_builder.emit_job`           | JobBuilder   | Fan-out job emission          |

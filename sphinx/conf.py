@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path("../src").resolve()))
 
 # -- Project information -----------------------------------------------------
-project = "Lazy Lemon"
+project = "Courier"
 release = "0.1.0"
 version = "0.1"
 

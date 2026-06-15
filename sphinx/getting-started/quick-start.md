@@ -1,6 +1,6 @@
 # Quick Start
 
-Get your first Lazy Lemon service running in 5 minutes! This guide
+Get your first Courier service running. This guide
 walks you through setting up a file watcher for GOES-18 ABI data.
 
 ## What We'll Build
@@ -14,7 +14,7 @@ A service that:
 
 ## Prerequisites
 
-- Lazy Lemon installed ({doc}\[installation\`)
+- Courier installed ({doc}`installation`)
 - RabbitMQ running on localhost:5672
 - A directory with GOES-18 ABI files (or the ability to copy them
   there)
@@ -52,31 +52,28 @@ metadata:
   description: Monitor for GOES-18 ABI Full-Disk data and process it.
 
 spec:
-  heartbeat_interval: 30  # Send heartbeat every 30 seconds
+  heartbeat_interval: 30  # Seconds between health metric publications
 
   broker:
     host: localhost
     port: 5672
     username: admin
-    password: admin_password
+    password: admin_test
 
   run:
-    # Step 1: Monitor for files
     - watch-files:
         kind: data_monitor
         name: file_system_poller_watchdog
         config:
-          path: /home/user/goes18_data/incoming
+          path: ~/goes18_data/incoming
           metadata-tools:
             - goes18_abi  # Use built-in GOES-18 metadata extractor
 
-    # Step 2: Build jobs from files
     - group-files:
         kind: job_builder
         name: DummyJobBuilder
         config: null
 
-    # Step 3: Process jobs
     - process-data:
         kind: dispatcher
         name: serial_bash
@@ -84,81 +81,27 @@ spec:
           bash_script: |
             #!/bin/bash
             echo "=========================================="
-            echo "Processing file: {file}"
+            echo "Processing file: {{ files[0].file }}"
             echo "Timestamp: $(date)"
             echo "=========================================="
 
             # Move processed file
-            mv {file} /home/user/goes18_data/processed/
+            mv {{ files[0].file }} ~/goes18_data/processed/
 
             echo "Processing complete!"
 ```
 
-Note
+> **Note:** The `run` pipeline above has three stages: `watch-files` (data monitor), `group-files` (job builder), and `process-data` (dispatcher). The `~` in file paths expands to your home directory on both Linux and macOS.
 
-Replace `/home/user` with your actual home directory path.
+## Step 3: Start the Service
 
-## Step 3: Understanding the Configuration
-
-Let's break down what each section does:
-
-**Metadata Section:**
+Run the service:
 
 ```
-apiVersion: runcourier.dev/v1alpha1  # API version (CRD-style group/version)
-kind: Service                       # This is a service configuration
-metadata:
-  name: goes18-file-watcher         # DNS subdomain name (lowercase, hyphens)
-  namespace: goes18-quickstart      # Namespace for isolation
-```
-
-**Service Spec:**
-
-```
-spec:
-  heartbeat_interval: 30  # Health check frequency
-```
-
-**Broker Connection:**
-
-```
-broker:
-  host: localhost      # RabbitMQ server (AMQP inferred when host is present)
-  port: 5672          # Default AMQP port
-  username: admin     # Authentication
-  password: admin_password
-```
-
-**Processing Pipeline:**
-
-The `run` section defines three plugins that form a processing pipeline:
-
-1. **watch_files** (Data Monitor)
-   - Watches `/home/user/goes18_data/incoming`
-   - Uses `goes18_abi` metadata configuration
-   - Automatically extracts: platform=goes18, sensor=abi, sector,
-     timestamp
-1. **group_files** (Job Builder)
-   - Groups related files into jobs
-   - `DummyJobBuilder` creates one job per file (simple for
-     quickstart)
-1. **process_data** (Dispatcher)
-   - Executes the bash script for each job
-   - `{file}` is replaced with the actual file path
-
-## Step 4: Start the Service
-
-Run your service:
-
-```
-If using pip installation
-=========================
 courier run goes18_watcher.yaml
-
-If using poetry
-===============
-poetry run python -m courier.dummy_cli run goes18_watcher.yaml
 ```
+
+> The above command works whether you installed via pip or poetry — the `courier` CLI is registered as a console script entry point in both cases.
 
 You should see output like:
 
@@ -168,28 +111,26 @@ You should see output like:
 [Manager: PluginManager] Registered plugin: file_system_poller_watchdog v0.0.0
 [Manager: PluginManager] Registered plugin: DummyJobBuilder v-1
 [Manager: PluginManager] Registered plugin: serial_bash v-1
-[Plugin: file_system_poller_watchdog] Starting to watch directory: /home/user/goes18_data/incoming
+[Plugin: file_system_poller_watchdog] Starting to watch directory: ~/goes18_data/incoming
 [Service: goes18-file-watcher] Service goes18-file-watcher started successfully
 ```
 
-## Step 5: Test with Data
+## Step 4: Test with Data
 
 Copy a GOES-18 file to the watched directory:
 
 ```
-Copy a test file
-================
 cp /path/to/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000*.nc ~/goes18_data/incoming/
 ```
 
 Watch the service logs. You should see:
 
 ```
-[Plugin: file_system_poller_watchdog] Found file: File(file=/home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc, platform=goes18, sensor=abi, sector=Full-Disk, timestamp=2024-01-15 12:00:00)
+[Plugin: file_system_poller_watchdog] Found file: File(file=~/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc, platform=goes18, sensor=abi, sector=Full-Disk, timestamp=2024-01-15 12:00:00)
 [Plugin: DummyJobBuilder] Received file from file queue
 [Plugin: serial_bash] Executing job
 ==========================================
-Processing file: /home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc
+Processing file: ~/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc
 Timestamp: Mon Jan 15 12:05:30 UTC 2024
 ==========================================
 Processing complete!
@@ -197,103 +138,40 @@ Processing complete!
 
 The file will be moved to the `processed` directory.
 
-## Step 6: Monitor with Prometheus
+## Step 5: Monitor with Prometheus
 
-Lazy Lemon automatically exposes Prometheus metrics on port 8000.
+Courier automatically exposes Prometheus metrics on port 8000.
 
-View metrics in your browser:
+Open `http://localhost:8000/metrics` in your browser. After processing a file, you should see counters for files processed, jobs built, and jobs executed. For a complete breakdown of each metric, see {doc}`../tutorials/01-simple-file-watcher` (Step 8: Monitor with Prometheus).
 
-```
-http://localhost:8000
-```
-
-You'll see metrics like:
-
-```
-HELP files_processed_file_system_poller_watchdog Total number of files processed
-================================================================================
-TYPE files_processed_file_system_poller_watchdog counter
-========================================================
-files_processed_file_system_poller_watchdog{status="success"} 1.0
-
-HELP service_health Overall service health status
-=================================================
-TYPE service_health gauge
-=========================
-service_health 1.0
-
-HELP service_uptime_seconds Service uptime in seconds
-=====================================================
-TYPE service_uptime_seconds gauge
-=================================
-service_uptime_seconds 127.5
-```
-
-## Step 7: Stop the Service
+## Step 6: Stop the Service
 
 Press `Ctrl+C` to gracefully stop the service:
 
 ```
-^C[Service: goes18-file-watcher] Received keyboard interrupt
-[Service: goes18-file-watcher] Cleaning up resources...
-[Manager: PluginManager] Plugin manager stopped
-[Manager: RabbitMQManager] RabbitMQ connection closed
-[Manager: PrometheusManager] Prometheus manager stopped
-[Service: goes18-file-watcher] Service goes18-file-watcher stopped
+^C
 ```
 
-## What's Next?
+The service shuts down gracefully. For the full shutdown log output, see {doc}`../tutorials/01-simple-file-watcher` (Step 10).
 
-Congratulations! You've created your first Lazy Lemon service. Now
-you can:
+## Next Steps
 
-**Learn More:**
+Congratulations! You've created your first Courier service. Now you can:
 
-- `` `configuration-basics ``\` - Understand YAML configuration in
-  depth
-- `` `concepts ``\` - Learn about services, plugins, and queues
-- :doc:`../tutorials/02-adding-metadata` - Configure advanced metadata
-  extraction
-
-**Build On This:**
-
-- :doc:`../tutorials/03-custom-job-builder` - Group files by sector or
-  time
-- :doc:`../tutorials/05-geoips-workflow-dispatcher` - Call real GeoIPS
-  workflows
-- :doc:`../tutorials/06-multi-satellite-monitor` - Watch multiple
-  satellites
-
-**Deploy to Production:**
-
-- :doc:`../tutorials/07-monitoring-with-prometheus` - Set up Grafana
-  dashboards
-- :doc:`../tutorials/08-production-deployment` - Deploy to Kubernetes
-- :doc:`../user-guide/deployment` - Production deployment guide
+- {doc}`configuration` — Understand YAML configuration in depth
+- {doc}`../concepts/index` — Learn about services, plugins, and queues
+- {doc}`../tutorials/01-simple-file-watcher` — Step-by-step tutorial
+- {doc}`../tutorials/02-docker-swarm-cluster` — Deploy across Docker containers
 
 ## Common Issues
 
-**Service won't start:**
+```{include} ../includes/watchdog-new-files-only.md
+```
 
-- Check RabbitMQ is running: `docker ps | grep rabbitmq`
-- Verify configuration syntax:
-  `poetry run python -m courier.dummy_cli validate goes18_watcher.yaml`
-
-**Files not being detected:**
-
-- Check file permissions: `ls -la ~/goes18_data/incoming`
-- Verify path in configuration matches actual directory
-- Check filename patterns match GOES-18 naming convention
-
-**No output when copying files:**
-
-- Watchdog monitors for *new* files created/moved into the directory
-- Files already present when service starts are not detected
-- Try copying a file while the service is running
+```{include} ../includes/common-troubleshooting.md
+```
 
 ## Need Help?
 
-- Check :doc:`../user-guide/troubleshooting` for common issues
-- Review logs in the service output
-- Ask questions in \`GitHub Discussions
-  \](<https://github.com/biosafetylvl5/courier/discussions>)
+- Review logs in the service output for details.
+- Ask questions in [GitHub Discussions](https://github.com/biosafetylvl5/courier/discussions)

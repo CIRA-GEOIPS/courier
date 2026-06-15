@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -12,7 +13,11 @@ from pluginify.interfaces.base import BaseClassInterface
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import CourierError
 from courier.interfaces.plugin_protocol import ServicePlugin
-from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
+from courier.metrics import (
+    DATA_MONITOR_FILES_PROCESSED,
+    DATA_MONITOR_LAST_PROCESSED_TIMESTAMP,
+    collect_labeled,
+)
 from courier.schema import DataMonitorConfig
 from courier.tracing import (
     ATTR_FILE_HOSTNAME,
@@ -144,6 +149,11 @@ class DataMonitorBasePlugin(ServicePlugin):
                         monitor_name=self.name,
                         status="success",
                     ).inc()
+
+                    # Update the last processed timestamp for peer latency dashboards
+                    DATA_MONITOR_LAST_PROCESSED_TIMESTAMP.labels(
+                        plugin_name=self.name,
+                    ).set(time.time())
                 except CourierError:
                     self._files_processed.labels(
                         monitor_name=self.name,
@@ -177,12 +187,20 @@ class DataMonitorBasePlugin(ServicePlugin):
         return self._state == PluginRunState.RUNNING
 
     def get_metrics(self) -> dict[str, Any]:
-        """Return plugin-specific metrics."""
-        return collect_labeled(
+        """Return plugin-specific metrics including last-processed timestamp."""
+        result = collect_labeled(
             DATA_MONITOR_FILES_PROCESSED,
             "monitor_name",
             self.name,
         )
+        result.update(
+            collect_labeled(
+                DATA_MONITOR_LAST_PROCESSED_TIMESTAMP,
+                "plugin_name",
+                self.name,
+            ),
+        )
+        return result
 
 
 class DataMonitorInterface(BaseClassInterface):

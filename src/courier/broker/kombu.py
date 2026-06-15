@@ -16,7 +16,11 @@ from kombu.exceptions import (
 from courier.config import ServiceConfig
 from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.managers.base import ServiceManager
-from courier.metrics import BROKER_CONNECTED, BROKER_CONNECTIONS
+from courier.metrics import (
+    BROKER_CONNECTED,
+    BROKER_CONNECTIONS,
+    BROKER_MESSAGES_PENDING,
+)
 from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
 
@@ -213,6 +217,8 @@ def publish(
                 declare=[queue],
                 headers=headers or {},
             )
+            # Best-effort tracking: may drift on requeue or restart.
+            BROKER_MESSAGES_PENDING.labels(queue_name=queue.name).inc()
     except KombuError as exc:
         raise _normalize_publish_error(exc, queue.name) from exc
 
@@ -222,7 +228,7 @@ def messages(
     queue: "kombu.Queue",
     stop_event: threading.Event | None = None,
 ) -> Generator[
-    tuple[str, Callable[[], None], Callable[[], None], dict[str, str]], None, None
+    tuple[str, Callable[[], None], Callable[[], None], dict[str, str]], None, None,
 ]:
     """Yield ``(body, ack, reject)`` tuples from *queue* until *stop_event* is set.
 
@@ -270,6 +276,8 @@ def messages(
                     msg.reject(requeue=True)
 
                 headers = _normalize_headers(msg.headers)
+                # Best-effort tracking: may drift on requeue or restart.
+                BROKER_MESSAGES_PENDING.labels(queue_name=queue.name).dec()
                 yield decoded, msg.ack, _reject, headers
 
 
@@ -332,6 +340,8 @@ def publish_fanout(
                 declare=[exchange],
                 headers=headers or {},
             )
+            # Best-effort tracking: may drift.
+            BROKER_MESSAGES_PENDING.labels(queue_name=exchange.name).inc()
     except KombuError as exc:
         raise _normalize_publish_error(exc, exchange.name) from exc
 

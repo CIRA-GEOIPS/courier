@@ -1,9 +1,17 @@
 # Plugins API Reference
 
-Lazy Lemon plugins implement one of three interfaces:
-:class:`~courier.interfaces.module_based.data_monitors.DataMonitor`,
+Courier plugins implement one of three interfaces:
+:class:`~courier.interfaces.module_based.data_monitors.DataMonitorBasePlugin`,
 :class:`~courier.interfaces.module_based.job_builders.JobBuilder`, or
 :class:`~courier.interfaces.module_based.dispatchers.Dispatcher`.
+
+## Standard Data Monitors
+
+### file_system_poller_watchdog
+
+:class:`~courier.plugins.classes.data_monitors.file_system_poller_watchdog.FileSystemPoller`
+
+Watches a directory for new files and emits them to the pipeline.
 
 ## Standard Dispatchers
 
@@ -53,7 +61,8 @@ job scripts.
 
 :class:`~courier.plugins.classes.job_builders.dummy_job_builder.DummyJobBuilder`
 
-Creates an empty job for each file — useful as a pass-through builder.
+Creates a minimal job for each file. Suitable for development and testing;
+for production, use `filter_and_group` or a custom builder.
 
 ### filter_and_group
 
@@ -123,7 +132,7 @@ with a **two-layer lookup**:
 If the key is found in **neither** layer, a ``WARNING`` is logged and the
 file is rejected (the filter returns ``False``).
 
-```python
+```yaml
 # Example: match GOES-16 ABI L1b full-disk files
 filters:
   source: goes16
@@ -137,19 +146,10 @@ filters:
 Filter configurations **must use ``File`` attribute names**, not legacy
 field_map names. The following legacy keys are no longer recognized:
 
-.. list-table::
-   :header-rows: 1
+```{include} ../includes/breaking-changes.md
+```
 
-   * - Legacy Key
-     - Replace With
-   * - ``platform``
-     - ``source``
-   * - ``sensor``
-     - ``instrument``
-   * - ``level``
-     - ``processing_stage``
-   * - ``sector``
-     - ``domain``
+See {doc}`types` for the `File`/`FrozenFile` attribute reference.
 
 **Migration example:**
 
@@ -166,14 +166,6 @@ filters:
   instrument: abi
   processing_stage: l1b
 ```
-
-## Standard Data Monitors
-
-### file_system_poller_watchdog
-
-:class:`~courier.plugins.monitors.file_system_poller_watchdog.FileSystemPollerWatchdog`
-
-Watches a directory for new files and emits them to the pipeline.
 
 ### MetadataRouterBuilder
 

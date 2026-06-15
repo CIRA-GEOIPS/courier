@@ -62,6 +62,12 @@ DATA_MONITOR_CONSUMER_LAG: Gauge = Gauge(
     ["monitor_name", "topic"],
 )
 
+DATA_MONITOR_LAST_PROCESSED_TIMESTAMP: Gauge = Gauge(
+    "courier_data_monitor_last_processed_timestamp_seconds",
+    "Unix timestamp of the last file processed and emitted by a data monitor plugin",
+    ["plugin_name"],
+)
+
 # ---------------------------------------------------------------------------
 # Job builder metrics
 # ---------------------------------------------------------------------------
@@ -294,6 +300,13 @@ BROKER_MESSAGES_RECEIVED: Counter = Counter(
 BROKER_CONNECTED: Gauge = Gauge(
     "courier_broker_connected",
     "Whether the broker connection is active (1 = connected, 0 = disconnected)",
+)
+
+BROKER_MESSAGES_PENDING: Gauge = Gauge(
+    "courier_broker_messages_pending",
+    "Best-effort count of messages published but not yet consumed. "
+    "Resets to 0 on restart; may drift due to requeues.",
+    ["queue_name"],
 )
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# ADR-0004: Mutable File / Frozen FrozenFile Type Split
+# ADR-0004: File / FrozenFile Type Split
 
 ## Status
 
@@ -20,7 +20,6 @@ metadata config).
 Maintain two parallel types in `src/courier/types/file.py`:
 
 - `File` — mutable dataclass. Owned by a single data-monitor thread during enrichment.
-  Carries a `# Mutable because:` comment per the immutability rule.
 - `FrozenFile` — `frozen=True` dataclass. Produced by `File.freeze()`. Used for all
   inter-stage messages and set membership in `Job.files`.
 
@@ -36,6 +35,19 @@ Both types implement the same serialization contract (`to_dict`, `from_dict`,
 
 ## Trade-offs Accepted
 
-- Two parallel types means two sets of serialization methods to maintain in sync.
+- Two parallel types mean two sets of serialization methods to maintain in sync.
 - `FrozenFile` is not a subclass of `File`; callers must handle `File | FrozenFile`
   unions explicitly (visible throughout `job_builders.py`).
+
+## Consequences
+
+- **Two-type contract**: All code crossing stage boundaries uses `FrozenFile`.
+  Serialization methods (`to_dict`, `from_dict`, `from_string`, `__str__`) must be kept
+  in sync between both types.
+- **Immutability guarantee**: Downstream consumers (job builders, dispatchers) receive a
+  `FrozenFile` they cannot mutate. This eliminates a class of bugs where a consumer
+  accidentally modifies file metadata that other consumers depend on.
+- **Stage boundary**: `File.freeze()` is the explicit transition point. Once frozen, the
+  file is serialized onto the broker. On the receiving end, `FrozenFile.from_dict()`
+  reconstructs the immutable form.
+- **API reference**: Both types implement the serialization contract documented in the {doc}`../../api-reference/types`.

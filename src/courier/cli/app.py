@@ -61,5 +61,12 @@ try:
 except ImportError:
     pass  # viz extra not installed — command won't be available
 
+try:
+    from courier.dashboard.cli import dashboard_app
+
+    app.add_typer(dashboard_app, name="dashboard")
+except ImportError:
+    pass  # dashboard extra not installed — command won't be available
+
 if __name__ == "__main__":
     app()
