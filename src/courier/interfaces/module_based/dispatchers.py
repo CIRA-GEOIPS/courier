@@ -13,6 +13,7 @@ from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import (
     DISPATCHER_QUEUE,
+    FILE_FOUND_EXCHANGE,
     PluginRunState,
     job_ready_queue_for,
 )
@@ -44,6 +45,7 @@ _DEDUPE_LRU_SIZE = 1024
 
 if TYPE_CHECKING:
     from courier.service import Service
+    from courier.types.file import File
 
 
 class Dispatcher(ServicePlugin):
@@ -116,6 +118,21 @@ class Dispatcher(ServicePlugin):
         """Emit execution log to parent service."""
         self._logger.debug(f"Emitting execution log: {execution_log}")
         self.parent_service.emit(queue=self.queue, message=str(execution_log))
+
+    def emit_file(self, file: File) -> None:
+        """Emit output file to the found-file exchange for downstream processing.
+
+        Publishes a :class:`File` to :data:`~courier.constants.FILE_FOUND_EXCHANGE`
+        so job builders can pick it up and create new jobs — enabling chained
+        dispatcher-to-builder pipeline workflows.
+
+        Parameters
+        ----------
+        file : File
+            The output file to feed back into the pipeline.
+        """
+        self._logger.debug(f"Emitting file: {file}")
+        self.parent_service.emit(queue=FILE_FOUND_EXCHANGE, message=str(file))
 
     def _recently_seen(self, job_identifier: str) -> bool:
         """Return True if *job_identifier* is in the bounded LRU.

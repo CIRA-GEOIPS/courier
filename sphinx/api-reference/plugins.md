@@ -23,11 +23,9 @@ Executes a single Jinja2-templated bash script for an entire job. All
 files are available in the template, producing one
 :class:`~courier.types.execution_log.ExecutionLog`.
 
-.. literalinclude:: ../../../src/courier/plugins/classes/dispatchers/serial_bash.py
-   :language: python
-   :start-after: class SerialBashDispatcher(Dispatcher):
-   :end-before:     def __init__(
-   :linenos:
+See {doc}`plugins/serial_bash` for the full serial bash dispatcher
+documentation, including configuration, template context, error handling,
+and output file scanning.
 
 ### parallel_bash
 
@@ -36,11 +34,9 @@ files are available in the template, producing one
 Executes a Jinja2-templated bash script independently for each file in
 the job. Up to ``max_workers`` scripts run concurrently.
 
-.. literalinclude:: ../../../src/courier/plugins/classes/dispatchers/parallel_bash.py
-   :language: python
-   :start-after: class ParallelBashDispatcher(Dispatcher):
-   :end-before:     def __init__(
-   :linenos:
+See {doc}`plugins/parallel_bash` for the full parallel bash dispatcher
+documentation, including configuration, template context, error handling,
+and output file scanning.
 
 ### slurm_dispatcher
 
@@ -54,6 +50,115 @@ job scripts.
    :start-after: class SlurmDispatcher(Dispatcher):
    :end-before:     def __init__(
    :linenos:
+
+(pipeline-feedback-example)=
+
+### Pipeline Feedback with ``emit_file``
+
+.. py:method:: Dispatcher.emit_file(file: File) -> None
+
+All dispatchers inherit :meth:`emit_file` from the :class:`~courier.interfaces.module_based.dispatchers.Dispatcher`
+base class. This method publishes an output :class:`~courier.types.file.File` to
+:data:`~courier.constants.FILE_FOUND_EXCHANGE` — the same fanout exchange that
+data monitors use — so downstream job builders can pick it up and create new
+jobs.
+
+This enables **chained pipeline workflows**: one dispatcher processes a job,
+writes output files, then feeds those files back into the pipeline for a
+second processing stage without any external intervention.
+
+When to use
+   Use ``emit_file()`` when your dispatcher produces output files that need
+   further processing. Common patterns include:
+
+   - **Multi-stage processing** — run a calibration stage, then feed
+     calibrated files into a product-generation stage.
+   - **Fan-out reprocessing** — emit derived products as new files so
+     multiple downstream builders can route them to different dispatchers.
+   - **Chained quality control** — a QC dispatcher inspects output and emits
+     files that pass validation to the next stage while logging failures.
+
+   The mechanism is identical to data monitor file emission: the file
+   travels through ``FILE_FOUND_EXCHANGE``, job builders consume it, and
+   routing works exactly as described in
+   :doc:`../concepts/adr/0006-dispatcher-routing`.
+
+How to use
+   Override :meth:`~Dispatcher.get_execution_log` in your dispatcher
+   subclass and call ``self.emit_file()`` for each output file you want to
+   feed back into the pipeline:
+
+   .. code-block:: python
+
+      from courier.types.file import File
+
+      class MyPipelineDispatcher(Dispatcher):
+          def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+              # ... process the job, write output files ...
+              output_path = Path("/data/output/processed.nc")
+              self.emit_file(File(
+                  file=output_path,
+                  hostname=self.parent_service.hostname,
+                  source=job.files[0].source,
+                  instrument=job.files[0].instrument,
+                  processing_stage="l2",
+              ))
+              return [ExecutionLog(return_code=0)]
+
+Example: Multi-stage YAML configuration
+   The example below shows a two-stage pipeline where ``serial_bash``
+   produces calibrated files that a second job builder picks up and routes
+   to ``parallel_bash`` for product generation:
+
+   .. code-block:: yaml
+
+      spec:
+        run:
+          # Stage 1: Calibrate raw files
+          - calibrate:
+              kind: dispatcher
+              name: serial_bash
+              config:
+                bash_script: |
+                  #!/bin/bash
+                  # ... calibration logic ...
+                  echo "calibrated.nc"  # signal output file path
+
+          # Stage 2 builder: Only picks up calibrated files
+          - build-products:
+              kind: job_builder
+              name: filter_and_group
+              config:
+                filters:
+                  processing_stage: l2
+                targets:
+                  - generate-products
+
+          # Stage 2: Generate products from calibrated files
+          - generate-products:
+              kind: dispatcher
+              name: parallel_bash
+              config:
+                bash_script: |
+                  #!/bin/bash
+                  # ... product generation logic ...
+
+   The key points:
+
+   - Stage 1's dispatcher must call ``self.emit_file()`` with the output
+     file path, setting ``processing_stage`` (or another metadata field)
+     to a distinct value.
+   - Stage 2's job builder uses a ``filters`` block to select only files
+     from the calibration stage, preventing infinite loops.
+   - The pipeline continues naturally — no custom wiring or external
+     scripts needed.
+
+.. note::
+
+   **Avoid infinite loops.** Always set distinguishing metadata (e.g.,
+   ``processing_stage``) on emitted files and use ``filters`` in downstream
+   builders to prevent a file from being picked up by the same stage that
+   produced it.
 
 ## Standard Job Builders
 
@@ -172,3 +277,11 @@ filters:
 :class:`~courier.plugins.classes.job_builders.metadata_router.MetadataRouterBuilder`
 
 Routes files to different dispatchers based on file metadata (source, instrument, etc.).
+
+```{toctree}
+:maxdepth: 1
+:hidden:
+
+plugins/serial_bash
+plugins/parallel_bash
+```

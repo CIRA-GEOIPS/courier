@@ -24,6 +24,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
+from courier.plugins.classes.dispatchers._output_file_pattern import (  # noqa: TC001
+    OutputFilePattern,
+)
+from courier.plugins.classes.dispatchers._output_scanner import (
+    _scan_and_emit_output_files,
+)
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import execute_bash_script
 
@@ -46,6 +52,9 @@ class ParallelBashConfig(BaseModel, frozen=True):
     log_to_file: bool = Field(default=False)
     log_dir: str = Field(default="")
     log_only_errors: bool = Field(default=False)
+    output_files: list[OutputFilePattern] | None = Field(default=None)
+    scan_stderr: bool = Field(default=False)
+    python_venv: str | None = Field(default=None)
 
     @model_validator(mode="after")
     def _validate_logging(self) -> ParallelBashConfig:
@@ -70,6 +79,23 @@ class ParallelBashConfig(BaseModel, frozen=True):
             raise ValueError(f"Invalid Jinja2 template: {exc}") from exc
         return v
 
+    @field_validator("python_venv")
+    @classmethod
+    def _validate_python_venv(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        venv_path = Path(v).resolve()
+        if not venv_path.is_dir():
+            raise ValueError(
+                f"python_venv is not a directory: {v}",
+            )
+        python_bin = venv_path / "bin" / "python"
+        if not python_bin.is_file():
+            raise ValueError(
+                f"python_venv has no bin/python executable: {v}",
+            )
+        return str(venv_path)
+
 
 def _run_script(  # noqa: PLR0913
     script_body: str,
@@ -82,6 +108,7 @@ def _run_script(  # noqa: PLR0913
     log_to_file: bool = False,
     log_file_path: Path | None = None,
     log_only_errors: bool = False,
+    env: dict[str, str] | None = None,
 ) -> ExecutionLog:
     """Execute *script_body* under bash with configurable logging modes.
 
@@ -99,6 +126,7 @@ def _run_script(  # noqa: PLR0913
         log_to_file=log_to_file,
         log_file_path=log_file_path,
         log_only_errors=log_only_errors,
+        env=env,
     )
     return ExecutionLog(
         return_code=result.return_code,
@@ -244,6 +272,13 @@ class ParallelBashDispatcher(Dispatcher):
             f"with max_workers={self.validated.max_workers}",
         )
 
+        env: dict[str, str] | None = None
+        if self.validated.python_venv:
+            venv_path = Path(self.validated.python_venv)
+            env = os.environ.copy()
+            env["PATH"] = f"{venv_path / 'bin'}:{env.get('PATH', '')}"
+            env["VIRTUAL_ENV"] = str(venv_path)
+
         logs: list[ExecutionLog] = []
         gauge = DISPATCHER_PARALLEL_WORKERS_ACTIVE.labels(dispatcher_name=self.name)
 
@@ -290,6 +325,7 @@ class ParallelBashDispatcher(Dispatcher):
                         log_to_file=self.validated.log_to_file,
                         log_file_path=log_path if self.validated.log_to_file else None,
                         log_only_errors=self.validated.log_only_errors,
+                        env=env,
                     )
                 ] = ff.file
 
@@ -309,6 +345,16 @@ class ParallelBashDispatcher(Dispatcher):
             finally:
                 gauge.set(0)
 
+        if self.validated.output_files:
+            for log in logs:
+                _scan_and_emit_output_files(
+                    stdout=log.stdout or "",
+                    stderr=log.stderr or "",
+                    patterns=self.validated.output_files,
+                    scan_stderr=self.validated.scan_stderr,
+                    hostname=hostname,
+                    emit_file=self.emit_file,
+                )
         return logs
 
 

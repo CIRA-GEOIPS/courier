@@ -51,6 +51,7 @@ def execute_bash_script(  # noqa: PLR0913, PLR0915
     log_to_file: bool = False,
     log_file_path: Path | None = None,
     log_only_errors: bool = False,
+    env: dict[str, str] | None = None,
 ) -> BashExecResult:
     """Execute a bash script with configurable logging modes.
 
@@ -79,6 +80,9 @@ def execute_bash_script(  # noqa: PLR0913, PLR0915
     log_only_errors : bool
         If True, discard stdout entirely (not streamed, not written to file,
         not included in returned ``BashExecResult.stdout``).
+    env : dict[str, str] or None
+        Environment variables for the subprocess. If ``None``, the parent
+        process's ``os.environ`` is inherited (existing behavior).
 
     Returns
     -------
@@ -127,6 +131,7 @@ def execute_bash_script(  # noqa: PLR0913, PLR0915
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
 
         # -- Threaded readers for stdout and stderr ---------------------------

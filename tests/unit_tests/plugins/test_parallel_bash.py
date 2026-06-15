@@ -424,3 +424,128 @@ class TestFailFastWithLogging:
         # At least one log produced; not all 5 due to fail_fast
         assert len(logs) >= 1
         assert len(logs) <= 5
+
+
+# ─── python_venv Config Validation ──────────────────────────────────────────
+
+
+class TestPythonVenvConfig:
+    """Tests for python_venv field validation in ParallelBashConfig."""
+
+    def test_python_venv_none_is_valid(self) -> None:
+        """Config with python_venv=None passes validation."""
+        cfg = ParallelBashConfig.model_validate(
+            _make_config(python_venv=None),
+        )
+        assert cfg.python_venv is None
+
+    def test_python_venv_path_not_a_directory(self, tmp_path: Path) -> None:
+        """Path to a regular file raises ValidationError."""
+        f = tmp_path / "regular_file.txt"
+        f.write_text("not a venv")
+        with pytest.raises(ValidationError):
+            ParallelBashConfig.model_validate(
+                _make_config(python_venv=str(f)),
+            )
+
+    def test_python_venv_path_missing(self, tmp_path: Path) -> None:
+        """Non-existent path raises ValidationError."""
+        missing = tmp_path / "does_not_exist"
+        with pytest.raises(ValidationError):
+            ParallelBashConfig.model_validate(
+                _make_config(python_venv=str(missing)),
+            )
+
+    def test_python_venv_no_bin_python(self, tmp_path: Path) -> None:
+        """Existing dir without bin/python raises ValidationError."""
+        d = tmp_path / "fake_venv"
+        d.mkdir()
+        with pytest.raises(ValidationError):
+            ParallelBashConfig.model_validate(
+                _make_config(python_venv=str(d)),
+            )
+
+    def test_python_venv_valid_path_accepted(self, tmp_path: Path) -> None:
+        """Valid venv path with bin/python accepted and stored as absolute."""
+        venv = tmp_path / "valid_venv"
+        venv_bin = venv / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python").write_text("fake")
+        cfg = ParallelBashConfig.model_validate(
+            _make_config(python_venv=str(venv)),
+        )
+        assert cfg.python_venv == str(venv.resolve())
+        assert Path(cfg.python_venv).is_absolute()
+
+
+# ─── python_venv Env Propagation ────────────────────────────────────────────
+
+
+class TestPythonVenvEnvPropagation:
+    """Tests for python_venv environment variable propagation to subprocess."""
+
+    def test_python_venv_env_passed_through_run_script(
+        self, mock_service, make_frozen_file, make_job, tmp_path, mocker,
+    ) -> None:
+        """Env dict with PATH and VIRTUAL_ENV reaches execute_bash_script."""
+        venv = tmp_path / "test_venv"
+        venv_bin = venv / "bin"
+        venv_bin.mkdir(parents=True)
+        (venv_bin / "python").write_text("fake")
+
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(python_venv=str(venv)),
+            identifier="test-disp",
+        )
+
+        captured_env: dict = {}
+
+        def _fake_execute(**kwargs: Any) -> BashExecResult:
+            captured_env["env"] = kwargs.get("env")
+            return BashExecResult(return_code=0, stdout="ok", stderr="")
+
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            side_effect=_fake_execute,
+        )
+
+        ff = make_frozen_file(file=Path("/test.nc"))
+        job = make_job(files=(ff,))
+        plugin.get_execution_log(job)
+
+        assert captured_env["env"] is not None, (
+            "env should be set when python_venv is configured"
+        )
+        assert "PATH" in captured_env["env"]
+        assert str(venv.resolve() / "bin") in captured_env["env"]["PATH"]
+        assert captured_env["env"]["VIRTUAL_ENV"] == str(venv.resolve())
+
+    def test_python_venv_not_set_env_is_none(
+        self, mock_service, make_frozen_file, make_job, mocker,
+    ) -> None:
+        """Without python_venv, execute_bash_script is called with env=None."""
+        plugin = ParallelBashDispatcher(
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
+        )
+
+        captured_env: dict = {}
+
+        def _fake_execute(**kwargs: Any) -> BashExecResult:
+            captured_env["env"] = kwargs.get("env")
+            return BashExecResult(return_code=0, stdout="ok", stderr="")
+
+        mocker.patch(
+            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            side_effect=_fake_execute,
+        )
+
+        ff = make_frozen_file(file=Path("/test.nc"))
+        job = make_job(files=(ff,))
+        plugin.get_execution_log(job)
+
+        assert captured_env["env"] is None, (
+            "env should be None when python_venv is not configured"
+        )

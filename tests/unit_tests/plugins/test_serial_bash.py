@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pydantic
 import pytest
@@ -480,3 +482,141 @@ class TestLogFileOnError:
         logs = plugin.get_execution_log(job)
         assert logs[0].return_code == -1
         assert logs[0].log_file_path == expected_path
+
+
+# ─── Python Venv ─────────────────────────────────────────────────────────────
+
+
+class TestPythonVenvConfigValidation:
+    """Tests for python_venv config field validation."""
+
+    def test_python_venv_none_is_valid(self) -> None:
+        """Config with python_venv=None passes validation."""
+        cfg = SerialBashConfig(bash_script="echo hello", python_venv=None)
+        assert cfg.python_venv is None
+
+    def test_python_venv_omitted_is_valid(self, mock_service: MagicMock) -> None:
+        """Config that omits python_venv entirely passes validation."""
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
+        )
+        assert plugin.validated.python_venv is None
+
+    def test_python_venv_path_not_a_directory(self, tmp_path: Path) -> None:
+        """A regular file path for python_venv raises ValidationError."""
+        file_path = tmp_path / "regular_file"
+        file_path.write_text("not a directory")
+        with pytest.raises(pydantic.ValidationError):
+            SerialBashConfig(
+                bash_script="echo hello", python_venv=str(file_path),
+            )
+
+    def test_python_venv_path_missing(self, tmp_path: Path) -> None:
+        """A non-existent path for python_venv raises ValidationError."""
+        missing = tmp_path / "does_not_exist"
+        with pytest.raises(pydantic.ValidationError):
+            SerialBashConfig(
+                bash_script="echo hello", python_venv=str(missing),
+            )
+
+    def test_python_venv_no_bin_python(self, tmp_path: Path) -> None:
+        """A directory without bin/python inside raises ValidationError."""
+        venv_dir = tmp_path / "fake_venv"
+        venv_dir.mkdir()
+        with pytest.raises(pydantic.ValidationError):
+            SerialBashConfig(
+                bash_script="echo hello", python_venv=str(venv_dir),
+            )
+
+    def test_python_venv_valid_path_accepted(self) -> None:
+        """sys.prefix (which has bin/python) passes validation.
+
+        The stored value must be resolved to an absolute path.
+        """
+        cfg = SerialBashConfig(bash_script="echo hello", python_venv=sys.prefix)
+        stored = cfg.python_venv
+        assert stored is not None
+        stored_path = Path(stored)
+        assert stored_path.is_absolute()
+        assert stored_path.is_dir()
+        assert (stored_path / "bin" / "python").is_file()
+
+    def test_python_venv_relative_path_resolved(
+        self, tmp_path: Path,
+    ) -> None:
+        """A relative python_venv path is resolved to absolute by the validator."""
+        venv_dir = tmp_path / "my_venv"
+        venv_dir.mkdir()
+        bin_dir = venv_dir / "bin"
+        bin_dir.mkdir()
+        python_bin = bin_dir / "python"
+        python_bin.write_text("fake python")
+        python_bin.chmod(0o755)
+
+        original_cwd = Path.cwd()
+        os.chdir(tmp_path)
+        try:
+            cfg = SerialBashConfig(
+                bash_script="echo hello", python_venv="./my_venv",
+            )
+            assert cfg.python_venv is not None
+            assert Path(cfg.python_venv).is_absolute()
+        finally:
+            os.chdir(original_cwd)
+
+
+class TestPythonVenvEnvPropagation:
+    """Tests for python_venv environment variable propagation to executor."""
+
+    def test_python_venv_env_passed_to_executor(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+    ) -> None:
+        """When python_venv is set, env dict with VIRTUAL_ENV and PATH is passed."""
+        venv_path = sys.prefix
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(python_venv=venv_path),
+            identifier="test-disp",
+        )
+        target = "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script"
+        with patch(target, return_value=BashExecResult(
+            return_code=0, stdout="ok", stderr="",
+        )) as mock_exec:
+            job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+            plugin.get_execution_log(job)
+
+        mock_exec.assert_called_once()
+        call_kwargs = mock_exec.call_args[1]
+        assert "env" in call_kwargs
+        env = call_kwargs["env"]
+        assert isinstance(env, dict)
+        assert "VIRTUAL_ENV" in env
+        assert env["PATH"].startswith(str(Path(venv_path) / "bin"))
+
+    def test_python_venv_not_set_env_is_none(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        make_job,
+    ) -> None:
+        """When python_venv is not set, execute_bash_script receives env=None."""
+        plugin = SerialBashDispatcher(
+            mock_service,
+            _make_config(python_venv=None),
+            identifier="test-disp",
+        )
+        target = "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script"
+        with patch(target, return_value=BashExecResult(
+            return_code=0, stdout="ok", stderr="",
+        )) as mock_exec:
+            job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
+            plugin.get_execution_log(job)
+
+        mock_exec.assert_called_once()
+        call_kwargs = mock_exec.call_args[1]
+        assert call_kwargs["env"] is None
