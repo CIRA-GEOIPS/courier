@@ -39,11 +39,62 @@ class _FallbackEncoder(json.JSONEncoder):
 # ---------------------------------------------------------------------------
 
 
+def _rows_to_grafana11_panels(rows: list[dict]) -> list[dict]:
+    """Convert legacy grafanalib rows to Grafana 11 flat panels array.
+
+    In the old format each row is ``{title, panels: [sub_panels], ...}``.
+    Grafana 11+ expects every panel (including row dividers) in the
+    top-level ``panels`` array.  Row dividers become panels with
+    ``"type": "row"``; their sub-panels are interleaved as siblings.
+
+    Parameters
+    ----------
+    rows : list[dict]
+        The raw ``to_json_data()`` output of grafanalib ``Row`` objects.
+
+    Returns
+    -------
+    list[dict]
+        A flat list of panel dicts suitable for the ``panels`` key of
+        a Grafana 11+ dashboard JSON.
+    """
+    flat: list[dict] = []
+    for row in rows:
+        title = row.get("title", "")
+        sub_panels = row.get("panels", [])
+
+        if not sub_panels:
+            # Section divider row (e.g. "Distributed Traces (Tempo)")
+            # — still needs to be a visible divider in Grafana 11
+            flat.append({
+                "type": "row",
+                "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+                "title": title,
+                "collapsed": row.get("collapse", False),
+            })
+        else:
+            # Row with nested panels — emit row divider + sub-panels
+            flat.append({
+                "type": "row",
+                "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+                "title": title,
+                "collapsed": row.get("collapse", False),
+            })
+            flat.extend(sub_panels)
+
+    return flat
+
+
 def _dashboard_to_json(dashboard: Dashboard, indent: int = 2) -> str:
     """Convert a single dashboard to a JSON string.
 
     Uses ``grafanalib._gen.DashboardEncoder`` when available; falls back
     to a custom encoder that handles ``datetime`` and ``set`` types.
+
+    Also converts legacy ``rows``-based dashboard layout to the flat
+    ``panels``-based layout required by Grafana 11+.  grafanalib's
+    ``Dashboard.to_json_data()`` clears ``panels`` to ``[]`` when
+    ``rows`` is present, but Grafana 11 ignores ``rows`` entirely.
 
     Raises
     ------
@@ -65,8 +116,22 @@ def _dashboard_to_json(dashboard: Dashboard, indent: int = 2) -> str:
     else:
         encoder_cls = DashboardEncoder
 
+    data = dashboard.to_json_data()
+
+    # grafanalib clears 'panels' when 'rows' is populated, but Grafana 11+
+    # ignores 'rows' and only renders the flat 'panels' array.
+    # Convert legacy rows → Grafana 11 row-panel format.
+    raw_rows = data.get("rows")
+    if raw_rows and not data.get("panels"):
+        row_data = [
+            r.to_json_data() if hasattr(r, "to_json_data") else r
+            for r in raw_rows
+        ]
+        data["panels"] = _rows_to_grafana11_panels(row_data)
+        data["rows"] = []
+
     return json.dumps(
-        dashboard.to_json_data(),
+        data,
         cls=encoder_cls,
         indent=indent,
         sort_keys=True,
