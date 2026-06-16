@@ -41,8 +41,13 @@ class RouteConfig(BaseModel, frozen=True):
     name : str
         Unique route label (used in metrics and logs).
     filters : dict[str, str]
-        Metadata equality filters. All key/value pairs must match a file
-        for the route to accept it.
+        Equality filters checked against File dataclass attributes
+        (e.g. ``source``, ``instrument``).
+    metadata_filters : dict[str, str]
+        Equality filters checked against ``file.metadata`` keys
+        (e.g. ``level``, ``domain``).  Merged with *filters* before
+        the file-is-relevant check so a route can require both
+        ``source: goes-18`` AND ``level: cwc``.
     files_per_job : int
         Fast-path emission threshold for this route.
     min_files : int
@@ -56,6 +61,7 @@ class RouteConfig(BaseModel, frozen=True):
 
     name: str
     filters: dict[str, str] = Field(default_factory=dict)
+    metadata_filters: dict[str, str] = Field(default_factory=dict)
     files_per_job: int = Field(default=1, ge=1)
     min_files: int = Field(default=1, ge=1)
     window_timeout_seconds: float | None = Field(default=None, gt=0)
@@ -80,12 +86,18 @@ class RouteConfig(BaseModel, frozen=True):
         return self
 
     def to_filter_and_group_config(self) -> FilterAndGroupConfig:
-        """Project this route onto a :class:`FilterAndGroupConfig`."""
+        """Project this route onto a :class:`FilterAndGroupConfig`.
+
+        Merges ``filters`` and ``metadata_filters`` into a single filter
+        dict so that ``_file_matches_filters`` checks both File dataclass
+        attributes (e.g. ``source``) and metadata-dict keys (e.g. ``level``).
+        """
+        merged_filters = {**self.filters, **self.metadata_filters}
         return FilterAndGroupConfig(
             files_per_job=self.files_per_job,
             min_files=self.min_files,
             window_timeout_seconds=self.window_timeout_seconds,
-            filters=self.filters,
+            filters=merged_filters,
             time_grouping=self.time_grouping,
         )
 

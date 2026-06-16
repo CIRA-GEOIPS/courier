@@ -208,11 +208,17 @@ def _build_single_dashboard(  # noqa: PLR0913
         traces_datasource=traces_datasource,
         loki_datasource=loki_datasource,
     )
+    suffix = ""
+    if only_traces:
+        suffix = "Traces"
+    elif only_logs:
+        suffix = "Logs"
+
     return _build_dashboard(
         templates,
         rows,
-        name=name or _make_dashboard_name(model),
-        uid=uid or _make_dashboard_uid(model),
+        name=name or _make_dashboard_name(model, suffix=suffix),
+        uid=uid or _make_dashboard_uid(model, suffix=suffix),
         tags=tags,
         description=model.description or "",
     )
