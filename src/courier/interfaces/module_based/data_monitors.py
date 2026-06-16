@@ -49,6 +49,7 @@ class DataMonitorBasePlugin(ServicePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
         # pluginify registration path: instantiated with only a module (or nothing).
         # Skip runtime setup; metadata collection reads class attributes directly.
@@ -56,6 +57,7 @@ class DataMonitorBasePlugin(ServicePlugin):
             return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
+        self.identifier = identifier or self.name
         self.queue = FILE_FOUND_EXCHANGE
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
@@ -147,16 +149,19 @@ class DataMonitorBasePlugin(ServicePlugin):
                         )
                     self._files_processed.labels(
                         monitor_name=self.name,
+                        monitor_identifier=self.identifier,
                         status="success",
                     ).inc()
 
                     # Update the last processed timestamp for peer latency dashboards
                     DATA_MONITOR_LAST_PROCESSED_TIMESTAMP.labels(
                         plugin_name=self.name,
+                        monitor_identifier=self.identifier,
                     ).set(time.time())
                 except CourierError:
                     self._files_processed.labels(
                         monitor_name=self.name,
+                        monitor_identifier=self.identifier,
                         status="failure",
                     ).inc()
                     self._logger.exception(f"Error processing file {incoming_file}")

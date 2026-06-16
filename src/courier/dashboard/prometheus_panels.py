@@ -7,14 +7,18 @@ generated.
 
 Metric provenance — which module emits each Prometheus metric family
 --------------------------------------------------------------------
-* ``courier_service_*`` — :mod:`courier.monitoring.service_metrics`
-* ``courier_data_monitor_*`` — :mod:`courier.monitoring.data_monitor_metrics`
-* ``courier_job_builder_*`` — :mod:`courier.monitoring.job_builder_metrics`
-* ``courier_dispatcher_*`` — :mod:`courier.monitoring.dispatcher_metrics`
-* ``courier_plugin_*`` — :mod:`courier.monitoring.plugin_metrics`
-* ``courier_broker_*`` — :mod:`courier.monitoring.broker_metrics`
-* ``courier_slurm_*`` — :mod:`courier.monitoring.slurm_metrics`
-* ``courier_http_*`` — :mod:`courier.monitoring.http_metrics`
+All metrics are defined in :mod:`courier.metrics` and emitted by call-sites
+in :mod:`courier.interfaces.module_based` and
+:mod:`courier.plugins.classes`.  There is no ``courier.monitoring`` package.
+
+* ``courier_service_*`` — :mod:`courier.metrics`
+* ``courier_data_monitor_*`` — :mod:`courier.metrics`
+* ``courier_job_builder_*`` — :mod:`courier.metrics`
+* ``courier_dispatcher_*`` — :mod:`courier.metrics`
+* ``courier_plugin_*`` — :mod:`courier.metrics`
+* ``courier_broker_*`` — :mod:`courier.metrics`
+* ``courier_dispatcher_slurm_*`` — :mod:`courier.metrics`
+* ``courier_dispatcher_http_*`` — :mod:`courier.metrics`
 
 Panel Generation Logic
 ----------------------
@@ -275,7 +279,11 @@ def build_prometheus_templates(model: DashboardModel) -> list[Template]:
     """Generate config-aware template variables for the dashboard.
 
     Templates are populated from the model's configured plugins so the
-    Grafana UI only offers identifiers that actually exist in the pipeline.
+    Grafana UI only offers values that actually exist in the pipeline.
+    All plugin filters use the plugin **type-name** domain
+    (``plugin_name`` / ``self.name`` ClassVar) — the same domain that
+    the runtime metrics are labelled with — so that ``{…=~"$filter"}``
+    selectors actually match emitted data.
 
     Parameters
     ----------
@@ -300,20 +308,18 @@ def build_prometheus_templates(model: DashboardModel) -> list[Template]:
     )
 
     # -- Plugin filter (always — populated from all plugins) ----------------
-    plugin_ids = [p.identifier for p in model.plugins]
-    if plugin_ids:
+    plugin_names = [p.plugin_name for p in model.plugins]
+    if plugin_names:
         templates.append(
             _custom_template(
                 name="plugin_filter",
                 label="Plugin Filter",
-                options=plugin_ids,
+                options=plugin_names,
             ),
         )
 
     # -- Data Monitor plugins -----------------------------------------------
     if model.data_monitors:
-        # $dm_plugin uses plugin class name (dm.plugin_name), not config identifier.
-        # Matches monitor_name / plugin_name label domain on emitted metrics.
         dm_ids = [dm.plugin_name for dm in model.data_monitors]
         templates.append(
             _custom_template(
@@ -337,23 +343,23 @@ def build_prometheus_templates(model: DashboardModel) -> list[Template]:
 
     # -- Job Builder plugins ------------------------------------------------
     if model.job_builders:
-        jb_ids = [jb.identifier for jb in model.job_builders]
+        jb_names = [jb.plugin_name for jb in model.job_builders]
         templates.append(
             _custom_template(
                 name="jb_plugin",
                 label="Job Builder",
-                options=jb_ids,
+                options=jb_names,
             ),
         )
 
     # -- Dispatcher plugins -------------------------------------------------
     if model.dispatchers:
-        dp_ids = [dp.identifier for dp in model.dispatchers]
+        dp_names = [dp.plugin_name for dp in model.dispatchers]
         templates.append(
             _custom_template(
                 name="dp_plugin",
                 label="Dispatcher",
-                options=dp_ids,
+                options=dp_names,
             ),
         )
 
@@ -466,7 +472,7 @@ def _service_overview_panels(
             gs,
             title="Pending Jobs",
             expr=(
-                f"max({_PREFIX}_job_builder_pending_jobs"
+                f"max({_PREFIX}_job_builder_active_groups"
                 f'{{job_builder_name=~"$jb_plugin"}})'
             ),
             x=18,
@@ -538,12 +544,16 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     if not model.data_monitors:
         return None
 
+    dm_plugin_names = {dm.plugin_name for dm in model.data_monitors}
+    _POLL_MONITORS = {"s3_poller", "sftp_poller", "cron_glob"}
+    has_poll_monitors = bool(dm_plugin_names & _POLL_MONITORS)
+
     y_row = _advance(gs, 1)
     lbl = 'monitor_name=~"$dm_plugin"'
 
     panels: list = []
 
-    # --- Sub-row 1: files processed, processing time, errors ---------------
+    # --- Sub-row 1: files processed, processing time (poll-only), errors ---------------
     py1 = _advance(gs, 8)
 
     panels.append(
@@ -566,35 +576,37 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         ),
     )
 
-    panels.append(
-        _timeseries(
-            gs,
-            title="Processing Time (avg)",
-            targets=[
-                _target(
-                    _avg_rate(
-                        f"{_PREFIX}_data_monitor_processing_time_seconds_sum",
-                        f"{_PREFIX}_data_monitor_processing_time_seconds_count",
-                        lbl,
+    if has_poll_monitors:
+        panels.append(
+            _timeseries(
+                gs,
+                title="Processing Time (avg)",
+                description="Average scan duration for poll-based data monitors (s3_poller, sftp_poller, cron_glob). Event-driven monitors do not emit this metric.",
+                targets=[
+                    _target(
+                        _avg_rate(
+                            f"{_PREFIX}_data_monitor_scan_duration_seconds_sum",
+                            f"{_PREFIX}_data_monitor_scan_duration_seconds_count",
+                            lbl,
+                        ),
+                        "{{monitor_name}}",
                     ),
-                    "{{monitor_name}}",
-                ),
-            ],
-            unit=YAXIS_SECONDS,
-            y=py1,
-            w=8,
-            x=8,
-        ),
-    )
+                ],
+                unit=YAXIS_SECONDS,
+                y=py1,
+                w=8,
+                x=8,
+            ),
+        )
 
     panels.append(
         _timeseries(
             gs,
             title="Errors",
-            description="Shows the error rate per selected data monitor plugin. Why it matters: any non-zero error rate indicates file processing failures. When errors appear: inspect the data monitor's error logs for the failing file paths.",
+            description="Shows the file processing failure rate per selected data monitor plugin. Why it matters: any non-zero error rate indicates file processing failures. When errors appear: inspect the data monitor's error logs for the failing file paths.",
             targets=[
                 _target(
-                    _rate(f"{_PREFIX}_data_monitor_errors_total", lbl),
+                    _rate(f"{_PREFIX}_data_monitor_files_processed_total", lbl + ', status="failure"'),
                     "{{monitor_name}}",
                 ),
             ],
@@ -602,8 +614,8 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             fill_opacity=30,
             unit="ops",
             y=py1,
-            w=8,
-            x=16,
+            w=8 if has_poll_monitors else 12,
+            x=16 if has_poll_monitors else 8,
         ),
     )
 
@@ -627,18 +639,18 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         ),
     )
 
-    # --- Sub-row 3: files by source type (bar gauge) ----------------------
+    # --- Sub-row 3: files by status (bar gauge) ----------------------
     py2 = _advance(gs, 8)
 
     panels.append(
         _timeseries(
             gs,
-            title="Files by Source Type",
+            title="Files by Status",
             targets=[
                 _target(
                     f"sum({_rate(f'{_PREFIX}_data_monitor_files_processed_total')})"
-                    " by (source_type)",
-                    "{{source_type}}",
+                    " by (status)",
+                    "{{status}}",
                 ),
             ],
             unit="ops",
@@ -679,7 +691,7 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
             targets=[
                 _target(
                     _rate(
-                        f"{_PREFIX}_metadata_router_files_routed_total", lbl,
+                        f"{_PREFIX}_job_builder_route_matches_total", lbl,
                     ),
                     "{{route_name}} — {{target}}",
                 ),
@@ -697,7 +709,7 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
             title="Route Distribution",
             targets=[
                 _target(
-                    f"sum({_rate(f'{_PREFIX}_metadata_router_files_routed_total')})"
+                    f"sum({_rate(f'{_PREFIX}_job_builder_route_matches_total')})"
                     " by (route_name)",
                     "{{route_name}}",
                 ),
@@ -723,7 +735,7 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
 
 
 def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
-    """Generate Job Builder panels — jobs built, pending, timing, queue depth."""
+    """Generate Job Builder panels — jobs built, pending groups, timing."""
     if not model.job_builders:
         return None
 
@@ -732,7 +744,7 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
     panels: list = []
 
-    # --- Sub-row 1: jobs built, pending, processing time ------------------
+    # --- Sub-row 1: jobs built, pending groups, processing time ------------------
     py1 = _advance(gs, 8)
 
     panels.append(
@@ -755,11 +767,12 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     panels.append(
         GaugePanel(
             id=_next_id(gs),
-            title="Pending Jobs",
+            title="Active Groups",
+            description="Number of active file groups currently accumulating in the job builder. Why it matters: growing active groups indicate files are arriving faster than groups are being completed. When amber: check file arrival patterns and group timeout settings.",
             dataSource=_DS,
             targets=[
                 _target(
-                    f"{_PREFIX}_job_builder_pending_jobs{{{lbl}}}",
+                    f"{_PREFIX}_job_builder_active_groups{{{lbl}}}",
                     "{{job_builder_name}}",
                 ),
             ],
@@ -774,8 +787,8 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             targets=[
                 _target(
                     _avg_rate(
-                        f"{_PREFIX}_job_builder_processing_time_seconds_sum",
-                        f"{_PREFIX}_job_builder_processing_time_seconds_count",
+                        f"{_PREFIX}_job_builder_file_processing_duration_seconds_sum",
+                        f"{_PREFIX}_job_builder_file_processing_duration_seconds_count",
                         lbl,
                     ),
                     "{{job_builder_name}}",
@@ -783,29 +796,8 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             ],
             unit=YAXIS_SECONDS,
             y=py1,
-            w=8,
+            w=12,
             x=12,
-        ),
-    )
-
-    # --- Sub-row 2: queue depth -------------------------------------------
-    py2 = _advance(gs, 8)
-
-    panels.append(
-        _timeseries(
-            gs,
-            title="Queue Depth",
-            description="Best-effort approximation of messages in-flight. Why it matters: growing queue depth means consumers are not keeping up with producers. When red (>100): check dispatcher and job builder throughput. Note: this is a directional signal only — for authoritative depth, consult broker-native metrics.",
-            targets=[
-                _target(
-                    f"{_PREFIX}_job_builder_queue_depth{{{lbl}}}",
-                    "{{job_builder_name}}",
-                ),
-            ],
-            unit=YAXIS_SHORT,
-            y=py2,
-            w=24,
-            x=0,
         ),
     )
 
@@ -823,7 +815,7 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
 
 def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
-    """Generate Dispatcher panels — jobs executed, timing, success rate, codes."""
+    """Generate Dispatcher panels — jobs processed, timing, success rate, status codes."""
     if not model.dispatchers:
         return None
 
@@ -832,16 +824,16 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
     panels: list = []
 
-    # --- Sub-row 1: jobs executed, execution time, success rate -----------
+    # --- Sub-row 1: jobs processed, execution time, success rate -----------
     py1 = _advance(gs, 8)
 
     panels.append(
         _timeseries(
             gs,
-            title="Jobs Executed",
+            title="Jobs Processed",
             targets=[
                 _target(
-                    _rate(f"{_PREFIX}_dispatcher_jobs_executed_total", lbl),
+                    _rate(f"{_PREFIX}_dispatcher_jobs_processed_total", lbl),
                     "{{dispatcher_name}} — {{status}}",
                 ),
             ],
@@ -859,8 +851,8 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             targets=[
                 _target(
                     _avg_rate(
-                        f"{_PREFIX}_dispatcher_execution_time_seconds_sum",
-                        f"{_PREFIX}_dispatcher_execution_time_seconds_count",
+                        f"{_PREFIX}_dispatcher_job_execution_duration_seconds_sum",
+                        f"{_PREFIX}_dispatcher_job_execution_duration_seconds_count",
                         lbl,
                     ),
                     "{{dispatcher_name}}",
@@ -874,10 +866,10 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     )
 
     success_rate = _rate(
-        f"{_PREFIX}_dispatcher_jobs_succeeded_total", lbl,
+        f"{_PREFIX}_dispatcher_jobs_processed_total", lbl + ', status="success"',
     )
     executed_rate = _rate(
-        f"{_PREFIX}_dispatcher_jobs_executed_total", lbl,
+        f"{_PREFIX}_dispatcher_jobs_processed_total", lbl,
     )
 
     panels.append(
@@ -901,19 +893,19 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         ),
     )
 
-    # --- Sub-row 2: return codes table ------------------------------------
+    # --- Sub-row 2: status codes table ------------------------------------
     py2 = _advance(gs, 8)
 
     panels.append(
         Table(
             id=_next_id(gs),
-            title="Return Codes",
+            title="Status Codes",
             dataSource=_DS,
             targets=[
                 _target(
-                    f"sum by (return_code)"
-                    f" ({_rate(f'{_PREFIX}_dispatcher_jobs_executed_total', lbl)})",
-                    "{{return_code}}",
+                    f"sum by (status)"
+                    f" ({_rate(f'{_PREFIX}_dispatcher_jobs_processed_total', lbl)})",
+                    "{{status}}",
                 ),
             ],
             gridPos=GridPos(h=8, w=24, x=0, y=py2),
@@ -934,7 +926,7 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
 
 def _slurm_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
-    """Generate SLURM-specific panels — jobs submitted, queue, node status."""
+    """Generate SLURM-specific panels — jobs submitted, queue depth."""
     if not model.has_slurm:
         return None
 
@@ -950,13 +942,13 @@ def _slurm_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             title="SLURM Jobs Submitted",
             targets=[
                 _target(
-                    _rate(f"{_PREFIX}_slurm_jobs_submitted_total", lbl),
+                    _rate(f"{_PREFIX}_dispatcher_slurm_submissions_total", lbl),
                     "{{dispatcher_name}} — {{status}}",
                 ),
             ],
             unit="ops",
             y=py,
-            w=8,
+            w=12,
             x=0,
         ),
     )
@@ -964,32 +956,17 @@ def _slurm_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     panels.append(
         _timeseries(
             gs,
-            title="SLURM Queue Depth",
+            title="SLURM Jobs Pending",
             targets=[
                 _target(
-                    f"{_PREFIX}_slurm_queue_depth{{{lbl}}}",
+                    f"{_PREFIX}_dispatcher_slurm_jobs_pending{{{lbl}}}",
                     "{{dispatcher_name}}",
                 ),
             ],
             unit=YAXIS_SHORT,
             y=py,
-            w=8,
-            x=8,
-        ),
-    )
-
-    panels.append(
-        Table(
-            id=_next_id(gs),
-            title="SLURM Node Status",
-            dataSource=_DS,
-            targets=[
-                _target(
-                    f"{_PREFIX}_slurm_node_state{{{lbl}}}",
-                    "{{node}} — {{state}}",
-                ),
-            ],
-            gridPos=GridPos(h=8, w=8, x=16, y=py),
+            w=12,
+            x=12,
         ),
     )
 
@@ -1021,11 +998,11 @@ def _http_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     panels.append(
         _timeseries(
             gs,
-            title="HTTP Requests",
+            title="HTTP Responses",
             targets=[
                 _target(
-                    _rate(f"{_PREFIX}_http_requests_total", lbl),
-                    "{{dispatcher_name}} — {{method}} — {{path}}",
+                    _rate(f"{_PREFIX}_dispatcher_http_response_codes_total", lbl),
+                    "{{dispatcher_name}} — {{status_code}}",
                 ),
             ],
             unit="ops",
@@ -1042,8 +1019,8 @@ def _http_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             targets=[
                 _target(
                     _avg_rate(
-                        f"{_PREFIX}_http_request_duration_seconds_sum",
-                        f"{_PREFIX}_http_request_duration_seconds_count",
+                        f"{_PREFIX}_dispatcher_http_request_duration_seconds_sum",
+                        f"{_PREFIX}_dispatcher_http_request_duration_seconds_count",
                         lbl,
                     ),
                     "{{dispatcher_name}}",
@@ -1063,7 +1040,7 @@ def _http_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             targets=[
                 _target(
                     f"sum by (status_code)"
-                    f" ({_rate(f'{_PREFIX}_http_requests_total', lbl)})",
+                    f" ({_rate(f'{_PREFIX}_dispatcher_http_response_codes_total', lbl)})",
                     "{{status_code}}",
                 ),
             ],
@@ -1204,11 +1181,12 @@ def _broker_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
     panels.append(
         _timeseries(
             gs,
-            title="Broker Publish Errors",
+            title="Emit Failures",
+            description="Aggregate rate of job-emit failures across all job builders. Why it matters: non-zero means dispatched jobs are being dropped before they reach the broker. When errors appear: check job builder logs and broker connectivity.",
             targets=[
                 _target(
-                    _rate(f"{_PREFIX}_broker_publish_errors_total"),
-                    "{{queue_name}} — {{error_type}}",
+                    _rate(f"{_PREFIX}_job_builder_emit_failures_total"),
+                    "{{job_builder_name}} — {{target}} — {{reason}}",
                 ),
             ],
             unit="ops",
@@ -1274,8 +1252,8 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
                     ref="B",
                 ),
                 _target(
-                    f"sum({_rate(f'{_PREFIX}_dispatcher_jobs_executed_total')})",
-                    "Jobs Executed",
+                    f"sum({_rate(f'{_PREFIX}_dispatcher_jobs_processed_total')})",
+                    "Jobs Processed",
                     ref="C",
                 ),
             ],
@@ -1304,8 +1282,8 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
                     ref="B",
                 ),
                 _target(
-                    f"sum({_rate(f'{_PREFIX}_dispatcher_jobs_executed_total')})",
-                    "Executions/s",
+                    f"sum({_rate(f'{_PREFIX}_dispatcher_jobs_processed_total')})",
+                    "Processed/s",
                     ref="C",
                 ),
             ],
@@ -1313,11 +1291,14 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
         ),
     )
 
-    dm_err = _rate(f"{_PREFIX}_data_monitor_errors_total")
-    broker_err = _rate(f"{_PREFIX}_broker_publish_errors_total")
+    dm_err = _rate(
+        f"{_PREFIX}_data_monitor_files_processed_total",
+        'status="failure"',
+    )
+    emit_err = _rate(f"{_PREFIX}_job_builder_emit_failures_total")
     dp_err = _rate(
-        f"{_PREFIX}_dispatcher_jobs_executed_total",
-        'status="error"',
+        f"{_PREFIX}_dispatcher_jobs_processed_total",
+        'status="failure"',
     )
 
     panels.append(
@@ -1328,7 +1309,7 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
                 _target(
                     (
                         f"sum({dm_err})"
-                        f" or sum({broker_err})"
+                        f" or sum({emit_err})"
                         f" or sum({dp_err})"
                     ),
                     "Total Errors",

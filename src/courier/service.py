@@ -527,6 +527,7 @@ class Service:
 
         except KeyboardInterrupt:
             self._logger.info("Received keyboard interrupt")
+            raise
         except Exception:
             self._logger.exception("Service startup failed")
             raise

@@ -1,0 +1,968 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Serial Bash Dispatcher (serial_bash) &mdash; Courier 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=b4795e93" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../_static/copybutton.js?v=fd10adb8"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Parallel Bash Dispatcher (parallel_bash)" href="parallel_bash.html" />
+    <link rel="prev" title="Plugins API Reference" href="../plugins.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Courier
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/installation.html">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#installation-methods">Installation Methods</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-uv-pip-recommended-for-users">Using uv pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-nix-recommended-for-developers">Using Nix (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-docker">Using Docker</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#prometheus-optional">Prometheus (Optional)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#verification">Verification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#development-setup">Development Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/installation.html#using-dev-containers-vs-code">Using Dev Containers (VS Code)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/installation.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/quick-start.html">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#what-we-ll-build">What We’ll Build</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-1-prepare-your-data-directory">Step 1: Prepare Your Data Directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-2-create-service-configuration">Step 2: Create Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-3-start-the-service">Step 3: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-4-test-with-data">Step 4: Test with Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-5-monitor-with-prometheus">Step 5: Monitor with Prometheus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#step-6-stop-the-service">Step 6: Stop the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/quick-start.html#need-help">Need Help?</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/init.html">Interactive Service Config Generator</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#usage">Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#options">Options</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#walkthrough">Walkthrough</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#generated-file-structure">Generated File Structure</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#default-broker">Default Broker</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/init.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting-started/configuration.html">Configuration Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#minimal-working-example">Minimal Working Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#document-metadata">Document Metadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#service-spec">Service Spec</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#heartbeat-interval"><code class="docutils literal notranslate"><span class="pre">heartbeat_interval</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#run"><code class="docutils literal notranslate"><span class="pre">run</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#broker-configuration">Broker Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#amqp">AMQP</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#amqp-field-reference">AMQP field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#redis">Redis</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#redis-field-reference">Redis field reference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#in-memory-default">In-Memory (default)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#url-generic-passthrough">URL (generic passthrough)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#examples-for-common-transports">Examples for common transports</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../getting-started/configuration.html#url-field-reference">URL field reference</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#distributed-deployment-with-only">Distributed Deployment with <code class="docutils literal notranslate"><span class="pre">--only</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#syntax">Syntax</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#example-two-container-split">Example: Two-Container Split</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#important-notes">Important Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#complete-example">Complete Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../getting-started/configuration.html#production-amqp-with-tls">Production AMQP with TLS</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#validation">Validation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#configuration-precedence">Configuration Precedence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../getting-started/configuration.html#jinja2-template-context">Jinja2 Template Context</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html">Tutorial 1: Simple File Watcher</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-1-project-setup">Step 1: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-2-create-test-data">Step 2: Create Test Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-3-write-service-configuration">Step 3: Write Service Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-4-validate-configuration">Step 4: Validate Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-5-start-the-service">Step 5: Start the Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-6-test-file-detection">Step 6: Test File Detection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-7-examine-metadata-extraction">Step 7: Examine Metadata Extraction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-8-monitor-with-prometheus">Step 8: Monitor with Prometheus</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#service-health">Service health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#files-processed">Files processed</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#jobs-built">Jobs built</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#jobs-executed">Jobs executed</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-9-experiment-with-multiple-files">Step 9: Experiment with Multiple Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#step-10-clean-shutdown">Step 10: Clean Shutdown</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/01-simple-file-watcher.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html">Tutorial 2: Distributed Docker Deployment</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#learning-objectives">Learning Objectives</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-1-architecture-overview">Step 1: Architecture Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-2-project-setup">Step 2: Project Setup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-3-rabbitmq-service">Step 3: RabbitMQ Service</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-4-data-monitor-container">Step 4: Data Monitor Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-5-builder-and-dispatcher-container">Step 5: Builder and Dispatcher Container</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-6-prometheus-and-grafana">Step 6: Prometheus and Grafana</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#prometheus">Prometheus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#grafana-dashboard-generation">Grafana Dashboard Generation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#complete-compose-file-so-far">Complete Compose File So Far</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-7-distributed-tracing">Step 7: Distributed Tracing</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#complete-compose-file">Complete Compose File</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#step-8-deploy-and-verify">Step 8: Deploy and Verify</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#start-the-stack">Start the Stack</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#check-service-status">Check Service Status</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#verify-the-data-monitor">Verify the Data Monitor</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#browse-the-uis">Browse the UIs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#test-file-processing">Test File Processing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#verify-the-trace">Verify the Trace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#clean-shutdown">Clean Shutdown</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#common-issues">Common Issues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#what-you-learned">What You Learned</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#next-steps">Next Steps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#challenge-exercises">Challenge Exercises</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../tutorials/02-docker-swarm-cluster.html#complete-code">Complete Code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Operations</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../operations/high-availability.html">High-Availability Job Builder State Sync</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#when-to-enable-state-sync">When to Enable State Sync</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#architecture">Architecture</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#redis-data-layout">Redis Data Layout</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#how-a-mutation-propagates">How a Mutation Propagates</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#conflict-resolution">Conflict Resolution</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#duplicate-dispatch-prevention">Duplicate-Dispatch Prevention</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#startup-state-recovery">Startup State Recovery</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#configuration">Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#field-reference">Field Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#multi-tenant-isolation">Multi-Tenant Isolation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#complete-example">Complete Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#failsafe-behavior-at-startup">Failsafe Behavior at Startup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#observability">Observability</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/high-availability.html#useful-queries">Useful Queries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#trade-offs-and-limitations">Trade-offs and Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/high-availability.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../operations/tracing.html">Courier Distributed Tracing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#tracing-architecture-overview">1. Tracing Architecture Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#pipeline-integration">Pipeline Integration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#boundary-pattern">Boundary Pattern</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#trace-root-semantics">Trace Root Semantics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#correlation">Correlation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#relationship-to-existing-observability">Relationship to Existing Observability</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#configuration-reference">2. Configuration Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#fields">Fields</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#disabling-tracing">Disabling Tracing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#sampling-behavior">Sampling Behavior</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#service-name-fallback">Service Name Fallback</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#endpoint-format">Endpoint Format</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#span-naming-conventions-attribute-schema">3. Span Naming Conventions &amp; Attribute Schema</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#span-types">Span Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#attribute-keys">Attribute Keys</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#span-events">Span Events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#opentelemetry-messaging-semantic-conventions">OpenTelemetry Messaging Semantic Conventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#development-guide">4. Development Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#writing-tests-with-listexporter">4.1 Writing Tests with <code class="docutils literal notranslate"><span class="pre">_ListExporter</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#test-isolation-with-reset-tracing-and-force-noop-global-provider">4.2 Test Isolation with <code class="docutils literal notranslate"><span class="pre">reset_tracing()</span></code> and <code class="docutils literal notranslate"><span class="pre">_force_noop_global_provider()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#adding-tracing-to-a-new-plugin-type">4.3 Adding Tracing to a New Plugin Type</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#the-trace-plugin-method-decorator">4.4 The <code class="docutils literal notranslate"><span class="pre">&#64;trace_plugin_method</span></code> Decorator</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#operations-guide">5. Operations Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#slow-detection-thresholds">5.1 Slow Detection Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#setting-up-an-otlp-collector">5.2 Setting Up an OTLP Collector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#querying-traces">5.3 Querying Traces</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#follow-a-file-through-the-pipeline">Follow a File Through the Pipeline</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#identifying-slow-plugins">Identifying Slow Plugins</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#monitoring-otlp-export-health">5.4 Monitoring OTLP Export Health</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#production-monitoring-workflows">5.5 Production Monitoring Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#what-to-monitor-day-to-day">What to Monitor Day-to-Day</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#spotting-degradation">Spotting Degradation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#setting-up-alerts">Setting Up Alerts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#root-causing-with-span-hierarchy">Root-Causing With Span Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#common-operational-queries">Common Operational Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#correlating-traces-with-logs">Correlating Traces With Logs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#production-readiness-checklist">Production Readiness Checklist</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#audit-trail-workflows">5.6 Audit Trail Workflows</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#building-an-audit-trail-for-a-specific-file">Building an Audit Trail for a Specific File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#data-lineage-queries">Data Lineage Queries</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#exporting-audit-data">Exporting Audit Data</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#compliance-considerations">Compliance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#chain-of-custody">Chain of Custody</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#tamper-evidence">Tamper Evidence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../operations/tracing.html#example-audit-report-query">Example Audit Report Query</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../operations/tracing.html#quick-reference">6. Quick Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#environment-variables">Environment Variables</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../operations/tracing.html#span-name-quick-index">Span Name Quick Index</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Concepts</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../concepts/index.html">Design Concepts</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../concepts/index.html#architecture-decision-records-adrs">Architecture Decision Records (ADRs)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html">ADR-0001: Kombu-Based Message Broker Abstraction</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0001-kombu-message-broker-abstraction.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html">ADR-0002: Redis-Based HA State Sync for Job Builders</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0002-redis-ha-state-sync.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html">ADR-0003: PluginRunState Enum for Plugin Lifecycle</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0003-plugin-run-state-enum.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html">ADR-0004: File / FrozenFile Type Split</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0004-frozen-file-mutable-file-split.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html">ADR-0005: Segregated Plugin Protocols</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html#alternatives-considered">Alternatives Considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html#trade-offs-accepted">Trade-offs Accepted</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0005-segregated-plugin-protocols.html#consequences">Consequences</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../../concepts/adr/0006-dispatcher-routing.html">ADR-0006: Dispatcher Routing via Named Per-Dispatcher Queues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0006-dispatcher-routing.html#status">Status</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0006-dispatcher-routing.html#context">Context</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0006-dispatcher-routing.html#decision">Decision</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0006-dispatcher-routing.html#alternatives-considered">Alternatives considered</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../concepts/adr/0006-dispatcher-routing.html#consequences">Consequences</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Contribute</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../contribute/code-style.html">Code Style Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../plugins.html">Plugins API Reference</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../plugins.html#standard-data-monitors">Standard Data Monitors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#file-system-poller-watchdog">file_system_poller_watchdog</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../plugins.html#standard-dispatchers">Standard Dispatchers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#serial-bash">serial_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#parallel-bash">parallel_bash</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#pipeline-feedback-with-emit-file">Pipeline Feedback with <code class="docutils literal notranslate"><span class="pre">emit_file</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3 current"><a class="reference internal" href="../plugins.html#standard-job-builders">Standard Job Builders</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#dummyjobbuilder">DummyJobBuilder</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../plugins.html#filter-and-group">filter_and_group</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="../plugins.html#metadatarouterbuilder">MetadataRouterBuilder</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../types.html">Types API Reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../types.html#file">File</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../types.html#key-methods">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../types.html#frozenfile">FrozenFile</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../types.html#id1">Key Methods</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../types.html#breaking-changes">Breaking Changes</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Courier</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">API Reference</a></li>
+          <li class="breadcrumb-item"><a href="../plugins.html">Plugins API Reference</a></li>
+      <li class="breadcrumb-item active">Serial Bash Dispatcher (<code class="docutils literal notranslate"><span class="pre">serial_bash</span></code>)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/api-reference/plugins/serial_bash.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="../plugins.html" class="btn btn-neutral float-left" title="Plugins API Reference" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="parallel_bash.html" class="btn btn-neutral float-right" title="Parallel Bash Dispatcher (parallel_bash)" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="serial-bash-dispatcher-serial-bash">
+<h1>Serial Bash Dispatcher (<code class="docutils literal notranslate"><span class="pre">serial_bash</span></code>)<a class="headerlink" href="#serial-bash-dispatcher-serial-bash" title="Link to this heading"></a></h1>
+<dl class="myst field-list simple">
+<dt class="field-odd">class<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">~courier.plugins.classes.dispatchers.serial_bash.SerialBashDispatcher</span></code></p>
+</dd>
+</dl>
+<p>Executes a single Jinja2-templated bash script for an entire job. One script
+is rendered and executed per job — all files in the job are available in the
+template as a list. Produces a single</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">class<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">~courier.types.execution_log.ExecutionLog</span></code> (or none if the job has no
+files).</p>
+</dd>
+</dl>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h2>
+<dl class="myst field-list simple">
+<dt class="field-odd">class<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">~courier.plugins.classes.dispatchers.serial_bash.SerialBashConfig</span></code></p>
+</dd>
+</dl>
+<p>.. list-table::</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">header-rows<span class="colon">:</span></dt>
+<dd class="field-odd"><p>1</p>
+<ul class="simple">
+<li><ul>
+<li><p>Field</p></li>
+<li><p>Type</p></li>
+<li><p>Default</p></li>
+<li><p>Description</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">bash_script</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></li>
+<li><p><em>(required)</em></p></li>
+<li><p>Jinja2-templated bash script. Validated for syntax at config time (fail-fast).</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">timeout_seconds</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">3600.0</span></code></p></li>
+<li><p>Maximum script execution time in seconds. Must be greater than 0.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">log_to_logger</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></li>
+<li><p>When <code class="docutils literal notranslate"><span class="pre">True</span></code>, streams stdout/stderr to the Python logger in real time.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">log_to_file</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></li>
+<li><p>When <code class="docutils literal notranslate"><span class="pre">True</span></code>, writes script output to a log file on disk.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">log_dir</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></li>
+<li><p>Directory for log files. Required when <code class="docutils literal notranslate"><span class="pre">log_to_file=True</span></code>. Created if missing.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">log_only_errors</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></li>
+<li><p>When <code class="docutils literal notranslate"><span class="pre">True</span></code>, only logs output if the script returns non-zero or produces stderr.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">output_files</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">list[OutputFilePattern]</span></code> | <code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p>Regex patterns to discover output file paths from stdout (and optionally stderr). See :ref:<code class="docutils literal notranslate"><span class="pre">output-file-scanning-serial</span></code>.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">python_venv</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p>Path to a Python virtual environment.  When set, the dispatcher prepends
+the venv’s <code class="docutils literal notranslate"><span class="pre">bin/</span></code> directory to <code class="docutils literal notranslate"><span class="pre">PATH</span></code> and sets the <code class="docutils literal notranslate"><span class="pre">VIRTUAL_ENV</span></code>
+environment variable before executing the bash script.  Validation
+(fail-fast) checks that the path exists, is a directory, and contains
+<code class="docutils literal notranslate"><span class="pre">bin/python</span></code>.  Relative paths are resolved to absolute.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">scan_stderr</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p></li>
+<li><p>When <code class="docutils literal notranslate"><span class="pre">True</span></code>, appends stderr to stdout before scanning for output file paths.</p></li>
+</ul>
+</li>
+</ul>
+</dd>
+</dl>
+<section id="basic-example">
+<h3>Basic Example<a class="headerlink" href="#basic-example" title="Link to this heading"></a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">process-raw</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">#!/bin/bash</span>
+<span class="w">            </span><span class="no">{% for f in files %}</span>
+<span class="w">            </span><span class="no">echo &quot;Processing {{ f.file }}&quot;</span>
+<span class="w">            </span><span class="no">cp {{ f.file }} /output/</span>
+<span class="w">            </span><span class="no">{% endfor %}</span>
+<span class="w">          </span><span class="nt">timeout_seconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1800.0</span>
+</pre></div>
+</div>
+</section>
+<section id="logging-configuration">
+<h3>Logging Configuration<a class="headerlink" href="#logging-configuration" title="Link to this heading"></a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">process-with-logs</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">#!/bin/bash</span>
+<span class="w">            </span><span class="no">echo &quot;Starting processing...&quot;</span>
+<span class="w">            </span><span class="no">{% for f in files %}</span>
+<span class="w">            </span><span class="no">echo &quot;Processing {{ f.file }}&quot;</span>
+<span class="w">            </span><span class="no">{% endfor %}</span>
+<span class="w">          </span><span class="nt">log_to_logger</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">          </span><span class="nt">log_to_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">          </span><span class="nt">log_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/log/courier</span>
+<span class="w">          </span><span class="nt">log_only_errors</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="template-context">
+<h2>Template Context<a class="headerlink" href="#template-context" title="Link to this heading"></a></h2>
+<p>The following variables are available inside the Jinja2 template:</p>
+<p>.. list-table::</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">header-rows<span class="colon">:</span></dt>
+<dd class="field-odd"><p>1</p>
+<ul class="simple">
+<li><ul>
+<li><p>Variable</p></li>
+<li><p>Description</p></li>
+<li><p>Example</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">files</span></code></p></li>
+<li><p>List of all :class:<code class="docutils literal notranslate"><span class="pre">~courier.types.file.FrozenFile</span></code> dicts (via :meth:<code class="docutils literal notranslate"><span class="pre">~courier.types.file.FrozenFile.to_dict</span></code>). Each dict has keys: <code class="docutils literal notranslate"><span class="pre">file</span></code>, <code class="docutils literal notranslate"><span class="pre">hostname</span></code>, <code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">instrument</span></code>, <code class="docutils literal notranslate"><span class="pre">processing_stage</span></code>, <code class="docutils literal notranslate"><span class="pre">domain</span></code>, <code class="docutils literal notranslate"><span class="pre">num_expected</span></code>, <code class="docutils literal notranslate"><span class="pre">timestamp</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{{</span> <span class="pre">files[0].file</span> <span class="pre">}}</span></code></p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">job</span></code></p></li>
+<li><p>Job metadata dict with keys: <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">identifier</span></code>, <code class="docutils literal notranslate"><span class="pre">config</span></code>, <code class="docutils literal notranslate"><span class="pre">last_modified</span></code>, <code class="docutils literal notranslate"><span class="pre">timeout</span></code>, <code class="docutils literal notranslate"><span class="pre">correlation_id</span></code>, <code class="docutils literal notranslate"><span class="pre">emit_time</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{{</span> <span class="pre">job.name</span> <span class="pre">}}</span></code></p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">config</span></code></p></li>
+<li><p>Alias for <code class="docutils literal notranslate"><span class="pre">job.config</span></code> (convenience access to the job’s configuration dict).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{{</span> <span class="pre">config.key</span> <span class="pre">}}</span></code></p></li>
+</ul>
+</li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="error-handling">
+<h2>Error Handling<a class="headerlink" href="#error-handling" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Config time</strong>: Invalid Jinja2 syntax in <code class="docutils literal notranslate"><span class="pre">bash_script</span></code> raises</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">class<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">pydantic.ValidationError</span></code> at plugin registration (fail-fast). The
+service will not start until the template is valid.</p>
+</dd>
+</dl>
+</li>
+<li><p><strong>Render time</strong>: Runtime template errors (e.g. accessing attributes on
+undefined variables) return
+<code class="docutils literal notranslate"><span class="pre">ExecutionLog(return_code=-1,</span> <span class="pre">stderr=...)</span></code> — the pipeline continues.</p></li>
+<li><p><strong>Execution time</strong>: Subprocess timeouts and non-zero exit codes are captured
+as :class:<code class="docutils literal notranslate"><span class="pre">~courier.types.execution_log.ExecutionLog</span></code> entries (never
+raised). The <code class="docutils literal notranslate"><span class="pre">return_code</span></code>, <code class="docutils literal notranslate"><span class="pre">stdout</span></code>, and <code class="docutils literal notranslate"><span class="pre">stderr</span></code> fields contain the
+subprocess output.</p></li>
+<li><p><strong>Empty jobs</strong>: If the job has no files, no script is executed and an empty
+list is returned. A warning is logged.</p></li>
+</ul>
+<section id="jinja2-undefined-behavior">
+<h3>Jinja2 Undefined Behavior<a class="headerlink" href="#jinja2-undefined-behavior" title="Link to this heading"></a></h3>
+<p>Uses <code class="docutils literal notranslate"><span class="pre">jinja2.DebugUndefined</span></code> as the undefined type. Simple undefined
+variable references (e.g. <code class="docutils literal notranslate"><span class="pre">{{</span> <span class="pre">missing</span> <span class="pre">}}</span></code>) render as an empty string.
+Attribute access on undefined variables (e.g. <code class="docutils literal notranslate"><span class="pre">{{</span> <span class="pre">missing.field</span> <span class="pre">}}</span></code>) raises</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">exc<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">jinja2.TemplateError</span></code> at render time, which is caught and returned as
+an <code class="docutils literal notranslate"><span class="pre">ExecutionLog</span></code> with <code class="docutils literal notranslate"><span class="pre">return_code=-1</span></code>.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="serial-vs-parallel">
+<h2>Serial vs Parallel<a class="headerlink" href="#serial-vs-parallel" title="Link to this heading"></a></h2>
+<p>Use :class:<code class="docutils literal notranslate"><span class="pre">SerialBashDispatcher</span></code> when your script processes <strong>all files
+together</strong> (one invocation, one :class:<code class="docutils literal notranslate"><span class="pre">~courier.types.execution_log.ExecutionLog</span></code>).
+Use :class:<code class="docutils literal notranslate"><span class="pre">~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashDispatcher</span></code>
+when each file should be processed <strong>independently</strong> (N invocations, N
+<code class="docutils literal notranslate"><span class="pre">ExecutionLog</span></code>\s).</p>
+<p>Key differences:</p>
+<ul class="simple">
+<li><p><strong>Serial</strong>: All files available in a <code class="docutils literal notranslate"><span class="pre">files</span></code> list. Good for scripts that
+need cross-file context (e.g. generating manifests, merging data, computing
+aggregates).</p></li>
+<li><p><strong>Parallel</strong>: Each file processed in its own subprocess. Better for
+embarrassingly parallel workloads where files don’t depend on each other.</p></li>
+</ul>
+<p>See <a class="reference internal" href="parallel_bash.html"><span class="doc">Parallel Bash Dispatcher (parallel_bash)</span></a> for the parallel dispatcher documentation.</p>
+</section>
+<section id="pipeline-feedback-with-emit-file">
+<h2>Pipeline Feedback with <code class="docutils literal notranslate"><span class="pre">emit_file</span></code><a class="headerlink" href="#pipeline-feedback-with-emit-file" title="Link to this heading"></a></h2>
+<p>.. py:method:: Dispatcher.emit_file(file: File) -&gt; None</p>
+<p>All dispatchers inherit :meth:<code class="docutils literal notranslate"><span class="pre">emit_file</span></code> from the</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">class<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">~courier.interfaces.module_based.dispatchers.Dispatcher</span></code> base class.
+This method publishes an output :class:<code class="docutils literal notranslate"><span class="pre">~courier.types.file.File</span></code> to</p>
+</dd>
+<dt class="field-even">data<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">~courier.constants.FILE_FOUND_EXCHANGE</span></code> — the same fanout exchange that
+data monitors use — so downstream job builders can pick it up and create new
+jobs.</p>
+</dd>
+</dl>
+<p>This enables <strong>chained pipeline workflows</strong>: one dispatcher processes a job,
+writes output files, then feeds those files back into the pipeline for a
+second processing stage without any external intervention.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">serial_bash</span></code> dispatcher can emit output files automatically via the</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">ref<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">output-file-scanning-serial</span></code> feature, or you can call
+<code class="docutils literal notranslate"><span class="pre">self.emit_file()</span></code> directly from a custom dispatcher subclass.</p>
+</dd>
+</dl>
+<div class="admonition warning" id="avoid-infinite-loops">
+<p class="admonition-title">Warning</p>
+<p><strong>Avoid infinite loops.</strong> Always set distinguishing metadata (e.g.,
+<code class="docutils literal notranslate"><span class="pre">processing_stage</span></code>) on emitted files and use <code class="docutils literal notranslate"><span class="pre">filters</span></code> in downstream
+job builders to prevent a file from being picked up by the same stage that
+produced it.</p>
+</div>
+<p>For a complete example with multi-stage YAML configuration, see the</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">ref<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">pipeline-feedback-example</span></code> section.</p>
+</dd>
+</dl>
+</section>
+<section id="output-file-scanning">
+<span id="output-file-scanning-serial"></span><h2>Output File Scanning<a class="headerlink" href="#output-file-scanning" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">output_files</span></code> configuration enables automatic discovery of output file
+paths from the script’s stdout (and optionally stderr). This is the simplest
+way to feed results from a <code class="docutils literal notranslate"><span class="pre">serial_bash</span></code> script back into the pipeline
+without writing custom dispatcher code.</p>
+<section id="how-it-works">
+<h3>How It Works<a class="headerlink" href="#how-it-works" title="Link to this heading"></a></h3>
+<ol class="arabic simple">
+<li><p>After the bash script completes, the dispatcher scans the combined
+<code class="docutils literal notranslate"><span class="pre">stdout</span></code> (and <code class="docutils literal notranslate"><span class="pre">stderr</span></code> if <code class="docutils literal notranslate"><span class="pre">scan_stderr=True</span></code>) using the configured
+regex patterns.</p></li>
+<li><p>Each pattern’s <code class="docutils literal notranslate"><span class="pre">(?P&lt;file&gt;...)</span></code> named group extracts file paths.</p></li>
+<li><p>For each unique discovered path, a :class:<code class="docutils literal notranslate"><span class="pre">~courier.types.file.File</span></code> object
+is constructed with the hostname and any static or regex-extracted
+metadata.</p></li>
+<li><p>The file is emitted via :meth:<code class="docutils literal notranslate"><span class="pre">~courier.interfaces.module_based.dispatchers.Dispatcher.emit_file</span></code>,
+making it available to downstream job builders.</p></li>
+</ol>
+</section>
+<section id="outputfilepattern-schema">
+<h3>OutputFilePattern Schema<a class="headerlink" href="#outputfilepattern-schema" title="Link to this heading"></a></h3>
+<p>Each entry in <code class="docutils literal notranslate"><span class="pre">output_files</span></code> is an :class:<code class="docutils literal notranslate"><span class="pre">~courier.plugins.classes.dispatchers._output_file_pattern.OutputFilePattern</span></code>:</p>
+<p>.. list-table::</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">header-rows<span class="colon">:</span></dt>
+<dd class="field-odd"><p>1</p>
+<ul class="simple">
+<li><ul>
+<li><p>Field</p></li>
+<li><p>Type</p></li>
+<li><p>Default</p></li>
+<li><p>Description</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">pattern</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code></p></li>
+<li><p><em>(required)</em></p></li>
+<li><p>Regex pattern with mandatory <code class="docutils literal notranslate"><span class="pre">(?P&lt;file&gt;...)</span></code> named group. Validated at config time.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">source</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code> | <code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p>Source identifier applied to every matched file. Auto-lowercased.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">instrument</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code> | <code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p>Instrument identifier applied to every matched file. Auto-lowercased.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">processing_stage</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code> | <code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p>Processing stage applied to every matched file. Auto-lowercased.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">domain</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code> | <code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p></li>
+<li><p>Domain applied to every matched file. Auto-uppercased.</p></li>
+</ul>
+</li>
+<li><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">metadata</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">dict[str,</span> <span class="pre">Any]</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">{}</span></code></p></li>
+<li><p>Static metadata merged into every discovered file.</p></li>
+</ul>
+</li>
+</ul>
+</dd>
+</dl>
+<p><strong>Regex group behavior</strong>: In addition to the mandatory <code class="docutils literal notranslate"><span class="pre">file</span></code> group, any
+named groups matching <code class="docutils literal notranslate"><span class="pre">File</span></code> field names (<code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">instrument</span></code>,
+<code class="docutils literal notranslate"><span class="pre">processing_stage</span></code>, <code class="docutils literal notranslate"><span class="pre">domain</span></code>) override the corresponding static fields.
+All other named groups are placed into the file’s <code class="docutils literal notranslate"><span class="pre">metadata</span></code> dict, where
+regex-extracted values override static <code class="docutils literal notranslate"><span class="pre">metadata</span></code> on key collision.</p>
+<p>.. warning::</p>
+<p><strong>Avoid nested quantifiers</strong> in regex patterns (e.g. <code class="docutils literal notranslate"><span class="pre">(a+)+</span></code>,
+<code class="docutils literal notranslate"><span class="pre">([a-z]+)*b</span></code>).  Such patterns can cause catastrophic backtracking
+(ReDoS) when matched against large stdout/stderr text.  Keep patterns
+simple and linear — use <code class="docutils literal notranslate"><span class="pre">(?P&lt;file&gt;/path/.+\.nc)</span></code> rather than
+<code class="docutils literal notranslate"><span class="pre">(?P&lt;file&gt;([/\w]+)+\.nc)</span></code>.</p>
+</section>
+<section id="output-file-scanning-example">
+<h3>Output File Scanning Example<a class="headerlink" href="#output-file-scanning-example" title="Link to this heading"></a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">calibrate</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">#!/bin/bash</span>
+<span class="w">            </span><span class="no">{% for f in files %}</span>
+<span class="w">            </span><span class="no">echo &quot;Calibrating {{ f.file }}&quot;</span>
+<span class="w">            </span><span class="no">/usr/bin/calibrate --input &quot;{{ f.file }}&quot; --output &quot;/data/l2/{{ f.file | basename }}&quot;</span>
+<span class="w">            </span><span class="no">echo &quot;OUTPUT: /data/l2/{{ f.file | basename }}&quot;</span>
+<span class="w">            </span><span class="no">{% endfor %}</span>
+<span class="w">          </span><span class="nt">output_files</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;^OUTPUT:\s+(?P&lt;file&gt;/data/l2/.+)$&#39;</span>
+<span class="w">              </span><span class="nt">processing_stage</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;l2&quot;</span>
+<span class="w">              </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;goes16&quot;</span>
+<span class="w">              </span><span class="nt">instrument</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;abi&quot;</span>
+<span class="w">          </span><span class="nt">scan_stderr</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</pre></div>
+</div>
+<p>In this example, the regex pattern <code class="docutils literal notranslate"><span class="pre">^OUTPUT:\s+(?P&lt;file&gt;/data/l2/.+)$</span></code>
+extracts file paths from lines prefixed with <code class="docutils literal notranslate"><span class="pre">OUTPUT:</span></code>. Each discovered file
+is emitted with <code class="docutils literal notranslate"><span class="pre">processing_stage=&quot;l2&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">source=&quot;goes16&quot;</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">instrument=&quot;abi&quot;</span></code> — making it easy for a downstream job builder to filter
+for only calibrated files.</p>
+</section>
+<section id="example-with-regex-extracted-metadata">
+<h3>Example with Regex-Extracted Metadata<a class="headerlink" href="#example-with-regex-extracted-metadata" title="Link to this heading"></a></h3>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">config</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">    </span><span class="no">#!/bin/bash</span>
+<span class="w">    </span><span class="no">echo &quot;PRODUCT: goes16/abi/l2/full-disk /data/output/radiances.nc&quot;</span>
+<span class="w">  </span><span class="nt">output_files</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;^PRODUCT:\s+(?P&lt;source&gt;\S+)/(?P&lt;instrument&gt;\S+)/(?P&lt;processing_stage&gt;\S+)/(?P&lt;domain&gt;\S+)\s+(?P&lt;file&gt;/data/output/.+)$&#39;</span>
+</pre></div>
+</div>
+<p>Here the regex extracts <code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">instrument</span></code>, <code class="docutils literal notranslate"><span class="pre">processing_stage</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">domain</span></code> directly from the output line, so no static configuration is needed
+for those fields.</p>
+</section>
+<section id="preventing-infinite-loops">
+<h3>Preventing Infinite Loops<a class="headerlink" href="#preventing-infinite-loops" title="Link to this heading"></a></h3>
+<p>When using <code class="docutils literal notranslate"><span class="pre">output_files</span></code>, the emitted files must not be picked up by the
+same pipeline stage that produced them. This would cause an infinite loop
+where the dispatcher processes its own output.</p>
+<p><strong>To prevent this</strong>, always set distinguishing metadata on emitted files
+and use <code class="docutils literal notranslate"><span class="pre">filters</span></code> in downstream job builders:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">run</span><span class="p">:</span>
+<span class="w">    </span><span class="c1"># Stage 1: emits files with processing_stage=&quot;l2&quot;</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">calibrate</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">#!/bin/bash</span>
+<span class="w">            </span><span class="no">echo &quot;OUTPUT: /data/l2/calibrated.nc&quot;</span>
+<span class="w">          </span><span class="nt">output_files</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;^OUTPUT:\s+(?P&lt;file&gt;.+)$&#39;</span>
+<span class="w">              </span><span class="nt">processing_stage</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;l2&quot;</span>
+
+<span class="w">    </span><span class="c1"># Stage 2 builder: only picks up &quot;l2&quot; files</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">build-products</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">job_builder</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">filter_and_group</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">filters</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">processing_stage</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">l2</span>
+<span class="w">          </span><span class="nt">targets</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">generate-products</span>
+
+<span class="w">    </span><span class="c1"># Stage 2: processes only calibrated files</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">generate-products</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dispatcher</span>
+<span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">serial_bash</span>
+<span class="w">        </span><span class="nt">config</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">bash_script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">            </span><span class="no">#!/bin/bash</span>
+<span class="w">            </span><span class="no">echo &quot;Generating product from {{ files[0].file }}&quot;</span>
+</pre></div>
+</div>
+<p>Key points:</p>
+<ul class="simple">
+<li><p>Use a unique <code class="docutils literal notranslate"><span class="pre">processing_stage</span></code> value that distinguishes each pipeline
+stage (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;l2&quot;</span></code> for calibration output, <code class="docutils literal notranslate"><span class="pre">&quot;l3&quot;</span></code> for product output).</p></li>
+<li><p>Configure the downstream job builder’s <code class="docutils literal notranslate"><span class="pre">filters</span></code> to match the specific
+stage that should consume the emitted files.</p></li>
+<li><p>Never configure a job builder to feed files back into the same dispatcher
+that produced them without a distinguishing metadata change.</p></li>
+</ul>
+</section>
+</section>
+<section id="python-virtual-environment">
+<span id="python-venv-serial"></span><h2>Python Virtual Environment<a class="headerlink" href="#python-virtual-environment" title="Link to this heading"></a></h2>
+<p>When <code class="docutils literal notranslate"><span class="pre">python_venv</span></code> is configured, the bash script runs with the specified
+virtual environment’s <code class="docutils literal notranslate"><span class="pre">bin/</span></code> directory at the front of <code class="docutils literal notranslate"><span class="pre">PATH</span></code> and
+<code class="docutils literal notranslate"><span class="pre">VIRTUAL_ENV</span></code> set to the resolved absolute path.  This means commands like
+<code class="docutils literal notranslate"><span class="pre">python</span></code>, <code class="docutils literal notranslate"><span class="pre">pip</span></code>, and any venv-installed executables resolve to the
+virtual environment’s versions.</p>
+<p>.. code-block:: yaml</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>config:
+  bash_script: |
+    #!/bin/bash
+    python process_data.py {{ files[0].file }}
+    echo &quot;OUTPUT: /output/result.nc&quot;
+  python_venv: /opt/venvs/data_processing
+  output_files:
+    - pattern: &quot;(?P&lt;file&gt;OUTPUT: .*)&quot;
+</pre></div>
+</div>
+<p>.. note::</p>
+<p>The dispatcher sets <code class="docutils literal notranslate"><span class="pre">PATH</span></code> and <code class="docutils literal notranslate"><span class="pre">VIRTUAL_ENV</span></code> — it does <strong>not</strong>
+<code class="docutils literal notranslate"><span class="pre">source</span> <span class="pre">activate</span></code> the venv.  This is intentional: <code class="docutils literal notranslate"><span class="pre">subprocess</span></code>
+cannot source shell scripts, and <code class="docutils literal notranslate"><span class="pre">PATH</span></code> + <code class="docutils literal notranslate"><span class="pre">VIRTUAL_ENV</span></code> is the
+standard, portable idiom for non-interactive venv usage.</p>
+</section>
+<section id="api-reference">
+<h2>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h2>
+<p>.. literalinclude:: ../../../../src/courier/plugins/classes/dispatchers/serial_bash.py</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">language<span class="colon">:</span></dt>
+<dd class="field-odd"><p>python</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">start-after<span class="colon">:</span></dt>
+<dd class="field-odd"><p>class SerialBashDispatcher(Dispatcher):</p>
+</dd>
+<dt class="field-even">end-before<span class="colon">:</span></dt>
+<dd class="field-even"><p>def <strong>init</strong>(</p>
+</dd>
+<dt class="field-odd">linenos<span class="colon">:</span></dt>
+<dd class="field-odd"><p></p></dd>
+</dl>
+</dd>
+</dl>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../plugins.html" class="btn btn-neutral float-left" title="Plugins API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="parallel_bash.html" class="btn btn-neutral float-right" title="Parallel Bash Dispatcher (parallel_bash)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

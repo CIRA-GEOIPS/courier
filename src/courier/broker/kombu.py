@@ -93,16 +93,22 @@ def _normalize_headers(raw_headers: dict | None) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _open_connection(url: str) -> kombu.Connection:
-    """Return an established kombu Connection for *url*.
+def _open_connection(
+    url: str,
+    max_retries: int = 5,
+) -> kombu.Connection:
+    """Open and return a connected ``kombu.Connection``.
 
-    kombu connections are lazy by default; this function forces the connection
+    Unlike ``Connection(url)`` (lazy), explicitly calls ``ensure_connection``
     to open so callers can detect failures immediately.
 
     Parameters
     ----------
     url : str
         Broker URL (e.g. ``amqp://user:pass@host:5672/``, ``redis://…``).
+    max_retries : int, default=5
+        Maximum connection retry attempts passed to Kombu's
+        ``ensure_connection``.  Set to -1 to retry forever.
 
     Returns
     -------
@@ -115,25 +121,30 @@ def _open_connection(url: str) -> kombu.Connection:
         If the broker is unreachable.
     """
     conn = kombu.Connection(url)
-    conn.ensure_connection(max_retries=10, interval_start=1, interval_step=1, interval_max=30)
+    conn.ensure_connection(max_retries=max_retries, interval_start=1, interval_step=1, interval_max=30)
     return conn
 
 
 @contextmanager
-def broker_connection(url: str) -> Generator["kombu.Connection", None, None]:
+def broker_connection(
+    url: str,
+    max_retries: int = 5,
+) -> Generator["kombu.Connection", None, None]:
     """Context manager that opens a broker connection and closes it on exit.
 
     Parameters
     ----------
     url : str
         Broker URL passed directly to :func:`_open_connection`.
+    max_retries : int, default=5
+        Maximum connection retry attempts.  Set to -1 to retry forever.
 
     Yields
     ------
     kombu.Connection
         An open connection that is closed when the block exits.
     """
-    conn = _open_connection(url)
+    conn = _open_connection(url, max_retries=max_retries)
     try:
         yield conn
     finally:
@@ -458,7 +469,7 @@ class MessageBrokerManager(ServiceManager):
         self._namespace = config.namespace
 
         self._establish_connection = retry_with_backoff(
-            max_retries=max(self._config.broker_max_retries, 1),
+            max_retries=self._config.broker_max_retries,
             exceptions=(OperationalError,),
             stop_event=self._stop_event,
         )(self._establish_connection_impl)
@@ -480,7 +491,10 @@ class MessageBrokerManager(ServiceManager):
             f"Attempting to connect to broker at {self._config.broker_url}",
         )
         try:
-            conn = _open_connection(self._config.broker_url)
+            conn = _open_connection(
+                self._config.broker_url,
+                max_retries=self._config.broker_max_retries,
+            )
             _logger.debug("Successfully connected to broker")
             BROKER_CONNECTIONS.labels(status="success").inc()
             BROKER_CONNECTED.set(1)
@@ -547,7 +561,10 @@ class MessageBrokerManager(ServiceManager):
         OperationalError
             If unable to establish a connection.
         """
-        with broker_connection(self._config.broker_url) as conn:
+        with broker_connection(
+            self._config.broker_url,
+            max_retries=self._config.broker_max_retries,
+        ) as conn:
             for queue_name, cfg in list(self._queues.items()):
                 if queue_name not in self._created_queues:
                     self._logger.debug(

@@ -153,7 +153,7 @@ class SftpPoller(DataMonitorBasePlugin):
         client.connect(**connect_kwargs)
         self._client = client
         self._sftp = client.open_sftp()
-        DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name).set(1)
+        DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(1)
         self._logger.info(
             f"Connected to sftp://{self.validated.username}@"
             f"{self.validated.host}:{self.validated.port}",
@@ -187,7 +187,7 @@ class SftpPoller(DataMonitorBasePlugin):
             with contextlib.suppress(OSError):
                 self._client.close()
             self._client = None
-        DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name).set(0)
+        DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(0)
 
     def _matches_pattern(self, filename: str) -> bool:
         return fnmatch.fnmatchcase(filename, self.validated.glob_pattern)
@@ -220,8 +220,8 @@ class SftpPoller(DataMonitorBasePlugin):
                 hostname=self._hostname_label,
                 timestamp=timestamp,
             )
-        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name).set(time.time())
-        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name).observe(
+        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(time.time())
+        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name, monitor_identifier=self.identifier).observe(
             time.time() - scan_start,
         )
 
@@ -251,6 +251,7 @@ class SftpPoller(DataMonitorBasePlugin):
             except paramiko_exc.AuthenticationException as exc:
                 DATA_MONITOR_POLL_ERRORS.labels(
                     monitor_name=self.name,
+                    monitor_identifier=self.identifier,
                     error_type="authentication",
                 ).inc()
                 raise InvalidPluginConfigError(
@@ -261,6 +262,7 @@ class SftpPoller(DataMonitorBasePlugin):
                 attempt += 1
                 DATA_MONITOR_POLL_ERRORS.labels(
                     monitor_name=self.name,
+                    monitor_identifier=self.identifier,
                     error_type="connection",
                 ).inc()
                 if (
@@ -330,12 +332,14 @@ class SftpPoller(DataMonitorBasePlugin):
                     )
                     DATA_MONITOR_POLL_ERRORS.labels(
                         monitor_name=self.name,
+                        monitor_identifier=self.identifier,
                         error_type="missing_remote_path",
                     ).inc()
                 except (paramiko.SSHException, OSError, EOFError) as exc:
                     self._logger.warning(f"Transient SFTP error, reconnecting: {exc}")
                     DATA_MONITOR_POLL_ERRORS.labels(
                         monitor_name=self.name,
+                        monitor_identifier=self.identifier,
                         error_type="transient",
                     ).inc()
                     self._disconnect()

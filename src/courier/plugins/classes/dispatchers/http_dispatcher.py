@@ -192,6 +192,7 @@ class HttpDispatcher(Dispatcher):
                 self._logger.warning(last_error)
                 DISPATCHER_HTTP_RESPONSE_CODES.labels(
                     dispatcher_name=self.name,
+                    dispatcher_identifier=self.identifier,
                     status_code="transport_error",
                 ).inc()
                 if attempt >= self.validated.retry_count:
@@ -205,11 +206,13 @@ class HttpDispatcher(Dispatcher):
             finally:
                 DISPATCHER_HTTP_REQUEST_DURATION.labels(
                     dispatcher_name=self.name,
+                    dispatcher_identifier=self.identifier,
                 ).observe(time.time() - start)
 
             status_code = response.status_code
             DISPATCHER_HTTP_RESPONSE_CODES.labels(
                 dispatcher_name=self.name,
+                dispatcher_identifier=self.identifier,
                 status_code=str(status_code),
             ).inc()
             body = response.text[:_MAX_STDOUT_BYTES]

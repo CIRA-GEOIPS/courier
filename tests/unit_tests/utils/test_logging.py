@@ -245,7 +245,8 @@ class TestCreateLokiHandler:
         result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
 
         mock_logging_loki.LokiHandler.assert_called_once_with(url="http://test-loki", version="1", tags={})
-        assert result == mock_handler
+        assert result is not None
+        assert hasattr(result, "delegate") and result.delegate is mock_handler
 
     def test_create_loki_handler_import_error(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test Loki handler creation fails due to import error.

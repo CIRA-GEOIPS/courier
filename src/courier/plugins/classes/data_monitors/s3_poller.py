@@ -161,8 +161,8 @@ class S3Poller(DataMonitorBasePlugin):
                     hostname=self.validated.hostname,
                     timestamp=timestamp,
                 )
-        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name).set(time.time())
-        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name).observe(
+        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(time.time())
+        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name, monitor_identifier=self.identifier).observe(
             time.time() - scan_start,
         )
 
@@ -224,6 +224,7 @@ class S3Poller(DataMonitorBasePlugin):
                     self._logger.warning(f"S3 endpoint unreachable: {exc}")
                     DATA_MONITOR_POLL_ERRORS.labels(
                         monitor_name=self.name,
+                        monitor_identifier=self.identifier,
                         error_type="endpoint_unreachable",
                     ).inc()
                 except ClientError as exc:
@@ -239,12 +240,14 @@ class S3Poller(DataMonitorBasePlugin):
             self._logger.error(f"Fatal S3 error ({code}): {exc}")
             DATA_MONITOR_POLL_ERRORS.labels(
                 monitor_name=self.name,
+                monitor_identifier=self.identifier,
                 error_type=code,
             ).inc()
             raise InvalidPluginConfigError(f"S3 {code}: {exc}") from exc
         self._logger.warning(f"Transient S3 error ({code}): {exc}")
         DATA_MONITOR_POLL_ERRORS.labels(
             monitor_name=self.name,
+            monitor_identifier=self.identifier,
             error_type=code,
         ).inc()
         return True

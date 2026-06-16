@@ -186,4 +186,10 @@ def run(
         parts = [p.strip().lower() for p in only.split(",") if p.strip()]
         only_set = set(parts)  # deduplicate via set
 
-    run_service(config, log_level=log_level, only_set=only_set)
+    try:
+        run_service(config, log_level=log_level, only_set=only_set)
+    except typer.Exit:
+        raise
+    except Exception:
+        logger.exception("Fatal error in run_service")
+        raise typer.Exit(code=1)

@@ -248,6 +248,7 @@ class JobBuilder(ServicePlugin):
             except TransientBrokerError as exc:
                 self._emit_failures.labels(
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                     target=target,
                     reason="transient",
                 ).inc()
@@ -255,6 +256,7 @@ class JobBuilder(ServicePlugin):
             except FatalBrokerError as exc:
                 self._emit_failures.labels(
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                     target=target,
                     reason="fatal",
                 ).inc()
@@ -264,6 +266,7 @@ class JobBuilder(ServicePlugin):
             else:
                 self._jobs_emitted.labels(
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                     target=target,
                 ).inc()
                 succeeded.append(target)
@@ -322,7 +325,10 @@ class JobBuilder(ServicePlugin):
                     ATTR_FILE_PATH: str(file.file) if file.file else "",
                 },
             ):
-                self._files_received.labels(job_builder_name=self.name).inc()
+                self._files_received.labels(
+                    job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
+                ).inc()
                 self._logger.debug(f"Received file {file_string} from file queue")
                 for job_group in self.job_groups:
                     self._logger.debug(
@@ -331,8 +337,12 @@ class JobBuilder(ServicePlugin):
                     self._process_job_group(job_group, file)
                 self._file_processing_duration.labels(
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                 ).observe(time.time() - start_time)
-                self._active_job_groups.labels(job_builder_name=self.name).set(
+                self._active_job_groups.labels(
+                    job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
+                ).set(
                     len(self.job_groups),
                 )
         self._logger.error("Exiting handle_incoming_files loop unexpectedly")
@@ -391,9 +401,11 @@ class JobBuilder(ServicePlugin):
                 self._jobs_built.labels(
                     status="ready",
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                 ).inc()
                 self._files_per_job.labels(
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                 ).observe(len(ready_job.files))
 
             self._pop_ready_jobs(job_group, ready)
@@ -465,10 +477,14 @@ class JobBuilder(ServicePlugin):
     def _log_discard(self, job_id: str) -> None:
         """Log and count a discarded job."""
         self._logger.info(f"Discarding old job {job_id}")
-        self._jobs_discarded.labels(job_builder_name=self.name).inc()
+        self._jobs_discarded.labels(
+            job_builder_name=self.name,
+            job_builder_identifier=self.identifier,
+        ).inc()
         self._jobs_built.labels(
             status="old",
             job_builder_name=self.name,
+            job_builder_identifier=self.identifier,
         ).inc()
 
     def _push_deletions(self, group_name: str, deletions: list[str]) -> None:

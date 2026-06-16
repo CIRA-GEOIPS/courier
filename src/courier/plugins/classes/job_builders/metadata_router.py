@@ -188,7 +188,10 @@ class MetadataRouterBuilder(JobBuilder):
                 "metadata_router.route_file",
                 context=parent_ctx,
             ):
-                self._files_received.labels(job_builder_name=self.name).inc()
+                self._files_received.labels(
+                    job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
+                ).inc()
                 file = FrozenFile.from_string(str(file_string))
                 matched = False
                 for jg, route_name in zip(
@@ -201,17 +204,25 @@ class MetadataRouterBuilder(JobBuilder):
                     self._process_job_group(jg, file)
                     JOB_BUILDER_ROUTE_MATCHES.labels(
                         job_builder_name=self.name,
+                        job_builder_identifier=self.identifier,
                         route_name=route_name,
                     ).inc()
                     matched = True
                     break
                 if not matched:
                     self._logger.debug(f"No route matched file {file}")
-                    JOB_BUILDER_UNMATCHED_FILES.labels(job_builder_name=self.name).inc()
+                    JOB_BUILDER_UNMATCHED_FILES.labels(
+                        job_builder_name=self.name,
+                        job_builder_identifier=self.identifier,
+                    ).inc()
                 self._file_processing_duration.labels(
                     job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
                 ).observe(time.time() - start_time)
-                self._active_job_groups.labels(job_builder_name=self.name).set(
+                self._active_job_groups.labels(
+                    job_builder_name=self.name,
+                    job_builder_identifier=self.identifier,
+                ).set(
                     len(self.job_groups),
                 )
 
@@ -254,7 +265,10 @@ class MetadataRouterBuilder(JobBuilder):
                 f"with {len(job.files)} files",
             )
             self.emit(job, targets)
-            JOB_BUILDER_TIMEOUT_EMISSIONS.labels(job_builder_name=self.name).inc()
+            JOB_BUILDER_TIMEOUT_EMISSIONS.labels(
+                job_builder_name=self.name,
+                job_builder_identifier=self.identifier,
+            ).inc()
 
 
 PLUGIN_CLASS = MetadataRouterBuilder

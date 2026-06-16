@@ -213,6 +213,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
             self._logger.warning(f"Discarding non-JSON Kafka message: {exc}")
             DATA_MONITOR_POLL_ERRORS.labels(
                 monitor_name=self.name,
+                monitor_identifier=self.identifier,
                 error_type="decode",
             ).inc()
             return None
@@ -237,6 +238,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
                 total_lag += max(0, end - position)
             DATA_MONITOR_CONSUMER_LAG.labels(
                 monitor_name=self.name,
+                monitor_identifier=self.identifier,
                 topic=self.validated.topic,
             ).set(total_lag)
         except (OSError, ValueError) as exc:
@@ -266,7 +268,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
                     return
                 continue
 
-            DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name).set(1)
+            DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(1)
             attempt = 0
             delay = self.validated.retry_delay_seconds
             try:
@@ -274,7 +276,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
             finally:
                 with contextlib.suppress(KafkaError):
                     consumer.close(autocommit=True)
-                DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name).set(0)
+                DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(0)
 
     def _handle_connect_error(
         self,
@@ -286,6 +288,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
         attempt += 1
         DATA_MONITOR_POLL_ERRORS.labels(
             monitor_name=self.name,
+            monitor_identifier=self.identifier,
             error_type="connect",
         ).inc()
         if self.validated.max_retries != -1 and attempt > self.validated.max_retries:
@@ -335,6 +338,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
             self._logger.warning(f"Kafka consume error, reconnecting: {exc}")
             DATA_MONITOR_POLL_ERRORS.labels(
                 monitor_name=self.name,
+                monitor_identifier=self.identifier,
                 error_type="consume",
             ).inc()
 

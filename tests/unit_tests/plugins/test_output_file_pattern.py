@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import pydantic
 
-from courier.plugins.classes.dispatchers._output_file_pattern import OutputFilePattern
+from courier.dispatchers._output_file_pattern import OutputFilePattern
 
 
 # ─── Valid Construction ──────────────────────────────────────────────────────

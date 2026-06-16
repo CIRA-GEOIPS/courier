@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from courier.plugins.classes.dispatchers._output_file_pattern import OutputFilePattern
-from courier.plugins.classes.dispatchers._output_scanner import (
+from courier.dispatchers._output_file_pattern import OutputFilePattern
+from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
 from courier.types.file import File

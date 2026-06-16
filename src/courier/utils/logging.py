@@ -13,6 +13,8 @@ get_logger
 from __future__ import annotations
 
 import logging
+import sys
+import time
 from typing import TYPE_CHECKING, Any
 
 from rich.logging import RichHandler
@@ -128,6 +130,10 @@ def _create_loki_handler(
 ) -> Any:
     """Attempt to create Loki handler with graceful fallback.
 
+    Wraps the raw ``logging_loki.LokiHandler`` in a rate-limited error
+    suppressor so that a transient backend outage (Loki 500s) does not
+    flood stderr with a traceback per log record.
+
     Parameters
     ----------
     url : str
@@ -146,19 +152,20 @@ def _create_loki_handler(
     --------
     >>> logger = logging.getLogger("fallback")
     >>> handler = _create_loki_handler("http://localhost:3100/loki/api/v1/push",
-                                       {"service": "test"}, logger)
+                                        {"service": "test"}, logger)
     """
     try:
         if not logging_loki or logging_loki is None:
             raise ImportError  # noqa: TRY301
-        # Set level tag to 'level' for Grafana
         logging_loki.emitter.LokiEmitter.level_tag = "level"
 
-        handler = logging_loki.LokiHandler(
+        raw_handler = logging_loki.LokiHandler(
             url=url,
             version="1",
             tags=tags,
         )
+
+        handler = _ResilientLokiHandler(raw_handler)
     except ImportError:
         fallback_logger.warning(
             "python-logging-loki not installed. Falling back to console-only logging. "
@@ -179,6 +186,54 @@ def _create_loki_handler(
         return None
     else:
         return handler
+
+
+class _ResilientLokiHandler(logging.Handler):
+    """Rate-limited wrapper that suppresses stderr storms on Loki outage.
+
+    When Loki returns 500s, ``logging_loki.LokiHandler.emit()`` raises
+    ``ValueError``, which triggers Python's ``Handler.handleError()``
+    which prints a full traceback to stderr for *every* log record.
+    This wrapper rate-limits the diagnostic to once per 60 seconds.
+    """
+
+    _ERROR_SUPPRESS_INTERVAL = 60.0
+
+    def __init__(self, delegate: logging.Handler) -> None:
+        level = logging.NOTSET
+        try:
+            raw = delegate.level
+            if isinstance(raw, (int, str)):
+                level = int(raw)  # noqa: TRY400 — defensive
+        except Exception:  # noqa: BLE001
+            pass
+        super().__init__(level=level)
+        self.delegate = delegate
+        self._last_error_log: float = 0.0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.delegate.emit(record)
+        except Exception:
+            now = time.monotonic()
+            if now - self._last_error_log > self._ERROR_SUPPRESS_INTERVAL:
+                self._last_error_log = now
+                sys.stderr.write(
+                    "courier: Loki handler failed to push log records "
+                    "(rate-limited to 1/min); check Loki backend health.\n"
+                )
+            # Suppress the per-record traceback; silently drop.
+            self.delegate.handleError(record)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        pass  # fully suppressed; diagnostics handled in emit()
+
+    def close(self) -> None:
+        self.delegate.close()
+        super().close()
+
+    def __repr__(self) -> str:
+        return f"ResilientLokiHandler({self.delegate!r})"
 
 
 def get_logger(

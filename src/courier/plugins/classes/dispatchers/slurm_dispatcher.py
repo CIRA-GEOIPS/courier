@@ -191,6 +191,7 @@ class SlurmDispatcher(Dispatcher):
             self._logger.exception("sbatch invocation failed")
             DISPATCHER_SLURM_SUBMISSIONS.labels(
                 dispatcher_name=self.name,
+                dispatcher_identifier=self.identifier,
                 status="error",
             ).inc()
             self._last_submit_error = f"sbatch invocation failed: {exc}"
@@ -202,6 +203,7 @@ class SlurmDispatcher(Dispatcher):
             )
             DISPATCHER_SLURM_SUBMISSIONS.labels(
                 dispatcher_name=self.name,
+                dispatcher_identifier=self.identifier,
                 status="rejected",
             ).inc()
             self._last_submit_error = result.stderr
@@ -219,6 +221,7 @@ class SlurmDispatcher(Dispatcher):
             self._logger.error(f"Could not parse sbatch output: {stdout!r}")
             DISPATCHER_SLURM_SUBMISSIONS.labels(
                 dispatcher_name=self.name,
+                dispatcher_identifier=self.identifier,
                 status="parse_error",
             ).inc()
             self._last_submit_error = f"unparseable sbatch output: {stdout!r}"
@@ -226,6 +229,7 @@ class SlurmDispatcher(Dispatcher):
 
         DISPATCHER_SLURM_SUBMISSIONS.labels(
             dispatcher_name=self.name,
+            dispatcher_identifier=self.identifier,
             status="submitted",
         ).inc()
         return slurm_job_id
@@ -332,7 +336,10 @@ class SlurmDispatcher(Dispatcher):
             ]
 
         with self._slot_semaphore:
-            DISPATCHER_SLURM_JOBS_PENDING.labels(dispatcher_name=self.name).inc()
+            DISPATCHER_SLURM_JOBS_PENDING.labels(
+                dispatcher_name=self.name,
+                dispatcher_identifier=self.identifier,
+            ).inc()
             try:
                 slurm_job_id = self._submit(job, script_path)
                 if slurm_job_id is None:
@@ -370,7 +377,10 @@ class SlurmDispatcher(Dispatcher):
                     ),
                 ]
             finally:
-                DISPATCHER_SLURM_JOBS_PENDING.labels(dispatcher_name=self.name).dec()
+                DISPATCHER_SLURM_JOBS_PENDING.labels(
+                    dispatcher_name=self.name,
+                    dispatcher_identifier=self.identifier,
+                ).dec()
 
 
 PLUGIN_CLASS = SlurmDispatcher

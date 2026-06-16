@@ -23,7 +23,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Types API Reference" href="types.html" />
+    <link rel="next" title="Serial Bash Dispatcher (serial_bash)" href="plugins/serial_bash.html" />
     <link rel="prev" title="API Reference" href="index.html" /> 
 </head>
 
@@ -51,13 +51,12 @@
 <li class="toctree-l1"><a class="reference internal" href="../getting-started/installation.html">Installation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#installation-methods">Installation Methods</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-uv-pip-recommended-for-users">Using uv pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-nix-recommended-for-developers">Using Nix (Recommended for Developers)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#using-docker">Using Docker</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../getting-started/installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#rabbitmq">RabbitMQ</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#prometheus-optional">Prometheus (Optional)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
 </ul>
@@ -376,6 +375,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#serial-bash">serial_bash</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#parallel-bash">parallel_bash</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#slurm-dispatcher">slurm_dispatcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#pipeline-feedback-with-emit-file">Pipeline Feedback with <code class="docutils literal notranslate"><span class="pre">emit_file</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#standard-job-builders">Standard Job Builders</a><ul>
@@ -423,7 +423,7 @@
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
         <a href="index.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="types.html" class="btn btn-neutral float-right" title="Types API Reference" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="plugins/serial_bash.html" class="btn btn-neutral float-right" title="Serial Bash Dispatcher (serial_bash)" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
@@ -472,22 +472,9 @@ files are available in the template, producing one</p>
 <dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">~courier.types.execution_log.ExecutionLog</span></code>.</p>
 </dd>
 </dl>
-<p>.. literalinclude:: ../../../src/courier/plugins/classes/dispatchers/serial_bash.py</p>
-<dl class="myst field-list simple">
-<dt class="field-odd">language<span class="colon">:</span></dt>
-<dd class="field-odd"><p>python</p>
-<dl class="myst field-list simple">
-<dt class="field-odd">start-after<span class="colon">:</span></dt>
-<dd class="field-odd"><p>class SerialBashDispatcher(Dispatcher):</p>
-</dd>
-<dt class="field-even">end-before<span class="colon">:</span></dt>
-<dd class="field-even"><p>def <strong>init</strong>(</p>
-</dd>
-<dt class="field-odd">linenos<span class="colon">:</span></dt>
-<dd class="field-odd"><p></p></dd>
-</dl>
-</dd>
-</dl>
+<p>See <a class="reference internal" href="plugins/serial_bash.html"><span class="doc">Serial Bash Dispatcher (serial_bash)</span></a> for the full serial bash dispatcher
+documentation, including configuration, template context, error handling,
+and output file scanning.</p>
 </section>
 <section id="parallel-bash">
 <h3>parallel_bash<a class="headerlink" href="#parallel-bash" title="Link to this heading"></a></h3>
@@ -498,22 +485,9 @@ files are available in the template, producing one</p>
 </dl>
 <p>Executes a Jinja2-templated bash script independently for each file in
 the job. Up to <code class="docutils literal notranslate"><span class="pre">max_workers</span></code> scripts run concurrently.</p>
-<p>.. literalinclude:: ../../../src/courier/plugins/classes/dispatchers/parallel_bash.py</p>
-<dl class="myst field-list simple">
-<dt class="field-odd">language<span class="colon">:</span></dt>
-<dd class="field-odd"><p>python</p>
-<dl class="myst field-list simple">
-<dt class="field-odd">start-after<span class="colon">:</span></dt>
-<dd class="field-odd"><p>class ParallelBashDispatcher(Dispatcher):</p>
-</dd>
-<dt class="field-even">end-before<span class="colon">:</span></dt>
-<dd class="field-even"><p>def <strong>init</strong>(</p>
-</dd>
-<dt class="field-odd">linenos<span class="colon">:</span></dt>
-<dd class="field-odd"><p></p></dd>
-</dl>
-</dd>
-</dl>
+<p>See <a class="reference internal" href="plugins/parallel_bash.html"><span class="doc">Parallel Bash Dispatcher (parallel_bash)</span></a> for the full parallel bash dispatcher
+documentation, including configuration, template context, error handling,
+and output file scanning.</p>
 </section>
 <section id="slurm-dispatcher">
 <h3>slurm_dispatcher<a class="headerlink" href="#slurm-dispatcher" title="Link to this heading"></a></h3>
@@ -540,6 +514,114 @@ job scripts.</p>
 </dl>
 </dd>
 </dl>
+</section>
+<section id="pipeline-feedback-with-emit-file">
+<span id="pipeline-feedback-example"></span><h3>Pipeline Feedback with <code class="docutils literal notranslate"><span class="pre">emit_file</span></code><a class="headerlink" href="#pipeline-feedback-with-emit-file" title="Link to this heading"></a></h3>
+<p>.. py:method:: Dispatcher.emit_file(file: File) -&gt; None</p>
+<p>All dispatchers inherit :meth:<code class="docutils literal notranslate"><span class="pre">emit_file</span></code> from the :class:<code class="docutils literal notranslate"><span class="pre">~courier.interfaces.module_based.dispatchers.Dispatcher</span></code>
+base class. This method publishes an output :class:<code class="docutils literal notranslate"><span class="pre">~courier.types.file.File</span></code> to</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">data<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">~courier.constants.FILE_FOUND_EXCHANGE</span></code> — the same fanout exchange that
+data monitors use — so downstream job builders can pick it up and create new
+jobs.</p>
+</dd>
+</dl>
+<p>This enables <strong>chained pipeline workflows</strong>: one dispatcher processes a job,
+writes output files, then feeds those files back into the pipeline for a
+second processing stage without any external intervention.</p>
+<p>When to use
+Use <code class="docutils literal notranslate"><span class="pre">emit_file()</span></code> when your dispatcher produces output files that need
+further processing. Common patterns include:</p>
+<ul class="simple">
+<li><p><strong>Multi-stage processing</strong> — run a calibration stage, then feed
+calibrated files into a product-generation stage.</p></li>
+<li><p><strong>Fan-out reprocessing</strong> — emit derived products as new files so
+multiple downstream builders can route them to different dispatchers.</p></li>
+<li><p><strong>Chained quality control</strong> — a QC dispatcher inspects output and emits
+files that pass validation to the next stage while logging failures.</p></li>
+</ul>
+<p>The mechanism is identical to data monitor file emission: the file
+travels through <code class="docutils literal notranslate"><span class="pre">FILE_FOUND_EXCHANGE</span></code>, job builders consume it, and
+routing works exactly as described in</p>
+<dl class="myst field-list simple">
+<dt class="field-odd">doc<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">../concepts/adr/0006-dispatcher-routing</span></code>.</p>
+</dd>
+</dl>
+<p>How to use
+Override :meth:<code class="docutils literal notranslate"><span class="pre">~Dispatcher.get_execution_log</span></code> in your dispatcher
+subclass and call <code class="docutils literal notranslate"><span class="pre">self.emit_file()</span></code> for each output file you want to
+feed back into the pipeline:</p>
+<p>.. code-block:: python</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>  from courier.types.file import File
+
+  class MyPipelineDispatcher(Dispatcher):
+      def get_execution_log(self, job: Job) -&gt; list[ExecutionLog]:
+          # ... process the job, write output files ...
+          output_path = Path(&quot;/data/output/processed.nc&quot;)
+          self.emit_file(File(
+              file=output_path,
+              hostname=self.parent_service.hostname,
+              source=job.files[0].source,
+              instrument=job.files[0].instrument,
+              processing_stage=&quot;l2&quot;,
+          ))
+          return [ExecutionLog(return_code=0)]
+</pre></div>
+</div>
+<p>Example: Multi-stage YAML configuration
+The example below shows a two-stage pipeline where <code class="docutils literal notranslate"><span class="pre">serial_bash</span></code>
+produces calibrated files that a second job builder picks up and routes
+to <code class="docutils literal notranslate"><span class="pre">parallel_bash</span></code> for product generation:</p>
+<p>.. code-block:: yaml</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>  spec:
+    run:
+      # Stage 1: Calibrate raw files
+      - calibrate:
+          kind: dispatcher
+          name: serial_bash
+          config:
+            bash_script: |
+              #!/bin/bash
+              # ... calibration logic ...
+              echo &quot;calibrated.nc&quot;  # signal output file path
+
+      # Stage 2 builder: Only picks up calibrated files
+      - build-products:
+          kind: job_builder
+          name: filter_and_group
+          config:
+            filters:
+              processing_stage: l2
+            targets:
+              - generate-products
+
+      # Stage 2: Generate products from calibrated files
+      - generate-products:
+          kind: dispatcher
+          name: parallel_bash
+          config:
+            bash_script: |
+              #!/bin/bash
+              # ... product generation logic ...
+</pre></div>
+</div>
+<p>The key points:</p>
+<ul class="simple">
+<li><p>Stage 1’s dispatcher must call <code class="docutils literal notranslate"><span class="pre">self.emit_file()</span></code> with the output
+file path, setting <code class="docutils literal notranslate"><span class="pre">processing_stage</span></code> (or another metadata field)
+to a distinct value.</p></li>
+<li><p>Stage 2’s job builder uses a <code class="docutils literal notranslate"><span class="pre">filters</span></code> block to select only files
+from the calibration stage, preventing infinite loops.</p></li>
+<li><p>The pipeline continues naturally — no custom wiring or external
+scripts needed.</p></li>
+</ul>
+<p>.. note::</p>
+<p><strong>Avoid infinite loops.</strong> Always set distinguishing metadata (e.g.,
+<code class="docutils literal notranslate"><span class="pre">processing_stage</span></code>) on emitted files and use <code class="docutils literal notranslate"><span class="pre">filters</span></code> in downstream
+builders to prevent a file from being picked up by the same stage that
+produced it.</p>
 </section>
 </section>
 <section id="standard-job-builders">
@@ -728,6 +810,8 @@ field_map names. The following legacy keys are no longer recognized:</p>
 </dd>
 </dl>
 <p>Routes files to different dispatchers based on file metadata (source, instrument, etc.).</p>
+<div class="toctree-wrapper compound">
+</div>
 </section>
 </section>
 </section>
@@ -737,7 +821,7 @@ field_map names. The following legacy keys are no longer recognized:</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="index.html" class="btn btn-neutral float-left" title="API Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="types.html" class="btn btn-neutral float-right" title="Types API Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="plugins/serial_bash.html" class="btn btn-neutral float-right" title="Serial Bash Dispatcher (serial_bash)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

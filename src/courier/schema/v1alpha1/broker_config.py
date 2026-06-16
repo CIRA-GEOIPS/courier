@@ -53,8 +53,9 @@ class AmqpBrokerConfig(FrozenModel):
     ssl: bool = Field(False, description="Use TLS (amqps://) when True.")
     max_retries: int = Field(
         5,
-        ge=0,
-        description="Maximum broker connection retry attempts.",
+        ge=-1,
+        description="Maximum broker connection retry attempts. "
+        "Set to -1 to retry forever.",
     )
 
     @field_validator("host", "username", "password", "vhost")
@@ -92,8 +93,9 @@ class RedisBrokerConfig(FrozenModel):
     ssl: bool = Field(False, description="Use TLS (rediss://) when True.")
     max_retries: int = Field(
         5,
-        ge=0,
-        description="Maximum broker connection retry attempts.",
+        ge=-1,
+        description="Maximum broker connection retry attempts. "
+        "Set to -1 to retry forever.",
     )
 
     @field_validator("host")
@@ -121,8 +123,9 @@ class MemoryBrokerConfig(FrozenModel):
     )
     max_retries: int = Field(
         5,
-        ge=0,
-        description="Maximum broker connection retry attempts.",
+        ge=-1,
+        description="Maximum broker connection retry attempts. "
+        "Set to -1 to retry forever.",
     )
 
     def to_url(self) -> str:
@@ -148,8 +151,9 @@ class UrlBrokerConfig(FrozenModel):
     url: str = Field(..., description="Full Kombu connection URL.")
     max_retries: int = Field(
         5,
-        ge=0,
-        description="Maximum broker connection retry attempts.",
+        ge=-1,
+        description="Maximum broker connection retry attempts. "
+        "Set to -1 to retry forever.",
     )
 
     @field_validator("url")

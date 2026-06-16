@@ -214,10 +214,10 @@ class CronGlob(DataMonitorBasePlugin):
             self._evict_if_over_cap()
             yield File(file=resolved, hostname=self.hostname)
 
-        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name).set(
+        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(
             time.time(),
         )
-        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name).observe(
+        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name, monitor_identifier=self.identifier).observe(
             time.time() - scan_start,
         )
 

@@ -51,13 +51,12 @@
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#installation-methods">Installation Methods</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="installation.html#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="installation.html#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#using-uv-pip-recommended-for-users">Using uv pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="installation.html#using-nix-recommended-for-developers">Using Nix (Recommended for Developers)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#using-docker">Using Docker</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="installation.html#setting-up-dependencies">Setting Up Dependencies</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="installation.html#rabbitmq">RabbitMQ</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#prometheus-optional">Prometheus (Optional)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="installation.html#grafana-loki-optional">Grafana Loki (Optional)</a></li>
 </ul>
@@ -376,6 +375,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#serial-bash">serial_bash</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#parallel-bash">parallel_bash</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#pipeline-feedback-with-emit-file">Pipeline Feedback with <code class="docutils literal notranslate"><span class="pre">emit_file</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-job-builders">Standard Job Builders</a><ul>
@@ -447,7 +447,6 @@ walks you through setting up a file watcher for GOES-18 ABI data.</p>
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p>Courier installed (<a class="reference internal" href="installation.html"><span class="doc">Installation</span></a>)</p></li>
-<li><p>RabbitMQ running on localhost:5672</p></li>
 <li><p>A directory with GOES-18 ABI files (or the ability to copy them
 there)</p></li>
 </ul>
@@ -520,6 +519,9 @@ there)</p></li>
 </div>
 <blockquote>
 <div><p><strong>Note:</strong> The <code class="docutils literal notranslate"><span class="pre">run</span></code> pipeline above has three stages: <code class="docutils literal notranslate"><span class="pre">watch-files</span></code> (data monitor), <code class="docutils literal notranslate"><span class="pre">group-files</span></code> (job builder), and <code class="docutils literal notranslate"><span class="pre">process-data</span></code> (dispatcher). The <code class="docutils literal notranslate"><span class="pre">~</span></code> in file paths expands to your home directory on both Linux and macOS.</p>
+</div></blockquote>
+<blockquote>
+<div><p><strong>Note:</strong> The <code class="docutils literal notranslate"><span class="pre">broker</span></code> section above expects RabbitMQ on <code class="docutils literal notranslate"><span class="pre">localhost:5672</span></code>. For single-process testing without RabbitMQ, omit the entire <code class="docutils literal notranslate"><span class="pre">broker</span></code> section to use the built-in in-memory broker.</p>
 </div></blockquote>
 </section>
 <section id="step-3-start-the-service">
@@ -594,12 +596,6 @@ Processing complete!
 <li><p>The file watcher only detects files created or moved <strong>after</strong> the service starts (see the note above about watchdog file detection timing).</p></li>
 <li><p>Check file permissions: <code class="docutils literal notranslate"><span class="pre">ls</span> <span class="pre">-la</span> <span class="pre">&lt;watched-directory&gt;</span></code>.</p></li>
 <li><p>Verify the watched path matches the <code class="docutils literal notranslate"><span class="pre">config.path</span></code> setting.</p></li>
-</ul>
-<p><strong>RabbitMQ connection failed</strong></p>
-<ul class="simple">
-<li><p>Verify RabbitMQ is running: <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">ps</span> <span class="pre">|</span> <span class="pre">grep</span> <span class="pre">rabbitmq</span></code> (Docker) or <code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">systemctl</span> <span class="pre">status</span> <span class="pre">rabbitmq-server</span></code> (system service).</p></li>
-<li><p>Check credentials match your RabbitMQ setup (default: <code class="docutils literal notranslate"><span class="pre">admin</span></code>/<code class="docutils literal notranslate"><span class="pre">admin_test</span></code>).</p></li>
-<li><p>Try <code class="docutils literal notranslate"><span class="pre">http://localhost:15672</span></code> to access the RabbitMQ management UI.</p></li>
 </ul>
 </section>
 <section id="need-help">

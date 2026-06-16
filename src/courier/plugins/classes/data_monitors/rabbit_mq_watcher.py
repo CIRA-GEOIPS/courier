@@ -635,6 +635,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                         yield file_queue.get(timeout=5.0)
                         self.last_file_processed_timestamp.labels(
                             queue=self.rabbitmq_queue,
+                            monitor_identifier=self.identifier,
                         ).set_to_current_time()
                         break
                     except queue.Empty as e:

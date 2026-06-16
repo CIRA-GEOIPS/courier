@@ -15,7 +15,6 @@ A service that:
 ## Prerequisites
 
 - Courier installed ({doc}`installation`)
-- RabbitMQ running on localhost:5672
 - A directory with GOES-18 ABI files (or the ability to copy them
   there)
 
@@ -92,6 +91,8 @@ spec:
 ```
 
 > **Note:** The `run` pipeline above has three stages: `watch-files` (data monitor), `group-files` (job builder), and `process-data` (dispatcher). The `~` in file paths expands to your home directory on both Linux and macOS.
+
+> **Note:** The `broker` section above expects RabbitMQ on `localhost:5672`. For single-process testing without RabbitMQ, omit the entire `broker` section to use the built-in in-memory broker.
 
 ## Step 3: Start the Service
 

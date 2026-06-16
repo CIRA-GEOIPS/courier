@@ -27,6 +27,7 @@ from courier.metrics import (
     DISPATCHER_JOB_EXECUTION_DURATION,
     DISPATCHER_JOBS_CONSUMED,
     DISPATCHER_JOBS_PROCESSED,
+    DISPATCHER_QUEUE_DEPTH,
     DISPATCHER_QUEUE_WAIT_DURATION,
     collect_labeled,
 )
@@ -150,6 +151,32 @@ class Dispatcher(ServicePlugin):
             self._seen_jobs.popitem(last=False)
         return False
 
+    def _emit_queue_depth(self) -> None:
+        """Emit the per-dispatcher queue-depth gauge.
+
+        Best-effort: memory transport always reports 0 (``queue.qsize()``
+        is not meaningful for in-memory Kombu channels).  Wire transports
+        query the underlying broker queue depth.
+
+        """
+        try:
+            broker = self.parent_service._broker_manager
+            if broker._connection and broker._connection.connected:
+                with broker._connection.channel() as channel:
+                    queue_name = self.incoming_queue
+                    _, message_count, _ = channel.queue_declare(
+                        queue=queue_name, passive=True,
+                    )
+                    DISPATCHER_QUEUE_DEPTH.labels(
+                        dispatcher_identifier=self.identifier,
+                    ).set(message_count)
+                    return
+        except Exception:
+            pass
+        DISPATCHER_QUEUE_DEPTH.labels(
+            dispatcher_identifier=self.identifier,
+        ).set(0)
+
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
         tracer = get_tracer(__name__)
@@ -157,6 +184,10 @@ class Dispatcher(ServicePlugin):
             for job_string, parent_ctx in self.parent_service.consume(
                 self.incoming_queue,
             ):
+                try:
+                    self._emit_queue_depth()
+                except Exception:
+                    pass
                 job = Job.from_string(str(job_string))
                 with tracer.start_as_current_span(
                     "dispatcher.dispatch_job",
@@ -191,9 +222,13 @@ class Dispatcher(ServicePlugin):
                     start_time = time.time()
                     job_id = job.identifier
                     self.active_job_timestamps[job_id] = start_time
-                    self._active_jobs.labels(dispatcher_name=self.name).inc()
+                    self._active_jobs.labels(
+                        dispatcher_name=self.name,
+                        dispatcher_identifier=self.identifier,
+                    ).inc()
                     self._queue_wait_duration.labels(
                         dispatcher_name=self.name,
+                        dispatcher_identifier=self.identifier,
                     ).observe(start_time - job.last_modified)
 
                     try:
@@ -217,11 +252,13 @@ class Dispatcher(ServicePlugin):
                                 self.emit(ex_log)
                             self._execution_logs_emitted.labels(
                                 dispatcher_name=self.name,
+                                dispatcher_identifier=self.identifier,
                             ).inc()
 
                         self._jobs_processed.labels(
                             status="success",
                             dispatcher_name=self.name,
+                            dispatcher_identifier=self.identifier,
                         ).inc()
 
                     except CourierError:
@@ -232,6 +269,7 @@ class Dispatcher(ServicePlugin):
                         self._jobs_processed.labels(
                             status="failure",
                             dispatcher_name=self.name,
+                            dispatcher_identifier=self.identifier,
                         ).inc()
 
                     finally:
@@ -241,9 +279,13 @@ class Dispatcher(ServicePlugin):
                             )
                             self._job_execution_duration.labels(
                                 dispatcher_name=self.name,
+                                dispatcher_identifier=self.identifier,
                             ).observe(execution_time)
                             del self.active_job_timestamps[job_id]
-                            self._active_jobs.labels(dispatcher_name=self.name).dec()
+                            self._active_jobs.labels(
+                                dispatcher_name=self.name,
+                                dispatcher_identifier=self.identifier,
+                            ).dec()
 
     @log_execution
     def start(self) -> None:

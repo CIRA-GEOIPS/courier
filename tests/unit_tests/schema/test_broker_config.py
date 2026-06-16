@@ -120,8 +120,19 @@ class TestAmqpBrokerConfig:
             AmqpBrokerConfig(**_MINIMAL_AMQP, port=65536)
 
     def test_negative_max_retries_rejected(self) -> None:
+        """Values below -1 are rejected; -1 means retry forever."""
         with pytest.raises(ValidationError, match="max_retries"):
-            AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=-1)
+            AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=-2)
+
+    def test_max_retries_accepts_minus_one(self) -> None:
+        """-1 is valid: retry forever on broker connection."""
+        cfg = AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=-1)
+        assert cfg.max_retries == -1
+
+    def test_max_retries_accepts_zero(self) -> None:
+        """0 is valid: no retries."""
+        cfg = AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=0)
+        assert cfg.max_retries == 0
 
     def test_empty_host_rejected(self) -> None:
         with pytest.raises(ValidationError, match="host"):
@@ -254,6 +265,14 @@ class TestRedisBrokerConfig:
         with pytest.raises(ValidationError, match="extra"):
             RedisBrokerConfig(transport="redis", cluster=True)  # type: ignore[call-arg]
 
+    def test_negative_max_retries_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="max_retries"):
+            RedisBrokerConfig(transport="redis", max_retries=-2)
+
+    def test_max_retries_accepts_minus_one(self) -> None:
+        cfg = RedisBrokerConfig(transport="redis", max_retries=-1)
+        assert cfg.max_retries == -1
+
     def test_frozen(self) -> None:
         cfg = RedisBrokerConfig(transport="redis")
         with pytest.raises(ValidationError):
@@ -281,8 +300,19 @@ class TestMemoryBrokerConfig:
         assert cfg.max_retries == 0
 
     def test_negative_max_retries_rejected(self) -> None:
+        """Values below -1 are rejected; -1 means retry forever."""
         with pytest.raises(ValidationError, match="max_retries"):
-            MemoryBrokerConfig(transport="memory", max_retries=-1)
+            MemoryBrokerConfig(transport="memory", max_retries=-2)
+
+    def test_max_retries_accepts_minus_one(self) -> None:
+        """-1 is valid: retry forever on broker connection."""
+        cfg = MemoryBrokerConfig(transport="memory", max_retries=-1)
+        assert cfg.max_retries == -1
+
+    def test_max_retries_accepts_zero(self) -> None:
+        """0 is valid: no retries."""
+        cfg = MemoryBrokerConfig(transport="memory", max_retries=0)
+        assert cfg.max_retries == 0
 
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
@@ -359,6 +389,14 @@ class TestUrlBrokerConfig:
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
             UrlBrokerConfig(transport="url", url="sqs://", host="h")  # type: ignore[call-arg]
+
+    def test_negative_max_retries_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="max_retries"):
+            UrlBrokerConfig(transport="url", url="sqs://", max_retries=-2)
+
+    def test_max_retries_accepts_minus_one(self) -> None:
+        cfg = UrlBrokerConfig(transport="url", url="sqs://", max_retries=-1)
+        assert cfg.max_retries == -1
 
     def test_frozen(self) -> None:
         cfg = UrlBrokerConfig(transport="url", url="memory://")

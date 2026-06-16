@@ -322,7 +322,10 @@ class FilterAndGroupJobBuilder(JobBuilder):
                 f"with {len(job.files)} files",
             )
             self.emit(job, self.targets)
-            JOB_BUILDER_TIMEOUT_EMISSIONS.labels(job_builder_name=self.name).inc()
+            JOB_BUILDER_TIMEOUT_EMISSIONS.labels(
+                job_builder_name=self.name,
+                job_builder_identifier=self.identifier,
+            ).inc()
 
 
 PLUGIN_CLASS = FilterAndGroupJobBuilder

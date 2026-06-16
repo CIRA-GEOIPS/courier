@@ -22,50 +22,50 @@ from prometheus_client.metrics import MetricWrapperBase
 DATA_MONITOR_FILES_PROCESSED: Counter = Counter(
     "courier_data_monitor_files_processed_total",
     "Total number of files processed by a data monitor plugin",
-    ["monitor_name", "status"],
+    ["monitor_name", "monitor_identifier", "status"],
 )
 
 DATA_MONITOR_LAST_SCAN_TIMESTAMP: Gauge = Gauge(
     "courier_data_monitor_last_scan_timestamp_seconds",
     "Unix timestamp of the last completed directory scan for a data monitor plugin",
-    ["monitor_name"],
+    ["monitor_name", "monitor_identifier"],
 )
 
 DATA_MONITOR_SCAN_DURATION: Histogram = Histogram(
     "courier_data_monitor_scan_duration_seconds",
     "Duration of a single directory scan cycle for a data monitor plugin",
-    ["monitor_name"],
+    ["monitor_name", "monitor_identifier"],
     buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
 )
 
 RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP: Gauge = Gauge(
     "courier_rabbitmq_last_file_emitted_timestamp_seconds",
     "Unix timestamp when the last file was processed by the RabbitMQ watcher",
-    ["queue"],
+    ["queue", "monitor_identifier"],
 )
 
 DATA_MONITOR_POLL_ERRORS: Counter = Counter(
     "courier_data_monitor_poll_errors_total",
     "Total number of polling errors encountered by a data monitor plugin",
-    ["monitor_name", "error_type"],
+    ["monitor_name", "monitor_identifier", "error_type"],
 )
 
 DATA_MONITOR_CONNECTION_STATUS: Gauge = Gauge(
     "courier_data_monitor_connection_status",
     "Connection status of a remote data monitor (1 = connected, 0 = disconnected)",
-    ["monitor_name"],
+    ["monitor_name", "monitor_identifier"],
 )
 
 DATA_MONITOR_CONSUMER_LAG: Gauge = Gauge(
     "courier_data_monitor_consumer_lag",
     "Estimated consumer lag (messages behind latest offset) for a queue monitor",
-    ["monitor_name", "topic"],
+    ["monitor_name", "monitor_identifier", "topic"],
 )
 
 DATA_MONITOR_LAST_PROCESSED_TIMESTAMP: Gauge = Gauge(
     "courier_data_monitor_last_processed_timestamp_seconds",
     "Unix timestamp of the last file processed and emitted by a data monitor plugin",
-    ["plugin_name"],
+    ["plugin_name", "monitor_identifier"],
 )
 
 # ---------------------------------------------------------------------------
@@ -75,69 +75,69 @@ DATA_MONITOR_LAST_PROCESSED_TIMESTAMP: Gauge = Gauge(
 JOB_BUILDER_FILES_RECEIVED: Counter = Counter(
     "courier_job_builder_files_received_total",
     "Total number of files received by a job builder plugin",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
 )
 
 JOB_BUILDER_JOBS_BUILT: Counter = Counter(
     "courier_job_builder_jobs_built_total",
     "Total number of jobs built by a job builder plugin",
-    ["job_builder_name", "status"],
+    ["job_builder_name", "job_builder_identifier", "status"],
 )
 
 JOB_BUILDER_ACTIVE_GROUPS: Gauge = Gauge(
     "courier_job_builder_active_groups",
     "Number of currently active job groups for a job builder plugin",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
 )
 
 JOB_BUILDER_JOBS_DISCARDED: Counter = Counter(
     "courier_job_builder_jobs_discarded_total",
     "Total number of old jobs discarded by a job builder plugin",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
 )
 
 JOB_BUILDER_FILE_PROCESSING_DURATION: Histogram = Histogram(
     "courier_job_builder_file_processing_duration_seconds",
     "File processing duration in seconds for a job builder plugin",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
     buckets=(0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0),
 )
 
 JOB_BUILDER_FILES_PER_JOB: Histogram = Histogram(
     "courier_job_builder_files_per_job",
     "Number of files accumulated in a job before it was emitted",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
     buckets=(1, 2, 5, 10, 20, 50, 100, 200),
 )
 
 JOB_BUILDER_TIMEOUT_EMISSIONS: Counter = Counter(
     "courier_job_builder_timeout_emissions_total",
     "Total number of jobs emitted due to window timeout (not file count)",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
 )
 
 JOB_BUILDER_ROUTE_MATCHES: Counter = Counter(
     "courier_job_builder_route_matches_total",
     "Files matched to each route in a metadata_router job builder",
-    ["job_builder_name", "route_name"],
+    ["job_builder_name", "job_builder_identifier", "route_name"],
 )
 
 JOB_BUILDER_UNMATCHED_FILES: Counter = Counter(
     "courier_job_builder_unmatched_files_total",
     "Files that matched no route in a metadata_router job builder",
-    ["job_builder_name"],
+    ["job_builder_name", "job_builder_identifier"],
 )
 
 JOB_BUILDER_JOBS_EMITTED: Counter = Counter(
     "courier_job_builder_jobs_emitted_total",
     "Total number of (job, target) publish successes from a job builder",
-    ["job_builder_name", "target"],
+    ["job_builder_name", "job_builder_identifier", "target"],
 )
 
 JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
     "courier_job_builder_emit_failures_total",
     "Total number of (job, target) publish failures from a job builder",
-    ["job_builder_name", "target", "reason"],
+    ["job_builder_name", "job_builder_identifier", "target", "reason"],
 )
 
 
@@ -148,63 +148,63 @@ JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
 DISPATCHER_JOBS_PROCESSED: Counter = Counter(
     "courier_dispatcher_jobs_processed_total",
     "Total number of jobs processed by a dispatcher plugin",
-    ["dispatcher_name", "status"],
+    ["dispatcher_name", "dispatcher_identifier", "status"],
 )
 
 DISPATCHER_JOB_EXECUTION_DURATION: Histogram = Histogram(
     "courier_dispatcher_job_execution_duration_seconds",
     "Job execution duration in seconds for a dispatcher plugin",
-    ["dispatcher_name"],
+    ["dispatcher_name", "dispatcher_identifier"],
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
 )
 
 DISPATCHER_ACTIVE_JOBS: Gauge = Gauge(
     "courier_dispatcher_active_jobs",
     "Number of currently active jobs for a dispatcher plugin",
-    ["dispatcher_name"],
+    ["dispatcher_name", "dispatcher_identifier"],
 )
 
 DISPATCHER_EXECUTION_LOGS_EMITTED: Counter = Counter(
     "courier_dispatcher_execution_logs_emitted_total",
     "Total number of execution logs emitted by a dispatcher plugin",
-    ["dispatcher_name"],
+    ["dispatcher_name", "dispatcher_identifier"],
 )
 
 DISPATCHER_QUEUE_WAIT_DURATION: Histogram = Histogram(
     "courier_dispatcher_queue_wait_duration_seconds",
     "Time a job spent waiting in the queue before dispatch started",
-    ["dispatcher_name"],
+    ["dispatcher_name", "dispatcher_identifier"],
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0),
 )
 
 DISPATCHER_PARALLEL_WORKERS_ACTIVE: Gauge = Gauge(
     "courier_dispatcher_parallel_workers_active",
     "Number of script execution threads currently active in a parallel dispatcher",
-    ["dispatcher_name"],
+    ["dispatcher_name", "dispatcher_identifier"],
 )
 
 DISPATCHER_SLURM_JOBS_PENDING: Gauge = Gauge(
     "courier_dispatcher_slurm_jobs_pending",
     "Number of submitted SLURM jobs currently in PENDING or RUNNING state",
-    ["dispatcher_name"],
+    ["dispatcher_name", "dispatcher_identifier"],
 )
 
 DISPATCHER_SLURM_SUBMISSIONS: Counter = Counter(
     "courier_dispatcher_slurm_submissions_total",
     "Total number of sbatch submissions made by a SLURM dispatcher",
-    ["dispatcher_name", "status"],
+    ["dispatcher_name", "dispatcher_identifier", "status"],
 )
 
 DISPATCHER_HTTP_RESPONSE_CODES: Counter = Counter(
     "courier_dispatcher_http_response_codes_total",
-    "Total number of HTTP responses received by an http_dispatcher, by status code",
-    ["dispatcher_name", "status_code"],
+    "Total number of HTTP requests processed by an HTTP dispatcher",
+    ["dispatcher_name", "dispatcher_identifier", "status_code"],
 )
 
 DISPATCHER_HTTP_REQUEST_DURATION: Histogram = Histogram(
     "courier_dispatcher_http_request_duration_seconds",
-    "Duration of HTTP requests made by an http_dispatcher",
-    ["dispatcher_name"],
+    "HTTP request latency in seconds for an HTTP dispatcher",
+    ["dispatcher_name", "dispatcher_identifier"],
     buckets=(0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
 )
 
@@ -241,19 +241,25 @@ DISPATCHER_DEDUPE_SKIPS: Counter = Counter(
 PLUGIN_STATE: Gauge = Gauge(
     "courier_plugin_state",
     "Current run state of a plugin (maps to PluginRunState enum values)",
-    ["plugin_name"],
+    ["plugin_name", "plugin_identifier"],
 )
 
 PLUGIN_RESTARTS: Counter = Counter(
     "courier_plugin_restarts_total",
     "Total number of times a plugin has been restarted",
-    ["plugin_name"],
+    ["plugin_name", "plugin_identifier"],
 )
 
 PLUGIN_HEALTH: Gauge = Gauge(
     "courier_plugin_health",
     "Health status of a plugin (1 = healthy, 0 = unhealthy)",
-    ["plugin_name"],
+    ["plugin_name", "plugin_identifier"],
+)
+
+PLUGIN_REGISTRATION_FAILURES: Counter = Counter(
+    "courier_plugin_registration_failures_total",
+    "Total number of plugin registration failures",
+    ["plugin_name", "plugin_identifier", "reason"],
 )
 
 # ---------------------------------------------------------------------------

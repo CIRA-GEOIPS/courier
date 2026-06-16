@@ -280,7 +280,10 @@ class ParallelBashDispatcher(Dispatcher):
             env["VIRTUAL_ENV"] = str(venv_path)
 
         logs: list[ExecutionLog] = []
-        gauge = DISPATCHER_PARALLEL_WORKERS_ACTIVE.labels(dispatcher_name=self.name)
+        gauge = DISPATCHER_PARALLEL_WORKERS_ACTIVE.labels(
+            dispatcher_name=self.name,
+            dispatcher_identifier=self.identifier,
+        )
 
         with ThreadPoolExecutor(max_workers=self.validated.max_workers) as pool:
             futures = {}

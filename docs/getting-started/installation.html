@@ -51,13 +51,12 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#installation-methods">Installation Methods</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#using-pip-recommended-for-users">Using pip (Recommended for Users)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#using-poetry-recommended-for-developers">Using Poetry (Recommended for Developers)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#using-uv-pip-recommended-for-users">Using uv pip (Recommended for Users)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#using-nix-recommended-for-developers">Using Nix (Recommended for Developers)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#using-docker">Using Docker</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#setting-up-dependencies">Setting Up Dependencies</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#rabbitmq">RabbitMQ</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#prometheus-optional">Prometheus (Optional)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#grafana-loki-optional">Grafana Loki (Optional)</a></li>
 </ul>
@@ -376,6 +375,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#serial-bash">serial_bash</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#parallel-bash">parallel_bash</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#slurm-dispatcher">slurm_dispatcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api-reference/plugins.html#pipeline-feedback-with-emit-file">Pipeline Feedback with <code class="docutils literal notranslate"><span class="pre">emit_file</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api-reference/plugins.html#standard-job-builders">Standard Job Builders</a><ul>
@@ -437,14 +437,13 @@
 <p><strong>System Requirements:</strong></p>
 <ul class="simple">
 <li><p>Python 3.11, 3.12, or 3.13</p></li>
-<li><p>RabbitMQ 3.x or later (required for multi-container deployments; the in-memory broker is sufficient for single-process testing)</p></li>
 <li><p>4GB RAM minimum (8GB recommended)</p></li>
 <li><p>Linux, macOS, or Windows (with WSL2)</p></li>
 </ul>
 <p><strong>Python Dependencies:</strong></p>
 <p>Courier depends on:</p>
 <ul class="simple">
-<li><p>RabbitMQ (Kombu)</p></li>
+<li><p>Kombu (AMQP messaging — RabbitMQ is optional for production)</p></li>
 <li><p>Prometheus client</p></li>
 <li><p>Pydantic for configuration validation</p></li>
 <li><p>Rich for enhanced logging</p></li>
@@ -453,24 +452,24 @@
 </section>
 <section id="installation-methods">
 <h2>Installation Methods<a class="headerlink" href="#installation-methods" title="Link to this heading"></a></h2>
-<section id="using-pip-recommended-for-users">
-<h3>Using pip (Recommended for Users)<a class="headerlink" href="#using-pip-recommended-for-users" title="Link to this heading"></a></h3>
+<section id="using-uv-pip-recommended-for-users">
+<h3>Using uv pip (Recommended for Users)<a class="headerlink" href="#using-uv-pip-recommended-for-users" title="Link to this heading"></a></h3>
 <p>Install the latest stable release from PyPI:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">courier</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">runcourier</span>
 </pre></div>
 </div>
 <blockquote>
 <div><p><strong>Note:</strong> The Python package is named <code class="docutils literal notranslate"><span class="pre">runcourier</span></code> but is installed and imported as <code class="docutils literal notranslate"><span class="pre">courier</span></code>. The CLI command is <code class="docutils literal notranslate"><span class="pre">courier</span></code>.</p>
 </div></blockquote>
-<p>Optional extras: <code class="docutils literal notranslate"><span class="pre">courier[doc]</span></code> for documentation tools, <code class="docutils literal notranslate"><span class="pre">courier[test]</span></code> for testing, <code class="docutils literal notranslate"><span class="pre">courier[doc,lint,test]</span></code> for development.</p>
+<p>Optional extras: <code class="docutils literal notranslate"><span class="pre">runcourier[doc]</span></code> for documentation tools, <code class="docutils literal notranslate"><span class="pre">runcourier[test]</span></code> for testing, <code class="docutils literal notranslate"><span class="pre">runcourier[doc,lint,test]</span></code> for development.</p>
 </section>
-<section id="using-poetry-recommended-for-developers">
-<h3>Using Poetry (Recommended for Developers)<a class="headerlink" href="#using-poetry-recommended-for-developers" title="Link to this heading"></a></h3>
+<section id="using-nix-recommended-for-developers">
+<h3>Using Nix (Recommended for Developers)<a class="headerlink" href="#using-nix-recommended-for-developers" title="Link to this heading"></a></h3>
 <p>For development work:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">git</span> <span class="n">clone</span> <span class="n">https</span><span class="p">:</span><span class="o">//</span><span class="n">github</span><span class="o">.</span><span class="n">com</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="o">.</span><span class="n">git</span>
 <span class="n">cd</span> <span class="n">courier</span>
-<span class="n">poetry</span> <span class="n">install</span> <span class="o">--</span><span class="nb">all</span><span class="o">-</span><span class="n">extras</span>
-<span class="n">poetry</span> <span class="n">shell</span>
+<span class="n">nix</span><span class="o">-</span><span class="n">shell</span> <span class="o">-</span><span class="n">p</span> <span class="n">uv</span> <span class="n">python312</span>
+<span class="n">uv</span> <span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">e</span> <span class="s2">&quot;.[doc,lint,test]&quot;</span>
 </pre></div>
 </div>
 </section>
@@ -480,38 +479,12 @@
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">pull</span> <span class="n">ghcr</span><span class="o">.</span><span class="n">io</span><span class="o">/</span><span class="n">biosafetylvl5</span><span class="o">/</span><span class="n">courier</span><span class="p">:</span><span class="n">latest</span>
 </pre></div>
 </div>
-<p>For a full deployment with RabbitMQ, Prometheus, Grafana, and Jaeger, see
+<p>For a full production deployment with RabbitMQ, Prometheus, Grafana, and Jaeger, see
 <a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html"><span class="doc">Tutorial 2: Distributed Docker Deployment</span></a>.</p>
-<p>For quick testing, start RabbitMQ locally:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">run</span> <span class="o">-</span><span class="n">d</span> <span class="o">--</span><span class="n">name</span> <span class="n">rabbitmq</span> <span class="o">-</span><span class="n">p</span> <span class="mi">5672</span><span class="p">:</span><span class="mi">5672</span> <span class="o">-</span><span class="n">p</span> <span class="mi">15672</span><span class="p">:</span><span class="mi">15672</span> \
-  <span class="o">-</span><span class="n">e</span> <span class="n">RABBITMQ_DEFAULT_USER</span><span class="o">=</span><span class="n">admin</span> <span class="o">-</span><span class="n">e</span> <span class="n">RABBITMQ_DEFAULT_PASS</span><span class="o">=</span><span class="n">admin_test</span> \
-  <span class="n">rabbitmq</span><span class="p">:</span><span class="n">management</span>
-</pre></div>
-</div>
 </section>
 </section>
 <section id="setting-up-dependencies">
 <h2>Setting Up Dependencies<a class="headerlink" href="#setting-up-dependencies" title="Link to this heading"></a></h2>
-<section id="rabbitmq">
-<h3>RabbitMQ<a class="headerlink" href="#rabbitmq" title="Link to this heading"></a></h3>
-<p>Courier uses RabbitMQ for inter-plugin communication in production. For development and testing, the built-in in-memory broker works without external services.</p>
-<blockquote>
-<div><p><strong>Note:</strong> For Docker users, see the previous section.</p>
-</div></blockquote>
-<p><strong>Using Package Manager:</strong></p>
-<p>Ubuntu/Debian:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">update</span>
-<span class="n">sudo</span> <span class="n">apt</span><span class="o">-</span><span class="n">get</span> <span class="n">install</span> <span class="n">rabbitmq</span><span class="o">-</span><span class="n">server</span>
-<span class="n">sudo</span> <span class="n">systemctl</span> <span class="n">enable</span> <span class="n">rabbitmq</span><span class="o">-</span><span class="n">server</span>
-<span class="n">sudo</span> <span class="n">systemctl</span> <span class="n">start</span> <span class="n">rabbitmq</span><span class="o">-</span><span class="n">server</span>
-</pre></div>
-</div>
-<p>macOS:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">brew</span> <span class="n">install</span> <span class="n">rabbitmq</span>
-<span class="n">brew</span> <span class="n">services</span> <span class="n">start</span> <span class="n">rabbitmq</span>
-</pre></div>
-</div>
-</section>
 <section id="prometheus-optional">
 <h3>Prometheus (Optional)<a class="headerlink" href="#prometheus-optional" title="Link to this heading"></a></h3>
 <p>For monitoring and metrics collection, Courier exposes a Prometheus endpoint on port 8000 by default. To set up a full Prometheus + Grafana observability stack, see the <a class="reference internal" href="../tutorials/02-docker-swarm-cluster.html"><span class="doc">Tutorial 2: Distributed Docker Deployment</span></a> tutorial, which includes a complete <code class="docutils literal notranslate"><span class="pre">docker-compose.yml</span></code> with Prometheus, Grafana, and Jaeger.</p>
@@ -540,10 +513,6 @@
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">c</span> <span class="s2">&quot;import courier; print(courier.__version__)&quot;</span>
 </pre></div>
 </div>
-<p><strong>Verify RabbitMQ is running:</strong></p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">ps</span> <span class="o">|</span> <span class="n">grep</span> <span class="n">rabbitmq</span>
-</pre></div>
-</div>
 <p><strong>List available plugins:</strong></p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">c</span> <span class="s2">&quot;from courier.interfaces import data_monitor_configs; print(data_monitor_configs.get_plugins())&quot;</span>
 </pre></div>
@@ -552,11 +521,11 @@
 </section>
 <section id="development-setup">
 <h2>Development Setup<a class="headerlink" href="#development-setup" title="Link to this heading"></a></h2>
-<p>For development and contributing, install with Poetry as described above, then set up pre-commit hooks and run the tests:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">poetry</span> <span class="n">run</span> <span class="n">pre</span><span class="o">-</span><span class="n">commit</span> <span class="n">install</span>
-<span class="n">poetry</span> <span class="n">run</span> <span class="n">pytest</span>
-<span class="n">poetry</span> <span class="n">run</span> <span class="n">ruff</span> <span class="n">check</span> <span class="o">.</span>
-<span class="n">poetry</span> <span class="n">run</span> <span class="n">mypy</span> <span class="n">src</span>
+<p>For development and contributing, install as described above, then set up pre-commit hooks and run the tests:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">run</span> <span class="n">pre</span><span class="o">-</span><span class="n">commit</span> <span class="n">install</span>
+<span class="n">uv</span> <span class="n">run</span> <span class="n">pytest</span>
+<span class="n">uv</span> <span class="n">run</span> <span class="n">ruff</span> <span class="n">check</span> <span class="o">.</span>
+<span class="n">uv</span> <span class="n">run</span> <span class="n">mypy</span> <span class="n">src</span>
 </pre></div>
 </div>
 <p>See <a class="reference internal" href="../contribute/code-style.html"><span class="doc">Code Style Guide</span></a> for full conventions.</p>
@@ -575,22 +544,13 @@
 <h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
 <p><strong>Import Error: No module named ‘courier’</strong></p>
 <p>Make sure you’ve activated your virtual environment:</p>
-<p>Poetry:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">poetry</span> <span class="n">shell</span>
+<p>uv:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">uv</span> <span class="n">venv</span>
+<span class="n">source</span> <span class="o">.</span><span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
 </pre></div>
 </div>
-<p>venv:</p>
+<p>pip:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">source</span> <span class="n">venv</span><span class="o">/</span><span class="nb">bin</span><span class="o">/</span><span class="n">activate</span>
-</pre></div>
-</div>
-<p><strong>RabbitMQ Connection Failed</strong></p>
-<p>Check that RabbitMQ is running:</p>
-<p>Docker:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">docker</span> <span class="n">ps</span> <span class="o">|</span> <span class="n">grep</span> <span class="n">rabbitmq</span>
-</pre></div>
-</div>
-<p>System service:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">systemctl</span> <span class="n">status</span> <span class="n">rabbitmq</span><span class="o">-</span><span class="n">server</span>
 </pre></div>
 </div>
 <p><strong>Permission Denied Errors</strong></p>

@@ -4,7 +4,7 @@ import threading
 import time
 from collections.abc import Callable
 from functools import wraps
-from typing import TypeVar
+from typing import Final, TypeVar
 
 from courier.errors import CourierError
 from courier.utils.logging import get_logger
@@ -12,6 +12,9 @@ from courier.utils.logging import get_logger
 T = TypeVar("T")
 
 _logger = get_logger("module", "decorators", None)
+
+INFINITE_RETRIES: Final[int] = -1
+MAX_BACKOFF_SECONDS: Final[float] = 60.0
 
 
 def retry_with_backoff(
@@ -37,7 +40,8 @@ def retry_with_backoff(
     Parameters
     ----------
     max_retries : int, default=5
-        Maximum number of retry attempts before giving up.
+        Maximum number of retry attempts before giving up.  Set to -1 to retry
+        forever (useful for broker connections that must survive a restart).
     base_delay : float, default=1.0
         Initial delay in seconds, doubled after each failure.
     exceptions : tuple of type[Exception], default=(Exception,)
@@ -77,18 +81,24 @@ def retry_with_backoff(
         @wraps(func)
         def wrapper(*args: object, **kwargs: object) -> T | None:
             last_exc: Exception | None = None
-            for attempt in range(max_retries):
+            attempt = 0
+            is_infinite = max_retries == INFINITE_RETRIES
+
+            while is_infinite or attempt < max_retries:
                 try:
                     return func(*args, **kwargs)
                 except exceptions as e:
                     last_exc = e
-                    if attempt == max_retries - 1:
+                    is_last_attempt = (
+                        not is_infinite and attempt == max_retries - 1
+                    )
+                    if is_last_attempt:
                         _logger.exception(
                             f"Max retries ({max_retries}) reached for {func.__name__}",
                         )
                         raise
 
-                    wait_time = base_delay * (2**attempt)
+                    wait_time = min(base_delay * (2**attempt), MAX_BACKOFF_SECONDS)
                     _logger.warning(
                         f"Attempt {attempt + 1} failed for {func.__name__}: {e}. "
                         f"Retrying in {wait_time} seconds...",
@@ -110,6 +120,8 @@ def retry_with_backoff(
                             f"{func.__name__}, aborting retries.",
                         )
                         raise
+
+                    attempt += 1
 
             return None
 
