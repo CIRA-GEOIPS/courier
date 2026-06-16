@@ -183,7 +183,7 @@ def _build_data_monitor_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.DATA_MONITOR.value}"'
+                    f'{{ name =~ "{PluginKind.DATA_MONITOR.value}.*"'
                     f' && {attr_source} = "$dm_source" }}'
                     f" | avg(duration) by({attr_path})",
                     datasource_uid=uid,
@@ -205,7 +205,7 @@ def _build_data_monitor_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.DATA_MONITOR.value}"'
+                    f'{{ name =~ "{PluginKind.DATA_MONITOR.value}.*"'
                     f' && {attr_source} = "$dm_source" }}',
                     datasource_uid=uid,
                 ),
@@ -249,7 +249,7 @@ def _build_job_builder_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.JOB_BUILDER.value}"'
+                    f'{{ name =~ "{PluginKind.JOB_BUILDER.value}.*"'
                     f' && {attr_plugin} = "$jb_trace_plugin" }}'
                     f" | avg(duration) by({attr_plugin})",
                     datasource_uid=uid,
@@ -400,7 +400,7 @@ def _build_dispatcher_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.DISPATCHER.value}"'
+                    f'{{ name =~ "{PluginKind.DISPATCHER.value}.*"'
                     f" && {attr_rc} >= 0 }}"
                     f" | count() by({attr_rc})",
                     datasource_uid=uid,
@@ -422,7 +422,7 @@ def _build_dispatcher_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.DISPATCHER.value}" }}'
+                    f'{{ name =~ "{PluginKind.DISPATCHER.value}.*" }}'
                     f" | avg(duration) by({attr_host})",
                     datasource_uid=uid,
                     table_type="traces",
@@ -486,7 +486,7 @@ def _build_trace_gap_detection_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.DATA_MONITOR.value}" }}'
+                    f'{{ name =~ "{PluginKind.DATA_MONITOR.value}.*" }}'
                     " | count()",
                     datasource_uid=uid,
                     table_type="traces",
@@ -532,7 +532,7 @@ def _build_trace_gap_detection_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name =~ "{PluginKind.DATA_MONITOR.value}"'
+                    f'{{ name =~ "{PluginKind.DATA_MONITOR.value}.*"'
                     f' && {_A["correlation_id"]} != "" }}',
                     datasource_uid=uid,
                 ),
