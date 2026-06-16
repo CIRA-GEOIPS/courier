@@ -123,7 +123,7 @@ def _build_trace_overview_row(
                 "an error (status.code = 2)."
             ),
             dataSource=uid,
-            targets=[_target("{ status.code = 2 }", datasource_uid=uid)],
+            targets=[_target("{ status = error }", datasource_uid=uid)],
             gridPos=GridPos(h=_H_MEDIUM, w=_W_FULL, x=0, y=inner_y),
         ),
     )
@@ -265,7 +265,7 @@ def _build_job_builder_traces_row(
         Table(
             title="Jobs Per Group",
             description=(
-                "Count of spans that carry a non-empty ``courier.job_group.name`` "
+                "Count of spans that carry a non-empty ``span.courier.job_group.name`` "
                 "attribute, grouped by group name."
             ),
             dataSource=uid,
@@ -334,7 +334,7 @@ def _build_metadata_router_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ span.name = "metadata_router.route_file"'
+                    f'{{ name = "metadata_router.route_file"'
                     f' && {attr_target} != "" }}'
                     f" | count() by({attr_target})",
                     datasource_uid=uid,
@@ -356,7 +356,7 @@ def _build_metadata_router_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    '{ span.name = "metadata_router.route_file" }'
+                    '{ name = "metadata_router.route_file" }'
                     " | avg(duration)",
                     datasource_uid=uid,
                     table_type="traces",

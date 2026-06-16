@@ -149,21 +149,21 @@ SPAN_NAMES_BY_KIND: dict[PluginKind, list[str]] = {
 """Maps each plugin kind to its known OpenTelemetry span name prefixes."""
 
 SPAN_ATTRS: dict[str, str] = {
-    "correlation_id": "courier.correlation_id",
-    "file_path": "courier.file.path",
-    "file_hostname": "courier.file.hostname",
-    "file_source": "courier.file.source",
-    "job_id": "courier.job.id",
-    "job_name": "courier.job.name",
-    "job_targets": "courier.job.targets",
-    "job_file_count": "courier.job.file_count",
-    "job_group_name": "courier.job_group.name",
-    "execution_return_code": "courier.execution_log.return_code",
-    "execution_hostname": "courier.execution_log.hostname",
-    "target": "courier.target",
-    "plugin_name": "plugin.name",
-    "plugin_version": "plugin.version",
-    "plugin_family": "plugin.family",
+    "correlation_id": "span.courier.correlation_id",
+    "file_path": "span.courier.file.path",
+    "file_hostname": "span.courier.file.hostname",
+    "file_source": "span.courier.file.source",
+    "job_id": "span.courier.job.id",
+    "job_name": "span.courier.job.name",
+    "job_targets": "span.courier.job.targets",
+    "job_file_count": "span.courier.job.file_count",
+    "job_group_name": "span.courier.job_group.name",
+    "execution_return_code": "span.courier.execution_log.return_code",
+    "execution_hostname": "span.courier.execution_log.hostname",
+    "target": "span.courier.target",
+    "plugin_name": "span.plugin.name",
+    "plugin_version": "span.plugin.version",
+    "plugin_family": "span.plugin.family",
 }
 """Span attribute key constants mirroring :mod:`courier.tracing` conventions."""
 
