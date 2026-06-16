@@ -341,7 +341,7 @@ line-ending = "lf"
 
 [project]
 name = "runcourier"
-version = "0.7.0"
+version = "1.0.0-alpha.12"
 requires-python = ">=3.11,<3.15"
 
 [build-system]
