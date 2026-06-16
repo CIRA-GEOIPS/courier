@@ -38,8 +38,10 @@ def generate_dashboard(  # noqa: PLR0913
     mode: str | DashboardGenerationMode = "UNIFIED",
     only_metrics: bool = False,
     only_traces: bool = False,
+    only_logs: bool = False,
     datasource: str = "Prometheus",
     traces_datasource: str = "Tempo",
+    loki_datasource: str = "",
     name: str | None = None,
     uid: str | None = None,
     tags: list[str] | None = None,
@@ -63,13 +65,17 @@ def generate_dashboard(  # noqa: PLR0913
 
         Accepts enum members or the raw string names.  Default: ``"UNIFIED"``.
     only_metrics : bool
-        If ``True``, only generate Prometheus panels (skip TraceQL).
+        If ``True``, only generate Prometheus panels (skip TraceQL and Loki).
     only_traces : bool
-        If ``True``, only generate TraceQL panels (skip Prometheus).
+        If ``True``, only generate TraceQL panels (skip Prometheus and Loki).
+    only_logs : bool
+        If ``True``, only generate Loki log panels (skip Prometheus and TraceQL).
     datasource : str
         Prometheus datasource UID or name (default ``"Prometheus"``).
     traces_datasource : str
         Tempo datasource UID or name (default ``"Tempo"``).
+    loki_datasource : str
+        Loki datasource UID or name.  When empty, Loki panels are not generated.
     name : str | None
         Dashboard title override.  When ``None``, auto-named from the model's
         service name.
@@ -86,9 +92,9 @@ def generate_dashboard(  # noqa: PLR0913
     # ------------------------------------------------------------------
     # Law 1 (Early Exit): validate mutually-exclusive flags.
     # ------------------------------------------------------------------
-    if only_metrics and only_traces:
+    if sum((only_metrics, only_traces, only_logs)) > 1:
         raise ValueError(
-            "only_metrics and only_traces cannot both be True",
+            "only_metrics, only_traces, and only_logs are mutually exclusive",
         )
 
     # ------------------------------------------------------------------
@@ -133,8 +139,10 @@ def generate_dashboard(  # noqa: PLR0913
                 model,
                 only_metrics=only_metrics,
                 only_traces=only_traces,
+                only_logs=only_logs,
                 datasource=datasource,
                 traces_datasource=traces_datasource,
+                loki_datasource=loki_datasource,
                 name=name,
                 uid=uid,
                 tags=tags,
@@ -146,8 +154,10 @@ def generate_dashboard(  # noqa: PLR0913
             model,
             only_metrics=only_metrics,
             only_traces=only_traces,
+            only_logs=only_logs,
             datasource=datasource,
             traces_datasource=traces_datasource,
+            loki_datasource=loki_datasource,
             name=name,
             uid=uid,
             tags=tags,
@@ -158,8 +168,10 @@ def generate_dashboard(  # noqa: PLR0913
             model,
             only_metrics=only_metrics,
             only_traces=only_traces,
+            only_logs=only_logs,
             datasource=datasource,
             traces_datasource=traces_datasource,
+            loki_datasource=loki_datasource,
             name=name,
             uid=uid,
             tags=tags,
@@ -178,8 +190,10 @@ def _build_single_dashboard(  # noqa: PLR0913
     *,
     only_metrics: bool,
     only_traces: bool,
+    only_logs: bool,
     datasource: str,
     traces_datasource: str,
+    loki_datasource: str,
     name: str | None,
     uid: str | None,
     tags: list[str] | None,
@@ -189,8 +203,10 @@ def _build_single_dashboard(  # noqa: PLR0913
         model,
         only_metrics=only_metrics,
         only_traces=only_traces,
+        only_logs=only_logs,
         datasource=datasource,
         traces_datasource=traces_datasource,
+        loki_datasource=loki_datasource,
     )
     return _build_dashboard(
         templates,
@@ -212,8 +228,10 @@ def _split_by_kind(  # noqa: PLR0913
     *,
     only_metrics: bool,
     only_traces: bool,
+    only_logs: bool,
     datasource: str,
     traces_datasource: str,
+    loki_datasource: str,
     name: str | None,
     uid: str | None,
     tags: list[str] | None,
@@ -245,6 +263,8 @@ def _split_by_kind(  # noqa: PLR0913
             only_traces=only_traces,
             datasource=datasource,
             traces_datasource=traces_datasource,
+            only_logs=only_logs,
+            loki_datasource=loki_datasource,
         )
         dashboards.append(
             _build_dashboard(
@@ -302,8 +322,10 @@ def _split_by_plugin(  # noqa: PLR0913
     *,
     only_metrics: bool,
     only_traces: bool,
+    only_logs: bool,
     datasource: str,
     traces_datasource: str,
+    loki_datasource: str,
     name: str | None,
     uid: str | None,
     tags: list[str] | None,
@@ -326,6 +348,8 @@ def _split_by_plugin(  # noqa: PLR0913
             only_traces=only_traces,
             datasource=datasource,
             traces_datasource=traces_datasource,
+            only_logs=only_logs,
+            loki_datasource=loki_datasource,
         )
         dashboards.append(
             _build_dashboard(
@@ -444,8 +468,10 @@ def _assemble_unified_panels(
     *,
     only_metrics: bool,
     only_traces: bool,
+    only_logs: bool,
     datasource: str,
     traces_datasource: str,
+    loki_datasource: str,
 ) -> tuple[list, list]:
     """Assemble all templates and rows for a single dashboard.
 
@@ -473,11 +499,17 @@ def _assemble_unified_panels(
         build_topology_panels,
     )
     from courier.dashboard.traceql_panels import build_traceql_panels  # noqa: PLC0415
+    from courier.dashboard.loki_panels import (  # noqa: PLC0415
+        build_loki_panels,
+        build_loki_templates,
+    )
 
     panel_rows: list = []
 
-    # -- Templates (always needed for datasource variables) ----------------
-    templates = build_prometheus_templates(model)
+    # -- Templates ----------------------------------------------------------
+    templates: list = []
+    if not only_traces and not only_logs:
+        templates.extend(build_prometheus_templates(model))
 
     # -- Sub-section header (when applicable) ------------------------------
     header = build_subsection_header(model, datasource=datasource)
@@ -485,7 +517,7 @@ def _assemble_unified_panels(
         panel_rows.append(header)
 
     # -- Prometheus panels -------------------------------------------------
-    if not only_traces:
+    if not only_traces and not only_logs:
         prom_panels = build_prometheus_panels(model, datasource=datasource)
         # After Task 2.1 reordering, panels[0] and panels[1] are always
         # Service Overview and Pipeline Summary (always generated).
@@ -495,14 +527,14 @@ def _assemble_unified_panels(
         panel_rows.extend(header_panels)
 
         # Topology panels — inserted between overview/summary and per-plugin detail
-        if not only_metrics and not only_traces:
+        if not only_metrics and not only_traces and not only_logs:
             topo_panels = build_topology_panels(model, datasource=datasource)
             panel_rows.extend(topo_panels)
 
         panel_rows.extend(body_panels)
 
     # -- TraceQL panels ----------------------------------------------------
-    if not only_metrics:
+    if not only_metrics and not only_logs:
         # Visual divider between Prometheus metrics and Tempo traces
         panel_rows.append(RowPanel(
             title="Distributed Traces (Tempo)",
@@ -516,6 +548,31 @@ def _assemble_unified_panels(
 
         trace_templates = _build_trace_templates(model)
         templates.extend(trace_templates)
+
+    # -- Loki (LogQL) panels -----------------------------------------------
+    if loki_datasource and not only_metrics and not only_traces:
+        panel_rows.append(RowPanel(
+            title="Application Logs (Loki)",
+            gridPos=GridPos(h=1, w=24, x=0, y=0),
+        ))
+
+        loki_panels = build_loki_panels(
+            model, datasource=loki_datasource,
+        )
+        panel_rows.extend(loki_panels)
+
+        loki_templates = build_loki_templates(model)
+        templates.extend(loki_templates)
+
+    # Only-logs mode: generate only Loki panels (even without --loki-datasource)
+    elif only_logs:
+        loki_panels = build_loki_panels(
+            model, datasource=loki_datasource or "Loki",
+        )
+        panel_rows.extend(loki_panels)
+
+        loki_templates = build_loki_templates(model)
+        templates.extend(loki_templates)
 
     # -- Cluster panels (sub-section only) ---------------------------------
     cluster = build_cluster_panels(model, datasource=datasource)

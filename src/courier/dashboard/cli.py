@@ -98,6 +98,13 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
             help="Only generate TraceQL panels (skip Prometheus).",
         ),
     ] = False,
+    only_logs: Annotated[
+        bool,
+        typer.Option(
+            "--only-logs",
+            help="Only generate Loki log panels (skip Prometheus and TraceQL).",
+        ),
+    ] = False,
     # Dashboard naming
     name: Annotated[
         str | None,
@@ -127,6 +134,13 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
             help="Tempo datasource name/UID.",
         ),
     ] = "Tempo",
+    loki_datasource: Annotated[
+        str,
+        typer.Option(
+            "--loki-datasource",
+            help="Loki datasource name/UID. When set, adds log panels.",
+        ),
+    ] = "",
     # Misc
     indent: Annotated[
         int,
@@ -250,8 +264,10 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
         mode=mode.name,
         only_metrics=only_metrics,
         only_traces=only_traces,
+        only_logs=only_logs,
         datasource=datasource,
         traces_datasource=traces_datasource,
+        loki_datasource=loki_datasource,
         name=name,
         uid=uid,
     )
