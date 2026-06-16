@@ -97,6 +97,9 @@ class ParallelBashConfig(BaseModel, frozen=True):
         return str(venv_path)
 
 
+ParallelBashConfig.model_rebuild()
+
+
 def _run_script(  # noqa: PLR0913
     script_body: str,
     timeout_seconds: float,

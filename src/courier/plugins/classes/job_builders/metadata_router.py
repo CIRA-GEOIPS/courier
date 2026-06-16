@@ -104,6 +104,10 @@ class MetadataRouterConfig(BaseModel, frozen=True):
         return v
 
 
+RouteConfig.model_rebuild()
+MetadataRouterConfig.model_rebuild()
+
+
 class MetadataRouterBuilder(JobBuilder):
     """Job builder that routes files to per-route :class:`FilterAndGroupJobGroup`.
 

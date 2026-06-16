@@ -80,6 +80,9 @@ class SerialBashConfig(BaseModel, frozen=True):
         return self
 
 
+SerialBashConfig.model_rebuild()
+
+
 class SerialBashDispatcher(Dispatcher):
     r"""Execute a single Jinja2-templated bash script for an entire job.
 
