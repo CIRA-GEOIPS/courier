@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from courier.config import ServiceConfig
 
 try:
-    import logging_loki
+    import logging_loki  # type: ignore[import-untyped]
 except ImportError:
     logging_loki = None
 

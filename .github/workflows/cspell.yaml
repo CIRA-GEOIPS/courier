@@ -10,4 +10,4 @@ jobs:
         with:
           node-version: 20
       - run: npm install -g cspell
-      - run: cspell ./src
+      - run: cspell ./src --config .cspell.json
