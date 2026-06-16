@@ -164,7 +164,9 @@ class Dispatcher(ServicePlugin):
             broker = self.parent_service._broker_manager
             if broker._connection and broker._connection.connected:
                 with broker._connection.channel() as channel:
-                    queue_name = self.incoming_queue
+                    queue_name = self.parent_service._broker_manager.get_queue_name(
+                        self.incoming_queue
+                    )
                     _, message_count, _ = channel.queue_declare(
                         queue=queue_name, passive=True,
                     )
