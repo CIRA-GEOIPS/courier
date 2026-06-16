@@ -398,6 +398,47 @@ def _build_plugin_model(
 # ---------------------------------------------------------------------------
 
 
+def _build_trace_templates(model: DashboardModel) -> list:
+    """Generate template variables required by TraceQL panels.
+
+    The TraceQL queries reference ``$dm_source``, ``$jb_trace_plugin``,
+    and ``$correlation_id``.  These must be present in the dashboard
+    templating list for the panels to function.
+    """
+    from grafanalib.core import Template  # noqa: PLC0415
+
+    templates: list[Template] = []
+
+    templates.append(Template(
+        name="dm_source",
+        label="Data Monitor Source",
+        type="textbox",
+        query="",
+    ))
+
+    if model.job_builders:
+        jb_names = sorted({jb.plugin_name for jb in model.job_builders})
+        if jb_names:
+            templates.append(Template(
+                name="jb_trace_plugin",
+                label="Job Builder (Traces)",
+                type="custom",
+                query=",".join(jb_names),
+                multi=True,
+                includeAll=True,
+                allValue=".*",
+            ))
+
+    templates.append(Template(
+        name="correlation_id",
+        label="Correlation ID",
+        type="textbox",
+        query="",
+    ))
+
+    return templates
+
+
 def _assemble_unified_panels(
     model: DashboardModel,
     *,
@@ -461,7 +502,7 @@ def _assemble_unified_panels(
         panel_rows.extend(body_panels)
 
     # -- TraceQL panels ----------------------------------------------------
-    if not only_metrics and not only_traces:
+    if not only_metrics:
         # Visual divider between Prometheus metrics and Tempo traces
         panel_rows.append(RowPanel(
             title="Distributed Traces (Tempo)",
@@ -472,6 +513,9 @@ def _assemble_unified_panels(
             model, datasource=traces_datasource,
         )
         panel_rows.extend(traceql_panels)
+
+        trace_templates = _build_trace_templates(model)
+        templates.extend(trace_templates)
 
     # -- Cluster panels (sub-section only) ---------------------------------
     cluster = build_cluster_panels(model, datasource=datasource)

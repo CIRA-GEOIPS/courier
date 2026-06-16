@@ -379,6 +379,7 @@ def _custom_template(
         query=",".join(options),
         multi=True,
         includeAll=True,
+        allValue=".*",
         refresh=REFRESH_ON_TIME_RANGE_CHANGE,
     )
 
