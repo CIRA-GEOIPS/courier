@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 import types
@@ -159,7 +160,7 @@ class Dispatcher(ServicePlugin):
         query the underlying broker queue depth.
 
         """
-        try:
+        with contextlib.suppress(Exception):
             broker = self.parent_service._broker_manager
             if broker._connection and broker._connection.connected:
                 with broker._connection.channel() as channel:
@@ -171,8 +172,6 @@ class Dispatcher(ServicePlugin):
                         dispatcher_identifier=self.identifier,
                     ).set(message_count)
                     return
-        except Exception:
-            pass
         DISPATCHER_QUEUE_DEPTH.labels(
             dispatcher_identifier=self.identifier,
         ).set(0)
@@ -184,10 +183,8 @@ class Dispatcher(ServicePlugin):
             for job_string, parent_ctx in self.parent_service.consume(
                 self.incoming_queue,
             ):
-                try:
+                with contextlib.suppress(Exception):
                     self._emit_queue_depth()
-                except Exception:
-                    pass
                 job = Job.from_string(str(job_string))
                 with tracer.start_as_current_span(
                     "dispatcher.dispatch_job",

@@ -190,6 +190,6 @@ def run(
         run_service(config, log_level=log_level, only_set=only_set)
     except typer.Exit:
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("Fatal error in run_service")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc

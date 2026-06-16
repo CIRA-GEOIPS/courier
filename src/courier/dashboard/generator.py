@@ -35,7 +35,7 @@ _log = logging.getLogger(__name__)
 def generate_dashboard(  # noqa: PLR0913
     model: DashboardModel,
     *,
-    mode: str | type[DashboardGenerationMode] = "UNIFIED",
+    mode: str | DashboardGenerationMode = "UNIFIED",
     only_metrics: bool = False,
     only_traces: bool = False,
     datasource: str = "Prometheus",

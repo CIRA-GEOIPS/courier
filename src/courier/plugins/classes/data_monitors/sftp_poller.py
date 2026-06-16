@@ -153,7 +153,10 @@ class SftpPoller(DataMonitorBasePlugin):
         client.connect(**connect_kwargs)
         self._client = client
         self._sftp = client.open_sftp()
-        DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(1)
+        DATA_MONITOR_CONNECTION_STATUS.labels(
+            monitor_name=self.name,
+            monitor_identifier=self.identifier,
+        ).set(1)
         self._logger.info(
             f"Connected to sftp://{self.validated.username}@"
             f"{self.validated.host}:{self.validated.port}",
@@ -187,7 +190,10 @@ class SftpPoller(DataMonitorBasePlugin):
             with contextlib.suppress(OSError):
                 self._client.close()
             self._client = None
-        DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(0)
+        DATA_MONITOR_CONNECTION_STATUS.labels(
+            monitor_name=self.name,
+            monitor_identifier=self.identifier,
+        ).set(0)
 
     def _matches_pattern(self, filename: str) -> bool:
         return fnmatch.fnmatchcase(filename, self.validated.glob_pattern)
@@ -220,10 +226,14 @@ class SftpPoller(DataMonitorBasePlugin):
                 hostname=self._hostname_label,
                 timestamp=timestamp,
             )
-        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(time.time())
-        DATA_MONITOR_SCAN_DURATION.labels(monitor_name=self.name, monitor_identifier=self.identifier).observe(
-            time.time() - scan_start,
-        )
+        DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(
+            monitor_name=self.name,
+            monitor_identifier=self.identifier,
+        ).set(time.time())
+        DATA_MONITOR_SCAN_DURATION.labels(
+            monitor_name=self.name,
+            monitor_identifier=self.identifier,
+        ).observe(time.time() - scan_start)
 
     def _seed_seen(self) -> None:
         """Pre-populate the seen-set without yielding."""

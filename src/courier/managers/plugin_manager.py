@@ -188,7 +188,7 @@ class PluginManager(ServiceManager):
                 f"(class={plugin_name} v{plugin_instance.version})",
             )
 
-    def _start_plugin(self, plugin_info: PluginStateInfo) -> None:
+    def _start_plugin(self, plugin_info: PluginStateInfo) -> None:  # noqa: PLR0915
         """Start a plugin in a separate thread.
 
         Parameters

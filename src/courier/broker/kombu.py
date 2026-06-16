@@ -84,7 +84,6 @@ def _normalize_headers(raw_headers: dict | None) -> dict[str, str]:
                 continue  # drop non-UTF-8 bytes
         elif isinstance(val, (int, float, bool)):
             normalized[key] = str(val)
-        # else: drop (dict, list, None, etc.)
     return normalized
 
 
@@ -121,7 +120,12 @@ def _open_connection(
         If the broker is unreachable.
     """
     conn = kombu.Connection(url)
-    conn.ensure_connection(max_retries=max_retries, interval_start=1, interval_step=1, interval_max=30)
+    conn.ensure_connection(
+        max_retries=max_retries,
+        interval_start=1,
+        interval_step=1,
+        interval_max=30,
+    )
     return conn
 
 

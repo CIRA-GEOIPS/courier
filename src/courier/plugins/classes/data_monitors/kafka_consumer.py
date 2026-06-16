@@ -268,7 +268,10 @@ class KafkaConsumer(DataMonitorBasePlugin):
                     return
                 continue
 
-            DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(1)
+            DATA_MONITOR_CONNECTION_STATUS.labels(
+                monitor_name=self.name,
+                monitor_identifier=self.identifier,
+            ).set(1)
             attempt = 0
             delay = self.validated.retry_delay_seconds
             try:
@@ -276,7 +279,10 @@ class KafkaConsumer(DataMonitorBasePlugin):
             finally:
                 with contextlib.suppress(KafkaError):
                     consumer.close(autocommit=True)
-                DATA_MONITOR_CONNECTION_STATUS.labels(monitor_name=self.name, monitor_identifier=self.identifier).set(0)
+                DATA_MONITOR_CONNECTION_STATUS.labels(
+                    monitor_name=self.name,
+                    monitor_identifier=self.identifier,
+                ).set(0)
 
     def _handle_connect_error(
         self,

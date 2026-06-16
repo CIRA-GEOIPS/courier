@@ -146,7 +146,7 @@ def _find_boundary_edges(
 
 def _build_node_identity(
     model: DashboardModel,
-    datasource: str,
+    datasource: str,  # noqa: ARG001
     y: int,
 ) -> list:
     """Build the Node Identity row — a single Text panel with HTML content.
@@ -495,7 +495,8 @@ def build_cluster_panels(
     Parameters
     ----------
     model : DashboardModel
-        Parsed dashboard model from :func:`~courier.dashboard.config_parser.parse_config`.
+        Parsed dashboard model from
+        :func:`~courier.dashboard.config_parser.parse_config`.
     datasource : str
         Grafana datasource name or UID (default: ``"$datasource"``).
 

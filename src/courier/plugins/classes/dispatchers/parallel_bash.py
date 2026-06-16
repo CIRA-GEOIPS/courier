@@ -22,14 +22,14 @@ import jinja2
 from jinja2.exceptions import TemplateSyntaxError
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from courier.interfaces.module_based.dispatchers import Dispatcher
-from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.dispatchers._output_file_pattern import (  # noqa: TC001
     OutputFilePattern,
 )
 from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
+from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import execute_bash_script
 

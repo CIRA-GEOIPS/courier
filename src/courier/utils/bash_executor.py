@@ -15,8 +15,8 @@ import tempfile
 import threading
 import typing
 from dataclasses import dataclass
-from typing import cast
 from pathlib import Path
+from typing import cast
 
 
 @dataclass
@@ -121,7 +121,7 @@ def execute_bash_script(  # noqa: PLR0913, PLR0915
 
         # -- Open log file if requested ---------------------------------------
         if log_to_file:
-            log_fh = cast(Path, log_file_path).open("w")
+            log_fh = cast("Path", log_file_path).open("w")
             log_fh.write("# Dispatch log — script started\n")
             log_fh.flush()
 

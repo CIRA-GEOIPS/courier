@@ -427,7 +427,11 @@ def _service_overview_panels(
             title="Service Uptime (hours)",
             expr=f"{_PREFIX}_service_uptime_seconds / 3600",
             x=0,
-            description="Shows how long the Courier service has been running continuously. Why it matters: a recent restart may indicate a crash or deployment. When dropping to zero: check service logs for crash or OOM events.",
+            description=(
+                "Shows how long the Courier service has been running continuously. "
+                "Why it matters: a recent restart may indicate a crash or deployment. "
+                "When dropping to zero: check service logs for crash or OOM events."
+            ),
         ),
     )
 
@@ -445,7 +449,11 @@ def _service_overview_panels(
                 Threshold("red", 0, 0.0),
                 Threshold("green", 1, 0.01),
             ],
-            description="Shows the number of configured plugins currently in RUNNING state. Why it matters: plugins in any other state are not processing data. When red (zero): check the plugin manager logs for startup failures.",
+            description=(
+                "Shows the number of configured plugins currently in RUNNING state. "
+                "Why it matters: plugins in any other state are not processing data. "
+                "When red (zero): check the plugin manager logs for startup failures."
+            ),
         ),
     )
 
@@ -462,7 +470,11 @@ def _service_overview_panels(
                 Threshold("red", 0, 0.0),
                 Threshold("green", 1, 0.01),
             ],
-            description="Shows the aggregate file processing rate across all data monitors. Why it matters: zero rate means no data is flowing through the pipeline. When red: verify data monitors are running and source systems are accessible.",
+            description=(
+                "Shows the aggregate file processing rate across data monitors. "
+                "Why it matters: zero rate means no data flowing. "
+                "When red: verify monitors are running and sources accessible."
+            ),
         ),
     )
 
@@ -477,7 +489,12 @@ def _service_overview_panels(
             ),
             x=18,
             thresholds=_THRESH_PENDING_JOBS,
-            description="Shows the maximum pending job count across all job builders. Why it matters: growing pending jobs indicate downstream saturation. When amber (>100): monitor dispatcher throughput. When red (>500): scale dispatchers or check broker connectivity.",
+            description=(
+                "Shows the maximum pending job count across all job builders. "
+                "Why it matters: growing pending jobs indicate downstream saturation. "
+                "When amber (>100): monitor dispatcher throughput. "
+                "When red (>500): scale dispatchers or check broker connectivity."
+            ),
         ),
     )
 
@@ -545,22 +562,27 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         return None
 
     dm_plugin_names = {dm.plugin_name for dm in model.data_monitors}
-    _POLL_MONITORS = {"s3_poller", "sftp_poller", "cron_glob"}
-    has_poll_monitors = bool(dm_plugin_names & _POLL_MONITORS)
+    _poll_monitors = {"s3_poller", "sftp_poller", "cron_glob"}
+    has_poll_monitors = bool(dm_plugin_names & _poll_monitors)
 
     y_row = _advance(gs, 1)
     lbl = 'monitor_name=~"$dm_plugin"'
 
     panels: list = []
 
-    # --- Sub-row 1: files processed, processing time (poll-only), errors ---------------
+    # --- Sub-row 1: files processed, proc. time, errors ---
     py1 = _advance(gs, 8)
 
     panels.append(
         _timeseries(
             gs,
             title="Files Processed",
-            description="Shows the file processing rate per selected data monitor plugin. Why it matters: flatlined rate may indicate a stalled data monitor or inaccessible source. When dropping to zero: check the data monitor plugin logs.",
+            description=(
+                "Shows the file processing rate per selected data monitor plugin. "
+                "Why it matters: flatlined rate may indicate a stalled data monitor "
+                "or inaccessible source. When dropping to zero: check the data "
+                "monitor plugin logs."
+            ),
             targets=[
                 _target(
                     _rate(
@@ -581,7 +603,11 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             _timeseries(
                 gs,
                 title="Processing Time (avg)",
-                description="Average scan duration for poll-based data monitors (s3_poller, sftp_poller, cron_glob). Event-driven monitors do not emit this metric.",
+                description=(
+                    "Average scan duration for poll-based data monitors "
+                    "(s3_poller, sftp_poller, cron_glob). "
+                    "Event-driven monitors do not emit this metric."
+                ),
                 targets=[
                     _target(
                         _avg_rate(
@@ -603,10 +629,18 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         _timeseries(
             gs,
             title="Errors",
-            description="Shows the file processing failure rate per selected data monitor plugin. Why it matters: any non-zero error rate indicates file processing failures. When errors appear: inspect the data monitor's error logs for the failing file paths.",
+            description=(
+                "Shows the file processing failure rate per selected data monitor "
+                "plugin. Why it matters: any non-zero error rate indicates file "
+                "processing failures. When errors appear: inspect the data "
+                "monitor's error logs for the failing file paths."
+            ),
             targets=[
                 _target(
-                    _rate(f"{_PREFIX}_data_monitor_files_processed_total", lbl + ', status="failure"'),
+                    _rate(
+                        f"{_PREFIX}_data_monitor_files_processed_total",
+                        lbl + ', status="failure"',
+                    ),
                     "{{monitor_name}}",
                 ),
             ],
@@ -768,7 +802,12 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         GaugePanel(
             id=_next_id(gs),
             title="Active Groups",
-            description="Number of active file groups currently accumulating in the job builder. Why it matters: growing active groups indicate files are arriving faster than groups are being completed. When amber: check file arrival patterns and group timeout settings.",
+            description=(
+                "Number of active file groups currently accumulating in the job "
+                "builder. Why it matters: growing active groups indicate files "
+                "are arriving faster than groups are being completed. "
+                "When amber: check file arrival patterns and group timeout settings."
+            ),
             dataSource=_DS,
             targets=[
                 _target(
@@ -815,7 +854,7 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
 
 def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
-    """Generate Dispatcher panels — jobs processed, timing, success rate, status codes."""
+    """Generate Dispatcher panels (jobs, timing, success, status codes)."""
     if not model.dispatchers:
         return None
 
@@ -1033,14 +1072,16 @@ def _http_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         ),
     )
 
+    http_rate = _rate(
+        f"{_PREFIX}_dispatcher_http_response_codes_total", lbl,
+    )
     panels.append(
         _timeseries(
             gs,
             title="HTTP Status Codes",
             targets=[
                 _target(
-                    f"sum by (status_code)"
-                    f" ({_rate(f'{_PREFIX}_dispatcher_http_response_codes_total', lbl)})",
+                    f"sum by (status_code) ({http_rate})",
                     "{{status_code}}",
                 ),
             ],
@@ -1182,7 +1223,12 @@ def _broker_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
         _timeseries(
             gs,
             title="Emit Failures",
-            description="Aggregate rate of job-emit failures across all job builders. Why it matters: non-zero means dispatched jobs are being dropped before they reach the broker. When errors appear: check job builder logs and broker connectivity.",
+            description=(
+                "Aggregate rate of job-emit failures across all job builders. "
+                "Why it matters: non-zero means dispatched jobs are being "
+                "dropped before they reach the broker. "
+                "When errors appear: check job builder logs and broker connectivity."
+            ),
             targets=[
                 _target(
                     _rate(f"{_PREFIX}_job_builder_emit_failures_total"),

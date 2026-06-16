@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from courier.config import ServiceConfig
 
 try:
-    import logging_loki  # type: ignore
+    import logging_loki
 except ImportError:
     logging_loki = None
 
@@ -204,8 +204,8 @@ class _ResilientLokiHandler(logging.Handler):
         try:
             raw = delegate.level
             if isinstance(raw, (int, str)):
-                level = int(raw)  # noqa: TRY400 — defensive
-        except Exception:  # noqa: BLE001
+                level = int(raw)
+        except (ValueError, TypeError):
             pass
         super().__init__(level=level)
         self.delegate = delegate
@@ -220,12 +220,12 @@ class _ResilientLokiHandler(logging.Handler):
                 self._last_error_log = now
                 sys.stderr.write(
                     "courier: Loki handler failed to push log records "
-                    "(rate-limited to 1/min); check Loki backend health.\n"
+                    "(rate-limited to 1/min); check Loki backend health.\n",
                 )
             # Suppress the per-record traceback; silently drop.
             self.delegate.handleError(record)
 
-    def handleError(self, record: logging.LogRecord) -> None:
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
         pass  # fully suppressed; diagnostics handled in emit()
 
     def close(self) -> None:
