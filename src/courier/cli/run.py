@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import typer
 
 from courier.cli.config_loader import load_config
-from courier.cli.plugins import PLUGIN_REGISTRIES
+from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
 
@@ -31,7 +31,7 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     """
     out: dict[str, tuple[str, ...]] = {}
     for entry in config.spec.run:
-        if entry.spec.kind != "job_builder":
+        if normalize_kind(entry.spec.kind) != "job_builders":
             continue
         cfg = entry.spec.config or {}
         declared: list[str] = []
@@ -112,7 +112,7 @@ def run_service(
             continue
         if entry.spec.kind == "data_monitor_configs":
             continue  # YAML-based config, not a ServicePlugin
-        registry = PLUGIN_REGISTRIES.get(entry.spec.kind)
+        registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
         if registry is None:
             continue
         plugin_obj = registry.get_plugin(entry.spec.name)
@@ -128,7 +128,7 @@ def run_service(
     )
     dispatcher_ids = {
         e.identifier for e in config.spec.run
-        if e.spec.kind == "dispatcher"
+        if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
     # Union: add any dispatcher targeted by builders in the filtered set

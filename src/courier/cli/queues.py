@@ -24,6 +24,7 @@ from kombu import Connection
 from kombu.exceptions import OperationalError
 
 from courier.cli.config_loader import load_config
+from courier.cli.plugins import normalize_kind
 from courier.constants import (
     DISPATCHER_QUEUE,
 )
@@ -77,7 +78,7 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
     config = load_config(config_file)
     ns = namespace or config.metadata.namespace or "default"
     dispatcher_ids = {
-        e.identifier for e in config.spec.run if e.spec.kind == "dispatchers"
+        e.identifier for e in config.spec.run if normalize_kind(e.spec.kind) == "dispatchers"
     }
     resolver = build_default_resolver(dispatcher_ids)
     queues: set[str] = set()
