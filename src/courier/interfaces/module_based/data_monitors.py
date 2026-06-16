@@ -100,6 +100,19 @@ class DataMonitorBasePlugin(ServicePlugin):
                 require_match=False,
             )
 
+    def _run_find_and_emit_files(self) -> None:
+        """Wrapper that exits the process on any unhandled exception."""
+        try:
+            self.find_and_emit_files()
+        except Exception:
+            import os
+            import traceback
+            traceback.print_exc()
+            self._logger.critical(
+                "Fatal error in data monitor %s: exiting", self.name,
+            )
+            os._exit(1)
+
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""
         tracer = get_tracer(__name__)
@@ -172,9 +185,9 @@ class DataMonitorBasePlugin(ServicePlugin):
         if self._state == PluginRunState.RUNNING:
             return
         self._main_thread = threading.Thread(
-            target=self.find_and_emit_files,
+            target=self._run_find_and_emit_files,
             name=self.name,
-            daemon=True,
+            daemon=False,
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()

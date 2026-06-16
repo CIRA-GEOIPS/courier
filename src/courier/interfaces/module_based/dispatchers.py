@@ -176,6 +176,19 @@ class Dispatcher(ServicePlugin):
             dispatcher_identifier=self.identifier,
         ).set(0)
 
+    def _run_handle_incoming_jobs(self) -> None:
+        """Wrapper that exits the process on any unhandled exception."""
+        try:
+            self.handle_incoming_jobs()
+        except Exception:
+            import os
+            import traceback
+            traceback.print_exc()
+            self._logger.critical(
+                "Fatal error in dispatcher %s: exiting", self.name,
+            )
+            os._exit(1)
+
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
         tracer = get_tracer(__name__)
@@ -290,9 +303,9 @@ class Dispatcher(ServicePlugin):
         if self._state == PluginRunState.RUNNING:
             return
         self._main_thread = threading.Thread(
-            target=self.handle_incoming_jobs,
+            target=self._run_handle_incoming_jobs,
             name=self.name,
-            daemon=True,
+            daemon=False,
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()

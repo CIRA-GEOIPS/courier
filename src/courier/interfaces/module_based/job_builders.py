@@ -129,9 +129,9 @@ class JobBuilder(ServicePlugin):
             self._sync.connect()  # raises StateSyncConnectionError if unreachable
             self._sync.start(self.job_groups, self._group_locks)
         self._main_thread = threading.Thread(
-            target=self.handle_incoming_files,
+            target=self._run_handle_incoming_files,
             name=self.name,
-            daemon=True,
+            daemon=False,
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()
@@ -310,6 +310,19 @@ class JobBuilder(ServicePlugin):
             )
 
         _do_publish()
+
+    def _run_handle_incoming_files(self) -> None:
+        """Wrapper that exits the process on any unhandled exception."""
+        try:
+            self.handle_incoming_files()
+        except Exception:
+            import os
+            import traceback
+            traceback.print_exc()
+            self._logger.critical(
+                "Fatal error in job builder %s: exiting", self.name,
+            )
+            os._exit(1)
 
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""
