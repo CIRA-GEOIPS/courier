@@ -27,6 +27,26 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# RE2-safe regex escaping
+# ---------------------------------------------------------------------------
+
+# Characters that MUST be backslash-escaped in RE2/PromQL regex patterns.
+# RE2 does NOT support escape sequences for characters like '-' and '#'
+# that Python's re.escape() adds in Python >= 3.7.
+_RE2_ESCAPE_RE = _re.compile(r"([.^$*+?{}\[\]()\\|])")
+
+
+def _re2_escape(text: str) -> str:
+    """Escape *text* for use as a literal inside a PromQL ``=~""`` regex.
+
+    Escapes only the characters that are RE2 metacharacters.  Does **not**
+    escape hyphens, exclamation marks, or hashes — those are literal in
+    RE2 and ``\\-`` / ``\\!`` / ``\\#`` are invalid escape sequences.
+    """
+    return _RE2_ESCAPE_RE.sub(r"\\\1", text)
+
+
+# ---------------------------------------------------------------------------
 # Color palette for topology visualization
 # ---------------------------------------------------------------------------
 
@@ -294,7 +314,7 @@ def _build_flow_rate_row(model: DashboardModel, datasource: str) -> Row:
     # Build a regex matching all builder identifiers in the model so a single
     # PromQL query returns every active edge at once.
     builder_pattern = "|".join(
-        _re.escape(builder_id) for builder_id in model.routing
+        _re2_escape(builder_id) for builder_id in model.routing
     )
 
     targets = [
@@ -314,7 +334,7 @@ def _build_flow_rate_row(model: DashboardModel, datasource: str) -> Row:
     # Include dispatcher throughput as a second target when dispatchers exist
     if model.dispatchers:
         dispatcher_pattern = "|".join(
-            _re.escape(d.identifier) for d in model.dispatchers
+            _re2_escape(d.identifier) for d in model.dispatchers
         )
         targets.append(
             Target(
@@ -585,7 +605,7 @@ def _build_dep_table(
             ),
         )
 
-    identifier_pattern = "|".join(_re.escape(i) for i in identifiers)
+    identifier_pattern = "|".join(_re2_escape(i) for i in identifiers)
 
     return Table(
         title=title,
