@@ -10,23 +10,16 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: docs-deploy
   cancel-in-progress: false
 
 jobs:
-  docs:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/configure-pages@v5
 
       - uses: actions/setup-python@v5
         with:
@@ -42,7 +35,7 @@ jobs:
           cd sphinx
           sphinx-build -M html . _build -W --keep-going -n
 
-      - name: Upload build artifact (for debugging)
+      - name: Upload build artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -50,13 +43,30 @@ jobs:
           path: sphinx/_build/html/
           retention-days: 3
 
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sphinx-docs
+          path: sphinx/_build/html
+
       - name: Upload Pages artifact
-        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
         with:
           path: sphinx/_build/html
 
       - name: Deploy to GitHub Pages
-        if: github.event_name == 'workflow_dispatch'
         id: deploy
         uses: actions/deploy-pages@v4
