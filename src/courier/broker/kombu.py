@@ -115,7 +115,7 @@ def _open_connection(url: str) -> kombu.Connection:
         If the broker is unreachable.
     """
     conn = kombu.Connection(url)
-    conn.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
+    conn.ensure_connection(max_retries=10, interval_start=1, interval_step=1, interval_max=30)
     return conn
 
 
