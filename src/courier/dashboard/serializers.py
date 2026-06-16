@@ -47,6 +47,9 @@ def _rows_to_grafana11_panels(rows: list[dict]) -> list[dict]:
     top-level ``panels`` array.  Row dividers become panels with
     ``"type": "row"``; their sub-panels are interleaved as siblings.
 
+    Panels that lack an explicit ``gridPos`` are auto-assigned one so
+    that Grafana does not trip over null grid positions.
+
     Parameters
     ----------
     rows : list[dict]
@@ -59,28 +62,47 @@ def _rows_to_grafana11_panels(rows: list[dict]) -> list[dict]:
         a Grafana 11+ dashboard JSON.
     """
     flat: list[dict] = []
+    y_cursor = 0  # track the global Y position across all rows
+
     for row in rows:
         title = row.get("title", "")
-        sub_panels = row.get("panels", [])
+
+        # Convert raw grafanalib objects to dicts
+        sub_panels = [
+            p.to_json_data() if hasattr(p, "to_json_data") else p
+            for p in row.get("panels", [])
+        ]
+
+        # Emit row divider
+        flat.append({
+            "type": "row",
+            "gridPos": {"h": 1, "w": 24, "x": 0, "y": y_cursor},
+            "title": title,
+            "collapsed": row.get("collapse", False),
+        })
+        y_cursor += 1
 
         if not sub_panels:
-            # Section divider row (e.g. "Distributed Traces (Tempo)")
-            # — still needs to be a visible divider in Grafana 11
-            flat.append({
-                "type": "row",
-                "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
-                "title": title,
-                "collapsed": row.get("collapse", False),
-            })
-        else:
-            # Row with nested panels — emit row divider + sub-panels
-            flat.append({
-                "type": "row",
-                "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
-                "title": title,
-                "collapsed": row.get("collapse", False),
-            })
-            flat.extend(sub_panels)
+            # Section divider only — advance Y by 1 row height
+            continue
+
+        # Auto-assign gridPos to any sub-panel that lacks one
+        for panel in sub_panels:
+            gp = panel.get("gridPos")
+            if gp is None:
+                panel["gridPos"] = {"h": 8, "w": 24, "x": 0, "y": y_cursor}
+                y_cursor += 8
+            else:
+                # Convert raw grafanalib GridPos object to dict
+                if hasattr(gp, "to_json_data"):
+                    gp = gp.to_json_data()
+                    panel["gridPos"] = gp
+                # Use the panel's existing gridPos, but ensure y is >= cursor
+                panel_y = gp.get("y", 0)
+                if panel_y < y_cursor:
+                    gp["y"] = y_cursor
+                y_cursor = gp["y"] + gp.get("h", 8)
+            flat.append(panel)
 
     return flat
 
