@@ -360,6 +360,75 @@ Key points:
 - Never configure a job builder to feed files back into the same dispatcher
   that produced them without a distinguishing metadata change.
 
+(courier-metric-stdout)=
+
+## Custom Prometheus Metrics via ``COURIER_METRIC:`` Stdout Protocol
+
+Both :class:`SerialBashDispatcher` and
+:class:`~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashDispatcher`
+recognise a special ``COURIER_METRIC:`` prefix in the bash script's stdout.
+This lets deployment scripts emit custom Prometheus gauge values without any
+courier code changes — useful for application-specific metrics like
+end-to-end latency, model accuracy, or file processing throughput.
+
+### Protocol
+
+After every job execution, the dispatcher scans stdout for lines matching::
+
+    COURIER_METRIC: <metric_name> <numeric_value>
+
+The ``metric_name`` must be a single word (alphanumeric + underscores).
+The ``value`` is parsed as a float.  Both are pushed into a single
+Prometheus gauge:
+
+.. code-block:: promql
+
+    courier_custom_gauge{
+        dispatcher_identifier="<dispatcher-id>",
+        metric_name="<metric_name>",
+    }
+
+### Example: End-to-End Latency
+
+A deployment bash script computes the time from satellite scan to product
+generation and emits it via stdout:
+
+.. code-block:: bash
+
+    NOW=$(date -u +%s)
+    SCAN_EPOCH=$(date -u -d "$SCAN_TIME" +%s)
+    LATENCY=$((NOW - SCAN_EPOCH))
+    echo "COURIER_METRIC: scan_to_product_latency_seconds $LATENCY"
+
+.. code-block:: python
+
+    import datetime as dt
+
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    latency = (now_utc - scan_dt).total_seconds()
+    print(f"COURIER_METRIC: scan_to_cwc_latency_seconds {latency:.1f}")
+
+### Grafana Panel
+
+Query the gauge by ``dispatcher_identifier`` and ``metric_name``:
+
+.. code-block:: promql
+
+    courier_custom_gauge{
+        dispatcher_identifier="cwc-prof-dispatcher",
+        metric_name="scan_to_cwc_latency_seconds",
+    }
+
+The metric updates after every job, so a Stat panel with a sparkline shows
+the latest latency alongside recent history.
+
+### Metric Persistence
+
+The ``courier_custom_gauge`` is a standard Prometheus gauge — its value
+persists until the next job execution updates it (or the process exits).
+Exporting to a pushgateway or scraping from the dispatcher's ``:8000/metrics``
+endpoint works exactly like any other courier metric.
+
 (python-venv-serial)=
 
 ## Python Virtual Environment

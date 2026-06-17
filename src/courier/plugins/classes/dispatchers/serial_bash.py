@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re as _re
 import socket
 import types
 from datetime import datetime
@@ -20,12 +21,44 @@ from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
 from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.metrics import COURIER_CUSTOM_GAUGE
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import BashExecResult, execute_bash_script
 
 if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.job import Job
+
+
+#: Regex that extracts ``metric_name`` and ``value`` from a
+#: ``COURIER_METRIC: <name> <value>`` stdout line.
+_COURIER_METRIC_RE = _re.compile(
+    r"^COURIER_METRIC:\s+(?P<metric_name>\S+)\s+(?P<value>-?[\d.e+-]+)"
+)
+
+
+def _ingest_courier_metrics(
+    stdout: str,
+    dispatcher_identifier: str,
+) -> None:
+    """Scan *stdout* for ``COURIER_METRIC:`` lines and update Prometheus.
+
+    This is a general-purpose conduit: deployment bash scripts emit custom
+    Prometheus gauge values by printing::
+
+        COURIER_METRIC: <metric_name> <numeric_value>
+
+    The dispatcher recognises the prefix after every job execution and
+    pushes the value into ``courier_custom_gauge`` with labels
+    ``dispatcher_identifier`` and ``metric_name``.
+    """
+    for line in stdout.splitlines():
+        m = _COURIER_METRIC_RE.match(line.strip())
+        if m:
+            COURIER_CUSTOM_GAUGE.labels(
+                dispatcher_identifier=dispatcher_identifier,
+                metric_name=m.group("metric_name"),
+            ).set(float(m.group("value")))
 
 
 class SerialBashConfig(BaseModel, frozen=True):
@@ -262,6 +295,7 @@ class SerialBashDispatcher(Dispatcher):
                 hostname=hostname,
                 emit_file=self.emit_file,
             )
+        _ingest_courier_metrics(result.stdout, self.identifier)
         return [
             ExecutionLog(
                 return_code=result.return_code,

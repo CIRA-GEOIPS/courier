@@ -235,6 +235,18 @@ DISPATCHER_DEDUPE_SKIPS: Counter = Counter(
 )
 
 # ---------------------------------------------------------------------------
+# Custom gauge — populated by deployment scripts via COURIER_METRIC: stdout
+# ---------------------------------------------------------------------------
+
+COURIER_CUSTOM_GAUGE: Gauge = Gauge(
+    "courier_custom_gauge",
+    "Labels-specific custom gauge populated by deployment scripts via the "
+    "``COURIER_METRIC: <name> <value>`` stdout protocol.  Set by serial_bash "
+    "and parallel_bash dispatchers after every job execution.",
+    ["dispatcher_identifier", "metric_name"],
+)
+
+# ---------------------------------------------------------------------------
 # Plugin manager metrics
 # ---------------------------------------------------------------------------
 

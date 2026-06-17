@@ -29,7 +29,7 @@ from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
 from courier.interfaces.module_based.dispatchers import Dispatcher
-from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
+from courier.metrics import COURIER_CUSTOM_GAUGE, DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import execute_bash_script
 
@@ -361,6 +361,12 @@ class ParallelBashDispatcher(Dispatcher):
                     hostname=hostname,
                     emit_file=self.emit_file,
                 )
+        # Also scan for COURIER_METRIC: lines (general-purpose custom gauge conduit)
+        from courier.plugins.classes.dispatchers.serial_bash import (
+            _ingest_courier_metrics,
+        )
+        for log in logs:
+            _ingest_courier_metrics(log.stdout or "", self.identifier)
         return logs
 
 
