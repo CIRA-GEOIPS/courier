@@ -53,7 +53,15 @@ ATTR_PLUGIN_NAME = "plugin.name"
 ATTR_PLUGIN_VERSION = "plugin.version"
 ATTR_PLUGIN_FAMILY = "plugin.family"
 
-_logger = logging.getLogger(__name__)
+# Lazy-initialised so we can attach a Loki handler once config is known.
+_console_logger = logging.getLogger(__name__)
+_tracer_logger: Any = _console_logger
+"""Logger for tracing diagnostics.
+
+Defaults to ``logging.getLogger(__name__)`` (console only via root handlers).
+:func:`init_tracing` replaces it with a :func:`get_logger` instance that can
+ship to Loki when configured.
+"""
 
 # Module-level singleton for idempotent init
 _tracer_provider: Any = None
@@ -61,11 +69,21 @@ _tracer_provider: Any = None
 
 def init_tracing(config: ServiceConfig) -> None:
     """Initialize the global OpenTelemetry TracerProvider (idempotent)."""
-    global _tracer_provider  # noqa: PLW0603
+    global _tracer_provider, _tracer_logger  # noqa: PLW0603
     import os  # noqa: PLC0415
+
+    # Wire up a real courier logger so diagnostic messages are visible
+    # (module-level ``logging.getLogger(__name__)`` has no handlers in
+    # the courier structured-logging pipeline).
+    from courier.utils.logging import get_logger  # noqa: PLC0415
+
+    _tracer_logger = get_logger("module", "tracing", config)
 
     # Idempotent: if already initialized, return immediately
     if _tracer_provider is not None:
+        _tracer_logger.debug(
+            "Skip re-init: TracerProvider already configured",
+        )
         return
 
     # Respect OTEL_TRACES_EXPORTER=none as secondary disable
@@ -80,7 +98,7 @@ def init_tracing(config: ServiceConfig) -> None:
 
         _tracer_provider = NoOpTracerProvider()
         set_tracer_provider(_tracer_provider)
-        _logger.info("OpenTelemetry tracing disabled (NoOp provider)")
+        _tracer_logger.info("OpenTelemetry tracing disabled (NoOp provider)")
         return
 
     # Real OTLP provider
@@ -117,7 +135,7 @@ def init_tracing(config: ServiceConfig) -> None:
 
     # Exporter with error callback
     def _on_export_failure(span_data: Any) -> None:
-        _logger.warning(
+        _tracer_logger.warning(
             "Failed to export %d spans to OTLP endpoint %s",
             len(span_data) if hasattr(span_data, "__len__") else 1,
             config.tracing_endpoint,
@@ -147,7 +165,7 @@ def init_tracing(config: ServiceConfig) -> None:
     )
     _tracer_provider = provider
     set_tracer_provider(provider)
-    _logger.info(
+    _tracer_logger.info(
         "OpenTelemetry tracing initialized: service=%s endpoint=%s sample_rate=%.2f",
         service_name,
         config.tracing_endpoint,
@@ -178,11 +196,11 @@ def shutdown_tracing() -> None:
     try:
         _tracer_provider.force_flush(timeout_millis=5000)
     except Exception:
-        _logger.warning("Error during tracer provider force_flush", exc_info=True)
+        _tracer_logger.warning("Error during tracer provider force_flush", exc_info=True)
     try:
         _tracer_provider.shutdown()
     except Exception:
-        _logger.warning("Error during tracer provider shutdown", exc_info=True)
+        _tracer_logger.warning("Error during tracer provider shutdown", exc_info=True)
     finally:
         _tracer_provider = None
 
@@ -256,7 +274,7 @@ def extract_context(headers: dict[str, str]) -> Any:
     try:
         return extract(headers)
     except Exception:
-        _logger.debug(
+        _tracer_logger.debug(
             "Failed to extract trace context from headers %r; "
             "returning empty context",
             headers,

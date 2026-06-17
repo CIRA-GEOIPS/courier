@@ -30,6 +30,11 @@ from courier.dispatchers._output_scanner import (
 )
 from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.metrics import COURIER_CUSTOM_GAUGE, DISPATCHER_PARALLEL_WORKERS_ACTIVE
+from courier.tracing import (
+    ATTR_CORRELATION_ID,
+    ATTR_JOB_ID,
+    get_tracer,
+)
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import execute_bash_script
 
@@ -253,121 +258,129 @@ class ParallelBashDispatcher(Dispatcher):
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Execute one script per file concurrently and return all logs."""
-        hostname = socket.gethostname()
-        frozen_files = [f for f in job.files if f.file is not None]
-        if not frozen_files:
-            self._logger.warning(f"Job {job.identifier} has no files to dispatch")
-            return []
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "dispatcher.execute_job",
+            attributes={
+                ATTR_JOB_ID: job.identifier,
+                ATTR_CORRELATION_ID: job.correlation_id,
+            },
+        ):
+            hostname = socket.gethostname()
+            frozen_files = [f for f in job.files if f.file is not None]
+            if not frozen_files:
+                self._logger.warning(f"Job {job.identifier} has no files to dispatch")
+                return []
 
-        all_file_dicts = [f.to_dict() for f in frozen_files]
-        job_context = {
-            "name": job.name,
-            "identifier": job.identifier,
-            "config": job.config,
-            "last_modified": job.last_modified,
-            "timeout": job.timeout,
-            "correlation_id": job.correlation_id,
-            "emit_time": job.emit_time,
-        }
+            all_file_dicts = [f.to_dict() for f in frozen_files]
+            job_context = {
+                "name": job.name,
+                "identifier": job.identifier,
+                "config": job.config,
+                "last_modified": job.last_modified,
+                "timeout": job.timeout,
+                "correlation_id": job.correlation_id,
+                "emit_time": job.emit_time,
+            }
 
-        self._logger.info(
-            f"Dispatching {len(frozen_files)} files for job {job.identifier} "
-            f"with max_workers={self.validated.max_workers}",
-        )
+            self._logger.info(
+                f"Dispatching {len(frozen_files)} files for job {job.identifier} "
+                f"with max_workers={self.validated.max_workers}",
+            )
 
-        env: dict[str, str] | None = None
-        if self.validated.python_venv:
-            venv_path = Path(self.validated.python_venv)
-            env = os.environ.copy()
-            env["PATH"] = f"{venv_path / 'bin'}:{env.get('PATH', '')}"
-            env["VIRTUAL_ENV"] = str(venv_path)
+            env: dict[str, str] | None = None
+            if self.validated.python_venv:
+                venv_path = Path(self.validated.python_venv)
+                env = os.environ.copy()
+                env["PATH"] = f"{venv_path / 'bin'}:{env.get('PATH', '')}"
+                env["VIRTUAL_ENV"] = str(venv_path)
 
-        logs: list[ExecutionLog] = []
-        gauge = DISPATCHER_PARALLEL_WORKERS_ACTIVE.labels(
-            dispatcher_name=self.name,
-            dispatcher_identifier=self.identifier,
-        )
+            logs: list[ExecutionLog] = []
+            gauge = DISPATCHER_PARALLEL_WORKERS_ACTIVE.labels(
+                dispatcher_name=self.name,
+                dispatcher_identifier=self.identifier,
+            )
 
-        with ThreadPoolExecutor(max_workers=self.validated.max_workers) as pool:
-            futures = {}
-            for ff in frozen_files:
-                try:
-                    script_body = self._render_script(ff, job_context, all_file_dicts)
-                except jinja2.TemplateError as exc:
-                    self._logger.warning(
-                        f"Template render failed for {ff.file}: {exc}",
-                    )
-                    logs.append(
-                        ExecutionLog(
-                            return_code=-1,
-                            stdout="",
-                            stderr=f"template render failed: {exc}",
-                            hostname=hostname,
-                        ),
-                    )
-                    continue
-                log_prefix = (
-                    f"[job: {job.identifier}] [file: {ff.file}]"
-                    if self.validated.log_to_logger
-                    else ""
-                )
-                log_path = None
-                if self.validated.log_to_file:
-                    ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
-                    file_stem = Path(str(ff.file)).stem.replace(" ", "_")
-                    log_path = (
-                        Path(self.validated.log_dir)
-                        / f"dispatch_{job.identifier}_{file_stem}_{ts}.log"
-                    )
-                futures[
-                    pool.submit(
-                        _run_script,
-                        script_body,
-                        self.validated.timeout_seconds,
-                        hostname,
-                        logger=self._logger if self.validated.log_to_logger else None,
-                        log_to_logger=self.validated.log_to_logger,
-                        log_prefix=log_prefix,
-                        log_to_file=self.validated.log_to_file,
-                        log_file_path=log_path if self.validated.log_to_file else None,
-                        log_only_errors=self.validated.log_only_errors,
-                        env=env,
-                    )
-                ] = ff.file
-
-            gauge.set(len(futures))
-            try:
-                for future in as_completed(futures):
-                    log = future.result()
-                    logs.append(log)
-                    if self.validated.fail_fast and (log.return_code or 0) != 0:
+            with ThreadPoolExecutor(max_workers=self.validated.max_workers) as pool:
+                futures = {}
+                for ff in frozen_files:
+                    try:
+                        script_body = self._render_script(ff, job_context, all_file_dicts)
+                    except jinja2.TemplateError as exc:
                         self._logger.warning(
-                            f"fail_fast triggered by non-zero return "
-                            f"{log.return_code}; cancelling remaining workers",
+                            f"Template render failed for {ff.file}: {exc}",
                         )
-                        for pending in futures:
-                            pending.cancel()
-                        break
-            finally:
-                gauge.set(0)
+                        logs.append(
+                            ExecutionLog(
+                                return_code=-1,
+                                stdout="",
+                                stderr=f"template render failed: {exc}",
+                                hostname=hostname,
+                            ),
+                        )
+                        continue
+                    log_prefix = (
+                        f"[job: {job.identifier}] [file: {ff.file}]"
+                        if self.validated.log_to_logger
+                        else ""
+                    )
+                    log_path = None
+                    if self.validated.log_to_file:
+                        ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+                        file_stem = Path(str(ff.file)).stem.replace(" ", "_")
+                        log_path = (
+                            Path(self.validated.log_dir)
+                            / f"dispatch_{job.identifier}_{file_stem}_{ts}.log"
+                        )
+                    futures[
+                        pool.submit(
+                            _run_script,
+                            script_body,
+                            self.validated.timeout_seconds,
+                            hostname,
+                            logger=self._logger if self.validated.log_to_logger else None,
+                            log_to_logger=self.validated.log_to_logger,
+                            log_prefix=log_prefix,
+                            log_to_file=self.validated.log_to_file,
+                            log_file_path=log_path if self.validated.log_to_file else None,
+                            log_only_errors=self.validated.log_only_errors,
+                            env=env,
+                        )
+                    ] = ff.file
 
-        if self.validated.output_files:
+                gauge.set(len(futures))
+                try:
+                    for future in as_completed(futures):
+                        log = future.result()
+                        logs.append(log)
+                        if self.validated.fail_fast and (log.return_code or 0) != 0:
+                            self._logger.warning(
+                                f"fail_fast triggered by non-zero return "
+                                f"{log.return_code}; cancelling remaining workers",
+                            )
+                            for pending in futures:
+                                pending.cancel()
+                            break
+                finally:
+                    gauge.set(0)
+
+            if self.validated.output_files:
+                for log in logs:
+                    _scan_and_emit_output_files(
+                        stdout=log.stdout or "",
+                        stderr=log.stderr or "",
+                        patterns=self.validated.output_files,
+                        scan_stderr=self.validated.scan_stderr,
+                        hostname=hostname,
+                        emit_file=self.emit_file,
+                    )
+            # Also scan for COURIER_METRIC: lines (general-purpose custom gauge conduit)
+            from courier.plugins.classes.dispatchers.serial_bash import (
+                _ingest_courier_metrics,
+            )
             for log in logs:
-                _scan_and_emit_output_files(
-                    stdout=log.stdout or "",
-                    stderr=log.stderr or "",
-                    patterns=self.validated.output_files,
-                    scan_stderr=self.validated.scan_stderr,
-                    hostname=hostname,
-                    emit_file=self.emit_file,
-                )
-        # Also scan for COURIER_METRIC: lines (general-purpose custom gauge conduit)
-        from courier.plugins.classes.dispatchers.serial_bash import (
-            _ingest_courier_metrics,
-        )
-        for log in logs:
-            _ingest_courier_metrics(log.stdout or "", self.identifier)
-        return logs
+                _ingest_courier_metrics(log.stdout or "", self.identifier)
+            return logs
 
 
 PLUGIN_CLASS = ParallelBashDispatcher
