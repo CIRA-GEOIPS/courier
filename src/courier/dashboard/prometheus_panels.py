@@ -1269,6 +1269,79 @@ def _broker_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
 
 
 # ==========================================================================
+# 11. Pipeline Latency Row (always generated)
+# ==========================================================================
+
+
+def _pipeline_latency_row(
+    _model: DashboardModel, gs: _GenState,
+) -> RowPanel:
+    """End-to-end pipeline latency from satellite scan time to product generation.
+
+    Metrics are populated by deployment scripts via the ``COURIER_METRIC:``
+    stdout protocol (see :mod:`courier.plugins.classes.dispatchers.serial_bash`
+    docs).  Each dispatcher emits its own ``scan_to_*_latency_seconds`` gauge
+    after every job.
+    """
+    y_row = _advance(gs, 1)
+    py = _advance(gs, 8)
+
+    panels: list = [
+        _timeseries(
+            gs,
+            title="Pipeline Latency (scan-to-product)",
+            description=(
+                "End-to-end latency from satellite scan time to each product "
+                "generation stage.  Lower is better.  Spikes indicate "
+                "backlog or resource contention.\n\n"
+                "• scan_to_l1b_latency_seconds — L1b preprocessor\n"
+                "• scan_to_cwc_latency_seconds — CWC profile generator\n"
+                "• scan_to_cwp_latency_seconds — CWP inference\n"
+                "• scan_to_3d_latency_seconds  — 3D cloud NetCDF\n\n"
+                "Populated via ``COURIER_METRIC: <name> <value>`` stdout lines "
+                "emitted by each pipeline script."
+            ),
+            targets=[
+                _target(
+                    f'{_PREFIX}_custom_gauge'
+                    '{metric_name="scan_to_l1b_latency_seconds"}',
+                    "L1b preproc",
+                ),
+                _target(
+                    f'{_PREFIX}_custom_gauge'
+                    '{metric_name="scan_to_cwc_latency_seconds"}',
+                    "CWC profiles",
+                    ref="B",
+                ),
+                _target(
+                    f'{_PREFIX}_custom_gauge'
+                    '{metric_name="scan_to_cwp_latency_seconds"}',
+                    "CWP inference",
+                    ref="C",
+                ),
+                _target(
+                    f'{_PREFIX}_custom_gauge'
+                    '{metric_name="scan_to_3d_latency_seconds"}',
+                    "3D cloud",
+                    ref="D",
+                ),
+            ],
+            unit="s",
+            y=py,
+            w=12,
+            x=0,
+        ),
+    ]
+
+    return RowPanel(
+        id=_next_id(gs),
+        title="Pipeline Latency",
+        gridPos=GridPos(h=1, w=24, x=0, y=y_row),
+        panels=panels,
+    )
+
+
+# ==========================================================================
 # 10. Pipeline Summary Row (always generated)
 # ==========================================================================
 
@@ -1495,5 +1568,8 @@ def build_prometheus_panels(
 
     # 10. Broker — always generated
     panels.append(_broker_row(model, gs))
+
+    # 11. Pipeline Latency — always generated
+    panels.append(_pipeline_latency_row(model, gs))
 
     return panels
