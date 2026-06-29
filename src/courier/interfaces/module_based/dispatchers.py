@@ -9,7 +9,7 @@ import types
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from opentelemetry.trace import get_current_span
+from opentelemetry.trace import Status, StatusCode, get_current_span
 from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import (
@@ -278,6 +278,9 @@ class Dispatcher(ServicePlugin):
                             f"Error processing job {job_id}",
                             extra={"correlation_id": job.correlation_id},
                         )
+                        span = get_current_span()
+                        span.set_status(Status(StatusCode.ERROR))
+                        span.record_exception(getattr(job, "_last_error", None))
                         self._jobs_processed.labels(
                             status="failure",
                             dispatcher_name=self.name,

@@ -7,7 +7,7 @@ import time
 import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from opentelemetry.trace import get_current_span
+from opentelemetry.trace import Status, StatusCode, get_current_span
 from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
@@ -172,6 +172,8 @@ class DataMonitorBasePlugin(ServicePlugin):
                         monitor_identifier=self.identifier,
                     ).set(time.time())
                 except CourierError:
+                    span = get_current_span()
+                    span.set_status(Status(StatusCode.ERROR))
                     self._files_processed.labels(
                         monitor_name=self.name,
                         monitor_identifier=self.identifier,

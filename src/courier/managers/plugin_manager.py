@@ -251,14 +251,15 @@ class PluginManager(ServiceManager):
                     f"Plugin started successfully: {plugin_info.plugin.name}",
                 )
 
-                span = self._tracer.start_span("plugin_lifecycle")
-                span.add_event(
-                    "plugin.started",
-                    attributes={
-                        ATTR_PLUGIN_NAME: plugin_info.plugin.name,
-                    },
-                )
-                span.end()
+                with self._tracer.start_as_current_span(
+                    "plugin_lifecycle",
+                ) as span:
+                    span.add_event(
+                        "plugin.started",
+                        attributes={
+                            ATTR_PLUGIN_NAME: plugin_info.plugin.name,
+                        },
+                    )
 
                 plugin_info.ready.set()
 
@@ -351,14 +352,15 @@ class PluginManager(ServiceManager):
 
         self._logger.info(f"Plugin stopped: {plugin_info.plugin.name}")
 
-        span = self._tracer.start_span("plugin_lifecycle")
-        span.add_event(
-            "plugin.stopped",
-            attributes={
-                ATTR_PLUGIN_NAME: plugin_info.plugin.name,
-            },
-        )
-        span.end()
+        with self._tracer.start_as_current_span(
+            "plugin_lifecycle",
+        ) as span:
+            span.add_event(
+                "plugin.stopped",
+                attributes={
+                    ATTR_PLUGIN_NAME: plugin_info.plugin.name,
+                },
+            )
 
     def _monitor_plugins(self) -> None:
         """Monitor plugin health and restart failed plugins."""
@@ -401,18 +403,17 @@ class PluginManager(ServiceManager):
                                     plugin_info.state = PluginRunState.FAILED
                                     failed_plugins.append(plugin_info)
 
-                                    span = self._tracer.start_span(
+                                    with self._tracer.start_as_current_span(
                                         "plugin_lifecycle",
-                                    )
-                                    span.add_event(
-                                        "plugin.health_check_failed",
-                                        attributes={
-                                            ATTR_PLUGIN_NAME: (
-                                                plugin_info.plugin.name
-                                            ),
-                                        },
-                                    )
-                                    span.end()
+                                    ) as span:
+                                        span.add_event(
+                                            "plugin.health_check_failed",
+                                            attributes={
+                                                ATTR_PLUGIN_NAME: (
+                                                    plugin_info.plugin.name
+                                                ),
+                                            },
+                                        )
 
                     except CourierError:
                         self._logger.exception(
@@ -460,14 +461,15 @@ class PluginManager(ServiceManager):
                     f"{self._config.plugin_max_restart_attempts})",
                 )
 
-                span = self._tracer.start_span("plugin_lifecycle")
-                span.add_event(
-                    "plugin.restarting",
-                    attributes={
-                        ATTR_PLUGIN_NAME: plugin_name,
-                    },
-                )
-                span.end()
+                with self._tracer.start_as_current_span(
+                    "plugin_lifecycle",
+                ) as span:
+                    span.add_event(
+                        "plugin.restarting",
+                        attributes={
+                            ATTR_PLUGIN_NAME: plugin_name,
+                        },
+                    )
 
                 plugin_info.state = PluginRunState.RESTARTING
                 plugin_info.restart_count += 1

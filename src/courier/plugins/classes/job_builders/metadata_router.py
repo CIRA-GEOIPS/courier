@@ -25,7 +25,7 @@ from courier.plugins.classes.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobGroup,
 )
-from courier.tracing import get_tracer
+from courier.tracing import ATTR_FILE_PATH, ATTR_FILE_SOURCE, get_tracer
 from courier.types.file import FrozenFile
 
 if TYPE_CHECKING:
@@ -203,12 +203,14 @@ class MetadataRouterBuilder(JobBuilder):
             with tracer.start_as_current_span(
                 "metadata_router.route_file",
                 context=parent_ctx,
-            ):
+            ) as span:
                 self._files_received.labels(
                     job_builder_name=self.name,
                     job_builder_identifier=self.identifier,
                 ).inc()
                 file = FrozenFile.from_string(str(file_string))
+                span.set_attribute(ATTR_FILE_PATH, file.path)
+                span.set_attribute(ATTR_FILE_SOURCE, file.source)
                 matched = False
                 for jg, route_name in zip(
                     self.job_groups,

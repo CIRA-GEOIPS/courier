@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import jinja2
 from jinja2.exceptions import TemplateSyntaxError
+from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.dispatchers._output_file_pattern import (  # noqa: TC001
@@ -32,6 +33,7 @@ from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.metrics import COURIER_CUSTOM_GAUGE, DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.tracing import (
     ATTR_CORRELATION_ID,
+    ATTR_EXECUTION_RETURN_CODE,
     ATTR_JOB_ID,
     get_tracer,
 )
@@ -265,7 +267,7 @@ class ParallelBashDispatcher(Dispatcher):
                 ATTR_JOB_ID: job.identifier,
                 ATTR_CORRELATION_ID: job.correlation_id,
             },
-        ):
+        ) as span:
             hostname = socket.gethostname()
             frozen_files = [f for f in job.files if f.file is not None]
             if not frozen_files:
@@ -380,6 +382,10 @@ class ParallelBashDispatcher(Dispatcher):
             )
             for log in logs:
                 _ingest_courier_metrics(log.stdout or "", self.identifier)
+
+            if any((log.return_code or 0) != 0 for log in logs):
+                span.set_status(Status(StatusCode.ERROR))
+
             return logs
 
 
