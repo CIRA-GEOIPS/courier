@@ -36,8 +36,10 @@ from grafanalib.core import (
     REFRESH_ON_TIME_RANGE_CHANGE,
     GaugePanel,
     GridPos,
+    Heatmap,
     RowPanel,
     Stat,
+    StateTimeline,
     Table,
     Target,
     Template,
@@ -502,19 +504,32 @@ def _service_overview_panels(
     # Pipeline Health gauge — fraction of plugins in RUNNING state
     gs.y += 4  # advance to new sub-row
     panels.append(
-        _stat_panel_h(
+        _state_timeline(
             gs,
             title="Pipeline Health",
-            expr=(
-                f"clamp_max("
-                f"count({_PREFIX}_plugin_state"
-                f'{{plugin_name=~"$plugin_filter"}} == 3)'
-                f" / clamp_min(count({_PREFIX}_plugin_state"
-                f'{{plugin_name=~"$plugin_filter"}}), 1), 1)'
-            ),
-            x=0,
+            targets=[
+                _target(
+                    (
+                        f"clamp_max("
+                        f"count({_PREFIX}_plugin_state"
+                        f'{{plugin_name=~"$plugin_filter"}} == 3)'
+                        f" / clamp_min(count({_PREFIX}_plugin_state"
+                        f'{{plugin_name=~"$plugin_filter"}}), 1), 1)'
+                    ),
+                    "Overall",
+                ),
+            ],
+            y=gs.y,
             w=12,
+            x=0,
             thresholds=_THRESH_PIPELINE_HEALTH,
+            description=(
+                "Health score across all configured plugins. "
+                "Why it matters: a score below 1.0 means at least one "
+                "plugin is not in RUNNING state. "
+                "When red (>0.9): check the Plugin Manager table below "
+                "for individual plugin statuses."
+            ),
         ),
     )
 
@@ -575,7 +590,7 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     py1 = _advance(gs, 8)
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
             title="Files Processed",
             description=(
@@ -678,7 +693,7 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     py2 = _advance(gs, 8)
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
             title="Files by Status",
             targets=[
@@ -720,7 +735,7 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
     panels: list = []
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
             title="Router Files Routed",
             targets=[
@@ -739,7 +754,7 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
     )
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
             title="Route Distribution",
             targets=[
@@ -783,7 +798,7 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     py1 = _advance(gs, 8)
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
             title="Jobs Built",
             targets=[
@@ -821,23 +836,27 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     )
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
-            title="Processing Time (avg)",
+            title="Processing Time Distribution",
             targets=[
                 _target(
-                    _avg_rate(
-                        f"{_PREFIX}_job_builder_file_processing_duration_seconds_sum",
-                        f"{_PREFIX}_job_builder_file_processing_duration_seconds_count",
-                        lbl,
+                    (
+                        f"rate({_PREFIX}_job_builder_file_processing_duration_seconds_bucket"
+                        f"{{{lbl}}}[5m])"
                     ),
                     "{{job_builder_name}}",
                 ),
             ],
             unit=YAXIS_SECONDS,
             y=py1,
-            w=12,
+            w=8,
             x=12,
+            description=(
+                "Shows file processing time distribution per job builder. "
+                "Why it matters: wide distributions indicate variable file "
+                "processing complexity. Spikes suggest slow I/O or contention."
+            ),
         ),
     )
 
@@ -868,7 +887,7 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     py1 = _advance(gs, 8)
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
             title="Jobs Processed",
             targets=[
@@ -885,15 +904,14 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     )
 
     panels.append(
-        _timeseries(
+        _heatmap(
             gs,
-            title="Execution Time (avg)",
+            title="Execution Time Distribution",
             targets=[
                 _target(
-                    _avg_rate(
-                        f"{_PREFIX}_dispatcher_job_execution_duration_seconds_sum",
-                        f"{_PREFIX}_dispatcher_job_execution_duration_seconds_count",
-                        lbl,
+                    (
+                        f"rate({_PREFIX}_dispatcher_job_execution_duration_seconds_bucket"
+                        f"{{{lbl}}}[5m])"
                     ),
                     "{{dispatcher_name}}",
                 ),
@@ -902,6 +920,11 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             y=py1,
             w=8,
             x=8,
+            description=(
+                "Shows the distribution of dispatcher execution durations across "
+                "time. Why it matters: outliers indicate jobs that take unusually "
+                "long or fail fast. Narrow bands mean consistent performance."
+            ),
         ),
     )
 
@@ -1483,6 +1506,59 @@ def _timeseries(  # noqa: PLR0913
         targets=targets,
         unit=unit,
         gridPos=GridPos(h=8, w=w, x=x, y=y),
+        **kwargs,
+    )
+
+
+def _heatmap(  # noqa: PLR0913
+    gs: _GenState,
+    title: str,
+    targets: list[Target],
+    *,
+    unit: str = YAXIS_SHORT,
+    y: int,
+    w: int = 8,
+    x: int = 0,
+    description: str = "",
+) -> Heatmap:
+    """Create a Heatmap panel with consistent defaults."""
+    kwargs: dict = {}
+    if description:
+        kwargs["description"] = description
+    return Heatmap(
+        id=_next_id(gs),
+        title=title,
+        dataSource=_DS,
+        targets=targets,
+        gridPos=GridPos(h=8, w=w, x=x, y=y),
+        legend={"show": False},
+        **kwargs,
+    )
+
+
+def _state_timeline(  # noqa: PLR0913
+    gs: _GenState,
+    title: str,
+    targets: list[Target],
+    *,
+    y: int,
+    w: int = 12,
+    x: int = 0,
+    thresholds: list[Threshold] | None = None,
+    description: str = "",
+) -> StateTimeline:
+    """Create a StateTimeline panel with consistent defaults."""
+    kwargs: dict = {}
+    if thresholds is not None:
+        kwargs["thresholds"] = thresholds
+    if description:
+        kwargs["description"] = description
+    return StateTimeline(
+        id=_next_id(gs),
+        title=title,
+        dataSource=_DS,
+        targets=targets,
+        gridPos=GridPos(h=6, w=w, x=x, y=y),
         **kwargs,
     )
 
