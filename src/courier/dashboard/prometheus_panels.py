@@ -658,7 +658,9 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
     dm_plugin_names = {dm.plugin_name for dm in model.data_monitors}
     _poll_monitors = {"s3_poller", "sftp_poller", "cron_glob"}
+    _event_monitors = {"rabbit_mq_watcher", "kafka_consumer"}
     has_poll_monitors = bool(dm_plugin_names & _poll_monitors)
+    has_event_monitors = bool(dm_plugin_names & _event_monitors)
 
     y_row = _advance(gs, 1)
     lbl = 'monitor_name=~"$dm_plugin"'
@@ -749,6 +751,24 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
     # --- Sub-row 2: data freshness ----------------------------------------
     py_fresh = _advance(gs, 4)
+    if has_event_monitors:
+        freshness_metric = (
+            f"{_PREFIX}_rabbitmq_last_file_emitted_timestamp_seconds"
+        )
+        freshness_desc = (
+            "Seconds since the last file was emitted by each event-driven "
+            "monitor. Why it matters: a high value means the monitor has "
+            "not detected a file recently — check the external data source."
+        )
+    else:
+        freshness_metric = (
+            f"{_PREFIX}_data_monitor_last_processed_timestamp_seconds"
+        )
+        freshness_desc = (
+            "Seconds since the last successful file scan/ingest per data "
+            "monitor plugin. Why it matters: increasing gaps may indicate "
+            "source unavailability or polling failures."
+        )
     panels.append(
         Stat(
             id=_next_id(gs),
@@ -756,13 +776,14 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             dataSource=_DS,
             targets=[
                 _target(
-                    f"time() - {_PREFIX}_data_monitor_last_processed_timestamp_seconds"
+                    f"time() - {freshness_metric}"
                     f'{{plugin_name=~"$dm_plugin"}}',
                 ),
             ],
             reduceCalc=GAUGE_CALC_LAST,
             format=YAXIS_SECONDS,
             thresholds=_THRESH_DATA_FRESHNESS,
+            description=freshness_desc,
             gridPos=GridPos(h=4, w=24, x=0, y=py_fresh),
         ),
     )
