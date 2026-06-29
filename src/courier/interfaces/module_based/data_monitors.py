@@ -102,16 +102,25 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def _run_find_and_emit_files(self) -> None:
         """Wrapper that exits the process on any unhandled exception."""
-        try:
-            self.find_and_emit_files()
-        except Exception:
-            import os
-            import traceback
-            traceback.print_exc()
-            self._logger.critical(
-                "Fatal error in data monitor %s: exiting", self.name,
-            )
-            os._exit(1)
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "data_monitor.handle_incoming_files",
+            attributes={
+                ATTR_PLUGIN_NAME: self.name,
+                ATTR_PLUGIN_VERSION: self.version,
+            },
+        ) as span:
+            try:
+                self.find_and_emit_files()
+            except Exception:
+                import os
+                import traceback
+                traceback.print_exc()
+                span.set_status(Status(StatusCode.ERROR))
+                self._logger.critical(
+                    "Fatal error in data monitor %s: exiting", self.name,
+                )
+                os._exit(1)
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""

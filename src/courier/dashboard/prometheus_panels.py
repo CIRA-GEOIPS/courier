@@ -614,6 +614,8 @@ def _service_overview_panels(
         ),
     )
 
+    gs.y += 4  # advance past last stat sub-row (h=4)
+
     return RowPanel(
         id=_next_id(gs),
         title="Service Overview",

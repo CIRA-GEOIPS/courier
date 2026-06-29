@@ -246,86 +246,86 @@ class SerialBashDispatcher(Dispatcher):
         """
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
-                "dispatcher.execute_job",
-                attributes={
-                    ATTR_JOB_ID: job.identifier,
-                    ATTR_CORRELATION_ID: job.correlation_id,
-                },
-            ) as span:
-                self._logger.info(f"Executing job: {job}")
+            "dispatcher.execute_job",
+            attributes={
+                ATTR_JOB_ID: job.identifier,
+                ATTR_CORRELATION_ID: job.correlation_id,
+            },
+        ) as span:
+            self._logger.info(f"Executing job: {job}")
 
-                if not job.files:
-                    self._logger.warning(
-                        f"No files in job {job.identifier}, nothing to execute",
-                    )
-                    return []
-
-                hostname = socket.gethostname()
-                try:
-                    script_content = self._render_script(job)
-                except jinja2.TemplateError as exc:
-                    self._logger.exception("Template rendering failed")
-                    span.set_status(Status(StatusCode.ERROR))
-                    span.set_attribute(ATTR_EXECUTION_RETURN_CODE, -1)
-                    return [
-                        ExecutionLog(
-                            return_code=-1,
-                            stdout="",
-                            stderr=f"template render failed: {exc}",
-                            hostname=hostname,
-                        ),
-                    ]
-
-                self._logger.debug(f"Generated script content:\n{script_content}")
-
-                log_file_path: Path | None = None
-                if self.validated.log_to_file:
-                    ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
-                    log_file_path = Path(self.validated.log_dir) / f"dispatch_{job.identifier}_{ts}.log"
-
-                log_prefix = f"[job: {job.identifier}]" if self.validated.log_to_logger else ""
-
-                env: dict[str, str] | None = None
-                if self.validated.python_venv:
-                    venv_path = Path(self.validated.python_venv)
-                    env = os.environ.copy()
-                    env["PATH"] = f"{venv_path / 'bin'}:{env.get('PATH', '')}"
-                    env["VIRTUAL_ENV"] = str(venv_path)
-
-                result: BashExecResult = execute_bash_script(
-                    script_body=script_content,
-                    timeout_seconds=self.validated.timeout_seconds,
-                    logger=self._logger if self.validated.log_to_logger else None,
-                    log_to_logger=self.validated.log_to_logger,
-                    log_prefix=log_prefix,
-                    log_to_file=self.validated.log_to_file,
-                    log_file_path=log_file_path,
-                    log_only_errors=self.validated.log_only_errors,
-                    env=env,
+            if not job.files:
+                self._logger.warning(
+                    f"No files in job {job.identifier}, nothing to execute",
                 )
-                span.set_attribute(
-                    ATTR_EXECUTION_RETURN_CODE, result.return_code,
-                )
-                if result.return_code != 0:
-                    span.set_status(Status(StatusCode.ERROR))
-                if self.validated.output_files:
-                    _scan_and_emit_output_files(
-                        stdout=result.stdout,
-                        stderr=result.stderr,
-                        patterns=self.validated.output_files,
-                        scan_stderr=self.validated.scan_stderr,
-                        hostname=hostname,
-                        emit_file=self.emit_file,
-                    )
-                _ingest_courier_metrics(result.stdout, self.identifier)
+                return []
+
+            hostname = socket.gethostname()
+            try:
+                script_content = self._render_script(job)
+            except jinja2.TemplateError as exc:
+                self._logger.exception("Template rendering failed")
+                span.set_status(Status(StatusCode.ERROR))
+                span.set_attribute(ATTR_EXECUTION_RETURN_CODE, -1)
                 return [
                     ExecutionLog(
-                        return_code=result.return_code,
-                        stdout=result.stdout,
-                        stderr=result.stderr,
+                        return_code=-1,
+                        stdout="",
+                        stderr=f"template render failed: {exc}",
                         hostname=hostname,
-                        log_file_path=result.log_file_path,
                     ),
+                ]
+
+            self._logger.debug(f"Generated script content:\n{script_content}")
+
+            log_file_path: Path | None = None
+            if self.validated.log_to_file:
+                ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+                log_file_path = Path(self.validated.log_dir) / f"dispatch_{job.identifier}_{ts}.log"
+
+            log_prefix = f"[job: {job.identifier}]" if self.validated.log_to_logger else ""
+
+            env: dict[str, str] | None = None
+            if self.validated.python_venv:
+                venv_path = Path(self.validated.python_venv)
+                env = os.environ.copy()
+                env["PATH"] = f"{venv_path / 'bin'}:{env.get('PATH', '')}"
+                env["VIRTUAL_ENV"] = str(venv_path)
+
+            result: BashExecResult = execute_bash_script(
+                script_body=script_content,
+                timeout_seconds=self.validated.timeout_seconds,
+                logger=self._logger if self.validated.log_to_logger else None,
+                log_to_logger=self.validated.log_to_logger,
+                log_prefix=log_prefix,
+                log_to_file=self.validated.log_to_file,
+                log_file_path=log_file_path,
+                log_only_errors=self.validated.log_only_errors,
+                env=env,
+            )
+            span.set_attribute(
+                ATTR_EXECUTION_RETURN_CODE, result.return_code,
+            )
+            if result.return_code != 0:
+                span.set_status(Status(StatusCode.ERROR))
+            if self.validated.output_files:
+                _scan_and_emit_output_files(
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    patterns=self.validated.output_files,
+                    scan_stderr=self.validated.scan_stderr,
+                    hostname=hostname,
+                    emit_file=self.emit_file,
+                )
+            _ingest_courier_metrics(result.stdout, self.identifier)
+            return [
+                ExecutionLog(
+                    return_code=result.return_code,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    hostname=hostname,
+                    log_file_path=result.log_file_path,
+                ),
             ]
 
 
