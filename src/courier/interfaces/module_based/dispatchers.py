@@ -273,14 +273,14 @@ class Dispatcher(ServicePlugin):
                             dispatcher_identifier=self.identifier,
                         ).inc()
 
-                    except CourierError:
+                    except CourierError as exc:
                         self._logger.exception(
                             f"Error processing job {job_id}",
                             extra={"correlation_id": job.correlation_id},
                         )
                         span = get_current_span()
                         span.set_status(Status(StatusCode.ERROR))
-                        span.record_exception(getattr(job, "_last_error", None))
+                        span.record_exception(exc)
                         self._jobs_processed.labels(
                             status="failure",
                             dispatcher_name=self.name,

@@ -171,9 +171,10 @@ class DataMonitorBasePlugin(ServicePlugin):
                         plugin_name=self.name,
                         monitor_identifier=self.identifier,
                     ).set(time.time())
-                except CourierError:
+                except CourierError as exc:
                     span = get_current_span()
                     span.set_status(Status(StatusCode.ERROR))
+                    span.record_exception(exc)
                     self._files_processed.labels(
                         monitor_name=self.name,
                         monitor_identifier=self.identifier,

@@ -209,8 +209,8 @@ class MetadataRouterBuilder(JobBuilder):
                     job_builder_identifier=self.identifier,
                 ).inc()
                 file = FrozenFile.from_string(str(file_string))
-                span.set_attribute(ATTR_FILE_PATH, file.path)
-                span.set_attribute(ATTR_FILE_SOURCE, file.source)
+                span.set_attribute(ATTR_FILE_PATH, str(file.file) if file.file else "")
+                span.set_attribute(ATTR_FILE_SOURCE, file.source or "")
                 matched = False
                 for jg, route_name in zip(
                     self.job_groups,

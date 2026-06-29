@@ -30,10 +30,9 @@ from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
 from courier.interfaces.module_based.dispatchers import Dispatcher
-from courier.metrics import COURIER_CUSTOM_GAUGE, DISPATCHER_PARALLEL_WORKERS_ACTIVE
+from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.tracing import (
     ATTR_CORRELATION_ID,
-    ATTR_EXECUTION_RETURN_CODE,
     ATTR_JOB_ID,
     get_tracer,
 )
