@@ -1694,7 +1694,7 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
             targets=[
                 _target(
                     f"{_PREFIX}_dispatcher_jobs_consumed_total",
-                    "{{dispatcher_name}} → {{source}}",
+                    "{{dispatcher_identifier}}",
                 ),
             ],
             gridPos=GridPos(h=8, w=12, x=12, y=py4),
