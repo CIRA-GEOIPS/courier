@@ -314,9 +314,11 @@ def get_logger(
 
             # Add Loki handler if enabled and URL provided
             if config.loki_enabled and config.loki_url:
-                # Prevent Python's logging from printing a traceback to
-                # stderr for every handler failure (Loki 500s, etc.).
-                logging.raiseExceptions = False
+                # In production, suppress Python's per-record traceback on
+                # handler failures (e.g. Loki 500s).  The _ResilientLokiHandler
+                # already rate-limits diagnostics to 1/min independently.
+                if config.production_mode:
+                    logging.raiseExceptions = False
                 # Prepare tags for Loki
                 tags: dict[str, str] = {
                     "service": config.service_id,
