@@ -524,12 +524,13 @@ def _service_overview_panels(
             x=0,
             thresholds=_THRESH_PIPELINE_HEALTH,
             description=(
-                "Health score across all configured plugins. "
+                "Health score across all configured plugins "
+                "(fraction in RUNNING state). "
                 "Why it matters: a score below 1.0 means at least one "
-                "plugin is not in RUNNING state. "
-                "When red: all plugins are in a non-RUNNING state. "
-                "When amber (<0.95): some plugins need attention — "
-                "check Plugin Manager table for details."
+                "plugin is not RUNNING. "
+                "When below 0.80 (red-to-amber): multiple plugins may be "
+                "down — check Plugin Manager table. "
+                "When 0.80-0.95 (amber): some plugins need attention."
             ),
         ),
     )
