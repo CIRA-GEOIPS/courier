@@ -8,7 +8,7 @@ import time
 import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from opentelemetry.trace import get_current_span
+from opentelemetry.trace import Status, StatusCode, get_current_span
 from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
@@ -35,6 +35,8 @@ from courier.tracing import (
     ATTR_JOB_GROUP_NAME,
     ATTR_JOB_ID,
     ATTR_JOB_NAME,
+    ATTR_PLUGIN_NAME,
+    ATTR_PLUGIN_VERSION,
     ATTR_TARGET,
     get_tracer,
 )
@@ -313,16 +315,25 @@ class JobBuilder(ServicePlugin):
 
     def _run_handle_incoming_files(self) -> None:
         """Wrapper that exits the process on any unhandled exception."""
-        try:
-            self.handle_incoming_files()
-        except Exception:
-            import os
-            import traceback
-            traceback.print_exc()
-            self._logger.critical(
-                "Fatal error in job builder %s: exiting", self.name,
-            )
-            os._exit(1)
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "job_builder.handle_incoming_files",
+            attributes={
+                ATTR_PLUGIN_NAME: self.name,
+                ATTR_PLUGIN_VERSION: self.version,
+            },
+        ) as span:
+            try:
+                self.handle_incoming_files()
+            except Exception:
+                import os
+                import traceback
+                traceback.print_exc()
+                span.set_status(Status(StatusCode.ERROR))
+                self._logger.critical(
+                    "Fatal error in job builder %s: exiting", self.name,
+                )
+                os._exit(1)
 
     def handle_incoming_files(self) -> None:
         """Listen to incoming files and mark job as ready when appropriate."""

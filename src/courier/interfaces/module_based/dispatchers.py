@@ -36,6 +36,8 @@ from courier.tracing import (
     ATTR_CORRELATION_ID,
     ATTR_EXECUTION_RETURN_CODE,
     ATTR_JOB_ID,
+    ATTR_PLUGIN_NAME,
+    ATTR_PLUGIN_VERSION,
     get_tracer,
 )
 from courier.types.execution_log import ExecutionLog
@@ -180,16 +182,25 @@ class Dispatcher(ServicePlugin):
 
     def _run_handle_incoming_jobs(self) -> None:
         """Wrapper that exits the process on any unhandled exception."""
-        try:
-            self.handle_incoming_jobs()
-        except Exception:
-            import os
-            import traceback
-            traceback.print_exc()
-            self._logger.critical(
-                "Fatal error in dispatcher %s: exiting", self.name,
-            )
-            os._exit(1)
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "dispatcher.handle_incoming_jobs",
+            attributes={
+                ATTR_PLUGIN_NAME: self.name,
+                ATTR_PLUGIN_VERSION: self.version,
+            },
+        ) as span:
+            try:
+                self.handle_incoming_jobs()
+            except Exception:
+                import os
+                import traceback
+                traceback.print_exc()
+                span.set_status(Status(StatusCode.ERROR))
+                self._logger.critical(
+                    "Fatal error in dispatcher %s: exiting", self.name,
+                )
+                os._exit(1)
 
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""

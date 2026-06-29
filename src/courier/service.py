@@ -27,6 +27,7 @@ from courier.managers.prometheus_manager import PrometheusManager
 from courier.routing import TargetResolver, build_default_resolver
 from courier.tracing import (
     extract_context,
+    get_tracer,
     init_tracing,
     inject_trace_headers,
     shutdown_tracing,
@@ -165,10 +166,20 @@ class Service:
             exchange_name = self._broker_manager.get_queue_name(queue)
             with self._broker_manager.get_connection_context() as conn:
                 exchange = declare_fanout_exchange(conn, exchange_name)
-                w3c_headers = inject_trace_headers()
-                publish_fanout(
-                    conn, exchange, message, confirm=confirm, headers=w3c_headers,
-                )
+                tracer = get_tracer(__name__)
+                with tracer.start_as_current_span(
+                    "broker.publish",
+                    attributes={
+                        "messaging.system": "amqp",
+                        "messaging.destination": exchange_name,
+                        "messaging.destination_kind": "fanout",
+                        "messaging.message_envelope_size": len(message),
+                    },
+                ):
+                    w3c_headers = inject_trace_headers()
+                    publish_fanout(
+                        conn, exchange, message, confirm=confirm, headers=w3c_headers,
+                    )
                 BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
             return
         # --- Direct queue path
@@ -180,8 +191,17 @@ class Service:
         with self._broker_manager.get_connection_context() as conn:
             self._logger.debug(f"Emitting message to queue '{queue_name}': {message}")
             q = declare_queue(conn, queue_name, durable=True)
-            w3c_headers = inject_trace_headers()
-            publish(conn, q, message, confirm=confirm, headers=w3c_headers)
+            tracer = get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "broker.publish",
+                attributes={
+                    "messaging.system": "amqp",
+                    "messaging.destination": queue_name,
+                    "messaging.message_envelope_size": len(message),
+                },
+            ):
+                w3c_headers = inject_trace_headers()
+                publish(conn, q, message, confirm=confirm, headers=w3c_headers)
             BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
 
     def consume(self, queue: str) -> Generator[tuple[str, Any], None, None]:
@@ -221,8 +241,18 @@ class Service:
                             queue_name=exchange_name,
                         ).inc()
                         parent_ctx = extract_context(headers)
-                        yield body, parent_ctx
-                        ack()
+                        tracer = get_tracer(__name__)
+                        with tracer.start_as_current_span(
+                            "broker.receive",
+                            context=parent_ctx,
+                            attributes={
+                                "messaging.system": "amqp",
+                                "messaging.destination": exchange_name,
+                                "messaging.destination_kind": "fanout",
+                            },
+                        ):
+                            yield body, parent_ctx
+                            ack()
                     except GeneratorExit:
                         reject()
                         raise
@@ -250,8 +280,17 @@ class Service:
                         queue_name=queue_name,
                     ).inc()
                     parent_ctx = extract_context(headers)
-                    yield body, parent_ctx
-                    ack()
+                    tracer = get_tracer(__name__)
+                    with tracer.start_as_current_span(
+                        "broker.receive",
+                        context=parent_ctx,
+                        attributes={
+                            "messaging.system": "amqp",
+                            "messaging.destination": queue_name,
+                        },
+                    ):
+                        yield body, parent_ctx
+                        ack()
                 except GeneratorExit:
                     reject()
                     raise
@@ -515,24 +554,32 @@ class Service:
         """Start service with complete lifecycle management and error handling."""
         self._logger.info(f"Starting Service {self._config.service_id}")
 
-        try:
-            self.preflight_check()
-            self._start_managers()
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "courier.service",
+            attributes={
+                "courier.service_id": self._config.service_id,
+                "courier.service_namespace": self._config.namespace,
+            },
+        ):
+            try:
+                self.preflight_check()
+                self._start_managers()
 
-            if not self._health_check():
-                raise RuntimeError("Service health check failed after startup")  # noqa: TRY301
+                if not self._health_check():
+                    raise RuntimeError("Service health check failed after startup")  # noqa: TRY301
 
-            self._logger.info(f"Service {self._config.service_id} started successfully")
-            self._run_heartbeat_loop()
+                self._logger.info(f"Service {self._config.service_id} started successfully")
+                self._run_heartbeat_loop()
 
-        except KeyboardInterrupt:
-            self._logger.info("Received keyboard interrupt")
-            raise
-        except Exception:
-            self._logger.exception("Service startup failed")
-            raise
-        finally:
-            self._cleanup()
+            except KeyboardInterrupt:
+                self._logger.info("Received keyboard interrupt")
+                raise
+            except Exception:
+                self._logger.exception("Service startup failed")
+                raise
+            finally:
+                self._cleanup()
 
     def _cleanup(self) -> None:
         """Perform complete resource cleanup for service shutdown."""
