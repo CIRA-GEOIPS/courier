@@ -502,7 +502,7 @@ def _service_overview_panels(
     )
 
     # Pipeline Health gauge — fraction of plugins in RUNNING state
-    gs.y += 4  # advance to new sub-row
+    gs.y += 6  # advance for StateTimeline (h=6, was 4 for Stat)
     panels.append(
         _state_timeline(
             gs,
@@ -527,8 +527,9 @@ def _service_overview_panels(
                 "Health score across all configured plugins. "
                 "Why it matters: a score below 1.0 means at least one "
                 "plugin is not in RUNNING state. "
-                "When red (>0.9): check the Plugin Manager table below "
-                "for individual plugin statuses."
+                "When red: all plugins are in a non-RUNNING state. "
+                "When amber (<0.95): some plugins need attention — "
+                "check Plugin Manager table for details."
             ),
         ),
     )
@@ -607,7 +608,6 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     "{{monitor_name}}",
                 ),
             ],
-            unit="ops",
             y=py1,
             w=8,
             x=0,
@@ -703,7 +703,6 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     "{{status}}",
                 ),
             ],
-            unit="ops",
             y=py2,
             w=12,
             x=0,
@@ -746,7 +745,6 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
                     "{{route_name}} — {{target}}",
                 ),
             ],
-            unit="ops",
             y=py,
             w=12,
             x=0,
@@ -764,7 +762,6 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
                     "{{route_name}}",
                 ),
             ],
-            unit="ops",
             y=py,
             w=12,
             x=12,
@@ -807,7 +804,6 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     "{{job_builder_name}} — {{status}}",
                 ),
             ],
-            unit="ops",
             y=py1,
             w=8,
             x=0,
@@ -848,7 +844,6 @@ def _job_builder_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     "{{job_builder_name}}",
                 ),
             ],
-            unit=YAXIS_SECONDS,
             y=py1,
             w=8,
             x=12,
@@ -896,7 +891,6 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     "{{dispatcher_name}} — {{status}}",
                 ),
             ],
-            unit="ops",
             y=py1,
             w=8,
             x=0,
@@ -916,7 +910,6 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     "{{dispatcher_name}}",
                 ),
             ],
-            unit=YAXIS_SECONDS,
             y=py1,
             w=8,
             x=8,
@@ -1515,7 +1508,6 @@ def _heatmap(  # noqa: PLR0913
     title: str,
     targets: list[Target],
     *,
-    unit: str = YAXIS_SHORT,
     y: int,
     w: int = 8,
     x: int = 0,
