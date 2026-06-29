@@ -340,8 +340,8 @@ def build_prometheus_templates(model: DashboardModel) -> list[Template]:
                     name="route_target",
                     label="Route Target",
                     options=route_ids,
-                ),
-            )
+        ),
+    )
 
     # -- Job Builder plugins ------------------------------------------------
     if model.job_builders:
@@ -536,6 +536,83 @@ def _service_overview_panels(
     )
 
     # gs.y += 4 removed — now handled by the two sub-rows above
+
+    # --- Sub-row 3: broker queue, cumulative totals -------------------------
+    gs.y += 6  # advance past Pipeline Health (h=6)
+    panels.append(
+        _stat_panel_h(
+            gs,
+            title="Pending Msg",
+            expr=f"max({_PREFIX}_broker_messages_pending)",
+            x=0,
+            thresholds=[
+                Threshold("green", 0, 0.0),
+                Threshold("amber", 1, 1.0),
+                Threshold("red", 2, 100.0),
+            ],
+            description=(
+                "Maximum pending broker messages across all queues. "
+                "Why it matters: growing pending messages indicate consumers "
+                "cannot keep up with producers. "
+                "When amber: monitor consumer throughput. "
+                "When red: add consumers or investigate slow dispatchers."
+            ),
+        ),
+    )
+    panels.append(
+        _stat_panel_h(
+            gs,
+            title="Files (total)",
+            expr=f"sum({_PREFIX}_data_monitor_files_processed_total)",
+            x=6,
+            description=(
+                "Total files processed by data monitors since last restart. "
+                "Why it matters: a stalled count indicates no data is flowing."
+            ),
+        ),
+    )
+    panels.append(
+        _stat_panel_h(
+            gs,
+            title="Jobs (total)",
+            expr=f"sum({_PREFIX}_dispatcher_jobs_processed_total)",
+            x=12,
+            description=(
+                "Total jobs dispatched since last restart. "
+                "Why it matters: growing count confirms jobs are being consumed "
+                "and dispatched through the pipeline."
+            ),
+        ),
+    )
+    panels.append(
+        _stat_panel_h(
+            gs,
+            title="Errors (total)",
+            expr=(
+                f"("
+                f"sum({_PREFIX}_data_monitor_files_processed_total"
+                f'{{status="failure"}}) or vector(0)'
+                f") + ("
+                f"sum({_PREFIX}_job_builder_emit_failures_total)"
+                f" or vector(0)"
+                f") + ("
+                f"sum({_PREFIX}_dispatcher_jobs_processed_total"
+                f'{{status="failure"}}) or vector(0)'
+                f")"
+            ),
+            x=18,
+            thresholds=[
+                Threshold("green", 0, 0.0),
+                Threshold("amber", 1, 1.0),
+                Threshold("red", 2, 10.0),
+            ],
+            description=(
+                "Total errors across all pipeline stages since last restart. "
+                "Why it matters: any non-zero count indicates processing failures. "
+                "When amber: check error panels for per-stage breakdown."
+            ),
+        ),
+    )
 
     return RowPanel(
         id=_next_id(gs),
@@ -969,6 +1046,31 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         ),
     )
 
+    # --- Sub-row 3: dispatcher status table ----------------------------------
+    py3 = _advance(gs, 8)
+    panels.append(
+        Table(
+            id=_next_id(gs),
+            title="Dispatcher Status",
+            dataSource=_DS,
+            targets=[
+                _target(
+                    f"{_PREFIX}_dispatcher_jobs_processed_total{{{lbl}}}",
+                    "Jobs Processed",
+                ),
+                _target(
+                    f"{_PREFIX}_dispatcher_active_jobs{{{lbl}}}",
+                    "Active Jobs",
+                ),
+                _target(
+                    f"{_PREFIX}_dispatcher_parallel_workers_active{{{lbl}}}",
+                    "Parallel Workers",
+                ),
+            ],
+            gridPos=GridPos(h=8, w=24, x=0, y=py3),
+        ),
+    )
+
     return RowPanel(
         id=_next_id(gs),
         title="Dispatchers",
@@ -1277,6 +1379,29 @@ def _broker_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
         ),
     )
 
+    # --- Sub-row 2: broker messages pending table ----------------------------
+    py2 = _advance(gs, 8)
+    panels.append(
+        Table(
+            id=_next_id(gs),
+            title="Broker Messages Pending",
+            description=(
+                "Number of messages waiting in each broker queue. "
+                "Why it matters: growing pending counts indicate consumer "
+                "bottlenecks. A queue with many pending messages may need "
+                "additional consumer instances."
+            ),
+            dataSource=_DS,
+            targets=[
+                _target(
+                    f"{_PREFIX}_broker_messages_pending",
+                    "{{queue_name}}",
+                ),
+            ],
+            gridPos=GridPos(h=8, w=24, x=0, y=py2),
+        ),
+    )
+
     return RowPanel(
         id=_next_id(gs),
         title="Broker",
@@ -1456,6 +1581,123 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
             y=py,
             w=6,
             x=18,
+        ),
+    )
+
+    # --- Sub-row 2: Throughput (last 5m) — increase()-based for direct count view
+    dm_increase = (
+        f"sum(increase({_PREFIX}_data_monitor_files_processed_total[5m]))"
+    )
+    jb_increase = (
+        f"sum(increase({_PREFIX}_job_builder_jobs_built_total[5m]))"
+    )
+    dp_increase = (
+        f"sum(increase({_PREFIX}_dispatcher_jobs_processed_total[5m]))"
+    )
+    py2 = _advance(gs, 8)
+    panels.append(
+        _timeseries(
+            gs,
+            title="Throughput (last 5m)",
+            description=(
+                "Files, jobs built, and jobs processed over the last 5 "
+                "minutes using increase() for direct count view. "
+                "Complements the rate-based timeline above."
+            ),
+            targets=[
+                _target(dm_increase, "Files"),
+                _target(jb_increase, "Jobs Built", ref="B"),
+                _target(dp_increase, "Jobs Processed", ref="C"),
+            ],
+            unit="ops",
+            fill_opacity=10,
+            y=py2,
+            w=12,
+            x=0,
+        ),
+    )
+
+    # --- Sub-row 3: Errors by Stage — per-stage Heatmap panels
+    py3 = _advance(gs, 8)
+    panels.append(
+        _heatmap(
+            gs,
+            title="DM Errors",
+            targets=[
+                _target(
+                    dm_err,
+                    "Data Monitors",
+                ),
+            ],
+            y=py3,
+            w=8,
+            x=0,
+        ),
+    )
+    panels.append(
+        _heatmap(
+            gs,
+            title="Emit Failures",
+            targets=[
+                _target(
+                    emit_err,
+                    "Job Builders",
+                ),
+            ],
+            y=py3,
+            w=8,
+            x=8,
+        ),
+    )
+    panels.append(
+        _heatmap(
+            gs,
+            title="DP Errors",
+            targets=[
+                _target(
+                    dp_err,
+                    "Dispatchers",
+                ),
+            ],
+            y=py3,
+            w=8,
+            x=16,
+        ),
+    )
+
+    # --- Sub-row 4: routing edge throughput tables ---------------------------
+    py4 = _advance(gs, 8)
+    panels.append(
+        Table(
+            id=_next_id(gs),
+            title="Jobs Emitted by Route",
+            description=(
+                "Jobs emitted per job-builder and target dispatcher. "
+                "Why it matters: shows which routes are active and their "
+                "relative throughput."
+            ),
+            dataSource=_DS,
+            targets=[
+                _target(
+                    f"{_PREFIX}_job_builder_jobs_emitted_total",
+                    "{{job_builder_name}} → {{target}}",
+                ),
+            ],
+            gridPos=GridPos(h=8, w=12, x=0, y=py4),
+        ),
+    )
+    panels.append(
+        Table(
+            id=_next_id(gs),
+            title="Jobs Consumed by Route",
+            dataSource=_DS,
+            targets=[
+                _target(
+                    f"{_PREFIX}_dispatcher_jobs_consumed_total",
+                    "{{dispatcher_name}} → {{source}}",
+                ),
+            ],
+            gridPos=GridPos(h=8, w=12, x=12, y=py4),
         ),
     )
 
