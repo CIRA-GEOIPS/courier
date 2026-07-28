@@ -388,26 +388,44 @@ def collect_labeled(
     Returns
     -------
     dict[str, dict[str, Any]]
-        Mapping of ``"<metric_name>_<label_dict>"`` to
+        Mapping of ``"<sample_name>_<label_dict>"`` to
         ``{"value": float, "labels": dict[str, str]}``.
+
+    Notes
+    -----
+    ``metric._name`` is the *stripped* name: ``prometheus_client`` removes the
+    ``_total`` suffix from a Counter, so the exported sample is
+    ``courier_x_total`` while ``_name`` is ``courier_x``. Matching sample names
+    for exact equality against it therefore never matched a single Counter or
+    Histogram sample, and every plugin's ``get_metrics()`` silently returned
+    only its Gauges. Samples are matched by prefix instead.
 
     Examples
     --------
     >>> from courier.metrics import DATA_MONITOR_FILES_PROCESSED, collect_labeled
     >>> DATA_MONITOR_FILES_PROCESSED.labels(
-    ...     monitor_name="my_monitor", status="success"
+    ...     monitor_name="my_monitor",
+    ...     monitor_identifier="dm-1",
+    ...     status="success",
     ... ).inc()
     >>> result = collect_labeled(
     ...     DATA_MONITOR_FILES_PROCESSED, "monitor_name", "my_monitor"
     ... )
-    >>> list(result.keys())  # doctest: +SKIP
-    ["courier_data_monitor_files_processed_total_..."]
+    >>> any("_total" in key for key in result)
+    True
     """
     result: dict[str, dict[str, Any]] = {}
     base_name: str = metric._name
     for family in metric.collect():
         for sample in family.samples:
-            if sample.name == base_name and sample.labels.get(label_key) == label_value:
-                key = f"{base_name}_{sample.labels}"
-                result[key] = {"value": sample.value, "labels": sample.labels}
+            if not sample.name.startswith(base_name):
+                continue
+            # ``_created`` is a metric birth timestamp, not a measurement, and
+            # ``_bucket`` is per-boundary detail rather than a summary value.
+            if sample.name.endswith(("_created", "_bucket")):
+                continue
+            if sample.labels.get(label_key) != label_value:
+                continue
+            key = f"{sample.name}_{sample.labels}"
+            result[key] = {"value": sample.value, "labels": sample.labels}
     return result
