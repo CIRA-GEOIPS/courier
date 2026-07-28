@@ -18,7 +18,6 @@ import queue
 import threading
 import time
 import types
-from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -30,7 +29,7 @@ from courier.metrics import (
     DATA_MONITOR_CONSUMER_LAG,
     DATA_MONITOR_POLL_ERRORS,
 )
-from courier.types.file import File
+from courier.types.file import File, parse_location
 from courier.utils.datetime_utils import parse_timestamp
 
 if TYPE_CHECKING:
@@ -115,8 +114,9 @@ class KafkaConsumer(DataMonitorBasePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict[str, Any] | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated = KafkaConsumerConfig.model_validate(config or {})
@@ -192,7 +192,9 @@ class KafkaConsumer(DataMonitorBasePlugin):
             if value is not None:
                 metadata[key] = value
         return File(
-            file=PurePosixPath(str(file_raw)),  # type: ignore[arg-type]
+            # parse_location keeps URIs verbatim and converts plain
+            # filesystem paths to Path.
+            file=parse_location(str(file_raw)),
             hostname=payload.get(fm["hostname"]),
             source=payload.get(fm["source"]),
             instrument=payload.get(fm["instrument"]),

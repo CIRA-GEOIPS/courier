@@ -198,7 +198,11 @@ class MetadataRouterBuilder(JobBuilder):
 
         tracer = get_tracer(__name__)
         self._logger.debug("metadata_router starting file consumption")
-        for file_string, parent_ctx in self.parent_service.consume(FILE_FOUND_EXCHANGE):
+        for file_string, parent_ctx in self.parent_service.consume(
+            FILE_FOUND_EXCHANGE,
+            stop_event=self._stop_event,
+            on_subscribed=self._subscribed.set,
+        ):
             start_time = time.time()
             with tracer.start_as_current_span(
                 "metadata_router.route_file",
@@ -245,8 +249,15 @@ class MetadataRouterBuilder(JobBuilder):
                 )
 
     def _targets_for_group(self, job_group: JobGroup) -> tuple[str, ...]:
-        """Return per-route targets, falling back to the builder default."""
-        return self._route_targets.get(job_group.name, self.targets)
+        """Return per-route targets, falling back to the builder default.
+
+        A route that declares no ``targets`` is stored as an empty tuple, not
+        as a missing key, so ``dict.get(name, default)`` never reaches its
+        default. Fall back on the *value* being empty instead -- otherwise
+        preflight's ``allow_implicit_target`` auto-wiring is discarded and
+        :meth:`JobBuilder.emit` drops every job from that route.
+        """
+        return self._route_targets.get(job_group.name) or self.targets
 
     def _reaper_interval(self) -> float:
         timeouts = [
@@ -276,6 +287,11 @@ class MetadataRouterBuilder(JobBuilder):
             emitted: list[Job] = []
             for jid in ready_ids:
                 emitted.append(job_group.jobs.pop(jid))
+                # Must bump the overflow counter on every removal, exactly as
+                # FilterAndGroupJobBuilder._reap_group does. Skipping it lets a
+                # later file re-derive an ID that is still live in self.jobs,
+                # which JobGroup.add_file would then overwrite.
+                job_group._record_job_emitted(jid)
         targets = self._targets_for_group(job_group)
         for job in emitted:
             self._logger.info(

@@ -292,9 +292,19 @@ def apply_metadata_from_configs(
     NoMatchError
         If require_match is True and no config entries match.
     """
-    filename = str(file_obj.file.resolve()) if file_obj.file is not None else None
+    # Only filesystem paths can be resolved; a remote location (s3://, sftp://)
+    # is carried as a str and is matched against verbatim.
+    if isinstance(file_obj.file, Path):
+        filename: str | None = str(file_obj.file.resolve())
+    elif file_obj.file is not None:
+        filename = str(file_obj.file)
+    else:
+        filename = None
     if not filename:
-        raise ValueError
+        raise ValueError(
+            "Cannot apply metadata to a File with no location set "
+            "(file=None); the matcher has nothing to match against.",
+        )
     date_components: dict[str, str] = {}
     matched_entries: list[str] = []
     configs_checked: list[str] = [c.name for c in configs]

@@ -206,6 +206,23 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         return self
 
 
+#: Filename tokens that identify a platform when the message omits one.
+_PATH_SOURCE_HINTS: dict[str, str] = {
+    "G16": "goes16",
+    "G17": "goes17",
+    "G18": "goes18",
+    "G19": "goes19",
+}
+
+
+def _infer_source_from_path(path: str) -> str | None:
+    """Infer the platform (``source``) from tokens in *path*, or ``None``."""
+    for token, source in _PATH_SOURCE_HINTS.items():
+        if token in path:
+            return source
+    return None
+
+
 _DEFAULT_FIELD_MAP: dict[str, str] = {
     "location": "location",
     "dir_path": "dir_path",
@@ -328,8 +345,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated = RabbitMQWatcherConfig.model_validate(config or {})
@@ -366,8 +384,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self._stop_event = threading.Event()
 
     def stop(self) -> None:
-        """Stop the RabbitMQ watcher."""
+        """Signal the listener to exit, then stop and join the main thread."""
         self._stop_event.set()
+        super().stop()
 
     def is_healthy(self) -> bool:
         """Return ``True`` while the listener thread is consuming messages."""
@@ -422,9 +441,31 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         return None
 
     def _build_broker_url(self) -> str:
-        """Build the AMQP broker URL from the plugin's connection config."""
+        """Build the AMQP broker URL from the plugin's connection config.
+
+        Credentials are percent-encoded: an unescaped ``/`` or ``#`` in a
+        password otherwise makes the URL parser read part of the secret as a
+        host and port.
+        """
+        from urllib.parse import quote  # noqa: PLC0415
+
+        user = quote(self.rabbitmq_username, safe="")
+        password = quote(self.rabbitmq_password, safe="")
         return (
-            f"amqp://{self.rabbitmq_username}:{self.rabbitmq_password}"
+            f"amqp://{user}:{password}"
+            f"@{self.rabbitmq_host}:{self.rabbitmq_port}"
+            f"{self.rabbitmq_virtual_host}"
+        )
+
+    def _redacted_broker_url(self) -> str:
+        """Return the broker URL with the password replaced by ``***``.
+
+        The default log level is DEBUG, so logging the raw URL puts the broker
+        password in plain text into the console and, when Loki shipping is on,
+        into the log store.
+        """
+        return (
+            f"amqp://{self.rabbitmq_username}:***"
             f"@{self.rabbitmq_host}:{self.rabbitmq_port}"
             f"{self.rabbitmq_virtual_host}"
         )
@@ -475,7 +516,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     def _connect_and_consume(self, file_queue: queue.Queue[File]) -> None:  # noqa: PLR0915
         """Open a single broker connection and block until consumption ends."""
         url = self._build_broker_url()
-        self._logger.debug(f"Attempting to connect to broker at {url!r}")
+        self._logger.debug(
+            f"Attempting to connect to broker at {self._redacted_broker_url()!r}",
+        )
 
         connection = kombu.Connection(url)
         connection.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
@@ -492,7 +535,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
         fm = self.field_map
 
-        def callback(body: Any, message: kombu.Message) -> None:
+        def callback(body: Any, message: kombu.Message) -> None:  # noqa: PLR0912
             """Handle an incoming broker message."""
             self._logger.debug(f"Received message: {body!r}")
             try:
@@ -568,12 +611,18 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     if value is not None:
                         metadata[key] = value
 
+                # Fall back to inferring the platform from the filename when
+                # the producer omits it. This used to write "goes18" into
+                # *instrument*, which is a sensor field ("abi"), so configs had
+                # to filter on `instrument: goes18` to match anything.
+                source = file_info.get(fm["platform"])
+                if source is None:
+                    source = _infer_source_from_path(str(full_path))
                 file = File(
                     file=full_path,
                     hostname=hostname,
-                    source=file_info.get(fm["platform"]),
-                    instrument=file_info.get(fm["sensor"])
-                    or ("goes18" if "G18" in str(full_path) else None),
+                    source=source,
+                    instrument=file_info.get(fm["sensor"]),
                     timestamp=timestamp,
                     metadata=metadata,
                 )
@@ -630,7 +679,10 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             while not self._stop_event.is_set():
                 # Poll with a timeout so we can detect a dead listener thread
                 # and surface any errors it placed on the error queue.
-                while True:
+                # The stop-event check must happen on every empty poll: without
+                # it an idle queue keeps this inner loop spinning forever and
+                # the generator never returns on shutdown.
+                while not self._stop_event.is_set():
                     try:
                         yield file_queue.get(timeout=5.0)
                         self.last_file_processed_timestamp.labels(
@@ -639,6 +691,12 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                         ).set_to_current_time()
                         break
                     except queue.Empty as e:
+                        # Shutdown first: on stop() the listener exits by
+                        # design, so checking liveness first would report a
+                        # clean shutdown as "listener exited unexpectedly"
+                        # and raise instead of returning.
+                        if self._stop_event.is_set():
+                            return
                         # Check if the listener thread died unexpectedly
                         if not listener.is_alive():
                             try:

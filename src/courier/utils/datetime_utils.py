@@ -1,19 +1,60 @@
-"""Datetime parsing utilities for date component extraction from filenames."""
+"""Datetime parsing utilities for date component extraction from filenames.
+
+Timezone policy
+---------------
+Every timestamp Courier produces is timezone-aware and in UTC.
+
+Different monitors used to produce different kinds of ``datetime`` for the
+same instant: filename regexes yielded naive values, ``s3_poller`` yielded
+aware UTC from ``LastModified``, and epoch inputs went through
+``datetime.fromtimestamp`` and came out in the *host's local zone*.
+``FilterAndGroupJobGroup.get_job_ids_from_file`` then calls ``.timestamp()``,
+which interprets a naive value as local time -- so two files representing the
+same instant landed in time-grouping buckets an entire UTC offset apart, and
+the pairing stages that depend on that bucketing silently never paired.
+
+Naive input is therefore interpreted as UTC (which is what satellite filename
+conventions mean) and aware input is converted to UTC.
+"""
 
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 # Canonical date component keys used in regex named groups.
 _DATE_KEYS = ("YYYY", "MM", "DD", "JJJ", "HH", "NN")
 
 
-def parse_timestamp(raw: Any, fmt: str | None = None) -> datetime | None:
-    """Coerce *raw* into a :class:`datetime`.
+def ensure_utc(value: datetime | None) -> datetime | None:
+    """Return *value* as a timezone-aware UTC datetime.
 
-    Accepts ISO-8601 strings, Unix epoch numbers (int/float), and ``None``.
-    When *fmt* is supplied, string values are parsed with ``strptime(fmt)``
-    instead of ISO-8601.
+    Naive input is *assumed* to already be UTC and is tagged as such rather
+    than shifted -- satellite filenames and the broker payloads Courier reads
+    express UTC without saying so. Aware input is converted.
+
+    Parameters
+    ----------
+    value : datetime | None
+        A naive or aware datetime, or ``None``.
+
+    Returns
+    -------
+    datetime | None
+        ``None`` passthrough, otherwise an aware UTC datetime.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def parse_timestamp(raw: Any, fmt: str | None = None) -> datetime | None:
+    """Coerce *raw* into a timezone-aware UTC :class:`datetime`.
+
+    Accepts ISO-8601 strings, Unix epoch numbers (int/float), ``datetime``
+    instances, and ``None``. When *fmt* is supplied, string values are parsed
+    with ``strptime(fmt)`` instead of ISO-8601.
 
     Parameters
     ----------
@@ -25,20 +66,22 @@ def parse_timestamp(raw: Any, fmt: str | None = None) -> datetime | None:
     Returns
     -------
     datetime | None
-        Parsed datetime, or ``None`` if *raw* is ``None`` or of an
+        Aware UTC datetime, or ``None`` if *raw* is ``None`` or of an
         unsupported type.
     """
     if raw is None:
         return None
     if isinstance(raw, datetime):
-        return raw
+        return ensure_utc(raw)
     if isinstance(raw, (int, float)):
-        return datetime.fromtimestamp(float(raw))
+        # Epoch seconds are UTC by definition; fromtimestamp() without a tz
+        # argument reinterprets them in the host's local zone.
+        return datetime.fromtimestamp(float(raw), tz=UTC)
     if not isinstance(raw, str):
         return None
     if fmt:
-        return datetime.strptime(raw, fmt)
-    return datetime.fromisoformat(raw)
+        return ensure_utc(datetime.strptime(raw, fmt))
+    return ensure_utc(datetime.fromisoformat(raw))
 
 
 # This is a reasonable number of parameters for this function, ignoring ruff here.
@@ -91,7 +134,7 @@ def build_timestamp_from_components(  # noqa: PLR0913
     if jjj is not None:
         # Use day of year
         day_of_year = int(jjj)
-        base_date = datetime(year, 1, 1)
+        base_date = datetime(year, 1, 1, tzinfo=UTC)
 
         result_date = base_date + timedelta(days=day_of_year - 1)
         return result_date.replace(hour=hour, minute=minute)
@@ -99,7 +142,7 @@ def build_timestamp_from_components(  # noqa: PLR0913
     if mm is not None and dd is not None:
         month = int(mm)
         day = int(dd)
-        return datetime(year, month, day, hour, minute)
+        return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
     return None
 

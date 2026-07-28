@@ -94,8 +94,9 @@ class SftpPoller(DataMonitorBasePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict[str, Any] | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated = SftpPollerConfig.model_validate(config or {})
@@ -222,7 +223,9 @@ class SftpPoller(DataMonitorBasePlugin):
                 else None
             )
             yield File(
-                file=PurePosixPath(uri),  # type: ignore[arg-type]
+                # Kept as a str: PurePosixPath would collapse "sftp://"
+                # into "sftp:/" and corrupt the URI.
+                file=uri,
                 hostname=self._hostname_label,
                 timestamp=timestamp,
             )

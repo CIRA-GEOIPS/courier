@@ -13,7 +13,6 @@ import threading
 import time
 import types
 from datetime import datetime
-from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -92,8 +91,9 @@ class S3Poller(DataMonitorBasePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict[str, Any] | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         self.validated = S3PollerConfig.model_validate(config or {})
@@ -157,7 +157,9 @@ class S3Poller(DataMonitorBasePlugin):
                     last_modified if isinstance(last_modified, datetime) else None
                 )
                 yield File(
-                    file=PurePosixPath(uri),  # type: ignore[arg-type]
+                    # Kept as a str: PurePosixPath would collapse "s3://"
+                    # into "s3:/" and corrupt the URI.
+                    file=uri,
                     hostname=self.validated.hostname,
                     timestamp=timestamp,
                 )

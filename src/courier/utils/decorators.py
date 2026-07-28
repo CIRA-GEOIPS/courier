@@ -83,6 +83,17 @@ def retry_with_backoff(
             last_exc: Exception | None = None
             attempt = 0
             is_infinite = max_retries == INFINITE_RETRIES
+            if not is_infinite and max_retries < 1:
+                # max_retries counts *attempts*, so 0 used to mean "never call
+                # it at all" and returned None -- BROKER_MAX_RETRIES=0 left the
+                # broker connection silently unestablished with no error. One
+                # attempt is the only sane floor.
+                _logger.warning(
+                    "max_retries=%s for %s is below 1; making a single attempt.",
+                    max_retries,
+                    func.__name__,
+                )
+                return func(*args, **kwargs)
 
             while is_infinite or attempt < max_retries:
                 try:

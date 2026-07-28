@@ -121,12 +121,15 @@ class CronGlob(DataMonitorBasePlugin):
         self,
         service: Service | types.ModuleType | None = None,
         config: dict[str, Any] | None = None,
+        identifier: str | None = None,
     ) -> None:
-        super().__init__(service, config)
+        super().__init__(service, config, identifier=identifier)
         if service is None or isinstance(service, types.ModuleType):
             return
         validated = CronGlobConfig.model_validate(config or {})
-        self.scan_path = Path(validated.path)
+        # expanduser() so "~/data" behaves the way operators (and the
+        # quick-start guide) expect rather than looking for a literal "~" dir.
+        self.scan_path = Path(validated.path).expanduser()
         self.glob_pattern = validated.glob_pattern
         self.cron_expression = validated.cron_expression
         self.max_seen_files = validated.max_seen_files

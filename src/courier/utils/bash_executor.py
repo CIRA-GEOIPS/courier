@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import signal
 import subprocess
 import tempfile
 import threading
@@ -39,6 +41,25 @@ class BashExecResult:
     stdout: str
     stderr: str
     log_file_path: str | None = None
+
+
+def _terminate_process_group(process: subprocess.Popen) -> None:
+    """Kill *process* and every child it spawned, then reap it.
+
+    The script runs in its own session (see ``start_new_session``), so
+    signalling the group reaches grandchildren too. SIGTERM first to give the
+    workload a chance to clean up, SIGKILL if it does not go. ``wait()``
+    afterwards prevents a zombie entry lingering for the life of the service.
+    """
+    with contextlib.suppress(ProcessLookupError, OSError):
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError, OSError):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=5)
 
 
 def execute_bash_script(  # noqa: PLR0913, PLR0915
@@ -126,12 +147,17 @@ def execute_bash_script(  # noqa: PLR0913, PLR0915
             log_fh.flush()
 
         # -- Launch subprocess with piped stdout/stderr -----------------------
+        # start_new_session puts the script in its own process group so a
+        # timeout can kill the whole tree. Killing only the bash process left
+        # its children -- which is where the actual compute runs -- orphaned
+        # and still consuming the resources the timeout was meant to reclaim.
         process = subprocess.Popen(  # noqa: S603
             ["/bin/bash", script_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             env=env,
+            start_new_session=True,
         )
 
         # -- Threaded readers for stdout and stderr ---------------------------
@@ -184,7 +210,7 @@ def execute_bash_script(  # noqa: PLR0913, PLR0915
         try:
             return_code = process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            process.kill()
+            _terminate_process_group(process)
             return_code = -1
             stderr_lines.append(
                 f"Script execution timed out after {timeout_seconds}s\n",

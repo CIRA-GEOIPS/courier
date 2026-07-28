@@ -31,14 +31,22 @@ from courier.tracing import (
 )
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import BashExecResult, execute_bash_script
+from courier.utils.functional import slugify_for_filename
+from courier.utils.logging import get_logger
 
 if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.job import Job
 
 
+#: Module logger for the stdout-metric conduit, which is a module-level
+#: function with no access to a plugin instance logger.
+_logger = get_logger("module", "serial_bash", None)
+
 #: Regex that extracts ``metric_name`` and ``value`` from a
 #: ``COURIER_METRIC: <name> <value>`` stdout line.
+#: The value pattern is deliberately permissive; :func:`_ingest_courier_metrics`
+#: validates it with ``float()`` and skips anything that fails.
 _COURIER_METRIC_RE = _re.compile(
     r"^COURIER_METRIC:\s+(?P<metric_name>\S+)\s+(?P<value>-?[\d.e+-]+)"
 )
@@ -61,11 +69,28 @@ def _ingest_courier_metrics(
     """
     for line in stdout.splitlines():
         m = _COURIER_METRIC_RE.match(line.strip())
-        if m:
-            COURIER_CUSTOM_GAUGE.labels(
-                dispatcher_identifier=dispatcher_identifier,
-                metric_name=m.group("metric_name"),
-            ).set(float(m.group("value")))
+        if not m:
+            continue
+        raw_value = m.group("value")
+        try:
+            value = float(raw_value)
+        except ValueError:
+            # The value pattern admits strings float() rejects ("1.2.3", "5--",
+            # "1e"). This runs inside get_execution_log, so an escaping
+            # ValueError is not a CourierError, is not caught by the dispatcher
+            # loop, and takes the process down via os._exit(1) -- with the
+            # message unacked and therefore redelivered, killing the service
+            # again on restart. A bad metric line must never do that.
+            _logger.warning(
+                "Ignoring malformed COURIER_METRIC value %r for metric %r",
+                raw_value,
+                m.group("metric_name"),
+            )
+            continue
+        COURIER_CUSTOM_GAUGE.labels(
+            dispatcher_identifier=dispatcher_identifier,
+            metric_name=m.group("metric_name"),
+        ).set(value)
 
 
 class SerialBashConfig(BaseModel, frozen=True):
@@ -281,7 +306,10 @@ class SerialBashDispatcher(Dispatcher):
             log_file_path: Path | None = None
             if self.validated.log_to_file:
                 ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
-                log_file_path = Path(self.validated.log_dir) / f"dispatch_{job.identifier}_{ts}.log"
+                safe_id = slugify_for_filename(job.identifier)
+                log_file_path = (
+                    Path(self.validated.log_dir) / f"dispatch_{safe_id}_{ts}.log"
+                )
 
             log_prefix = f"[job: {job.identifier}]" if self.validated.log_to_logger else ""
 

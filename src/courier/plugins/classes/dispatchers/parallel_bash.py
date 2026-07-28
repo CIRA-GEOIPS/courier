@@ -38,6 +38,7 @@ from courier.tracing import (
 )
 from courier.types.execution_log import ExecutionLog
 from courier.utils.bash_executor import execute_bash_script
+from courier.utils.functional import slugify_for_filename
 
 if TYPE_CHECKING:
     import logging as logging_module
@@ -257,6 +258,19 @@ class ParallelBashDispatcher(Dispatcher):
         }
         return self._template.render(**context)
 
+    def _log_path_for(self, job: Job, ff: FrozenFile) -> Path:
+        """Build this file's per-execution log path inside ``log_dir``.
+
+        Both the job identifier and the file stem are operator- or
+        template-controlled, so both are slugified: an identifier containing
+        path separators would otherwise write outside ``log_dir`` (or fail
+        outright on a directory that does not exist).
+        """
+        ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+        file_stem = slugify_for_filename(Path(str(ff.file)).stem)
+        safe_id = slugify_for_filename(job.identifier)
+        return Path(self.validated.log_dir) / f"dispatch_{safe_id}_{file_stem}_{ts}.log"
+
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Execute one script per file concurrently and return all logs."""
         tracer = get_tracer(__name__)
@@ -325,14 +339,11 @@ class ParallelBashDispatcher(Dispatcher):
                         if self.validated.log_to_logger
                         else ""
                     )
-                    log_path = None
-                    if self.validated.log_to_file:
-                        ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
-                        file_stem = Path(str(ff.file)).stem.replace(" ", "_")
-                        log_path = (
-                            Path(self.validated.log_dir)
-                            / f"dispatch_{job.identifier}_{file_stem}_{ts}.log"
-                        )
+                    log_path = (
+                        self._log_path_for(job, ff)
+                        if self.validated.log_to_file
+                        else None
+                    )
                     futures[
                         pool.submit(
                             _run_script,

@@ -32,6 +32,7 @@ from courier.constants import PluginRunState
 from courier.interfaces.module_based.job_builders import JobBuilder
 from courier.metrics import JOB_BUILDER_TIMEOUT_EMISSIONS
 from courier.types.job import Job, JobGroup
+from courier.utils.datetime_utils import ensure_utc
 
 if TYPE_CHECKING:
     from courier.service import Service
@@ -210,7 +211,12 @@ class FilterAndGroupJobGroup(JobGroup):
         """Bucket the file's timestamp into a time-group ID string."""
         if self.time_grouping is None:
             return super().get_job_ids_from_file(file)
-        if file.timestamp is None:
+        # Coerce up front: .timestamp() reads a naive datetime as *local*
+        # time, so mixing naive and aware values here put files representing
+        # the same instant into buckets a whole UTC offset apart. File
+        # normalises at construction; this also covers directly-built groups.
+        file_ts = ensure_utc(file.timestamp)
+        if file_ts is None:
             return []
         delta = timedelta(
             weeks=float(self.time_grouping.get("weeks", 0)),
@@ -226,9 +232,13 @@ class FilterAndGroupJobGroup(JobGroup):
             if isinstance(start_raw, datetime)
             else datetime.strptime(str(start_raw), "%Y-%m-%d %H:%M:%S")
         )
+        # The configured window origin gets the same treatment as the file's
+        # timestamp, so a naive ``start:`` in YAML also means UTC.
+        start_ts = ensure_utc(start_datetime)
+        if start_ts is None:  # pragma: no cover - start_raw is never None
+            return []
         bucket = int(
-            (file.timestamp.timestamp() - start_datetime.timestamp())
-            // delta.total_seconds(),
+            (file_ts.timestamp() - start_ts.timestamp()) // delta.total_seconds(),
         )
         return [str(bucket)]
 

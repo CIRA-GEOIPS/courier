@@ -129,23 +129,22 @@ class FileCountJobGroup(JobGroup):
             return [str(file.file)]
         return [rendered]
 
-    def add_file(self, file: File | FrozenFile) -> bool:
-        """Insert *file* into its rendered job bucket with configured timeout."""
-        if not self.file_is_relevant(file):
-            return False
-        for job_id in self.get_job_ids_from_file(file):
-            if job_id in self.jobs:
-                self.jobs[job_id].add_file(file)
-            else:
-                job = self.job(
-                    self.name,
-                    job_id,
-                    self.config,
-                    timeout=self.validated_config.job_timeout_seconds,
-                )
-                job.add_file(file)
-                self.jobs[job_id] = job
-        return True
+    def _make_job(self, job_id: str) -> Job:
+        """Build a job carrying this group's configured timeout.
+
+        Only the constructor differs from the base group, so this overrides
+        the construction hook rather than :meth:`JobGroup.add_file`.  The
+        previous ``add_file`` override reimplemented bucketing without the
+        sequence counter, which meant a full job silently discarded files and
+        successive batches for the same bucket reused one job identifier --
+        which the dispatcher's dedupe LRU then dropped as a duplicate.
+        """
+        return self.job(
+            self.name,
+            job_id,
+            self.config,
+            timeout=self.validated_config.job_timeout_seconds,
+        )
 
 
 class FileCountBuilder(JobBuilder):

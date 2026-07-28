@@ -80,6 +80,18 @@ class ContextAdapter(logging.LoggerAdapter):
     >>> adapter.info("Starting")  # Logs: [Service: my-svc] Starting
     """
 
+    def trace(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        """Log at the custom TRACE level (below DEBUG).
+
+        ``get_logger`` hands callers this adapter, not a raw ``Logger``, so
+        the ``logging.Logger.trace`` monkeypatch alone left ``logger.trace()``
+        raising ``AttributeError`` -- despite TRACE being an accepted value
+        for ``COURIER_LOG_LEVEL`` and ``--log-level``.
+        """
+        if self.isEnabledFor(TRACE_LEVEL):
+            msg, kwargs = self.process(msg, kwargs)
+            self.logger.log(TRACE_LEVEL, msg, *args, **kwargs)
+
     def process(
         self,
         msg: str,
@@ -222,8 +234,11 @@ class _ResilientLokiHandler(logging.Handler):
                     "courier: Loki handler failed to push log records "
                     "(rate-limited to 1/min); check Loki backend health.\n",
                 )
-            # Suppress the per-record traceback; silently drop.
-            self.delegate.handleError(record)
+            # Deliberately not delegate.handleError(record): that is exactly
+            # the per-record traceback this wrapper exists to suppress, and it
+            # was only silenced when production_mode happened to set
+            # logging.raiseExceptions = False. The record is dropped; the
+            # rate-limited notice above is the diagnostic.
 
     def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
         pass  # fully suppressed; diagnostics handled in emit()

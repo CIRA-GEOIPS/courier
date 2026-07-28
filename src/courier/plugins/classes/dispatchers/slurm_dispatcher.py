@@ -31,6 +31,7 @@ from courier.metrics import (
     DISPATCHER_SLURM_SUBMISSIONS,
 )
 from courier.types.execution_log import ExecutionLog
+from courier.utils.functional import slugify_for_filename
 
 if TYPE_CHECKING:
     from courier.service import Service
@@ -150,10 +151,10 @@ class SlurmDispatcher(Dispatcher):
         """Build the ``sbatch`` argument list from config and job identity."""
         args: list[str] = ["sbatch", "--parsable"]
         cfg = self.validated
-        out_base = self._output_dir / job.identifier
+        out_base = self._output_dir / slugify_for_filename(job.identifier)
         args.extend(
             [
-                f"--job-name=courier-{job.identifier}",
+                f"--job-name=courier-{slugify_for_filename(job.identifier)}",
                 f"--output={out_base}.out",
                 f"--error={out_base}.err",
             ],
@@ -297,8 +298,9 @@ class SlurmDispatcher(Dispatcher):
 
     def _read_output(self, job: Job) -> tuple[str, str]:
         """Read and return the ``.out`` and ``.err`` files for *job*."""
-        out_path = self._output_dir / f"{job.identifier}.out"
-        err_path = self._output_dir / f"{job.identifier}.err"
+        safe_id = slugify_for_filename(job.identifier)
+        out_path = self._output_dir / f"{safe_id}.out"
+        err_path = self._output_dir / f"{safe_id}.err"
         stdout = out_path.read_text() if out_path.exists() else ""
         stderr = err_path.read_text() if err_path.exists() else ""
         return stdout, stderr
@@ -308,7 +310,8 @@ class SlurmDispatcher(Dispatcher):
         self._last_submit_error = None
         hostname = socket.gethostname()
         script_path = (
-            self._output_dir / f"{job.identifier}-{uuid.uuid4().hex[:8]}.sbatch"
+            self._output_dir
+            / f"{slugify_for_filename(job.identifier)}-{uuid.uuid4().hex[:8]}.sbatch"
         )
 
         try:
