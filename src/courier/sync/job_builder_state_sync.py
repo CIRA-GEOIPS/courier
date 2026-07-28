@@ -175,6 +175,13 @@ class JobBuilderStateSync:
             if self._pubsub is not None:
                 self._pubsub.unsubscribe()
                 self._pubsub.close()
+                self._pubsub = None
+        # Close the command connection too: leaving it open leaked a Redis
+        # connection on every plugin restart.
+        with contextlib.suppress(Exception):
+            if self._client is not None:
+                self._client.close()
+                self._client = None
         self._logger.info("State-sync subscriber stopped")
 
     # ------------------------------------------------------------------

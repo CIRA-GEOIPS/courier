@@ -69,12 +69,14 @@ ruff = { version = "*", optional = true }
 mypy = { version = "*", optional = true }
 pytest = { version = "*", optional = true }
 pytest-cov = { version = "*", optional = true }
+pytest-timeout = { version = "*", optional = true }
 pytest-xdist = { version = "*", optional = true }
 pytest-mock = { version = "*", optional = true }
 types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
 fakeredis = { version = "*", optional = true }
 hypothesis = { version = "*", optional = true }
+mutmut = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 # Development dependencies that are always installed for development
@@ -109,6 +111,7 @@ lint = [
 test = [
     "pytest",                    # for running tests
     "pytest-cov",                # for test coverage
+    "pytest-timeout",            # fail hung tests instead of wedging CI
     "pytest-xdist",              # for parallel testing
     "pytest-mock",               # mocker fixture for plugin tests
     "fakeredis",                 # in-process Redis fake for sync tests
@@ -118,6 +121,8 @@ test = [
     "paramiko",                  # required by sftp_poller tests
     "kafka-python",              # required by kafka_consumer tests
     "httpx",                     # required by http_dispatcher tests
+    "grafanalib",                # required by tests/unit_tests/dashboard/*
+    "mutmut",                    # mutation testing; see .github/workflows/mutation.yaml
 ]
 
 ha = [
@@ -236,7 +241,14 @@ pythonpath = ["."]
 testpaths = ["tests"]
 python_files = "test_*.py"
 norecursedirs = ["xarray_utils"]
-addopts = "-v -rf --ff --cov=src --cov-report=term-missing --cov-report=xml -m \"not limited_test_dataset_availability\""
+# Integration tests are deselected by default: they take minutes and need real
+# scheduling, so leaving them in the default run means developers stop running
+# tests locally at all. Opt in with `-m integration`, or run everything with
+# `-m ""`. CI runs both (see .github/workflows/pytest.yaml).
+addopts = "-v -rf --ff --cov=src --cov-report=term-missing --cov-report=xml --timeout=300 -m \"not limited_test_dataset_availability and not integration\""
+# A hung consumer thread used to wedge the whole run (and the nightly badge
+# job) until the CI job timed out hours later. Fail the test instead.
+timeout = 300
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: CONCURRENT - marks tests as integration (select with '-m \"integration\"')",
@@ -260,6 +272,33 @@ exclude_lines = [
     "pass",
     "raise ImportError",
 ]
+
+[tool.mutmut]
+# Mutation testing answers the question line coverage cannot: are these tests
+# load-bearing? This suite once had 1200+ tests at 68% coverage and caught
+# none of seven critical bugs, because a large share asserted the shape of the
+# code rather than its behaviour. A surviving mutant is a change to production
+# code that no test objected to.
+#
+# Scoped to the core domain and plumbing. The dashboard/viz packages are
+# excluded deliberately: their mutants are overwhelmingly cosmetic (a changed
+# panel width, a reworded description) and would bury the signal.
+source_paths = ["src/courier"]
+only_mutate = [
+    "src/courier/types/*",
+    "src/courier/routing/*",
+    "src/courier/interfaces/module_based/*",
+    "src/courier/utils/*",
+    "src/courier/broker/*",
+    "src/courier/managers/*",
+]
+# Integration tests are far too slow to run once per mutant; the unit suite
+# runs in ~20s and is what we want to measure anyway.
+pytest_add_cli_args_test_selection = ["tests/unit_tests/"]
+# mutmut runs the suite from a copied tree. tests/ and pyproject.toml are
+# copied by default, but the shipped root config is not, and the CLI smoke
+# tests validate it by path.
+also_copy = ["config.yaml"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "docs"]

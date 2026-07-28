@@ -81,6 +81,14 @@ class Dispatcher(ServicePlugin):
         self.incoming_queue = job_ready_queue_for(identifier)
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
+        # Per-instance shutdown signal. Passed to Service.consume() so the
+        # broker loop returns promptly on stop() — without it the consume
+        # generator blocks forever and a non-daemon thread wedges interpreter
+        # shutdown. Per-instance (not service-wide) so PluginManager can
+        # restart one dispatcher without tearing down the others.
+        self._stop_event = threading.Event()
+        # Set once bound to the per-identifier job queue; see JobBuilder.
+        self._subscribed = threading.Event()
         self.config = config or {}
 
         self._jobs_processed = DISPATCHER_JOBS_PROCESSED
@@ -205,9 +213,11 @@ class Dispatcher(ServicePlugin):
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
         tracer = get_tracer(__name__)
-        while True:
+        while not self._stop_event.is_set():
             for job_string, parent_ctx in self.parent_service.consume(
                 self.incoming_queue,
+                stop_event=self._stop_event,
+                on_subscribed=self._subscribed.set,
             ):
                 with contextlib.suppress(Exception):
                     self._emit_queue_depth()
@@ -318,10 +328,16 @@ class Dispatcher(ServicePlugin):
         """Start main thread."""
         if self._state == PluginRunState.RUNNING:
             return
+        self._stop_event.clear()
+        self._subscribed.clear()
+        # daemon=True is a backstop, not the shutdown mechanism: stop() sets
+        # _stop_event and joins, which is how the thread is meant to end. If a
+        # job is wedged past the join timeout the interpreter can still exit
+        # rather than hanging forever; the unacked message is redelivered.
         self._main_thread = threading.Thread(
             target=self._run_handle_incoming_jobs,
             name=self.name,
-            daemon=False,
+            daemon=True,
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()
@@ -331,12 +347,23 @@ class Dispatcher(ServicePlugin):
     def stop(self) -> None:
         """Stop main thread."""
         self._state = PluginRunState.STOPPED
+        self._stop_event.set()
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
 
     def is_healthy(self) -> bool:
         """Check if plugin is healthy."""
         return self._state == PluginRunState.RUNNING
+
+    def wait_until_subscribed(self, timeout: float) -> bool:
+        """Block until this dispatcher is bound to its job queue.
+
+        Returns
+        -------
+        bool
+            ``True`` if the subscription completed within *timeout*.
+        """
+        return self._subscribed.wait(timeout=timeout)
 
     def get_metrics(self) -> dict[str, Any]:
         """Return plugin-specific metrics."""

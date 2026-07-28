@@ -188,32 +188,83 @@ class JobGroup:
         self.config = config
         self.jobs: dict[str, Job] = {}
         self.job = Job
-        self._overflow_counters: dict[str, int] = {}
+        # Highest sequence number ever issued for each bucket ID. Strictly
+        # monotonic and never decremented, so an ID is never reused within the
+        # group's lifetime -- the dispatcher's dedupe LRU treats a repeated
+        # job identifier as a duplicate and silently drops it.
+        self._job_sequence: dict[str, int] = {}
+        # Bucket ID -> the job currently accepting files for it. Needed because
+        # a bucket's live job is no longer named after the bucket once the
+        # sequence has advanced past zero.
+        self._open_job_ids: dict[str, str] = {}
 
     def ready_jobs(self) -> list[Job]:
         """Return list of ready jobs."""
         return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
 
-    def _record_job_emitted(self, job_id: str) -> None:
-        """Bump the overflow counter for *job_id* so future jobs get unique IDs.
+    @staticmethod
+    def _base_id(job_id: str) -> str:
+        """Strip any ``_overflow_N`` suffix to recover the bucket ID."""
+        if _OVERFLOW_SEPARATOR in job_id:
+            return job_id.rsplit(_OVERFLOW_SEPARATOR, 1)[0]
+        return job_id
 
-        Strips any ``_overflow_N`` suffix to extract the base bucket ID,
-        then increments the counter.  Called by the job builder fast-path
-        and the reaper timeout-path whenever a job is emitted and popped
-        from the group.
+    def _record_job_emitted(self, job_id: str) -> None:
+        """Mark *job_id* closed so the next file for its bucket opens a new job.
+
+        Called whenever a job leaves the group -- the builder fast-path, the
+        timeout reaper, and the old-job cleanup all route through here.  It
+        only clears the open-job pointer; the sequence counter is advanced at
+        *creation* time, so an ID can never be handed out twice even if a
+        removal path forgets to call this.
 
         Notes
         -----
-        ``_overflow_counters`` is never pruned — for very long-running
-        services processing many unique base IDs, the dict grows
-        unboundedly.  This is an accepted trade-off: each entry is
-        ~100 bytes and the set of base IDs is bounded by the product of
-        the time-window granularity and the service lifetime.
+        ``_job_sequence`` is never pruned — for very long-running services
+        processing many unique bucket IDs, the dict grows unboundedly.  This is
+        an accepted trade-off: each entry is ~100 bytes and the set of bucket
+        IDs is bounded by the product of the time-window granularity and the
+        service lifetime.
         """
-        base_id = job_id
-        if _OVERFLOW_SEPARATOR in base_id:
-            base_id = base_id.rsplit(_OVERFLOW_SEPARATOR, 1)[0]
-        self._overflow_counters[base_id] = self._overflow_counters.get(base_id, 0) + 1
+        base_id = self._base_id(job_id)
+        if self._open_job_ids.get(base_id) == job_id:
+            del self._open_job_ids[base_id]
+
+    def _next_job_id(self, base_id: str) -> str:
+        """Issue a fresh, never-before-used job ID for *base_id*.
+
+        The first job for a bucket keeps the bucket ID verbatim so the common
+        case stays readable in logs; subsequent jobs get an ``_overflow_N``
+        suffix.  The counter only ever increases.
+        """
+        sequence = self._job_sequence.get(base_id, 0)
+        self._job_sequence[base_id] = sequence + 1
+        if sequence == 0:
+            return base_id
+        return f"{base_id}{_OVERFLOW_SEPARATOR}{sequence}"
+
+    def _make_job(self, job_id: str) -> Job:
+        """Construct a job for *job_id*.
+
+        Override to pass extra constructor arguments (e.g. a per-group
+        timeout) without having to reimplement :meth:`add_file`.
+        """
+        return self.job(self.name, job_id, self.config)
+
+    def _open_job_for(self, base_id: str) -> Job:
+        """Return the job currently accepting files for *base_id*.
+
+        Creates one — and registers it as the open job — when the bucket has
+        no live job.
+        """
+        open_id = self._open_job_ids.get(base_id)
+        if open_id is not None and open_id in self.jobs:
+            return self.jobs[open_id]
+        job_id = self._next_job_id(base_id)
+        job = self._make_job(job_id)
+        self.jobs[job_id] = job
+        self._open_job_ids[base_id] = job_id
+        return job
 
     def file_is_relevant(self, file: File | FrozenFile) -> bool:
         """Return true if file is relevant to this job group."""
@@ -228,44 +279,29 @@ class JobGroup:
 
         Return true if file was added to at least one job, false otherwise.
 
-        When an existing job rejects the file (e.g. it is full), a new
-        overflow job is created with a suffixed ID so the file is never
-        silently dropped.
+        Each bucket ID has at most one job open at a time.  When that job
+        rejects the file (e.g. it is full) it is closed and a fresh job is
+        opened with a new, never-reused ID, so the file is neither dropped nor
+        merged into a job that already emitted under the same identifier.
         """
         if not self.file_is_relevant(file):
             return False
         job_ids = self.get_job_ids_from_file(file)
         if not job_ids:
             return False
-        for job_id in set(job_ids):
-            if job_id in self.jobs:
-                accepted = self.jobs[job_id].add_file(file)
-                if not accepted:
-                    # Existing job rejected the file — create overflow job.
-                    self._overflow_counters[job_id] = (
-                        self._overflow_counters.get(job_id, 0) + 1
-                    )
-                    overflow_id = (
-                        f"{job_id}{_OVERFLOW_SEPARATOR}"
-                        f"{self._overflow_counters[job_id]}"
-                    )
-                    overflow = self.job(
-                        self.name,
-                        overflow_id,
-                        self.config,
-                    )
-                    if not overflow.add_file(file):
-                        raise RuntimeError(
-                            f"overflow job {overflow_id!r} rejected file {file!r}; "
-                            f"Job.add_file may only return False for capacity/filter "
-                            f"reasons; a fresh job should always accept the first file",
-                        )
-                    self.jobs[overflow_id] = overflow
-            else:
-                actual_id = job_id
-                counter = self._overflow_counters.get(job_id, 0)
-                if counter > 0:
-                    actual_id = f"{job_id}{_OVERFLOW_SEPARATOR}{counter}"
-                self.jobs[actual_id] = self.job(self.name, actual_id, self.config)
-                self.jobs[actual_id].add_file(file)
+        for base_id in set(job_ids):
+            job = self._open_job_for(base_id)
+            if job.add_file(file):
+                continue
+            # Full or filtered: retire this job and open a successor. Retiring
+            # via _record_job_emitted (rather than deleting) leaves the job in
+            # self.jobs so its accumulated files still get emitted.
+            self._record_job_emitted(job.identifier)
+            successor = self._open_job_for(base_id)
+            if not successor.add_file(file):
+                raise RuntimeError(
+                    f"job {successor.identifier!r} rejected file {file!r}; "
+                    f"Job.add_file may only return False for capacity/filter "
+                    f"reasons; a fresh job should always accept the first file",
+                )
         return True

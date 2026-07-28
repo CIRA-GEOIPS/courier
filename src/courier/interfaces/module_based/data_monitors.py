@@ -61,6 +61,11 @@ class DataMonitorBasePlugin(ServicePlugin):
         self.queue = FILE_FOUND_EXCHANGE
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
+        # Per-instance shutdown signal. Subclasses whose find_file() blocks
+        # (queue reads, sleeps, network polls) MUST poll this so stop() can
+        # end the generator; several already define their own -- setting it
+        # here gives every monitor one by default.
+        self._stop_event = threading.Event()
         self.config = config or {}
         # importing here to prevent circular import
         from courier.interfaces import data_monitor_configs  # noqa: PLC0415
@@ -196,10 +201,12 @@ class DataMonitorBasePlugin(ServicePlugin):
         """Start main thread."""
         if self._state == PluginRunState.RUNNING:
             return
+        self._stop_event.clear()
+        # daemon=True is a backstop only; stop() sets _stop_event and joins.
         self._main_thread = threading.Thread(
             target=self._run_find_and_emit_files,
             name=self.name,
-            daemon=False,
+            daemon=True,
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()
@@ -209,6 +216,7 @@ class DataMonitorBasePlugin(ServicePlugin):
     def stop(self) -> None:
         """Stop main thread."""
         self._state = PluginRunState.STOPPED
+        self._stop_event.set()
         if self._main_thread and self._main_thread.is_alive():
             self._main_thread.join(timeout=5)
 

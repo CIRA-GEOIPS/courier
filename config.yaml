@@ -11,7 +11,7 @@ metadata:
     metadata. Downstream job builders and dispatchers can filter and act on these
     files as they arrive.
 spec:
-  heartbeat_interval: 1000 # in milliseconds
+  heartbeat_interval: 30 # seconds between health-metric publications
   run:
     - clavrx-file-watcher:
         kind: data_monitor
@@ -48,7 +48,7 @@ spec:
           files_per_job: 1
           min_files: 1
           filters:
-            instrument: goes18
+            source: goes18 # platform lives in `source`; `instrument` is the sensor (abi)
     - run-bash-command:
         kind: dispatcher
         name: serial_bash

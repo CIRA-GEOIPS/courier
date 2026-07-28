@@ -23,6 +23,26 @@ Follow the prompts:
 The command generates a `{name}-service.yaml` file ready to run with
 `courier run {name}-service.yaml`.
 
+## Selecting a Plugin
+
+Each category prints a numbered table of the plugins available to it. At the
+prompt you can enter any of:
+
+`2`
+: The number in the `#` column — the quickest option, and the one to reach for.
+
+`s3_poller`
+: The full plugin name, case-insensitively.
+
+`s3`
+: Any prefix that matches exactly one plugin. A prefix matching several
+  (`s` → `s3_poller`, `sftp_poller`) is refused and lists the candidates
+  rather than guessing.
+
+Whichever form you use, the resolved plugin name is echoed back before you are
+asked to configure it, so a mistyped number is caught immediately. Press
+{kbd}`Enter` on its own to move to the next category.
+
 ## Options
 
 `--dry-run`
@@ -51,11 +71,19 @@ Description [A courier service: my-processor]: Watches for data and processes it
 ╭── Data Monitors ─────────────────────────────╮
 │ select which data monitor plugins to use     │
 ╰───────────────────────────────────────────────╯
-┌──────────────────────────────────────────────────────────────────┐
-│ Available Data Monitors                                          │
-│ ...                                                              │
-└──────────────────────────────────────────────────────────────────┘
-Add a data monitor (name or Enter to skip): file_system_poller_watchdog
+                        Available Data Monitors
+╭───┬─────────────────────────────┬────────────────────────────────────────────╮
+│ # │ Name                        │ Description                                │
+├───┼─────────────────────────────┼────────────────────────────────────────────┤
+│ 1 │ file_system_poller_watchdog │ Watch a directory for new files.           │
+│ 2 │ cron_glob                   │ Emit files matching a glob on a schedule.  │
+│ 3 │ s3_poller                   │ Poll an S3 bucket for new objects.         │
+│ 4 │ rabbit_mq_watcher           │ RabbitMQ Data Monitor Plugin.              │
+│ 5 │ sftp_poller                 │ Poll an SFTP server on an interval.        │
+│ 6 │ kafka_consumer              │ Consume JSON messages from a Kafka topic.  │
+╰───┴─────────────────────────────┴────────────────────────────────────────────╯
+Add a data monitor (1-6, name, or Enter to skip): 1
+  ✓ file_system_poller_watchdog
   Configure file_system_poller_watchdog? [y/n] (y): y
     path * (Directory path to watch for new files): /data/incoming
     hostname (Hostname to attach to emitted files) [localhost]:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from courier.types.file import File
+from courier.utils.datetime_utils import ensure_utc
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,9 +54,12 @@ def _parse_compact_timestamp(raw: str) -> datetime | None:
     re-emitted :class:`File` carries a real timestamp for ``time_grouping``.
     """
     try:
-        return datetime.strptime(raw, "%Y%m%dT%H%M")
+        parsed = datetime.strptime(raw, "%Y%m%dT%H%M")
     except (ValueError, TypeError):
         return None
+    # Product filenames express UTC; tag it so downstream time_grouping does
+    # not reinterpret the value in the host's local zone.
+    return ensure_utc(parsed)
 
 
 _FIELD_TRANSFORMS: dict[str, Callable[[str], str | datetime | None]] = {

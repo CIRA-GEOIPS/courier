@@ -183,11 +183,45 @@ def get_tracer(name: str) -> Any:
 
 
 def shutdown_tracing() -> None:
-    """Flush remaining spans and shut down the global TracerProvider."""
+    """Flush pending spans without uninstalling the global TracerProvider.
+
+    OpenTelemetry allows ``set_tracer_provider`` to take effect **once** per
+    process; a second call is ignored with a warning.  Tearing the provider
+    down here therefore used to leave the process in a state where every
+    subsequent :class:`~courier.service.Service` — a restart, a second service,
+    or the next test in the same session — emitted spans into an
+    already-shut-down provider and silently lost all of them, while still
+    paying the export/flush cost on every cleanup.
+
+    Flushing is the useful part of shutdown and is safe to repeat, so that is
+    all this does.  Use :func:`reset_tracing` for a genuine teardown.
+    """
+    if _tracer_provider is None:
+        return
+    # NoOpTracerProvider has neither force_flush nor shutdown — nothing to do.
+    from opentelemetry.trace import NoOpTracerProvider  # noqa: PLC0415
+
+    if isinstance(_tracer_provider, NoOpTracerProvider):
+        return
+    try:
+        _tracer_provider.force_flush(timeout_millis=5000)
+    except Exception:
+        _tracer_logger.warning(
+            "Error during tracer provider force_flush",
+            exc_info=True,
+        )
+
+
+def reset_tracing() -> None:
+    """Fully tear down tracing. For process exit and test isolation.
+
+    Note that the OpenTelemetry global can only be assigned once per process,
+    so a :func:`init_tracing` after this will not be able to reinstall a
+    provider — this is a teardown, not a restart.
+    """
     global _tracer_provider  # noqa: PLW0603
     if _tracer_provider is None:
         return
-    # NoOpTracerProvider has neither force_flush nor shutdown — clean exit
     from opentelemetry.trace import NoOpTracerProvider  # noqa: PLC0415
 
     if isinstance(_tracer_provider, NoOpTracerProvider):
@@ -196,18 +230,16 @@ def shutdown_tracing() -> None:
     try:
         _tracer_provider.force_flush(timeout_millis=5000)
     except Exception:
-        _tracer_logger.warning("Error during tracer provider force_flush", exc_info=True)
+        _tracer_logger.warning(
+            "Error during tracer provider force_flush",
+            exc_info=True,
+        )
     try:
         _tracer_provider.shutdown()
     except Exception:
         _tracer_logger.warning("Error during tracer provider shutdown", exc_info=True)
     finally:
         _tracer_provider = None
-
-
-def reset_tracing() -> None:
-    """Tear down tracing for test isolation. Not for production use."""
-    shutdown_tracing()
 
 
 def trace_plugin_method(

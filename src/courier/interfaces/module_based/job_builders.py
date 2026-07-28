@@ -95,6 +95,15 @@ class JobBuilder(ServicePlugin):
         self.identifier = identifier or self.name
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
+        # Per-instance shutdown signal handed to Service.consume() so the
+        # broker loop returns on stop(). See Dispatcher.__init__ for why this
+        # is per-instance rather than service-wide.
+        self._stop_event = threading.Event()
+        # Set once this builder's queue is bound to the file-found fanout
+        # exchange. Producers must not start before this: a fanout exchange
+        # drops messages published while nothing is bound, so files emitted
+        # during the startup window would be lost with no error anywhere.
+        self._subscribed = threading.Event()
         self.job_groups: list[JobGroup] = []
         # Thread-safe: _group_locks protects job_group.jobs dicts when
         # state_sync is enabled. Populated in start() after subclasses set
@@ -130,10 +139,13 @@ class JobBuilder(ServicePlugin):
             self._group_locks = {jg.name: threading.Lock() for jg in self.job_groups}
             self._sync.connect()  # raises StateSyncConnectionError if unreachable
             self._sync.start(self.job_groups, self._group_locks)
+        self._stop_event.clear()
+        self._subscribed.clear()
+        # daemon=True is a backstop only; stop() sets _stop_event and joins.
         self._main_thread = threading.Thread(
             target=self._run_handle_incoming_files,
             name=self.name,
-            daemon=False,
+            daemon=True,
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()
@@ -142,6 +154,7 @@ class JobBuilder(ServicePlugin):
     def stop(self) -> None:
         """Stop the sync subscriber and the main thread."""
         self._state = PluginRunState.STOPPED
+        self._stop_event.set()
         if self._sync is not None:
             self._sync.stop()
         if self._main_thread and self._main_thread.is_alive():
@@ -150,6 +163,16 @@ class JobBuilder(ServicePlugin):
     def is_healthy(self) -> bool:
         """Check if plugin is healthy."""
         return self._state == PluginRunState.RUNNING
+
+    def wait_until_subscribed(self, timeout: float) -> bool:
+        """Block until this builder is bound to the file-found exchange.
+
+        Returns
+        -------
+        bool
+            ``True`` if the subscription completed within *timeout*.
+        """
+        return self._subscribed.wait(timeout=timeout)
 
     # ------------------------------------------------------------------
     # Core file processing loop
@@ -189,13 +212,7 @@ class JobBuilder(ServicePlugin):
             )
             return
         job.emit_time = time.time()
-        try:
-            job.targets = target_list
-        except TypeError:
-            self._logger.exception(
-                f"Failed to set job.targets for job {job.identifier}",
-                extra={"correlation_id": job.correlation_id},
-            )
+        job.targets = target_list
         message = str(job)
         succeeded: list[str] = []
         failed: list[tuple[str, str]] = []
@@ -339,7 +356,11 @@ class JobBuilder(ServicePlugin):
         """Listen to incoming files and mark job as ready when appropriate."""
         self._logger.debug("Starting to handle incoming files")
         tracer = get_tracer(__name__)
-        for file_string, parent_ctx in self.parent_service.consume(FILE_FOUND_EXCHANGE):
+        for file_string, parent_ctx in self.parent_service.consume(
+            FILE_FOUND_EXCHANGE,
+            stop_event=self._stop_event,
+            on_subscribed=self._subscribed.set,
+        ):
             start_time = time.time()
             file = FrozenFile.from_string(str(file_string))
             with tracer.start_as_current_span(
@@ -369,7 +390,10 @@ class JobBuilder(ServicePlugin):
                 ).set(
                     len(self.job_groups),
                 )
-        self._logger.error("Exiting handle_incoming_files loop unexpectedly")
+        if self._stop_event.is_set():
+            self._logger.info("handle_incoming_files loop exited on shutdown")
+        else:
+            self._logger.error("Exiting handle_incoming_files loop unexpectedly")
 
     # ------------------------------------------------------------------
     # Per-group helpers (complexity-bounded)
@@ -396,6 +420,9 @@ class JobBuilder(ServicePlugin):
             if added:
                 self._logger.debug(f"File added to job group {job_group.name}")
             self._push_updates(job_group.name, updates)
+            # `ready` was already removed from the group under the same lock
+            # that added the file, so these jobs are exclusively ours to emit.
+            self._push_deletions(job_group.name, [j.identifier for j in ready])
             targets = self._targets_for_group(job_group)
             for ready_job in ready:
                 self._logger.info(f"Job {ready_job.identifier} is ready; emitting")
@@ -432,8 +459,6 @@ class JobBuilder(ServicePlugin):
                     job_builder_identifier=self.identifier,
                 ).observe(len(ready_job.files))
 
-            self._pop_ready_jobs(job_group, ready)
-
             self._cleanup_old_jobs(job_group)
 
     def _add_file_locked(
@@ -455,8 +480,13 @@ class JobBuilder(ServicePlugin):
         with lock if lock is not None else contextlib.nullcontext():
             added = job_group.add_file(file)
             if added:
-                ready = job_group.ready_jobs()
                 updates = self._collect_sync_updates(job_group, file)
+                # Claim ready jobs *inside* the lock. Previously they were
+                # merely listed here and not removed until after emit(), so a
+                # timeout reaper running concurrently could pop and emit the
+                # same job in that window -- the dispatcher then saw the job
+                # twice and its dedupe LRU decided which copy to drop.
+                ready = self._claim_ready_jobs(job_group)
         return added, ready, updates
 
     def _collect_sync_updates(
@@ -517,6 +547,19 @@ class JobBuilder(ServicePlugin):
             return
         for job_id in deletions:
             self._sync.push_job_deletion(group_name, job_id)
+
+    def _claim_ready_jobs(self, job_group: JobGroup) -> list[Job]:
+        """Remove and return every ready job, taking ownership of each.
+
+        Caller must hold the group lock. Removing under the same lock that
+        found them is what makes emission exclusive: any concurrent reaper
+        sees an empty group rather than a job already in flight.
+        """
+        claimed: list[Job] = []
+        for job_id in [jid for jid, job in job_group.jobs.items() if job.ready()]:
+            claimed.append(job_group.jobs.pop(job_id))
+            job_group._record_job_emitted(job_id)
+        return claimed
 
     def _pop_ready_jobs(
         self,

@@ -4,6 +4,7 @@ This module provides a File class that stores file information along with metada
 """
 
 import json
+import re
 import types
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -15,6 +16,39 @@ __all__ = [
     "File",
     "FrozenFile",
 ]
+
+#: Matches a URI scheme prefix such as ``s3://`` or ``sftp://``.
+_URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+def parse_location(value: Any) -> "Path | str | None":
+    """Coerce a raw location into a ``Path``, or keep it verbatim if it is a URI.
+
+    ``pathlib`` collapses duplicate separators, so routing a URI through it
+    silently corrupts the value: ``PurePosixPath("s3://bucket/key")`` becomes
+    ``s3:/bucket/key``. That damage used to survive the JSON round-trip, so a
+    dispatcher template rendering ``{{ file.file }}`` produced a URI no client
+    could resolve. Remote monitors therefore keep their locations as strings.
+
+    Parameters
+    ----------
+    value : Any
+        A ``Path``, a filesystem path string, or a URI string.
+
+    Returns
+    -------
+    Path | str | None
+        ``None`` for empty input, the original string for URIs, otherwise a
+        ``Path``.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, Path):
+        return value
+    text = str(value)
+    if _URI_SCHEME_RE.match(text):
+        return text
+    return Path(text)
 
 
 def _file_to_dict(obj: "File | FrozenFile") -> dict[str, Any]:
@@ -33,20 +67,26 @@ def _file_to_dict(obj: "File | FrozenFile") -> dict[str, Any]:
 
 
 def _parse_timestamp_field(dt: Any) -> datetime | None:
-    """Parse a timestamp value from a dict into a datetime."""
+    """Parse a timestamp value from a dict into an aware UTC datetime.
+
+    Normalising here means a File that crosses the broker comes back with the
+    same timezone semantics it left with, whatever the producer supplied.
+    """
+    from courier.utils.datetime_utils import ensure_utc  # noqa: PLC0415
+
     if dt is None:
         return None
     if isinstance(dt, datetime):
-        return dt
+        return ensure_utc(dt)
     if isinstance(dt, str):
-        return datetime.fromisoformat(dt)
+        return ensure_utc(datetime.fromisoformat(dt))
     return None
 
 
 def _file_fields_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Extract File/FrozenFile constructor kwargs from a dictionary."""
     return {
-        "file": Path(data["file"]) if data.get("file") else None,
+        "file": parse_location(data.get("file")),
         "hostname": data.get("hostname"),
         "source": data.get("source"),
         "instrument": data.get("instrument"),
@@ -64,8 +104,9 @@ class File:
 
     Attributes
     ----------
-    file : Path | None
-        Path to the file.
+    file : Path | str | None
+        Location of the file: a ``Path`` for filesystem paths, or the URI
+        string verbatim for remote locations (``s3://``, ``sftp://``).
     hostname : str | None
         Hostname where the file is located.
     source : str | None
@@ -84,7 +125,7 @@ class File:
         timestamp extracted from filename or manually specified.
     """
 
-    file: Path | None = None
+    file: Path | str | None = None
     hostname: str | None = None
     source: str | None = None
     instrument: str | None = None
@@ -93,6 +134,21 @@ class File:
     metadata: dict[str, Any] = field(default_factory=dict)
     num_expected: int = 1
     timestamp: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Normalise ``timestamp`` to aware UTC.
+
+        Enforced at construction rather than only at the parse boundaries so
+        the invariant cannot be sidestepped: any naive value reaching
+        ``.timestamp()`` downstream would be read as *local* time and land in
+        a different time-grouping bucket than the same instant supplied by
+        another monitor. See :mod:`courier.utils.datetime_utils`.
+        """
+        from courier.utils.datetime_utils import ensure_utc  # noqa: PLC0415
+
+        normalised = ensure_utc(self.timestamp)
+        if normalised is not self.timestamp:
+            object.__setattr__(self, "timestamp", normalised)
 
     def __str__(self) -> str:
         """Convert File to JSON string."""
@@ -127,7 +183,12 @@ class File:
             instrument=self.instrument,
             processing_stage=self.processing_stage,
             domain=self.domain,
-            metadata=types.MappingProxyType(self.metadata),
+            # Proxy a *copy*: MappingProxyType is a live view, so wrapping
+            # self.metadata directly left the "frozen" file mutable through
+            # its origin -- mutating the File afterwards changed the metadata
+            # of every FrozenFile taken from it, including copies already
+            # added to a Job.
+            metadata=types.MappingProxyType(dict(self.metadata)),
             num_expected=self.num_expected,
             timestamp=self.timestamp,
         )
@@ -216,8 +277,9 @@ class FrozenFile:
 
     Attributes
     ----------
-    file : Path | None
-        Path to the file.
+    file : Path | str | None
+        Location of the file: a ``Path`` for filesystem paths, or the URI
+        string verbatim for remote locations (``s3://``, ``sftp://``).
     hostname : str | None
         Hostname where the file is located.
     source : str | None
@@ -236,7 +298,7 @@ class FrozenFile:
         datetime extracted from filename or manually specified.
     """
 
-    file: Path | None = None
+    file: Path | str | None = None
     hostname: str | None = None
     source: str | None = None
     instrument: str | None = None
@@ -245,6 +307,21 @@ class FrozenFile:
     metadata: Mapping[str, Any] = field(default_factory=dict, hash=False)
     num_expected: int = 1
     timestamp: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Normalise ``timestamp`` to aware UTC.
+
+        Enforced at construction rather than only at the parse boundaries so
+        the invariant cannot be sidestepped: any naive value reaching
+        ``.timestamp()`` downstream would be read as *local* time and land in
+        a different time-grouping bucket than the same instant supplied by
+        another monitor. See :mod:`courier.utils.datetime_utils`.
+        """
+        from courier.utils.datetime_utils import ensure_utc  # noqa: PLC0415
+
+        normalised = ensure_utc(self.timestamp)
+        if normalised is not self.timestamp:
+            object.__setattr__(self, "timestamp", normalised)
 
     def __str__(self) -> str:
         """Convert FrozenFile to JSON string."""
