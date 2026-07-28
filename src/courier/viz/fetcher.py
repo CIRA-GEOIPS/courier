@@ -37,15 +37,38 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+def _matching_samples(
+    metrics: dict[str, dict[frozenset[tuple[str, str]], float]],
+    name: str,
+    labels: dict[str, str],
+) -> list[float]:
+    """Return every sample of *name* whose labels are a superset of *labels*.
+
+    Courier's metrics all carry at least two label dimensions (a plugin name
+    *and* an instance identifier, often plus ``status``), but callers here
+    select on one or two of them. Comparing the label set for exact equality —
+    which is what a ``frozenset`` lookup does — therefore matched nothing, and
+    the TUI rendered zeros for most fields while reporting every processed
+    file as a failure. Subset matching is what these call sites always meant.
+    """
+    if name not in metrics:
+        return []
+    wanted = set(labels.items())
+    return [
+        value
+        for label_set, value in metrics[name].items()
+        if wanted <= set(label_set)
+    ]
+
+
 def _histogram_avg(
     metrics: dict[str, dict[frozenset[tuple[str, str]], float]],
     base_name: str,
     labels: dict[str, str],
 ) -> float:
     """Return average value for a histogram metric, or 0.0 if no data."""
-    label_key = frozenset(labels.items())
-    sum_val = metrics.get(f"{base_name}_sum", {}).get(label_key, 0.0)
-    count_val = metrics.get(f"{base_name}_count", {}).get(label_key, 0.0)
+    sum_val = sum(_matching_samples(metrics, f"{base_name}_sum", labels))
+    count_val = sum(_matching_samples(metrics, f"{base_name}_count", labels))
     if count_val <= 0:
         return 0.0
     return sum_val / count_val
@@ -128,17 +151,22 @@ class MetricsFetcher:
         name: str,
         labels: dict[str, str] | None = None,
     ) -> float:
-        """Get a single metric value by name and optional labels.
+        """Sum the samples of *name* matching *labels*.
 
-        Returns 0.0 when the metric is absent (courier may have just
-        started and not yet emitted the value).
+        *labels* is treated as a filter, not as the complete label set: every
+        metric here has more dimensions than callers select on, so requiring
+        an exact match returned 0.0 for essentially everything. Matching
+        samples are summed, which is the right aggregation for the counters
+        and gauges this is used with (e.g. one series per ``status``).
+
+        Returns 0.0 when the metric is absent — courier may have just started
+        and not yet emitted it.
         """
         if name not in metrics:
             return 0.0
         if labels is None:
-            return next(iter(metrics[name].values()), 0.0)
-        label_key = frozenset(labels.items())
-        return metrics[name].get(label_key, 0.0)
+            return sum(metrics[name].values())
+        return sum(_matching_samples(metrics, name, labels))
 
     def _sum_all(
         self,

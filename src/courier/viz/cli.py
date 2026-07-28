@@ -7,10 +7,7 @@ from typing import Annotated
 
 import typer
 
-viz_app = typer.Typer()
 
-
-@viz_app.callback(invoke_without_command=True)
 def viz(
     host: Annotated[
         str,
