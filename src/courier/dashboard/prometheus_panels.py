@@ -108,29 +108,46 @@ THRESHOLD_WARN: list[Threshold] = [
     Threshold("yellow", 1, 80.0),
     Threshold("red", 2, 95.0),
 ]
-"""Green/yellow/red threshold for success-rate metrics."""
+"""Green/yellow/red escalation for metrics where *higher is worse*.
+
+Not for success rates: the steps escalate as the value rises, so a 99%
+success rate would render red and a 10% one green.  Use
+:data:`THRESHOLD_SUCCESS_RATIO` for those.
+"""
+
+THRESHOLD_SUCCESS_RATIO: list[Threshold] = [
+    Threshold("red", 0, 0.0),
+    Threshold("yellow", 1, 0.80),
+    Threshold("green", 2, 0.95),
+]
+"""Red/yellow/green for success *ratios* expressed as a 0.0-1.0 fraction.
+
+Ordered so low is bad, and scaled for ``percentunit`` — which renders 0.0-1.0
+as 0%-100%.  Pairing ``percentunit`` with 0-100 thresholds put every real
+value below the first step, so the panel was permanently green.
+"""
 
 _THRESH_PENDING_JOBS: list[Threshold] = [
     Threshold("green", 0, 0.0),
-    Threshold("amber", 1, 100.0),
+    Threshold("orange", 1, 100.0),
     Threshold("red", 2, 500.0),
 ]
 
 _THRESH_DATA_FRESHNESS: list = [
     Threshold("green", 0, 0.0),
-    Threshold("amber", 1, 60.0),
+    Threshold("orange", 1, 60.0),
     Threshold("red", 2, 300.0),
 ]
 
 _THRESH_PIPELINE_HEALTH: list = [
     Threshold("red", 0, 0.0),
-    Threshold("amber", 1, 0.80),
+    Threshold("orange", 1, 0.80),
     Threshold("green", 2, 0.95),
 ]
 
 _THRESH_QUEUE_DEPTH: list = [
     Threshold("green", 0, 0.0),
-    Threshold("amber", 1, 1.0),
+    Threshold("orange", 1, 1.0),
     Threshold("red", 2, 100.0),
 ]
 
@@ -547,7 +564,7 @@ def _service_overview_panels(
             x=0,
             thresholds=[
                 Threshold("green", 0, 0.0),
-                Threshold("amber", 1, 1.0),
+                Threshold("orange", 1, 1.0),
                 Threshold("red", 2, 100.0),
             ],
             description=(
@@ -603,7 +620,7 @@ def _service_overview_panels(
             x=18,
             thresholds=[
                 Threshold("green", 0, 0.0),
-                Threshold("amber", 1, 1.0),
+                Threshold("orange", 1, 1.0),
                 Threshold("red", 2, 10.0),
             ],
             description=(
@@ -1012,6 +1029,12 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         GaugePanel(
             id=_next_id(gs),
             title="Success Rate",
+            description=(
+                "Fraction of dispatched jobs completing successfully. "
+                "Why it matters: a falling ratio means jobs are failing. "
+                "When yellow (<95%) or red (<80%): check the dispatcher's "
+                "error panels and the execution logs."
+            ),
             dataSource=_DS,
             targets=[
                 _target(
@@ -1021,10 +1044,13 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                     ),
                 ),
             ],
+            # percentunit renders 0.0-1.0 as 0%-100%, so the gauge range must
+            # be 0-1 too. With min/max 0-100 the needle sat at ~1% of the arc
+            # and no real value ever crossed a threshold.
             format=YAXIS_PERCENT,
             min=0,
-            max=100,
-            thresholds=THRESHOLD_WARN,
+            max=1,
+            thresholds=THRESHOLD_SUCCESS_RATIO,
             gridPos=GridPos(h=8, w=4, x=16, y=py1),
         ),
     )
@@ -1569,12 +1595,23 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
         _timeseries(
             gs,
             title="Error Summary (all stages)",
+            description=(
+                "Combined error rate across data monitors, job builder emits "
+                "and dispatchers."
+            ),
             targets=[
                 _target(
+                    # PromQL `or` is set union, not addition: it yields the
+                    # left operand's series whenever they exist and only falls
+                    # through otherwise, so the old expression reported data
+                    # monitor errors alone and hid the other two stages
+                    # entirely. `or vector(0)` supplies a zero for stages that
+                    # have not produced a series yet, matching the
+                    # "Errors (total)" stat panel above.
                     (
-                        f"sum({dm_err})"
-                        f" or sum({emit_err})"
-                        f" or sum({dp_err})"
+                        f"(sum({dm_err}) or vector(0))"
+                        f" + (sum({emit_err}) or vector(0))"
+                        f" + (sum({dp_err}) or vector(0))"
                     ),
                     "Total Errors",
                 ),

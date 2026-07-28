@@ -34,7 +34,8 @@ from courier.tracing import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable, Sequence
+    import threading
+    from collections.abc import Callable, Generator, Iterable, Sequence
 
     from courier.interfaces.plugin_protocol import ServicePlugin
     from courier.managers.base import ServiceManager
@@ -82,7 +83,7 @@ class Service:
     >>> config = ServiceConfig()
     >>> service = Service(config)
     >>> service.config.heartbeat_interval
-    10
+    30
     >>> len(service._managers)
     3
     """
@@ -204,13 +205,33 @@ class Service:
                 publish(conn, q, message, confirm=confirm, headers=w3c_headers)
             BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
 
-    def consume(self, queue: str) -> Generator[tuple[str, Any], None, None]:
+    def consume(
+        self,
+        queue: str,
+        stop_event: threading.Event | None = None,
+        on_subscribed: Callable[[], None] | None = None,
+    ) -> Generator[tuple[str, Any], None, None]:
         """Yield messages from a message broker queue.
 
         Parameters
         ----------
         queue : str
             The name of the queue to consume messages from.
+        on_subscribed : Callable[[], None] or None, optional
+            Invoked once the queue has been declared and bound, before the
+            first message is read.  A fanout exchange **discards** anything
+            published while no queue is bound to it, so a data monitor that
+            emits during startup silently loses those files unless every
+            builder has already subscribed.  :class:`PluginManager` uses this
+            callback to hold producers back until consumers are attached.
+        stop_event : threading.Event or None, optional
+            Event that, once set, ends the consume loop after any
+            already-buffered messages are delivered.  Plugins pass their own
+            per-instance event so a single-plugin restart terminates only that
+            consumer.  ``None`` falls back to the service-wide shutdown event
+            set by :class:`~courier.utils.signals.SignalHandler`, so a consumer
+            that forgets to supply one still exits on SIGTERM/SIGINT rather
+            than wedging interpreter shutdown.
 
         Yields
         ------
@@ -225,6 +246,9 @@ class Service:
         yielded.  For one-shot consumption that avoids this side-effect, use a
         separate thread with a timeout (see ``concurrent.futures``).
         """
+        effective_stop = (
+            stop_event if stop_event is not None else self._signal_handler.stop_event
+        )
         # --- Fan-out: FILE_FOUND uses a fanout exchange with an exclusive
         # --- queue per consumer so every builder sees every file.
         if queue == FILE_FOUND_EXCHANGE:
@@ -232,7 +256,14 @@ class Service:
             with self._broker_manager.get_connection_context() as conn:
                 exchange = declare_fanout_exchange(conn, exchange_name)
                 q = declare_fanout_queue(conn, exchange)
-                for body, ack, reject, headers in broker_messages(conn, q):
+                # Bound now: anything published from here on reaches us.
+                if on_subscribed is not None:
+                    on_subscribed()
+                for body, ack, reject, headers in broker_messages(
+                    conn,
+                    q,
+                    stop_event=effective_stop,
+                ):
                     try:
                         self._logger.debug(
                             f"Received message from exchange '{exchange_name}': {body}",
@@ -271,7 +302,13 @@ class Service:
 
         with self._broker_manager.get_connection_context() as conn:
             q = declare_queue(conn, queue_name, durable=True)
-            for body, ack, reject, headers in broker_messages(conn, q):
+            if on_subscribed is not None:
+                on_subscribed()
+            for body, ack, reject, headers in broker_messages(
+                conn,
+                q,
+                stop_event=effective_stop,
+            ):
                 try:
                     self._logger.debug(
                         f"Received message from queue '{queue_name}': {body}",
@@ -531,7 +568,9 @@ class Service:
     def _run_heartbeat_loop(self) -> None:
         """Execute main heartbeat loop with interruptable sleep intervals."""
         sleep_time = 1.0
-        sleep_iterations = int(self._config.heartbeat_interval / sleep_time)
+        # At least one sleep per cycle: int(0.5 / 1.0) == 0 turned the loop
+        # into a busy-wait that pinned a core.
+        sleep_iterations = max(1, int(self._config.heartbeat_interval / sleep_time))
 
         while not self._signal_handler.shutdown_requested:
             for _ in range(sleep_iterations):

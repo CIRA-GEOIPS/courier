@@ -12,9 +12,9 @@ Supports three generation modes:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
-import uuid
 from typing import TYPE_CHECKING
 
 from courier.dashboard.config_parser import DashboardModel, PluginInfo, PluginKind
@@ -496,6 +496,10 @@ def _assemble_unified_panels(
     from grafanalib.core import GridPos, RowPanel  # noqa: PLC0415
 
     from courier.dashboard.cluster_panels import build_cluster_panels  # noqa: PLC0415
+    from courier.dashboard.loki_panels import (  # noqa: PLC0415
+        build_loki_panels,
+        build_loki_templates,
+    )
     from courier.dashboard.prometheus_panels import (  # noqa: PLC0415
         build_prometheus_panels,
         build_prometheus_templates,
@@ -505,10 +509,6 @@ def _assemble_unified_panels(
         build_topology_panels,
     )
     from courier.dashboard.traceql_panels import build_traceql_panels  # noqa: PLC0415
-    from courier.dashboard.loki_panels import (  # noqa: PLC0415
-        build_loki_panels,
-        build_loki_templates,
-    )
 
     panel_rows: list = []
 
@@ -670,17 +670,28 @@ def _make_dashboard_name(model: DashboardModel, suffix: str = "") -> str:
 
 
 def _make_dashboard_uid(model: DashboardModel, suffix: str = "") -> str:
-    """Generate a unique dashboard UID from the model.
+    """Generate a stable dashboard UID from the model.
 
-    Builds a UID from the sanitized service name and an optional suffix.
-    Falls back to a random ``uuid4`` if the service name is empty.
+    Grafana keys dashboards by UID: re-importing a dashboard whose UID changed
+    creates a *duplicate* rather than updating the existing one, losing its
+    starred state, permissions and any links pointing at it. The UID must
+    therefore be a pure function of the config, so regenerating from an
+    unchanged service yields the same value.
+
+    A random component is used only when there is no service name to derive
+    from — and it is derived by hashing the model rather than by ``uuid4`` so
+    even that case stays reproducible.
     """
-    base = _sanitize_uid(model.service_name) if model.service_name else "courier"
+    if model.service_name:
+        base = _sanitize_uid(model.service_name)
+    else:
+        # No name to key on: hash the pipeline shape so the UID is at least
+        # stable across runs of the same config.
+        shape = "|".join(
+            f"{p.kind.value}:{p.identifier}:{p.plugin_name}" for p in model.plugins
+        )
+        base = f"courier_{hashlib.sha256(shape.encode()).hexdigest()[:8]}"
 
     if suffix:
         return f"{base}_{_sanitize_uid(suffix)}"
-
-    # Append a short random suffix to avoid collisions when multiple
-    # dashboards are generated from the same service.
-    short_uuid = uuid.uuid4().hex[:8]
-    return f"{base}_{short_uuid}"
+    return base

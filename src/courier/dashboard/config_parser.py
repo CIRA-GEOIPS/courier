@@ -199,6 +199,29 @@ def _extract_targets(config: dict[str, Any]) -> list[str]:
     return targets
 
 
+def _plugin_kind_or_none(raw_kind: str) -> PluginKind | None:
+    """Map a YAML ``kind`` onto a :class:`PluginKind`, or ``None`` if not one.
+
+    Accepts both the singular kinds written in configs (``data_monitor``) and
+    the plural interface names (``data_monitors``) that
+    :func:`courier.cli.plugins.normalize_kind` maps them to, so the dashboard
+    understands exactly the set of configs the runtime accepts.
+    """
+    from courier.cli.plugins import normalize_kind  # noqa: PLC0415
+
+    for candidate in (raw_kind, normalize_kind(raw_kind)):
+        try:
+            return PluginKind(candidate)
+        except ValueError:
+            continue
+    # Plural interface name -> singular enum value (e.g. "dispatchers").
+    singular = raw_kind[:-1] if raw_kind.endswith("s") else raw_kind
+    try:
+        return PluginKind(singular)
+    except ValueError:
+        return None
+
+
 def _sanitise_plugin_config(raw_config: Any) -> dict[str, Any]:
     """Normalise a plugin config value to a plain dict.
 
@@ -225,7 +248,13 @@ def _build_plugins(config: ServiceConfigModel) -> tuple[
     dispatchers: list[PluginInfo] = []
 
     for entry in config.spec.run:
-        kind = PluginKind(entry.spec.kind)
+        kind = _plugin_kind_or_none(entry.spec.kind)
+        if kind is None:
+            # Not every run entry is a runnable plugin: ``data_monitor_configs``
+            # entries are YAML metadata that ``courier run`` skips. Raising a
+            # bare ValueError here made ``courier dashboard`` fail on configs
+            # that ``courier validate`` and ``courier run`` both accept.
+            continue
         plugin_config = _sanitise_plugin_config(entry.spec.config)
         targets = _extract_targets(plugin_config)
 

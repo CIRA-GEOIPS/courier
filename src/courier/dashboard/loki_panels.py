@@ -36,7 +36,7 @@ def _target(
     Parameters
     ----------
     expr : str
-        The LogQL query string, e.g. ``"{service_name=\"mypipeline\"}"``.
+        The LogQL query string, e.g. ``"{service=\"mypipeline\"}"``.
     ref_id : str
         Grafana target reference identifier (``"A"``, ``"B"``, ...).
     datasource_uid : str
@@ -78,9 +78,9 @@ _PER_PLUGIN_H = 8
 
 def _build_log_overview_row(datasource: str, y: int) -> tuple[list, int]:
     """Log Overview -- log level distribution + log rate over time."""
-    service_filter = '{service_name="$service_name"}'
+    service_filter = '{service="$service"}'
     level_filter = (
-        f"{service_filter} | logfmt"
+        f"{service_filter}"
         ' | level != ""'
     )
 
@@ -101,7 +101,7 @@ def _build_log_overview_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_LOG_LEVELS_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    f"sum by(plugin) (rate({service_filter} | logfmt [$__auto]))",
+                    f"sum by(plugin) (rate({service_filter} [$__auto]))",
                     datasource_uid=datasource,
                     legend="{{plugin}}",
                 ),
@@ -124,8 +124,7 @@ def _build_log_overview_row(datasource: str, y: int) -> tuple[list, int]:
 def _build_error_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Error logs -- filtered to ERROR level."""
     error_filter = (
-        '{service_name="$service_name"}'
-        " | logfmt"
+        '{service="$service"}'
         ' | level = "ERROR"'
     )
 
@@ -146,7 +145,7 @@ def _build_error_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_ERROR_LOG_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    error_filter + ' | line_format "{{.message}}"',
+                    error_filter,
                     datasource_uid=datasource,
                     legend="{{plugin}}",
                 ),
@@ -169,8 +168,7 @@ def _build_error_log_row(datasource: str, y: int) -> tuple[list, int]:
 def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Data Monitor log stream."""
     dm_filter = (
-        '{service_name="$service_name", plugin="$dm_log_plugin"}'
-        " | logfmt"
+        '{service="$service", plugin="$dm_log_plugin"}'
     )
     panels = [
         Table(
@@ -178,7 +176,7 @@ def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_LOG_LEVELS_H, w=12, x=0, y=y),
             targets=[
                 _target(
-                    f"sum by(level) (rate({dm_filter} | level != \"\" [$__auto]))",
+                    f"sum by(level) (rate({dm_filter} [$__auto]))",
                     datasource_uid=datasource,
                     legend="{{level}}",
                 ),
@@ -189,7 +187,7 @@ def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_PER_PLUGIN_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    dm_filter + ' | line_format "{{.message}}"',
+                    dm_filter,
                     datasource_uid=datasource,
                     legend="",
                 ),
@@ -212,8 +210,7 @@ def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
 def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Job Builder log stream."""
     jb_filter = (
-        '{service_name="$service_name", plugin="$jb_log_plugin"}'
-        " | logfmt"
+        '{service="$service", plugin="$jb_log_plugin"}'
     )
     panels = [
         Table(
@@ -221,7 +218,7 @@ def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_LOG_LEVELS_H, w=12, x=0, y=y),
             targets=[
                 _target(
-                    f"sum by(level) (rate({jb_filter} | level != \"\" [$__auto]))",
+                    f"sum by(level) (rate({jb_filter} [$__auto]))",
                     datasource_uid=datasource,
                     legend="{{level}}",
                 ),
@@ -232,7 +229,7 @@ def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_PER_PLUGIN_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    jb_filter + ' | line_format "{{.message}}"',
+                    jb_filter,
                     datasource_uid=datasource,
                     legend="",
                 ),
@@ -255,8 +252,7 @@ def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
 def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Dispatcher log stream."""
     dp_filter = (
-        '{service_name="$service_name", plugin="$dp_log_plugin"}'
-        " | logfmt"
+        '{service="$service", plugin="$dp_log_plugin"}'
     )
     panels = [
         Table(
@@ -264,7 +260,7 @@ def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_LOG_LEVELS_H, w=12, x=0, y=y),
             targets=[
                 _target(
-                    f"sum by(level) (rate({dp_filter} | level != \"\" [$__auto]))",
+                    f"sum by(level) (rate({dp_filter} [$__auto]))",
                     datasource_uid=datasource,
                     legend="{{level}}",
                 ),
@@ -275,7 +271,7 @@ def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_PER_PLUGIN_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    dp_filter + ' | line_format "{{.message}}"',
+                    dp_filter,
                     datasource_uid=datasource,
                     legend="",
                 ),
@@ -298,8 +294,7 @@ def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
 def _build_log_search_row(datasource: str, y: int) -> tuple[list, int]:
     """Full log search -- grep-style query with template variable."""
     search_filter = (
-        '{service_name="$service_name"}'
-        " | logfmt"
+        '{service="$service"}'
         " |~ `$log_search`"
     )
     panels = [
@@ -308,7 +303,7 @@ def _build_log_search_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_RECENT_LOGS_H, w=24, x=0, y=y),
             targets=[
                 _target(
-                    search_filter + ' | line_format "{{.message}}"',
+                    search_filter,
                     datasource_uid=datasource,
                     legend="{{plugin}}",
                 ),
@@ -350,7 +345,7 @@ def build_loki_templates(model: DashboardModel) -> list:
     service = model.service_name or "data-inventory-ingest"
     templates.append(
         Template(
-            name="service_name",
+            name="service",
             label="Service",
             type="custom",
             query=service,

@@ -6,10 +6,7 @@ from typing import Annotated
 
 import typer
 
-dashboard_app = typer.Typer()
 
-
-@dashboard_app.callback(invoke_without_command=True)
 def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
     config: Annotated[
         Path | None,

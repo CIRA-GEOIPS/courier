@@ -72,6 +72,37 @@ COLORS: dict[str, str] = {
 _CONFIG_VALUE_MAX_LEN: int = 32
 """Maximum length of a config value before truncation in summary tables."""
 
+_REDACTED: str = "•••"
+"""Placeholder rendered in place of a secret config value."""
+
+_SECRET_KEY_MARKERS: tuple[str, ...] = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "credential",
+    "private_key",
+    "passphrase",
+    "api_key",
+    "apikey",
+    "access_key",
+    "sasl_plain_username",
+)
+"""Substrings that mark a plugin-config key as sensitive.
+
+Generated dashboard JSON is routinely committed to version control and is
+visible to everyone with Grafana access, so plugin config values are rendered
+into it. Without this filter an ``sftp_poller`` password, an
+``http_dispatcher`` bearer token or an ``s3_poller`` secret key would be
+embedded verbatim in the panel HTML.
+"""
+
+
+def _is_secret_key(key: str) -> bool:
+    """Return ``True`` when *key* names a credential-bearing config field."""
+    lowered = key.lower()
+    return any(marker in lowered for marker in _SECRET_KEY_MARKERS)
+
 # ---------------------------------------------------------------------------
 # Shared style fragments (embedded in HTML panels)
 # ---------------------------------------------------------------------------
@@ -551,9 +582,12 @@ def _build_config_summary(config: dict, max_keys: int = 3) -> str:
 
     items: list[str] = []
     for key, value in list(config.items())[:max_keys]:
-        val_str = str(value)
-        if len(val_str) > _CONFIG_VALUE_MAX_LEN:
-            val_str = val_str[:_CONFIG_VALUE_MAX_LEN - 3] + "..."
+        if _is_secret_key(key):
+            val_str = _REDACTED
+        else:
+            val_str = str(value)
+            if len(val_str) > _CONFIG_VALUE_MAX_LEN:
+                val_str = val_str[:_CONFIG_VALUE_MAX_LEN - 3] + "..."
         items.append(
             f"<span style='color:{COLORS['TEXT']};'>"
             f"{_html.escape(key)}</span>"

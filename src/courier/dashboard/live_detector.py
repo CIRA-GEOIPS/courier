@@ -235,8 +235,17 @@ def _extract_plugin_states(text: str) -> dict[str, int]:
     Returns
     -------
     dict[str, int]
-        Mapping of ``plugin_name`` label to ``PluginRunState`` integer value.
-        Returns an empty dict if no plugin-state lines are found.
+        Mapping of ``plugin_identifier`` label to ``PluginRunState`` integer
+        value. Returns an empty dict if no plugin-state lines are found.
+
+    Notes
+    -----
+    Keyed on ``plugin_identifier``, not ``plugin_name``: the caller feeds these
+    into ``parse_config(run_identifiers=...)``, which matches against the YAML
+    ``run[*].identifier``. ``plugin_name`` carries the plugin *class* name
+    ("serial_bash"), so the two sets never intersected and ``--live`` always
+    resolved to an empty sub-section. Falls back to ``plugin_name`` for
+    metrics scraped from an older courier that predates the identifier label.
     """
     result: dict[str, int] = {}
 
@@ -259,8 +268,11 @@ def _extract_plugin_states(text: str) -> dict[str, int]:
         labels_str = parsed.group(2)
         value_str = parsed.group(3)
 
-        plugin_name = _extract_label(labels_str, "plugin_name")
-        if plugin_name is None:
+        identifier = _extract_label(labels_str, "plugin_identifier") or _extract_label(
+            labels_str,
+            "plugin_name",
+        )
+        if identifier is None:
             continue
 
         try:
@@ -268,7 +280,7 @@ def _extract_plugin_states(text: str) -> dict[str, int]:
         except (ValueError, OverflowError):
             continue
 
-        result[plugin_name] = state
+        result[identifier] = state
 
     return result
 

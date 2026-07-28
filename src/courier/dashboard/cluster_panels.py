@@ -310,7 +310,7 @@ def _build_peer_health(
                 datasource=datasource,
                 targets=[
                     _make_target(
-                        f'{_COURIER_PREFIX}_plugin_state{{plugin_name="{dep_id}"}}',
+                        f'{_COURIER_PREFIX}_plugin_state{{plugin_identifier="{dep_id}"}}',
                         instant=True,
                         datasource=datasource,
                     ),
@@ -332,7 +332,7 @@ def _build_peer_health(
                 datasource=datasource,
                 targets=[
                     _make_target(
-                        f'{_COURIER_PREFIX}_plugin_state{{plugin_name="{dep_id}"}}',
+                        f'{_COURIER_PREFIX}_plugin_state{{plugin_identifier="{dep_id}"}}',
                         instant=True,
                         datasource=datasource,
                     ),
@@ -387,7 +387,8 @@ def _build_host_state_table(
             ),
         ]
 
-    # Build a regex alternation for plugin_name matching.
+    # all_relevant holds YAML run identifiers, so the selector must match on
+    # plugin_identifier -- plugin_name carries the plugin class name.
     plugin_pattern = "|".join(all_relevant)
 
     state_table = Table(
@@ -395,7 +396,7 @@ def _build_host_state_table(
         datasource=datasource,
         targets=[
             _make_target(
-                f'{_COURIER_PREFIX}_plugin_state{{plugin_name=~"{plugin_pattern}"}}',
+                f'{_COURIER_PREFIX}_plugin_state{{plugin_identifier=~"{plugin_pattern}"}}',
                 instant=True,
                 datasource=datasource,
             ),
@@ -448,7 +449,7 @@ def _build_peer_latency(
                         (
                             "time() - "
                             f'{_COURIER_PREFIX}_data_monitor_last_processed_timestamp_seconds'
-                            f'{{plugin_name="{dep_id}"}}'
+                            f'{{monitor_identifier="{dep_id}"}}'
                         ),
                         instant=True,
                         datasource=datasource,
