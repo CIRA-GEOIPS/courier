@@ -151,3 +151,7 @@ pluginify
 .opencode
 .ocx
 uv.lock
+
+# mutmut working tree and results database
+mutants/
+mutants.sqlite
