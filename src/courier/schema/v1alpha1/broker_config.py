@@ -16,6 +16,7 @@ The ``BrokerConfig`` type alias is a discriminated union over the
 from __future__ import annotations
 
 from typing import Annotated, Any, Literal
+from urllib.parse import quote
 
 from pydantic import BeforeValidator, Field, ValidationInfo, field_validator
 
@@ -28,6 +29,19 @@ __all__ = [
     "RedisBrokerConfig",
     "UrlBrokerConfig",
 ]
+
+
+def _quote_userinfo(value: str) -> str:
+    """Percent-encode a username/password for safe embedding in a broker URL.
+
+    Credentials are interpolated straight into a URL string, so an unescaped
+    reserved character silently changes what the URL means: ``/`` or ``#`` in a
+    password makes the parser read part of the secret as a host and port, and
+    the resulting failure is reported as ``Port could not be cast to integer``
+    -- pointing operators at entirely the wrong setting. ``safe=""`` escapes
+    every reserved character, ``@`` and ``:`` included.
+    """
+    return quote(value, safe="")
 
 
 class AmqpBrokerConfig(FrozenModel):
@@ -67,8 +81,10 @@ class AmqpBrokerConfig(FrozenModel):
     def to_url(self) -> str:
         """Build an AMQP connection URL from structured fields."""
         scheme = "amqps" if self.ssl else "amqp"
-        vhost = self.vhost.lstrip("/")
-        return f"{scheme}://{self.username}:{self.password}@{self.host}:{self.port}/{vhost}"
+        vhost = quote(self.vhost.lstrip("/"), safe="")
+        user = _quote_userinfo(self.username)
+        password = _quote_userinfo(self.password)
+        return f"{scheme}://{user}:{password}@{self.host}:{self.port}/{vhost}"
 
 
 class RedisBrokerConfig(FrozenModel):
@@ -107,7 +123,7 @@ class RedisBrokerConfig(FrozenModel):
     def to_url(self) -> str:
         """Build a Redis connection URL from structured fields."""
         scheme = "rediss" if self.ssl else "redis"
-        auth = f":{self.password}@" if self.password else ""
+        auth = f":{_quote_userinfo(self.password)}@" if self.password else ""
         return f"{scheme}://{auth}{self.host}:{self.port}/{self.db}"
 
 
