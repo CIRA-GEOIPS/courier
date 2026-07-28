@@ -5,6 +5,7 @@ import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import kombu
 import kombu.exceptions
@@ -29,6 +30,29 @@ from courier.utils.logging import get_logger
 _MEMORY_TRANSPORT_SCHEMES: frozenset[str] = frozenset({"memory"})
 
 _logger = get_logger("module", "broker.kombu", None)
+
+
+def redact_broker_url(url: str) -> str:
+    """Return *url* with any embedded password replaced by ``***``.
+
+    Broker URLs carry credentials in their userinfo section and the default
+    log level is DEBUG, so logging one verbatim writes the password to the
+    console and — when Loki shipping is enabled — into the log store.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return "<unparseable broker url>"
+    if parsed.password is None:
+        return url
+    userinfo = parsed.username or ""
+    host = parsed.hostname or ""
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    netloc = f"{userinfo}:***@{host}" if userinfo else f":***@{host}"
+    return urlunsplit(
+        (parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment),
+    )
 
 
 def _normalize_publish_error(
@@ -501,7 +525,8 @@ class MessageBrokerManager(ServiceManager):
             If the connection attempt fails.
         """
         self._logger.debug(
-            f"Attempting to connect to broker at {self._config.broker_url}",
+            f"Attempting to connect to broker at "
+            f"{redact_broker_url(self._config.broker_url)}",
         )
         try:
             conn = _open_connection(
