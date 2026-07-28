@@ -26,6 +26,14 @@ jobs:
           export PLUGINIFY_REBUILD_REGISTRIES=0
           export PLUGINIFY_NAMESPACE=runcourier.dev.plugin_packages
           pluginify create
-      - name: Run pytest
+      - name: Run unit tests
+        timeout-minutes: 10
         run: |
           python3 -m pytest
+
+      - name: Run integration tests
+        # Deselected from the default run for local speed, so CI has to ask
+        # for them explicitly or they would never execute anywhere.
+        timeout-minutes: 20
+        run: |
+          python3 -m pytest -m integration --no-cov

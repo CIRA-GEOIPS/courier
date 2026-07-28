@@ -52,6 +52,10 @@ jobs:
       - name: Run pytest with coverage
         id: pytest
         continue-on-error: true
+        # timeout-minutes as well as continue-on-error: continue-on-error only
+        # covers a non-zero exit, not a hang, and a hung run leaves the badges
+        # showing whatever they said last time.
+        timeout-minutes: 20
         run: |
           coverage run -m pytest --junitxml=reports/junit.xml
       - name: Generate pytest badge
