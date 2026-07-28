@@ -25,6 +25,8 @@ from courier.interfaces import data_monitors, dispatchers, job_builders
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pluginify.interfaces.base import BaseClassInterface, BaseYamlInterface
     from pydantic import BaseModel
 
@@ -94,6 +96,81 @@ def _make_identifier(yaml_kind: str, plugin_name: str) -> str:
     sanitized = sanitized[:63]
     sanitized = sanitized.rstrip("-")
     return sanitized
+
+
+def _choice_range(count: int) -> str:
+    """Human-readable description of the valid index range for *count* rows."""
+    return "1" if count == 1 else f"1-{count}"
+
+
+def _resolve_by_index(
+    choice: str,
+    plugins: Sequence[Any],
+) -> tuple[Any | None, str | None] | None:
+    """Resolve *choice* as a 1-based position in the displayed table.
+
+    Returns ``None`` — distinct from ``(None, message)`` — when *choice* is
+    not a number at all, so the caller can fall through to name matching.
+    """
+    try:
+        index = int(choice)
+    except ValueError:
+        return None
+
+    if 1 <= index <= len(plugins):
+        return plugins[index - 1], None
+
+    return None, f"{index} is out of range — choose {_choice_range(len(plugins))}."
+
+
+def _resolve_plugin_choice(
+    raw: str,
+    plugins: Sequence[Any],
+) -> tuple[Any | None, str | None]:
+    """Resolve what the user typed to one of *plugins*.
+
+    Plugin names are long (``file_system_poller_watchdog``) and easy to
+    mistype, so the prompt accepts, in order of precedence:
+
+    * a 1-based index into the displayed table — ``"2"``;
+    * a full plugin name, case-insensitively — ``"S3_Poller"``;
+    * an unambiguous prefix of a plugin name — ``"s3"``.
+
+    Digits are always read as a table position, so a hypothetical plugin
+    named ``"2"`` would have to be selected by index or prefix.
+
+    Returns
+    -------
+    tuple[Any | None, str | None]
+        ``(plugin, None)`` when the answer resolves, otherwise
+        ``(None, message)`` where *message* says what to try instead.
+    """
+    choice = raw.strip()
+    if not choice:
+        return None, f"Enter a number ({_choice_range(len(plugins))}) or a name."
+
+    # A number is a position in the table the user is looking at.
+    by_index = _resolve_by_index(choice, plugins)
+    if by_index is not None:
+        return by_index
+
+    folded = choice.casefold()
+
+    for plugin in plugins:
+        if plugin.name.casefold() == folded:
+            return plugin, None
+
+    partial = [p for p in plugins if p.name.casefold().startswith(folded)]
+    if len(partial) == 1:
+        return partial[0], None
+    if partial:
+        names = ", ".join(p.name for p in partial)
+        return None, f"'{choice}' is ambiguous — matches {names}."
+
+    return None, (
+        f"No plugin matches '{choice}' — "
+        f"choose {_choice_range(len(plugins))} or a name from the table."
+    )
 
 
 def _coerce_value(raw: Any, type_hint: str) -> Any:  # noqa: PLR0911, PLR0912
@@ -264,8 +341,10 @@ def prompt_category(
 ) -> list[PluginSelection]:
     """Interactive plugin selection for one category.
 
-    Shows all available plugins, lets the user pick which ones to add,
-    prompts for config on each, and loops until the user is done.
+    Shows a numbered table of the available plugins, lets the user pick which
+    ones to add — by number, name, or unambiguous prefix, see
+    :func:`_resolve_plugin_choice` — prompts for config on each, and loops
+    until the user is done.
 
     Parameters
     ----------
@@ -296,27 +375,32 @@ def prompt_category(
         console.print(f"  [dim]No {display_label.lower()} plugins found.[/dim]")
         return []
 
-    # Render the available-plugin table
+    # Render the available-plugin table. The leading number is what the user
+    # types at the prompt, so the row order here *is* the selection order —
+    # ``_resolve_plugin_choice`` indexes the same list.
     table = Table(title=f"Available {display_label}s", box=box.ROUNDED)
+    table.add_column("#", style="bold yellow", justify="right")
     table.add_column("Name", style="cyan")
     table.add_column("Description", style="dim")
-    for plugin in plugins:
+    for number, plugin in enumerate(plugins, start=1):
         desc = get_plugin_description(type(plugin)) or "(no description)"
         if len(desc) > _MAX_DESC_LENGTH:
             desc = desc[: _MAX_DESC_LENGTH - _TRUNCATE_THRESHOLD] + "..."
-        table.add_row(plugin.name, desc)
+        table.add_row(str(number), plugin.name, desc)
     console.print(table)
 
     selections: list[PluginSelection] = []
+    choice_range = _choice_range(len(plugins))
 
     while True:
-        chosen_name = Prompt.ask(
-            f"Add a {display_label.lower()} (name or Enter to skip)",
+        answer = Prompt.ask(
+            f"Add a {display_label.lower()} "
+            f"[dim]({choice_range}, name, or Enter to skip)[/dim]",
             default="",
             show_default=False,
         )
 
-        if not chosen_name or not chosen_name.strip():
+        if not answer or not answer.strip():
             if selections:
                 break
             if Confirm.ask(
@@ -326,16 +410,15 @@ def prompt_category(
                 break
             continue
 
-        # Resolve the chosen plugin by name (case-insensitive)
-        matched = None
-        for plugin in plugins:
-            if plugin.name.lower() == chosen_name.strip().lower():
-                matched = plugin
-                break
+        matched, problem = _resolve_plugin_choice(answer, plugins)
 
         if matched is None:
-            console.print(f"  [red]Unknown plugin: {chosen_name}[/red]")
+            console.print(f"  [red]{problem}[/red]")
             continue
+
+        # Echo the resolved name: when the answer was "3" or a prefix, this is
+        # the only confirmation the user gets that they picked what they meant.
+        console.print(f"  [green]✓[/green] [cyan]{matched.name}[/cyan]")
 
         # Discover the companion Config model
         config_model = find_config_model(type(matched))
@@ -515,6 +598,16 @@ def write_yaml(
 ) -> None:
     """Serialize a validated config model to YAML and write to file."""
     config_dict = config.model_dump(exclude_none=False, exclude_unset=False)
+
+    # An interactive generator that silently clobbers an existing service
+    # config is a bad trade: accepting the default path twice was enough to
+    # lose hand-edited settings.
+    if output_path.exists() and not Confirm.ask(
+        f"[yellow]{output_path} already exists. Overwrite?[/yellow]",
+        default=False,
+    ):
+        console.print("[dim]Not written.[/dim]")
+        return
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as f:

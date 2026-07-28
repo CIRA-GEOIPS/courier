@@ -66,6 +66,13 @@ _APPLY_OPTION = typer.Option(
     "--apply/--dry-run",
     help="Actually delete orphans. Defaults to dry-run.",
 )
+_FORCE_OPTION = typer.Option(
+    "--force",
+    help=(
+        "Delete orphaned queues even when they still hold messages. "
+        "Without this, a non-empty queue is left alone and reported."
+    ),
+)
 
 
 def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set[str]]:
@@ -128,12 +135,14 @@ def list_cmd(
 
 
 @queues_app.command("prune")
-def prune_cmd(
+def prune_cmd(  # noqa: PLR0913
     config: Annotated[Path, _CONFIG_OPTION],
+    *,
     candidate: Annotated[list[str] | None, _CANDIDATE_OPTION] = None,
     from_file: Annotated[Path | None, _FROM_FILE_OPTION] = None,
     namespace: Annotated[str | None, _NAMESPACE_OPTION] = None,
     apply: Annotated[bool, _APPLY_OPTION] = False,
+    force: Annotated[bool, _FORCE_OPTION] = False,
 ) -> None:
     """Diff a candidate queue list against the expected set and delete orphans.
 
@@ -184,11 +193,19 @@ def prune_cmd(
         with Connection(broker_url) as conn, conn.channel() as channel:
             for name in orphans:
                 try:
-                    channel.queue_delete(name)
+                    # if_empty guards against discarding queued jobs: a
+                    # dispatcher temporarily excluded via --only looks exactly
+                    # like an orphan, and deleting its backlog is silent and
+                    # unrecoverable. Use --force to override.
+                    channel.queue_delete(name, if_empty=not force)
                     typer.echo(f"deleted:  {name}")
                 except OperationalError as exc:
                     failures.append((name, str(exc)))
-                    typer.echo(f"failed:   {name}: {exc}", err=True)
+                    typer.echo(
+                        f"failed:   {name}: {exc}"
+                        + ("" if force else "  (non-empty? rerun with --force)"),
+                        err=True,
+                    )
     except OperationalError as exc:
         typer.echo(f"broker connection failed: {exc}", err=True)
         raise typer.Exit(1) from exc

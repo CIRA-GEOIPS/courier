@@ -54,17 +54,22 @@ app.command()(validate)
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(queues_app, name="queues")
 
+# Registered with app.command(), not app.add_typer(): a Typer sub-app is a
+# *group*, so Click parses any token after the positional argument as a
+# subcommand name. That made every documented invocation
+# (`courier dashboard config.yaml --only-metrics`) fail with
+# "No such command '--only-metrics'". Neither of these has subcommands.
 try:
-    from courier.viz.cli import viz_app
+    from courier.viz.cli import viz
 
-    app.add_typer(viz_app, name="viz")
+    app.command("viz")(viz)
 except ImportError:
     pass  # viz extra not installed — command won't be available
 
 try:
-    from courier.dashboard.cli import dashboard_app
+    from courier.dashboard.cli import dashboard
 
-    app.add_typer(dashboard_app, name="dashboard")
+    app.command("dashboard")(dashboard)
 except ImportError:
     pass  # dashboard extra not installed — command won't be available
 
