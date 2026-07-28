@@ -9,7 +9,6 @@ from typing import Any
 from courier.config import ServiceConfig
 from courier.constants import PluginRunState
 from courier.errors import CourierError
-from courier.interfaces.module_based.dispatchers import Dispatcher
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.managers.base import ServiceManager
 from courier.metrics import (
@@ -150,7 +149,12 @@ class PluginManager(ServiceManager):
         """
         with self._lock:
             kwargs: dict[str, Any] = {}
-            if identifier is not None and issubclass(plugin, Dispatcher):
+            if identifier is not None:
+                # Passed to every plugin kind, not just dispatchers: the
+                # identifier is what distinguishes two instances of the same
+                # plugin class in metrics labels and log lines. Restricting it
+                # to dispatchers left builders and monitors labelled with their
+                # class name, making sibling instances indistinguishable.
                 kwargs["identifier"] = identifier
                 self._logger.debug(f"Registering plugin with identifier: {identifier}")
             plugin_instance = plugin(self._service, config, **kwargs)
@@ -165,8 +169,6 @@ class PluginManager(ServiceManager):
 
             plugin_name = plugin_instance.name
 
-            self._logger.info(plugin_instance)
-            self._logger.info(registry_key)
             self._plugins[registry_key] = PluginStateInfo(
                 plugin=plugin_instance,
             )
@@ -495,6 +497,53 @@ class PluginManager(ServiceManager):
             time.sleep(self._config.plugin_restart_delay)
             self._start_plugin(plugin_info)
 
+    #: Interface name of plugins that publish into the pipeline rather than
+    #: consuming from it. Everything else is treated as a consumer.
+    _PRODUCER_INTERFACE = "data_monitors"
+
+    def _partition_by_role(
+        self,
+    ) -> tuple[list[PluginStateInfo], list[PluginStateInfo]]:
+        """Split registered plugins into ``(consumers, producers)``.
+
+        Caller must hold ``self._lock``.
+        """
+        consumers: list[PluginStateInfo] = []
+        producers: list[PluginStateInfo] = []
+        for info in self._plugins.values():
+            interface = getattr(info.plugin, "interface", None)
+            if interface == self._PRODUCER_INTERFACE:
+                producers.append(info)
+            else:
+                consumers.append(info)
+        return consumers, producers
+
+    def _await_subscriptions(self, consumers: list[PluginStateInfo]) -> None:
+        """Block until every consumer is attached to its broker queue.
+
+        Bounded by ``plugin_health_check_interval``: a consumer that cannot
+        attach must not stop the service from coming up, so a timeout is
+        logged and startup continues. Producers may then emit into a fanout
+        with nothing bound, which is exactly the loss this guards against —
+        hence WARNING rather than DEBUG.
+        """
+        if not consumers:
+            return
+        deadline = time.time() + self._config.plugin_health_check_interval
+        for info in consumers:
+            waiter = getattr(info.plugin, "wait_until_subscribed", None)
+            if waiter is None:
+                continue
+            remaining = max(0.0, deadline - time.time())
+            if not waiter(remaining):
+                self._logger.warning(
+                    "Plugin %s did not attach to its broker queue within %.1fs; "
+                    "starting producers anyway — messages published before it "
+                    "attaches may be dropped by the fanout exchange.",
+                    info.plugin.name,
+                    self._config.plugin_health_check_interval,
+                )
+
     @log_execution
     def start(self) -> None:
         """Start the plugin manager and all registered plugins."""
@@ -510,9 +559,25 @@ class PluginManager(ServiceManager):
         )
         self._monitor_thread.start()
 
-        # Phase 1: Spawn all plugin threads under lock.
+        # Phase 1: Start consumers, and only then producers.
+        #
+        # The file-found exchange is a fanout: the broker discards anything
+        # published while no queue is bound to it. Data monitors are producers
+        # and several of them emit immediately on start (cron_glob with
+        # run_on_start, or any watchdog seeing a pre-existing file), so
+        # starting them alongside the builders means every file emitted before
+        # the builders finish binding is dropped — no error, no metric, no log.
+        # Registration order made this likely rather than rare: monitors are
+        # declared first in a config, so their threads were created first.
         with self._lock:
-            for plugin_info in self._plugins.values():
+            consumers, producers = self._partition_by_role()
+            for plugin_info in consumers:
+                self._start_plugin(plugin_info)
+
+        self._await_subscriptions(consumers)
+
+        with self._lock:
+            for plugin_info in producers:
                 self._start_plugin(plugin_info)
 
         # Phase 2: Wait for all plugins to signal readiness outside lock.
