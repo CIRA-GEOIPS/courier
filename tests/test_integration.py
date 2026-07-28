@@ -144,6 +144,11 @@ def _make_service_config() -> ServiceConfig:
         heartbeat_interval=2,
         plugin_health_check_interval=1,
         namespace=f"test-{uuid.uuid4().hex[:8]}",
+        # No OTLP collector listens in CI, so every span export retries and
+        # every shutdown blocks on a 5s force_flush. That pushed later tests
+        # past their polling deadlines and made the suite fail depending on
+        # how many services had already run in the process.
+        tracing_enabled=False,
     )
 
 

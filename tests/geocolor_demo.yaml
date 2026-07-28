@@ -10,7 +10,7 @@ metadata:
     Job builders accept any 1 file with ABI as the sensor and full-disk as the sector.
     They dispatch that to a GeoColor creator job that produces output.
 spec:
-  heartbeat_interval: 1000 # in milliseconds
+  heartbeat_interval: 30 # seconds between health-metric publications
   broker:
     host: rabbitmq
     port: 5672
@@ -27,15 +27,15 @@ spec:
             - goes18_abi # This adds metadata to files that look like goes18 files
     - abi-job-builder:
         kind: job_builder
-        name: filter_pass
+        name: filter_and_group
         config:
           files_per_job: 1 # How many files required dispatch job, 1 per clavrx output
           time_grouping: # Optionally batch files by time (eg. 2 files in N:00-N:15)
             start: 2000-01-01 00:00:00 # optional reference time
             minutes: 15
           filters: # Metadata to filter on
-            sensor: abi
-            sector: Full-Disk
+            instrument: abi
+            domain: Full-Disk
             product: CLAVR-x
     - produce-geocolor-from-abi:
         kind: dispatcher

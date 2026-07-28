@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -56,10 +56,25 @@ class TestHelpers:
         assert _matches_filters(f, {"source": "himawari"}) is False
 
     def test_render_context_timestamp_iso(self, make_frozen_file) -> None:
-        ts = datetime(2026, 1, 1, 12, 0, 0)
+        """Job-name templates render the normalised (UTC-aware) timestamp.
+
+        FrozenFile tags naive input as UTC at construction, so the rendered
+        value carries a ``+00:00`` offset rather than the bare naive form.
+        """
+        ts = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         ctx = _render_context(make_frozen_file(timestamp=ts))
         assert ctx["timestamp"] == ts.isoformat()
         assert ctx["source"] == "goes16"
+
+    def test_render_context_normalises_naive_timestamp(
+        self,
+        make_frozen_file,
+    ) -> None:
+        """A naive timestamp is treated as UTC, not as host-local time."""
+        ctx = _render_context(
+            make_frozen_file(timestamp=datetime(2026, 1, 1, 12, 0, 0)),  # noqa: DTZ001
+        )
+        assert ctx["timestamp"] == "2026-01-01T12:00:00+00:00"
 
     def test_render_context_none_becomes_empty(self, make_frozen_file) -> None:
         ctx = _render_context(make_frozen_file(domain=None))

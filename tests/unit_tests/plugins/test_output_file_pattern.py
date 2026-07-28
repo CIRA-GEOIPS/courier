@@ -35,12 +35,31 @@ class TestValidPattern:
         assert entry.metadata == {}
         assert isinstance(entry.metadata, dict)
 
-    def test_multiple_named_groups_including_file(self) -> None:
-        """Pattern with file + additional named groups is valid."""
+    def test_extra_named_groups_are_captured_as_metadata(self) -> None:
+        """A pattern's non-``file`` groups must reach the emitted File.
+
+        Asserting ``entry.pattern is not None`` only proved construction did
+        not crash — it said nothing about whether the extra group is ever
+        extracted, which is the entire reason for declaring one.
+        """
+        from unittest.mock import MagicMock
+
+        from courier.dispatchers._output_scanner import _scan_and_emit_output_files
+
         entry = OutputFilePattern(
             pattern=r"(?P<file>/tmp/test\.nc)\|band=(?P<band>\d+)",
         )
-        assert entry.pattern is not None
+        emit = MagicMock()
+        _scan_and_emit_output_files(
+            stdout="/tmp/test.nc|band=13",
+            stderr="",
+            patterns=[entry],
+            emit_file=emit,
+        )
+
+        emitted = emit.call_args[0][0]
+        assert str(emitted.file) == "/tmp/test.nc"
+        assert emitted.metadata["band"] == "13"
 
     def test_explicit_none_fields_remain_none(self) -> None:
         """Fields explicitly set to None should remain None (not coerced)."""
@@ -48,15 +67,36 @@ class TestValidPattern:
         assert entry.source is None
         assert entry.domain is None
 
-    def test_multiple_file_named_groups_valid(self) -> None:
-        """Multiple named groups where one is 'file' constructs fine."""
+    def test_named_groups_matching_file_fields_populate_those_fields(
+        self,
+    ) -> None:
+        """``source``/``instrument`` groups set File attributes, not metadata.
+
+        This routing decision is what downstream filters depend on; a test
+        that only checks the pattern constructs cannot see it go wrong.
+        """
+        from unittest.mock import MagicMock
+
+        from courier.dispatchers._output_scanner import _scan_and_emit_output_files
+
         entry = OutputFilePattern(
             pattern=(
                 r"/data/(?P<instrument>\w+)/(?P<source>\w+)/"
                 r"(?P<file>[^/]+\.nc)"
             ),
         )
-        assert entry.pattern is not None
+        emit = MagicMock()
+        _scan_and_emit_output_files(
+            stdout="/data/abi/goes18/product.nc",
+            stderr="",
+            patterns=[entry],
+            emit_file=emit,
+        )
+
+        emitted = emit.call_args[0][0]
+        assert emitted.instrument == "abi"
+        assert emitted.source == "goes18"
+        assert "instrument" not in emitted.metadata
 
 
 # ─── Auto-Lowercase Validators ───────────────────────────────────────────────

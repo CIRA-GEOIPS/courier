@@ -155,15 +155,66 @@ class TestConnect:
         with pytest.raises(RuntimeError, match="connect\\(\\)"):
             s._require_pubsub()
 
-    def test_connect_unreachable_raises(self) -> None:
-        cfg = RedisStateSyncConfig(host="192.0.2.1", port=9999)  # TEST-NET, unreachable
-        s = JobBuilderStateSync(config=cfg, namespace="ns", builder_name="b")
+    def test_connect_unreachable_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An unreachable Redis must surface as StateSyncConnectionError.
+
+        The failure is injected rather than produced by dialling TEST-NET-1:
+        a real connection attempt waited on the OS timeout and made this
+        single unit test 74% of the whole unit suite's runtime (60s of 81s).
+        Nothing about the contract needs a real socket.
+        """
+        import redis
+
+        def _refuse(*_args: object, **_kwargs: object) -> None:
+            raise redis.ConnectionError("Connection refused")
+
+        monkeypatch.setattr(redis.Redis, "ping", _refuse)
+
+        s = JobBuilderStateSync(config=_CFG, namespace="ns", builder_name="b")
+        with pytest.raises(StateSyncConnectionError, match="Cannot connect"):
+            s.connect()
+
+    def test_connect_auth_failure_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A wrong password is a distinct failure and must say so."""
+        import redis
+
+        def _reject(*_args: object, **_kwargs: object) -> None:
+            raise redis.AuthenticationError("invalid password")
+
+        monkeypatch.setattr(redis.Redis, "ping", _reject)
+
+        s = JobBuilderStateSync(config=_CFG, namespace="ns", builder_name="b")
+        with pytest.raises(StateSyncConnectionError, match="authentication failed"):
+            s.connect()
+
+    def test_connect_timeout_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A hung Redis must not propagate a raw redis exception."""
+        import redis
+
+        def _timeout(*_args: object, **_kwargs: object) -> None:
+            raise redis.TimeoutError("timed out")
+
+        monkeypatch.setattr(redis.Redis, "ping", _timeout)
+
+        s = JobBuilderStateSync(config=_CFG, namespace="ns", builder_name="b")
         with pytest.raises(StateSyncConnectionError):
             s.connect()
 
-    def test_connected_client_is_reachable(self) -> None:
+    def test_connect_stores_a_usable_client_and_pubsub(self) -> None:
+        """After connect() both connections must be wired to the same server.
+
+        The previous assertion — ``_require_client() is not None`` — tested
+        that fakeredis constructs, which it always does. What matters is that
+        the command connection and the subscriber see the same keyspace.
+        """
         s = _sync()
-        assert s._require_client() is not None
+        client = s._require_client()
+        pubsub = s._require_pubsub()
+
+        client.set("probe-key", "probe-value")
+
+        assert client.get("probe-key") == "probe-value"
+        assert pubsub.connection_pool is client.connection_pool
 
 
 # ---------------------------------------------------------------------------

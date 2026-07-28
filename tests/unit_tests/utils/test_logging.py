@@ -101,25 +101,58 @@ def test_trace_level_constant() -> None:
     assert TRACE_LEVEL < logging.DEBUG
 
 
-def test_trace_method_monkey_patched() -> None:
-    """Test that the trace method is correctly monkey-patched on Logger.
+def test_trace_emits_a_record_through_the_public_logger(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``get_logger(...).trace(...)`` must actually emit at TRACE level.
 
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
-
-    Raises
-    ------
-    AssertionError
-        If trace method is not available or not callable.
+    Asserting ``hasattr(logging.getLogger(...), "trace")`` checked the wrong
+    object: every caller holds the ``ContextAdapter`` that ``get_logger``
+    returns, and that had no ``trace`` at all — so ``logger.trace(...)``
+    raised ``AttributeError`` in production while the test passed.
     """
-    logger = logging.getLogger("test")
-    assert hasattr(logger, "trace")
-    assert callable(logger.trace)
+    logger = get_logger("service", "trace-emit")
+    logger.logger.setLevel(TRACE_LEVEL)
+    logger.logger.propagate = True
+
+    with caplog.at_level(TRACE_LEVEL, logger=logger.logger.name):
+        logger.trace("detailed diagnostic")
+
+    records = [r for r in caplog.records if r.levelno == TRACE_LEVEL]
+    assert records, "no record emitted at TRACE level"
+    assert "detailed diagnostic" in records[0].getMessage()
+    assert "[Service: trace-emit]" in records[0].getMessage(), (
+        "trace() must apply the same context prefix as the other levels"
+    )
+
+
+def test_trace_is_suppressed_above_its_level() -> None:
+    """TRACE is below DEBUG, so a DEBUG-level logger must drop it.
+
+    Uses a plain capturing handler rather than ``caplog.at_level``: that
+    fixture *sets* the logger's level for the duration, which is exactly the
+    thing under test here.
+    """
+    logger = get_logger("service", "trace-suppressed")
+    logger.logger.setLevel(logging.DEBUG)
+
+    captured: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    handler = _Capture(level=TRACE_LEVEL)
+    logger.logger.addHandler(handler)
+    try:
+        logger.trace("should not appear")
+        logger.debug("should appear")
+    finally:
+        logger.logger.removeHandler(handler)
+
+    levels = [record.levelno for record in captured]
+    assert TRACE_LEVEL not in levels, "TRACE record leaked past a DEBUG logger"
+    assert logging.DEBUG in levels, "DEBUG record was dropped too"
 
 
 # Test ContextAdapter

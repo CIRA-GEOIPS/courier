@@ -46,12 +46,18 @@ def _make_registry():
 
 
 def _plugin_registries_fixture():
-    """Return a dict mapping the three runnable kinds to the same mock registry."""
+    """Return a dict mapping the three runnable kinds to the same mock registry.
+
+    Keys must be the *plural* interface names, matching the real
+    ``courier.cli.plugins.PLUGIN_REGISTRIES``: ``run_service`` looks up
+    ``PLUGIN_REGISTRIES[normalize_kind(entry.spec.kind)]``, and
+    ``normalize_kind`` maps the singular YAML kinds onto these plural keys.
+    """
     reg = _make_registry()
     return {
-        "data_monitor": reg,
-        "job_builder": reg,
-        "dispatcher": reg,
+        "data_monitors": reg,
+        "job_builders": reg,
+        "dispatchers": reg,
     }
 
 

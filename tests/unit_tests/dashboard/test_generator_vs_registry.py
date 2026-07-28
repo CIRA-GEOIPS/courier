@@ -49,11 +49,21 @@ def _iter_target_expressions() -> Iterator[str]:
 def _emitted_metric_families() -> dict[str, frozenset[str]]:
     """Collect every registered metric family with its label names.
 
-    Also adds the suffixes that Prometheus appends for
-    Counter (``_total``, ``_created``) and Histogram
-    (``_sum``, ``_count``, ``_bucket``) families so that
-    PromQL expressions referencing those derived names are not
-    flagged as phantom.
+    Also adds the suffixes Prometheus appends for Counter (``_total``,
+    ``_created``) and Histogram (``_sum``, ``_count``, ``_bucket``) families
+    so PromQL referencing those derived names is not flagged as phantom.
+
+    Notes
+    -----
+    This reads ``prometheus_client`` privates (``_collector_to_names``,
+    ``_labelnames``) deliberately: *declared* label names are not exposed
+    publicly, and ``describe()``/``collect()`` only report labels that some
+    child has already been given — a metric never yet incremented would look
+    label-less and every selector on it would be reported as phantom.
+
+    The risk of private access is that an upstream rename turns this scan into
+    an empty mapping, which would make every check below vacuously pass. That
+    is what ``test_registry_scan_is_not_vacuous`` exists to catch.
     """
     families: dict[str, frozenset[str]] = {}
     for collector, names in REGISTRY._collector_to_names.items():
@@ -63,6 +73,26 @@ def _emitted_metric_families() -> dict[str, frozenset[str]]:
             for suffix in ("_total", "_created", "_sum", "_count", "_bucket"):
                 families[f"{name}{suffix}"] = base_labels
     return families
+
+
+def test_registry_scan_is_not_vacuous() -> None:
+    """Guard the guard: a broken scan would make every check below pass.
+
+    Asserts both that metrics are found *and* that their labels come back,
+    since either half going empty silently disables a different check.
+    """
+    families = _emitted_metric_families()
+
+    assert "courier_dispatcher_queue_depth" in families, (
+        "metric registry scan found no courier metrics — the prometheus_client "
+        "introspection this guard relies on has probably changed"
+    )
+    assert families["courier_dispatcher_queue_depth"] == frozenset(
+        {"dispatcher_identifier"},
+    ), (
+        "metric registry scan returned no label names — label-selector "
+        "checking below is silently disabled"
+    )
 
 
 # ---------------------------------------------------------------------------

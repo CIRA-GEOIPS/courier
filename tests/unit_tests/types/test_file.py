@@ -2,10 +2,12 @@
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from courier.types.file import (
     File,
@@ -28,7 +30,7 @@ def sample_path() -> Path:
 @pytest.fixture
 def sample_timestamp() -> datetime:
     """Sample datetime for timestamp field."""
-    return datetime(2023, 1, 1, 12, 0, 0)
+    return datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -61,703 +63,289 @@ def frozen_file(full_file: File) -> FrozenFile:
 # ─── File creation ──────────────────────────────────────────────────────────
 
 
-class TestFileCreation:
-    """Tests for File creation and field access."""
+# ─── Shared behaviour: File and FrozenFile ──────────────────────────────────
+#
+# The two types share a serialisation contract, so they are exercised through
+# one parametrised suite rather than two hand-maintained copies. The previous
+# layout duplicated ~50 tests across TestFile*/TestFrozenFile* classes, which
+# meant every behaviour change had to be made twice and it was easy for the
+# halves to drift.
 
-    def test_default_construction(self) -> None:
-        """All fields are None/default when no arguments are given."""
-        f = File()
-        assert f.file is None
-        assert f.hostname is None
-        assert f.source is None
-        assert f.instrument is None
-        assert f.processing_stage is None
-        assert f.domain is None
-        assert f.num_expected == 1
-        assert f.timestamp is None
+_TYPES = [File, FrozenFile]
+_TYPE_IDS = ["File", "FrozenFile"]
 
-    def test_creation_with_minimal_fields(self, sample_path: Path) -> None:
-        """Test creating File with only a file path."""
-        file_obj = File(file=sample_path)
-        assert file_obj.file == sample_path
-        assert file_obj.hostname is None
-        assert file_obj.num_expected == 1
-        assert file_obj.timestamp is None
-
-    def test_creation_with_all_fields(
-        self,
-        full_file: File,
-        sample_path: Path,
-        sample_timestamp: datetime,
-    ) -> None:
-        """Test creating File with all fields populated."""
-        assert full_file.file == sample_path
-        assert full_file.hostname == "testhost"
-        assert full_file.source == "goes16"
-        assert full_file.instrument == "abi"
-        assert full_file.processing_stage == "l1b"
-        assert full_file.domain == "Full-Disk"
-        assert full_file.num_expected == 16
-        assert full_file.timestamp == sample_timestamp
-
-    def test_mutability(self, full_file: File) -> None:
-        """Confirm File is mutable (unlike FrozenFile)."""
-        full_file.source = "modified"
-        assert full_file.source == "modified"
-
-    def test_equality(self, sample_path: Path, sample_timestamp: datetime) -> None:
-        """Two Files with identical fields are equal."""
-        f1 = File(file=sample_path, source="goes16", timestamp=sample_timestamp)
-        f2 = File(file=sample_path, source="goes16", timestamp=sample_timestamp)
-        assert f1 == f2
-
-    def test_inequality(self, sample_path: Path) -> None:
-        """Two Files with different fields are not equal."""
-        f1 = File(file=sample_path, source="goes16")
-        f2 = File(file=sample_path, source="himawari9")
-        assert f1 != f2
+_ALL_FIELDS = dict(
+    file=Path("/tmp/sample_file.nc"),
+    hostname="testhost",
+    source="goes16",
+    instrument="abi",
+    processing_stage="l1b",
+    domain="Full-Disk",
+    num_expected=16,
+    timestamp=datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC),
+)
 
 
-# ─── File serialization ─────────────────────────────────────────────────────
+@pytest.mark.parametrize("cls", _TYPES, ids=_TYPE_IDS)
+class TestConstruction:
+    """Both types default the same way and accept the same fields."""
+
+    def test_defaults_are_empty(self, cls: type) -> None:
+        obj = cls()
+        assert obj.file is None
+        assert obj.hostname is None
+        assert obj.source is None
+        assert obj.instrument is None
+        assert obj.processing_stage is None
+        assert obj.domain is None
+        assert obj.timestamp is None
+        assert obj.num_expected == 1
+        assert dict(obj.metadata) == {}
+
+    def test_all_fields_are_stored(self, cls: type) -> None:
+        obj = cls(**_ALL_FIELDS)
+        for name, value in _ALL_FIELDS.items():
+            assert getattr(obj, name) == value
+
+    def test_equality_is_by_value(self, cls: type) -> None:
+        assert cls(**_ALL_FIELDS) == cls(**_ALL_FIELDS)
+
+    def test_inequality_on_any_field(self, cls: type) -> None:
+        other = {**_ALL_FIELDS, "source": "himawari9"}
+        assert cls(**_ALL_FIELDS) != cls(**other)
 
 
-class TestFileSerialization:
-    """Tests for File serialization methods."""
+@pytest.mark.parametrize("cls", _TYPES, ids=_TYPE_IDS)
+class TestSerialization:
+    """``str()``/``from_string()`` is the wire format between plugins."""
 
-    def test_to_dict_full(
-        self,
-        full_file: File,
-        sample_path: Path,
-        sample_timestamp: datetime,
-    ) -> None:
-        """Test converting a fully populated File to dict."""
-        result = full_file.to_dict()
-        assert result == {
-            "file": str(sample_path),
-            "hostname": "testhost",
-            "source": "goes16",
-            "instrument": "abi",
-            "processing_stage": "l1b",
-            "domain": "Full-Disk",
-            "metadata": {},
-            "num_expected": 16,
-            "timestamp": sample_timestamp.isoformat(),
-        }
+    def test_to_dict_exposes_every_field(self, cls: type) -> None:
+        result = cls(**_ALL_FIELDS).to_dict()
+        assert result["file"] == str(_ALL_FIELDS["file"])
+        assert result["hostname"] == "testhost"
+        assert result["source"] == "goes16"
+        assert result["instrument"] == "abi"
+        assert result["processing_stage"] == "l1b"
+        assert result["domain"] == "Full-Disk"
+        assert result["num_expected"] == 16
+        assert result["timestamp"] == _ALL_FIELDS["timestamp"].isoformat()
 
-    def test_to_dict_none_file(self) -> None:
-        """File field is None when no path is given."""
-        result = File().to_dict()
+    def test_to_dict_of_empty_object_is_all_none(self, cls: type) -> None:
+        result = cls().to_dict()
         assert result["file"] is None
-
-    def test_to_dict_none_timestamp(self, minimal_file: File) -> None:
-        """Timestamp is None when not set."""
-        result = minimal_file.to_dict()
         assert result["timestamp"] is None
 
-    def test_to_dict_none_optional_fields(self, minimal_file: File) -> None:
-        """All optional metadata fields are None."""
-        result = minimal_file.to_dict()
-        assert result["hostname"] is None
-        assert result["source"] is None
-        assert result["instrument"] is None
-        assert result["processing_stage"] is None
-        assert result["domain"] is None
+    def test_str_is_json_matching_to_dict(self, cls: type) -> None:
+        obj = cls(**_ALL_FIELDS)
+        assert json.loads(str(obj)) == obj.to_dict()
 
-    def test_str_returns_valid_json(self, full_file: File) -> None:
-        """__str__ returns a JSON string matching to_dict."""
-        result = str(full_file)
-        assert json.loads(result) == full_file.to_dict()
+    def test_round_trip_preserves_every_field(self, cls: type) -> None:
+        obj = cls(**_ALL_FIELDS)
+        assert cls.from_string(str(obj)) == obj
 
-    def test_str_minimal(self, minimal_file: File) -> None:
-        """__str__ works with minimal file and produces parseable JSON."""
-        parsed = json.loads(str(minimal_file))
-        assert isinstance(parsed, dict)
+    def test_round_trip_of_empty_object(self, cls: type) -> None:
+        assert cls.from_string(str(cls())) == cls()
 
-    def test_from_dict_with_timestamp_string(self) -> None:
-        """from_dict parses an ISO timestamp string."""
-        data = {
-            "file": "/tmp/test.nc",
-            "timestamp": "2023-06-15T10:30:00",
-        }
-        f = File.from_dict(data)
-        assert f.file == Path("/tmp/test.nc")
-        assert f.timestamp == datetime(2023, 6, 15, 10, 30)
+    def test_from_dict_parses_an_iso_timestamp(self, cls: type) -> None:
+        obj = cls.from_dict({"file": "/x.nc", "timestamp": "2023-06-15T10:30:00"})
+        assert obj.timestamp == datetime(2023, 6, 15, 10, 30, tzinfo=UTC)
 
-    def test_from_dict_with_timestamp_object(self) -> None:
-        """from_dict accepts a datetime object directly."""
-        dt = datetime(2023, 6, 15, 10, 30)
-        data = {"file": "/tmp/test.nc", "timestamp": dt}
-        f = File.from_dict(data)
-        assert f.timestamp == dt
+    def test_from_dict_accepts_a_datetime_object(self, cls: type) -> None:
+        moment = datetime(2023, 6, 15, 10, 30, tzinfo=UTC)
+        assert cls.from_dict({"file": "/x.nc", "timestamp": moment}).timestamp == moment
 
-    def test_from_dict_no_timestamp(self) -> None:
-        """Missing timestamp key results in None."""
-        f = File.from_dict({"file": "/tmp/test.nc"})
-        assert f.timestamp is None
+    def test_from_dict_without_timestamp(self, cls: type) -> None:
+        assert cls.from_dict({"file": "/x.nc"}).timestamp is None
 
-    def test_from_dict_none_file(self) -> None:
-        """Explicit None file stays None."""
-        f = File.from_dict({"file": None})
-        assert f.file is None
+    def test_from_dict_without_file(self, cls: type) -> None:
+        assert cls.from_dict({"hostname": "h"}).file is None
 
-    def test_from_dict_missing_file_key(self) -> None:
-        """Missing file key results in None."""
-        f = File.from_dict({})
-        assert f.file is None
+    def test_from_dict_rejects_an_invalid_timestamp(self, cls: type) -> None:
+        with pytest.raises(ValueError, match="Invalid isoformat|does not match"):
+            cls.from_dict({"file": "/x.nc", "timestamp": "not-a-date"})
 
-    def test_from_dict_all_fields(self, sample_timestamp: datetime) -> None:
-        """All fields are correctly read from a dict."""
-        data = {
-            "file": "/data/goes16_abi.nc",
-            "hostname": "host1",
-            "source": "goes16",
-            "instrument": "abi",
-            "processing_stage": "l1b",
-            "domain": "conus",
-            "num_expected": 10,
-            "timestamp": sample_timestamp.isoformat(),
-        }
-        f = File.from_dict(data)
-        assert f.file == Path("/data/goes16_abi.nc")
-        assert f.hostname == "host1"
-        assert f.source == "goes16"
-        assert f.instrument == "abi"
-        assert f.processing_stage == "l1b"
-        assert f.domain == "conus"
-        assert f.num_expected == 10
-        assert f.timestamp == sample_timestamp
-
-    def test_from_dict_defaults_num_expected(self) -> None:
-        """num_expected defaults to 1 when missing."""
-        f = File.from_dict({"file": "/tmp/test.nc"})
-        assert f.num_expected == 1
-
-    def test_from_dict_invalid_timestamp(self) -> None:
-        """Invalid timestamp string raises ValueError."""
-        with pytest.raises(ValueError):
-            File.from_dict({"file": "/tmp/test.nc", "timestamp": "not-a-date"})
-
-    @pytest.mark.parametrize(
-        ("file_path", "hostname"),
-        [
-            ("/tmp/test.nc", "host1"),
-            (None, None),
-        ],
-    )
-    def test_from_dict_parametrized(
-        self,
-        full_file: File,
-        file_path: str | None,
-        hostname: str | None,
-    ) -> None:
-        """from_dict correctly handles various file/hostname combinations."""
-        data = full_file.to_dict()
-        data["file"] = file_path
-        data["hostname"] = hostname
-        result = File.from_dict(data)
-        if file_path is None:
-            assert result.file is None
-        else:
-            assert result.file == Path(file_path)
-        assert result.hostname == hostname
-
-    def test_from_string(self) -> None:
-        """from_string parses a JSON string into a File."""
-        data = {"file": "/tmp/test.nc", "timestamp": "2023-01-01T00:00:00"}
-        f = File.from_string(json.dumps(data))
-        assert f.file == Path("/tmp/test.nc")
-        assert f.timestamp == datetime(2023, 1, 1)
-
-    def test_from_string_invalid_json(self) -> None:
-        """Invalid JSON raises JSONDecodeError."""
+    def test_from_string_rejects_invalid_json(self, cls: type) -> None:
         with pytest.raises(json.JSONDecodeError):
-            File.from_string("{invalid")
+            cls.from_string("{not json")
 
-    def test_from_string_missing_keys_use_defaults(self) -> None:
-        """Missing keys in JSON use default values."""
-        f = File.from_string(json.dumps({"file": "/tmp/test.nc"}))
-        assert f.file == Path("/tmp/test.nc")
-        assert f.num_expected == 1
-        assert f.timestamp is None
-
-    def test_round_trip_str_from_string(self, full_file: File) -> None:
-        """str() -> from_string() round-trip preserves all fields."""
-        reconstructed = File.from_string(str(full_file))
-        assert reconstructed == full_file
-
-    def test_round_trip_to_dict_from_dict(self, full_file: File) -> None:
-        """to_dict() -> from_dict() round-trip preserves all fields."""
-        reconstructed = File.from_dict(full_file.to_dict())
-        assert reconstructed == full_file
-
-    def test_round_trip_minimal(self, minimal_file: File) -> None:
-        """Round-trip works for a file with only defaults."""
-        reconstructed = File.from_string(str(minimal_file))
-        assert reconstructed == minimal_file
-
-    def test_from_dict_metadata(self) -> None:
-        """from_dict reads metadata key when present."""
-        data = {
-            "file": "/tmp/test.nc",
-            "metadata": {"key1": "value1", "key2": 42},
-        }
-        f = File.from_dict(data)
-        assert f.metadata == {"key1": "value1", "key2": 42}
-
-    def test_from_dict_metadata_default(self) -> None:
-        """from_dict defaults metadata to empty dict when missing."""
-        f = File.from_dict({"file": "/tmp/test.nc"})
-        assert f.metadata == {}
+    def test_remote_uris_are_not_mangled(self, cls: type) -> None:
+        """``pathlib`` would collapse ``s3://`` to ``s3:/``."""
+        obj = cls(file="s3://bucket/key.nc")
+        assert obj.to_dict()["file"] == "s3://bucket/key.nc"
+        assert str(cls.from_string(str(obj)).file) == "s3://bucket/key.nc"
 
 
-# ─── File methods ────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("cls", _TYPES, ids=_TYPE_IDS)
+class TestWithUpdates:
+    """``with_updates`` must copy, never mutate in place."""
+
+    def test_returns_a_new_object(self, cls: type) -> None:
+        obj = cls(**_ALL_FIELDS)
+        updated = obj.with_updates(source="himawari9")
+        assert updated is not obj
+        assert updated.source == "himawari9"
+        assert obj.source == "goes16"
+
+    def test_no_changes_still_returns_an_equal_object(self, cls: type) -> None:
+        obj = cls(**_ALL_FIELDS)
+        assert obj.with_updates() == obj
 
 
-class TestFileMethods:
-    """Tests for File methods: freeze, with_updates, merge_metadata."""
+class TestFreezeAndThaw:
+    """Conversion between the mutable and immutable forms."""
 
-    def test_freeze_returns_frozen_file(self, full_file: File) -> None:
-        """freeze() returns a FrozenFile instance."""
-        frozen = full_file.freeze()
-        assert isinstance(frozen, FrozenFile)
+    def test_freeze_preserves_every_field(self) -> None:
+        original = File(**_ALL_FIELDS, metadata={"level": "l1b"})
+        frozen = original.freeze()
+        assert frozen.to_dict() == original.to_dict()
 
-    def test_freeze_preserves_all_fields(self, full_file: File) -> None:
-        """freeze() copies every field."""
-        frozen = full_file.freeze()
-        assert frozen.file == full_file.file
-        assert frozen.hostname == full_file.hostname
-        assert frozen.source == full_file.source
-        assert frozen.instrument == full_file.instrument
-        assert frozen.processing_stage == full_file.processing_stage
-        assert frozen.domain == full_file.domain
-        assert frozen.num_expected == full_file.num_expected
-        assert frozen.timestamp == full_file.timestamp
+    def test_thaw_preserves_every_field(self) -> None:
+        frozen = FrozenFile(**_ALL_FIELDS, metadata={"level": "l1b"})
+        assert frozen.thaw().to_dict() == frozen.to_dict()
 
-    def test_freeze_default_file(self) -> None:
-        """freeze() works on a default-constructed File."""
-        frozen = File().freeze()
-        assert frozen.file is None
-        assert frozen.num_expected == 1
+    def test_freeze_thaw_is_a_round_trip(self) -> None:
+        original = File(**_ALL_FIELDS, metadata={"level": "l1b"})
+        assert original.freeze().thaw() == original
 
-    def test_with_updates_returns_new_instance(self, minimal_file: File) -> None:
-        """with_updates returns a different object."""
-        updated = minimal_file.with_updates(hostname="newhost")
-        assert updated is not minimal_file
-        assert updated.hostname == "newhost"
-        assert minimal_file.hostname is None
+    def test_frozen_metadata_rejects_writes(self) -> None:
+        with pytest.raises(TypeError):
+            File(file=Path("/x.nc"), metadata={"a": 1}).freeze().metadata["b"] = 2
 
-    def test_with_updates_multiple_fields(self, minimal_file: File) -> None:
-        """Multiple fields can be updated at once."""
-        dt = datetime(2024, 6, 1)
-        updated = minimal_file.with_updates(
-            hostname="h1",
-            source="goes16",
-            timestamp=dt,
+    def test_freeze_snapshots_rather_than_aliases(self) -> None:
+        """Mutating the origin must not reach through to the frozen copy."""
+        original = File(file=Path("/x.nc"), metadata={"level": "l1b"})
+        frozen = original.freeze()
+
+        original.metadata["level"] = "TAMPERED"
+
+        assert dict(frozen.metadata) == {"level": "l1b"}
+
+    def test_frozen_files_are_hashable(self) -> None:
+        """Jobs hold files in a set, so FrozenFile must hash."""
+        a = FrozenFile(file=Path("/x.nc"), metadata={"k": "v"})
+        b = FrozenFile(file=Path("/x.nc"), metadata={"k": "v"})
+        assert len({a, b}) == 1
+
+
+class TestMergeMetadata:
+    """``merge_metadata`` layers metadata without overwriting what is set.
+
+    ``File`` only; ``FrozenFile`` does not expose it. Data monitors call this
+    to enrich a file from several config entries in turn, so "existing values
+    win" is the property that keeps the first match authoritative.
+    """
+
+    def test_fills_only_unset_fields(self) -> None:
+        merged = File(file=Path("/x.nc")).merge_metadata(
+            source="goes16", instrument="abi", domain="CONUS",
         )
-        assert updated.hostname == "h1"
-        assert updated.source == "goes16"
-        assert updated.timestamp == dt
-        assert updated.file == minimal_file.file
+        assert merged.source == "goes16"
+        assert merged.instrument == "abi"
+        assert merged.domain == "CONUS"
 
-    def test_with_updates_no_changes(self, full_file: File) -> None:
-        """with_updates() with no args returns equal but distinct object."""
-        updated = full_file.with_updates()
-        assert updated == full_file
-        assert updated is not full_file
+    def test_existing_values_are_preserved(self) -> None:
+        original = File(file=Path("/x.nc"), source="goes16", instrument="abi")
+        merged = original.merge_metadata(source="himawari9", instrument="ahi")
+        assert merged.source == "goes16"
+        assert merged.instrument == "abi"
 
-    # ── merge_metadata ──
+    def test_num_expected_default_is_replaceable(self) -> None:
+        """1 is the unset sentinel for num_expected, so a config may set it."""
+        assert File(file=Path("/x.nc")).merge_metadata(num_expected=16).num_expected == 16
 
-    def test_merge_fills_none_fields(self) -> None:
-        """merge_metadata sets fields that are currently None."""
-        f = File(file=Path("/tmp/f.nc"))
-        result = f.merge_metadata(
-            source="goes16",
-            instrument="abi",
-            processing_stage="l1b",
-            domain="conus",
-        )
-        assert result.source == "goes16"
-        assert result.instrument == "abi"
-        assert result.processing_stage == "l1b"
-        assert result.domain == "conus"
+    def test_explicit_num_expected_is_preserved(self) -> None:
+        original = File(file=Path("/x.nc"), num_expected=4)
+        assert original.merge_metadata(num_expected=16).num_expected == 4
 
-    def test_merge_preserves_existing_fields(self, full_file: File) -> None:
-        """merge_metadata does not overwrite existing non-None values."""
-        result = full_file.merge_metadata(
-            source="overridden",
-            instrument="overridden",
-            processing_stage="overridden",
-            domain="overridden",
-            dt=datetime(1999, 1, 1),
-        )
-        assert result.source == full_file.source
-        assert result.instrument == full_file.instrument
-        assert result.processing_stage == full_file.processing_stage
-        assert result.domain == full_file.domain
-        assert result.timestamp == full_file.timestamp
+    def test_timestamp_fills_when_unset(self) -> None:
+        moment = datetime(2023, 6, 15, 10, 30, tzinfo=UTC)
+        assert File(file=Path("/x.nc")).merge_metadata(dt=moment).timestamp == moment
 
-    @pytest.mark.parametrize(
-        ("initial_num_expected", "merge_num_expected", "expected"),
-        [
-            (1, 10, 10),   # Default is overridden by merge
-            (5, 10, 5),    # Non-default is preserved
-            (5, None, 5),  # Non-default preserved when merge is None
-            (1, None, 1),  # Default stays when merge is None
-            (1, 1, 1),     # Both default
-        ],
-    )
-    def test_merge_num_expected(
-        self,
-        initial_num_expected: int,
-        merge_num_expected: int | None,
-        expected: int,
-    ) -> None:
-        """num_expected is only updated when current value is the default (1)."""
-        f = File(num_expected=initial_num_expected)
-        result = f.merge_metadata(num_expected=merge_num_expected)
-        assert result.num_expected == expected
+    def test_timestamp_is_preserved_when_set(self) -> None:
+        kept = datetime(2023, 1, 1, tzinfo=UTC)
+        original = File(file=Path("/x.nc"), timestamp=kept)
+        other = datetime(2024, 1, 1, tzinfo=UTC)
+        assert original.merge_metadata(dt=other).timestamp == kept
 
-    def test_merge_timestamp_fills_none(self) -> None:
-        """merge_metadata sets timestamp when it's currently None."""
-        dt = datetime(2023, 7, 4, 12, 0)
-        result = File().merge_metadata(dt=dt)
-        assert result.timestamp == dt
+    def test_metadata_keys_merge_without_overwriting(self) -> None:
+        original = File(file=Path("/x.nc"), metadata={"level": "l1b"})
+        merged = original.merge_metadata(metadata={"level": "l2", "band": "13"})
+        assert merged.metadata == {"level": "l1b", "band": "13"}
 
-    def test_merge_timestamp_preserves_existing(self, full_file: File) -> None:
-        """merge_metadata preserves an existing timestamp."""
-        original_ts = full_file.timestamp
-        result = full_file.merge_metadata(dt=datetime(1999, 1, 1))
-        assert result.timestamp == original_ts
+    def test_metadata_merges_into_an_empty_dict(self) -> None:
+        merged = File(file=Path("/x.nc")).merge_metadata(metadata={"band": "13"})
+        assert merged.metadata == {"band": "13"}
 
-    def test_merge_returns_new_instance(self, minimal_file: File) -> None:
-        """merge_metadata returns a new File, not the same one."""
-        result = minimal_file.merge_metadata(source="goes16")
-        assert result is not minimal_file
+    def test_returns_a_new_object(self) -> None:
+        original = File(file=Path("/x.nc"))
+        merged = original.merge_metadata(source="goes16")
+        assert merged is not original
+        assert original.source is None
 
-    def test_merge_no_args(self, minimal_file: File) -> None:
-        """merge_metadata with no args preserves all fields."""
-        result = minimal_file.merge_metadata()
-        assert result.source is None
-        assert result.instrument is None
-        assert result.processing_stage is None
-        assert result.domain is None
-        assert result.num_expected == 1
-        assert result.timestamp is None
+    def test_no_arguments_is_a_no_op(self) -> None:
+        original = File(file=Path("/x.nc"), source="goes16")
+        assert original.merge_metadata() == original
 
     def test_with_updates_preserves_metadata(self) -> None:
-        """with_updates retains metadata when other fields are updated."""
-        f = File(file=Path("/tmp/f.nc"), metadata={"key1": "val1", "key2": 42})
-        updated = f.with_updates(source="new-source")
-        assert updated.source == "new-source"
-        assert updated.metadata == {"key1": "val1", "key2": 42}
-
-    def test_merge_metadata_with_metadata_kwarg_preserves_existing(self) -> None:
-        """merge_metadata(metadata={...}) shallow-merges: existing keys preserved, new keys added."""
-        f = File(
-            file=Path("/tmp/f.nc"),
-            source="goes16",
-            metadata={"existing": "keep", "shared": "original"},
-        )
-        result = f.merge_metadata(
-            metadata={"new_key": "added", "shared": "should-not-overwrite"},
-        )
-        assert result.source == "goes16"  # existing scalar preserved
-        assert result.metadata == {
-            "existing": "keep",
-            "shared": "original",  # NOT overwritten
-            "new_key": "added",
-        }
-
-    def test_merge_metadata_with_metadata_kwarg_on_empty_metadata(self) -> None:
-        """merge_metadata(metadata={...}) adds all keys when metadata is empty."""
-        f = File(file=Path("/tmp/f.nc"))
-        result = f.merge_metadata(metadata={"a": 1, "b": 2})
-        assert result.metadata == {"a": 1, "b": 2}
+        original = File(file=Path("/x.nc"), metadata={"level": "l1b"})
+        assert original.with_updates(source="goes16").metadata == {"level": "l1b"}
 
 
-# ─── FrozenFile creation & immutability ──────────────────────────────────────
+# ─── Property-based round-trip ──────────────────────────────────────────────
+#
+# There was no property test over File at all: timestamps were covered by
+# fourteen hand-written examples, all naive and all in one timezone, which is
+# how a timezone-normalisation bug survived.
+
+_paths = st.one_of(
+    st.none(),
+    st.builds(Path, st.from_regex(r"/[a-zA-Z0-9/\-_\.]{1,60}", fullmatch=True)),
+    st.from_regex(r"s3://[a-z0-9\-]{3,20}/[a-zA-Z0-9/\-_\.]{1,40}", fullmatch=True),
+)
+_optional_text = st.one_of(st.none(), st.from_regex(r"[a-zA-Z0-9\-]{1,20}", fullmatch=True))
+_timestamps = st.one_of(
+    st.none(),
+    st.datetimes(min_value=datetime(2000, 1, 1), max_value=datetime(2100, 1, 1)),
+    st.datetimes(
+        min_value=datetime(2000, 1, 1),
+        max_value=datetime(2100, 1, 1),
+        timezones=st.sampled_from(
+            [UTC, timezone(timedelta(hours=-6)), timezone(timedelta(hours=9))],
+        ),
+    ),
+)
 
 
-class TestFrozenFileCreation:
-    """Tests for FrozenFile creation and immutability."""
-
-    def test_default_construction(self) -> None:
-        """Default FrozenFile has all None/default values."""
-        ff = FrozenFile()
-        assert ff.file is None
-        assert ff.hostname is None
-        assert ff.source is None
-        assert ff.instrument is None
-        assert ff.processing_stage is None
-        assert ff.domain is None
-        assert ff.num_expected == 1
-        assert ff.timestamp is None
-
-    def test_full_construction(
-        self, sample_path: Path, sample_timestamp: datetime,
-    ) -> None:
-        """FrozenFile can be constructed with all fields."""
-        ff = FrozenFile(
-            file=sample_path,
-            hostname="host",
-            source="goes16",
-            instrument="abi",
-            processing_stage="l1b",
-            domain="full-disk",
-            num_expected=16,
-            timestamp=sample_timestamp,
-        )
-        assert ff.file == sample_path
-        assert ff.hostname == "host"
-        assert ff.source == "goes16"
-        assert ff.num_expected == 16
-        assert ff.timestamp == sample_timestamp
-
-    def test_immutability(self, frozen_file: FrozenFile) -> None:
-        """FrozenFile raises AttributeError on attribute assignment."""
-        with pytest.raises(AttributeError):
-            frozen_file.hostname = "new"  # type: ignore[misc]
-
-    def test_hashable(self, frozen_file: FrozenFile) -> None:
-        """Frozen dataclasses are hashable."""
-        assert isinstance(hash(frozen_file), int)
-
-    def test_usable_in_set(self, sample_path: Path) -> None:
-        """Equal FrozenFiles deduplicate in a set."""
-        ff1 = FrozenFile(file=sample_path, source="goes16")
-        ff2 = FrozenFile(file=sample_path, source="goes16")
-        ff3 = FrozenFile(file=sample_path, source="himawari9")
-        assert len({ff1, ff2, ff3}) == 2
-
-    def test_usable_as_dict_key(self, frozen_file: FrozenFile) -> None:
-        """FrozenFile can be used as a dictionary key."""
-        d = {frozen_file: "value"}
-        assert d[frozen_file] == "value"
-
-    def test_equality(self, sample_path: Path) -> None:
-        """Two FrozenFiles with identical fields are equal."""
-        ff1 = FrozenFile(file=sample_path, source="goes16")
-        ff2 = FrozenFile(file=sample_path, source="goes16")
-        assert ff1 == ff2
-
-    def test_inequality(self, sample_path: Path) -> None:
-        """Two FrozenFiles with different fields are not equal."""
-        ff1 = FrozenFile(file=sample_path, source="goes16")
-        ff2 = FrozenFile(file=sample_path, source="himawari9")
-        assert ff1 != ff2
-
-    def test_creation_from_freeze(self, full_file: File) -> None:
-        """FrozenFile created via File.freeze() matches field-by-field."""
-        frozen = full_file.freeze()
-        assert isinstance(frozen, FrozenFile)
-        assert frozen.file == full_file.file
+@pytest.mark.parametrize("cls", _TYPES, ids=_TYPE_IDS)
+@given(
+    file=_paths,
+    hostname=_optional_text,
+    source=_optional_text,
+    instrument=_optional_text,
+    processing_stage=_optional_text,
+    domain=_optional_text,
+    num_expected=st.integers(min_value=1, max_value=64),
+    timestamp=_timestamps,
+)
+@settings(max_examples=75)
+def test_round_trip_is_lossless(cls: type, **fields: object) -> None:
+    """Property: ``cls.from_string(str(obj)) == obj`` for any field values."""
+    obj = cls(**fields)
+    assert cls.from_string(str(obj)) == obj
 
 
-# ─── FrozenFile serialization ────────────────────────────────────────────────
-
-
-class TestFrozenFileSerialization:
-    """Tests for FrozenFile serialization methods."""
-
-    def test_to_dict_full(self, frozen_file: FrozenFile) -> None:
-        """to_dict returns all fields with correct keys."""
-        result = frozen_file.to_dict()
-        assert result["file"] == str(frozen_file.file)
-        assert result["hostname"] == frozen_file.hostname
-        assert result["source"] == frozen_file.source
-        assert result["instrument"] == frozen_file.instrument
-        assert result["processing_stage"] == frozen_file.processing_stage
-        assert result["domain"] == frozen_file.domain
-        assert result["num_expected"] == frozen_file.num_expected
-        assert frozen_file.timestamp is not None
-        assert result["timestamp"] == frozen_file.timestamp.isoformat()
-
-    def test_to_dict_none_values(self) -> None:
-        """to_dict returns None for unset fields."""
-        result = FrozenFile().to_dict()
-        assert result["file"] is None
-        assert result["timestamp"] is None
-
-    def test_str_returns_valid_json(self, frozen_file: FrozenFile) -> None:
-        """__str__ returns JSON matching to_dict."""
-        assert json.loads(str(frozen_file)) == frozen_file.to_dict()
-
-    def test_from_dict_with_timestamp_string(self) -> None:
-        """from_dict parses an ISO timestamp string."""
-        data = {"file": "/tmp/test.nc", "timestamp": "2023-06-15T10:30:00"}
-        ff = FrozenFile.from_dict(data)
-        assert ff.file == Path("/tmp/test.nc")
-        assert ff.timestamp == datetime(2023, 6, 15, 10, 30)
-
-    def test_from_dict_with_timestamp_object(self) -> None:
-        """from_dict accepts a datetime object directly."""
-        dt = datetime(2023, 6, 15, 10, 30)
-        ff = FrozenFile.from_dict({"file": "/tmp/test.nc", "timestamp": dt})
-        assert ff.timestamp == dt
-
-    def test_from_dict_no_timestamp(self) -> None:
-        """Missing timestamp key results in None."""
-        ff = FrozenFile.from_dict({"file": "/tmp/test.nc"})
-        assert ff.timestamp is None
-
-    def test_from_dict_none_file(self) -> None:
-        """Missing file key results in None."""
-        ff = FrozenFile.from_dict({})
-        assert ff.file is None
-
-    def test_from_dict_defaults_num_expected(self) -> None:
-        """num_expected defaults to 1 when missing."""
-        ff = FrozenFile.from_dict({"file": "/tmp/test.nc"})
-        assert ff.num_expected == 1
-
-    def test_from_dict_all_fields(self, sample_timestamp: datetime) -> None:
-        """All fields are correctly read from a dict."""
-        data = {
-            "file": "/data/test.nc",
-            "hostname": "host1",
-            "source": "himawari9",
-            "instrument": "ahi",
-            "processing_stage": "l2",
-            "domain": "full-disk",
-            "num_expected": 5,
-            "timestamp": sample_timestamp.isoformat(),
-        }
-        ff = FrozenFile.from_dict(data)
-        assert ff.file == Path("/data/test.nc")
-        assert ff.hostname == "host1"
-        assert ff.source == "himawari9"
-        assert ff.instrument == "ahi"
-        assert ff.processing_stage == "l2"
-        assert ff.domain == "full-disk"
-        assert ff.num_expected == 5
-        assert ff.timestamp == sample_timestamp
-
-    def test_from_dict_invalid_timestamp(self) -> None:
-        """Invalid timestamp string raises ValueError."""
-        with pytest.raises(ValueError):
-            FrozenFile.from_dict({"file": "/tmp/test.nc", "timestamp": "bad"})
-
-    def test_from_string(self) -> None:
-        """from_string parses JSON into a FrozenFile."""
-        data = {"file": "/tmp/test.nc", "timestamp": "2023-01-01T00:00:00"}
-        ff = FrozenFile.from_string(json.dumps(data))
-        assert ff.file == Path("/tmp/test.nc")
-        assert ff.timestamp == datetime(2023, 1, 1)
-
-    def test_from_string_invalid_json(self) -> None:
-        """Invalid JSON raises JSONDecodeError."""
-        with pytest.raises(json.JSONDecodeError):
-            FrozenFile.from_string("not json")
-
-    def test_round_trip_str_from_string(self, frozen_file: FrozenFile) -> None:
-        """str() -> from_string() round-trip preserves all fields."""
-        reconstructed = FrozenFile.from_string(str(frozen_file))
-        assert reconstructed == frozen_file
-
-    def test_round_trip_to_dict_from_dict(self, frozen_file: FrozenFile) -> None:
-        """to_dict() -> from_dict() round-trip preserves all fields."""
-        reconstructed = FrozenFile.from_dict(frozen_file.to_dict())
-        assert reconstructed == frozen_file
-
-    def test_from_dict_metadata_roundtrip(self) -> None:
-        """from_dict -> to_dict roundtrip preserves metadata."""
-        data = {
-            "file": "/tmp/test.nc",
-            "source": "goes16",
-            "metadata": {"location": "ceph-IPs", "file_name": "clavrx_goes18_20260101T120000.nc"},
-        }
-        ff = FrozenFile.from_dict(data)
-        result = ff.to_dict()
-        assert result["metadata"] == data["metadata"]
-
-
-
-# ─── FrozenFile methods ──────────────────────────────────────────────────────
-
-
-class TestFrozenFileMethods:
-    """Tests for FrozenFile methods: thaw, with_updates."""
-
-    def test_thaw_returns_file(self, frozen_file: FrozenFile) -> None:
-        """thaw() returns a mutable File."""
-        thawed = frozen_file.thaw()
-        assert isinstance(thawed, File)
-
-    def test_thaw_preserves_all_fields(self, frozen_file: FrozenFile) -> None:
-        """thaw() copies every field."""
-        thawed = frozen_file.thaw()
-        assert thawed.file == frozen_file.file
-        assert thawed.hostname == frozen_file.hostname
-        assert thawed.source == frozen_file.source
-        assert thawed.instrument == frozen_file.instrument
-        assert thawed.processing_stage == frozen_file.processing_stage
-        assert thawed.domain == frozen_file.domain
-        assert thawed.num_expected == frozen_file.num_expected
-        assert thawed.timestamp == frozen_file.timestamp
-
-    def test_thaw_result_is_mutable(self, frozen_file: FrozenFile) -> None:
-        """A thawed file can be mutated."""
-        thawed = frozen_file.thaw()
-        thawed.hostname = "modified"
-        assert thawed.hostname == "modified"
-
-    def test_with_updates_returns_new_instance(
-        self, frozen_file: FrozenFile,
-    ) -> None:
-        """with_updates returns a distinct FrozenFile."""
-        updated = frozen_file.with_updates(hostname="updated")
-        assert updated is not frozen_file
-        assert isinstance(updated, FrozenFile)
-        assert updated.hostname == "updated"
-        assert frozen_file.hostname != "updated"
-
-    def test_with_updates_no_changes(self, frozen_file: FrozenFile) -> None:
-        """with_updates() with no args returns equal but distinct instance."""
-        updated = frozen_file.with_updates()
-        assert updated == frozen_file
-        assert updated is not frozen_file
-
-    def test_freeze_thaw_roundtrip(self, full_file: File) -> None:
-        """freeze() -> thaw() round-trip preserves all fields."""
-        assert full_file.freeze().thaw() == full_file
-
-    def test_thaw_freeze_roundtrip(self, frozen_file: FrozenFile) -> None:
-        """thaw() -> freeze() round-trip preserves all fields."""
-        assert frozen_file.thaw().freeze() == frozen_file
-
-    def test_freeze_metadata_immutable(self) -> None:
-        """FrozenFile.metadata is wrapped with MappingProxyType and cannot be mutated."""
-        f = File(file=Path("/tmp/f.nc"), metadata={"key": "value"})
-        frozen = f.freeze()
-        # Access works
-        assert frozen.metadata == {"key": "value"}
-        # Mutation should raise TypeError (mappingproxy is immutable)
-        with pytest.raises(TypeError):
-            frozen.metadata["new"] = "value"  # type: ignore[index]
-
-    def test_thaw_metadata_mutable(self) -> None:
-        """thaw() copies metadata to a regular mutable dict."""
-        f = File(file=Path("/tmp/f.nc"), metadata={"key": "value"})
-        frozen = f.freeze()
-        thawed = frozen.thaw()
-        assert thawed.metadata == {"key": "value"}
-        # Should be mutable
-        thawed.metadata["new"] = "added"
-        assert thawed.metadata == {"key": "value", "new": "added"}
-
-    def test_freeze_with_metadata_roundtrip(self) -> None:
-        """Freeze -> thaw roundtrip preserves metadata."""
-        original = File(
-            file=Path("/tmp/f.nc"),
-            source="goes16",
-            metadata={"k1": "v1", "k2": 42},
-        )
-        restored = original.freeze().thaw()
-        assert restored == original
-        assert restored.metadata == original.metadata
-
-
-# ─── build_timestamp_from_components ─────────────────────────────────────────
+@pytest.mark.parametrize("cls", _TYPES, ids=_TYPE_IDS)
+@given(timestamp=_timestamps)
+@settings(max_examples=50)
+def test_timestamps_are_always_utc_aware(cls: type, timestamp: datetime | None) -> None:
+    """Property: a stored timestamp is aware UTC whatever form it arrived in."""
+    stored = cls(file=Path("/x.nc"), timestamp=timestamp).timestamp
+    if timestamp is None:
+        assert stored is None
+    else:
+        assert stored is not None
+        assert stored.tzinfo is not None
+        assert stored.utcoffset() == timedelta(0)
 
 
 class TestBuildTimestampFromComponents:
@@ -769,22 +357,22 @@ class TestBuildTimestampFromComponents:
             # YYYY/MM/DD with time
             (
                 dict(yyyy="2023", mm="01", dd="01", hh="12", nn="30"),
-                datetime(2023, 1, 1, 12, 30),
+                datetime(2023, 1, 1, 12, 30, tzinfo=UTC),
             ),
             # YYYY/MM/DD without time (defaults to 00:00)
             (
                 dict(yyyy="2023", mm="06", dd="15"),
-                datetime(2023, 6, 15, 0, 0),
+                datetime(2023, 6, 15, 0, 0, tzinfo=UTC),
             ),
             # YYYY/JJJ
             (
                 dict(yyyy="2023", jjj="001"),
-                datetime(2023, 1, 1),
+                datetime(2023, 1, 1, tzinfo=UTC),
             ),
             # YYYY/JJJ with time
             (
                 dict(yyyy="2023", jjj="032", hh="08", nn="45"),
-                datetime(2023, 2, 1, 8, 45),
+                datetime(2023, 2, 1, 8, 45, tzinfo=UTC),
             ),
             # Insufficient: YYYY only
             (dict(yyyy="2023"), None),
@@ -809,7 +397,7 @@ class TestBuildTimestampFromComponents:
         result = build_timestamp_from_components(
             yyyy="2023", mm="06", dd="15", jjj="001",
         )
-        assert result == datetime(2023, 1, 1)
+        assert result == datetime(2023, 1, 1, tzinfo=UTC)
 
     def test_default_hour_minute_are_zero(self) -> None:
         """Hour and minute default to 0 when not provided."""
@@ -859,13 +447,13 @@ class TestExtractDatetimeFromRegex:
             r"_(?P<HH>\d{2})(?P<NN>\d{2})"
         )
         result = extract_datetime_from_regex(pattern, "data_20230615_1430.nc")
-        assert result == datetime(2023, 6, 15, 14, 30)
+        assert result == datetime(2023, 6, 15, 14, 30, tzinfo=UTC)
 
     def test_yyyy_jjj_named_groups(self) -> None:
         """YYYY + JJJ named groups produce the correct date."""
         pattern = r"s(?P<YYYY>\d{4})(?P<JJJ>\d{3})"
         result = extract_datetime_from_regex(pattern, "s2023001_file.nc")
-        assert result == datetime(2023, 1, 1)
+        assert result == datetime(2023, 1, 1, tzinfo=UTC)
 
     def test_unnamed_groups_no_extraction(self) -> None:
         """Unnamed capture groups are ignored."""
@@ -890,7 +478,7 @@ class TestExtractDatetimeFromRegex:
         pattern = r"(?P<JJJ>\d{3})"
         manual = {"YYYY": "2023"}
         result = extract_datetime_from_regex(pattern, "day001.nc", manual)
-        assert result == datetime(2023, 1, 1)
+        assert result == datetime(2023, 1, 1, tzinfo=UTC)
 
     def test_regex_overrides_manual_components(self) -> None:
         """Regex-captured values take precedence over manual components."""
@@ -904,20 +492,20 @@ class TestExtractDatetimeFromRegex:
         """Manual components alone (no regex match) can build a datetime."""
         manual = {"YYYY": "2023", "MM": "01", "DD": "15", "HH": "10", "NN": "30"}
         result = extract_datetime_from_regex(r"no_match", "file.nc", manual)
-        assert result == datetime(2023, 1, 15, 10, 30)
+        assert result == datetime(2023, 1, 15, 10, 30, tzinfo=UTC)
 
     def test_empty_manual_components(self) -> None:
         """Empty manual dict behaves like no manual components."""
         pattern = r"(?P<YYYY>\d{4})(?P<MM>\d{2})(?P<DD>\d{2})"
         result = extract_datetime_from_regex(pattern, "20230615.nc", {})
-        assert result == datetime(2023, 6, 15)
+        assert result == datetime(2023, 6, 15, tzinfo=UTC)
 
     def test_mixed_regex_and_manual(self) -> None:
         """Time from regex, date from manual components."""
         pattern = r"_(?P<HH>\d{2})(?P<NN>\d{2})"
         manual = {"YYYY": "2023", "MM": "06", "DD": "15"}
         result = extract_datetime_from_regex(pattern, "data_1430.nc", manual)
-        assert result == datetime(2023, 6, 15, 14, 30)
+        assert result == datetime(2023, 6, 15, 14, 30, tzinfo=UTC)
 
     def test_optional_group_not_matched(self) -> None:
         """Named groups present in pattern but not matched are skipped."""
@@ -934,7 +522,7 @@ class TestExtractDatetimeFromRegex:
         """Explicit None for manual_components works like omitting it."""
         pattern = r"(?P<YYYY>\d{4})(?P<JJJ>\d{3})"
         result = extract_datetime_from_regex(pattern, "s2023001.nc", None)
-        assert result == datetime(2023, 1, 1)
+        assert result == datetime(2023, 1, 1, tzinfo=UTC)
 
 
 # ─── Legacy alias removal ────────────────────────────────────────────────────

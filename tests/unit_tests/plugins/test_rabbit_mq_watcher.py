@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import queue
 from datetime import datetime
+from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,6 +16,7 @@ from courier.plugins.classes.data_monitors.rabbit_mq_watcher import (
     _parse_regex,
     _parse_user_at_host_colon_path,
 )
+from courier.types.file import File
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -212,28 +215,38 @@ class TestLifecycle:
 class TestRateLimit:
     """Tests for the optional rate limiting feature."""
 
+    @staticmethod
+    def _stop_after(plugin: RabbitMQWatcher, count: int):
+        """Return a ``queue.get`` replacement that stops the plugin after *count*.
+
+        Driving termination off the number of files *delivered* rather than a
+        fixed-length ``is_set`` side_effect list keeps these tests independent
+        of how many times ``find_file`` happens to poll the stop event -- the
+        inner loop polls it once per empty read, so a fixed list breaks the
+        moment that polling changes.
+        """
+        delivered = 0
+
+        def _get(*_args: object, **_kwargs: object):
+            nonlocal delivered
+            if delivered >= count:
+                plugin._stop_event.set()
+                raise queue.Empty
+            file = File(file=Path(f"/tmp/f{delivered + 1}.txt"), hostname="h1")
+            delivered += 1
+            return file
+
+        return _get
+
     def test_rate_limit_throttles_yields(self, mock_service: MagicMock) -> None:
         """Verify that find_file() respects the configured rate limit."""
-        import queue
-        from pathlib import Path
-        from unittest.mock import patch
-
-        from courier.types.file import File
-
         plugin = RabbitMQWatcher(mock_service, _make_config(rate_limit_per_second=2.0))
-
-        files = [
-            File(file=Path("/tmp/f1.txt"), hostname="h1"),
-            File(file=Path("/tmp/f2.txt"), hostname="h1"),
-            File(file=Path("/tmp/f3.txt"), hostname="h1"),
-        ]
 
         # Patch _listen_to_broker to a no-op so the background thread does
         # not race with the main thread on _stop_event.is_set().
         with (
             patch.object(plugin, "_listen_to_broker"),
-            patch.object(plugin._stop_event, "is_set", side_effect=[False, False, False, True]),
-            patch.object(queue.Queue, "get", side_effect=files),
+            patch.object(queue.Queue, "get", self._stop_after(plugin, 3)),
             patch("time.sleep") as mock_sleep,
             patch("time.monotonic", side_effect=[0.0, 0.0, 0.5, 0.5, 1.0, 1.0]),
         ):
@@ -247,26 +260,39 @@ class TestRateLimit:
 
     def test_rate_limit_disabled_skips_sleep(self, mock_service: MagicMock) -> None:
         """Verify that disabled rate limit (0.0) does not call sleep."""
-        import queue
-        from pathlib import Path
-        from unittest.mock import patch
-
-        from courier.types.file import File
-
         plugin = RabbitMQWatcher(mock_service, _make_config(rate_limit_per_second=0.0))
-
-        files = [
-            File(file=Path("/tmp/f1.txt"), hostname="h1"),
-            File(file=Path("/tmp/f2.txt"), hostname="h1"),
-        ]
 
         with (
             patch.object(plugin, "_listen_to_broker"),
-            patch.object(plugin._stop_event, "is_set", side_effect=[False, False, True]),
-            patch.object(queue.Queue, "get", side_effect=files),
+            patch.object(queue.Queue, "get", self._stop_after(plugin, 2)),
             patch("time.sleep") as mock_sleep,
         ):
             result = list(plugin.find_file())
 
         assert len(result) == 2
         mock_sleep.assert_not_called()
+
+    def test_find_file_returns_when_stop_event_set(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """An idle queue must not trap find_file() in its inner poll loop.
+
+        Regression guard: the inner ``while`` around ``file_queue.get`` used to
+        loop unconditionally, so a monitor with nothing to read never observed
+        ``stop()`` and its non-daemon thread wedged interpreter shutdown.
+        """
+        plugin = RabbitMQWatcher(mock_service, _make_config())
+
+        # find_file() clears the event on entry, so signal the stop from the
+        # queue read -- i.e. exactly when a real idle monitor would see it.
+        def _empty_then_stop(*_args: object, **_kwargs: object):
+            plugin._stop_event.set()
+            raise queue.Empty
+
+        with (
+            patch.object(plugin, "_listen_to_broker"),
+            patch.object(queue.Queue, "get", _empty_then_stop),
+        ):
+            assert list(plugin.find_file()) == []
+        assert plugin.health is False

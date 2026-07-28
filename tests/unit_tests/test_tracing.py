@@ -218,34 +218,57 @@ class TestW3CPropagation:
     # fail-safe extraction
     # -----------------------------------------------------------------------
 
-    def test_extract_empty_headers_returns_empty_context(self) -> None:
-        """Empty headers produce an empty Context, not a crash."""
-        ctx = extract_context({})
-        assert ctx is not None
+    # ``extract_context`` returns an empty ``Context()`` on every failure path,
+    # so it can never return None. Asserting ``ctx is not None`` therefore
+    # passed whatever the function did -- including returning the wrong trace.
+    # These assert on the span context actually carried by the result.
 
-    def test_extract_missing_traceparent(self) -> None:
-        """Headers with no traceparent yield empty Context."""
-        ctx = extract_context({"tracestate": "foo=bar"})
-        assert ctx is not None
+    @staticmethod
+    def _span_context(headers: dict[str, str]):
+        from opentelemetry import trace
 
-    def test_extract_garbage_traceparent(self) -> None:
-        """Garbage traceparent value does not crash (fail-safe)."""
-        ctx = extract_context({"traceparent": "not-a-valid-traceparent"})
-        assert ctx is not None
+        return trace.get_current_span(extract_context(headers)).get_span_context()
 
-    def test_extract_truncated_traceparent(self) -> None:
-        """Too-short traceparent value is handled gracefully."""
-        ctx = extract_context({"traceparent": "00-abc-def-01"})
-        assert ctx is not None
+    def test_extract_empty_headers_yields_no_parent_span(self) -> None:
+        """Empty headers must produce an invalid (absent) span context."""
+        assert self._span_context({}).is_valid is False
 
-    def test_extract_valid_looking_traceparent(self) -> None:
-        """Well-formed traceparent extracts a span context."""
-        ctx = extract_context(
+    def test_extract_missing_traceparent_yields_no_parent_span(self) -> None:
+        """tracestate alone carries no parent; the span must stay invalid."""
+        assert self._span_context({"tracestate": "foo=bar"}).is_valid is False
+
+    def test_extract_garbage_traceparent_is_rejected(self) -> None:
+        """A malformed header must be discarded, not partially believed."""
+        span_context = self._span_context({"traceparent": "not-a-valid-traceparent"})
+        assert span_context.is_valid is False
+        assert span_context.trace_id == 0
+
+    def test_extract_truncated_traceparent_is_rejected(self) -> None:
+        span_context = self._span_context({"traceparent": "00-abc-def-01"})
+        assert span_context.is_valid is False
+        assert span_context.trace_id == 0
+
+    def test_extract_valid_traceparent_recovers_the_ids(self) -> None:
+        """The whole point: a job's trace must continue across the broker."""
+        span_context = self._span_context(
             {
                 "traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
-            }
+            },
         )
-        assert ctx is not None
+        assert span_context.is_valid is True
+        assert f"{span_context.trace_id:032x}" == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        assert f"{span_context.span_id:016x}" == "bbbbbbbbbbbbbbbb"
+        assert span_context.trace_flags.sampled is True
+
+    def test_extract_respects_the_sampled_flag(self) -> None:
+        """A parent that opted out of sampling must not be resampled in."""
+        span_context = self._span_context(
+            {
+                "traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-00",
+            },
+        )
+        assert span_context.is_valid is True
+        assert span_context.trace_flags.sampled is False
 
 
 # ---------------------------------------------------------------------------
@@ -302,10 +325,42 @@ class TestConfigValidation:
     """Tests for tracing-related ServiceConfig validation."""
 
     @pytest.mark.parametrize("rate", [0.0, 0.5, 1.0])
-    def test_sample_rate_in_range(self, rate: float) -> None:
-        """Valid sample rates create a ServiceConfig without error."""
-        config = ServiceConfig(tracing_sample_rate=rate)
-        assert config.tracing_sample_rate == rate
+    def test_sample_rate_in_range_is_accepted(self, rate: float) -> None:
+        """Valid sample rates construct without error.
+
+        Deliberately does not assert ``config.tracing_sample_rate == rate`` —
+        that a frozen dataclass returns the float it was handed is a property
+        of dataclasses, not of courier. The contract here is that
+        ``__post_init__`` accepts the value; the boundary tests below cover
+        rejection, and ``test_sample_rate_selects_the_sampler`` covers use.
+        """
+        ServiceConfig(tracing_sample_rate=rate)
+
+    def test_sample_rate_selects_the_sampler(self) -> None:
+        """The rate must actually reach the OpenTelemetry sampler.
+
+        A stored-but-unused value is the failure this guards: 1.0 installs an
+        always-on sampler, anything lower a ratio-based one.
+        """
+        from opentelemetry.sdk.trace.sampling import (
+            ALWAYS_ON,
+            ParentBased,
+            TraceIdRatioBased,
+        )
+
+        from courier.tracing import init_tracing, reset_tracing
+
+        reset_tracing()
+        try:
+            init_tracing(ServiceConfig(tracing_sample_rate=0.25))
+            import courier.tracing as tracing_module
+
+            sampler = tracing_module._tracer_provider.sampler
+            assert isinstance(sampler, ParentBased)
+            assert isinstance(sampler._root, TraceIdRatioBased)
+            assert sampler._root.rate == 0.25
+        finally:
+            reset_tracing()
 
     def test_sample_rate_below_zero_raises(self) -> None:
         """Negative sample rate raises ConfigurationError."""

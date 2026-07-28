@@ -89,7 +89,12 @@ class TestGetExecutionLog:
         assert isinstance(logs[0], ExecutionLog)
         assert logs[0].return_code == 0
         assert logs[0].stdout == "hi"
+
+        # The rendered script is the thing that actually runs on a cluster;
+        # asserting only that execute_bash_script was called would pass with
+        # an unrendered template or the wrong file substituted in.
         execute.assert_called_once()
+        assert execute.call_args.kwargs["script_body"] == "echo /tmp/a.nc"
 
     def test_empty_files_returns_empty(
         self,
@@ -191,10 +196,12 @@ class TestGetExecutionLog:
             "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
             side_effect=fake_execute,
         )
-        job = make_job(files=(make_frozen_file(),))
+        job = make_job(files=(make_frozen_file(file=Path("/tmp/single.nc")),))
         plugin.get_execution_log(job)
         assert len(captured_body) == 1
-        assert captured_body[0] != ""
+        # Non-empty is not enough: an unrendered template is also non-empty.
+        assert captured_body[0] == "echo /tmp/single.nc"
+        assert "{{" not in captured_body[0], "template left unrendered"
 
     def test_multi_file_rendering(
         self,

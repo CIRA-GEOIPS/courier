@@ -102,5 +102,45 @@ class TestFindFile:
             "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
             return_value=observer_instance,
         )
-        with pytest.raises(RuntimeError, match="does not exist"):
+        with pytest.raises(RuntimeError, match="Cannot watch directory"):
             next(plugin.find_file())
+
+    def test_missing_directory_raised_from_schedule(
+        self, mock_service: MagicMock, tmp_path: Path, mocker
+    ) -> None:
+        """schedule(), not start(), is what raises on a missing directory.
+
+        Regression guard: the try block used to wrap start() only, so an
+        OSError from schedule() escaped as a bare watchdog error rather than
+        the plugin's own message.
+        """
+        plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
+        observer_instance = MagicMock()
+        observer_instance.schedule.side_effect = OSError("no such directory")
+        mocker.patch(
+            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
+            return_value=observer_instance,
+        )
+        with pytest.raises(RuntimeError, match="Cannot watch directory"):
+            next(plugin.find_file())
+
+    def test_find_file_returns_when_stop_event_set(
+        self, mock_service: MagicMock, tmp_path: Path, mocker
+    ) -> None:
+        """An idle watch directory must not block find_file() forever.
+
+        Regression guard: the loop used to call a bare blocking
+        ``file_queue.get()``, so a monitor watching a quiet directory never
+        observed stop() and wedged interpreter shutdown.
+        """
+        plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
+        observer_instance = MagicMock()
+        mocker.patch(
+            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
+            return_value=observer_instance,
+        )
+        plugin._stop_event.set()
+
+        assert list(plugin.find_file()) == []
+        observer_instance.stop.assert_called_once()
+        observer_instance.join.assert_called_once()

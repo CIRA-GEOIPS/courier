@@ -75,13 +75,11 @@ def _service(broker_yaml: str) -> ServiceConfigModel:
 class TestAmqpBrokerConfig:
     """Tests for the AMQP transport configuration."""
 
-    def test_minimal_construction(self) -> None:
+    def test_defaults_produce_a_usable_amqp_url(self) -> None:
+        """Defaults are only interesting via the URL a broker receives."""
         cfg = AmqpBrokerConfig(**_MINIMAL_AMQP)
-        assert cfg.transport == "amqp"
-        assert cfg.port == 5672
-        assert cfg.vhost == "/"
-        assert cfg.ssl is False
-        assert cfg.max_retries == 5
+        assert cfg.to_url() == "amqp://u:p@rabbit:5672/"
+        assert cfg.transport == "amqp"  # drives the discriminated union
 
     def test_to_url_default_vhost(self) -> None:
         cfg = AmqpBrokerConfig(**_MINIMAL_AMQP)
@@ -102,10 +100,6 @@ class TestAmqpBrokerConfig:
     def test_to_url_ssl_custom_port(self) -> None:
         cfg = AmqpBrokerConfig(**_MINIMAL_AMQP, ssl=True, port=5671)
         assert cfg.to_url() == "amqps://u:p@rabbit:5671/"
-
-    def test_custom_max_retries(self) -> None:
-        cfg = AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=0)
-        assert cfg.max_retries == 0
 
     def test_port_boundaries(self) -> None:
         assert AmqpBrokerConfig(**_MINIMAL_AMQP, port=1).port == 1
@@ -129,10 +123,25 @@ class TestAmqpBrokerConfig:
         cfg = AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=-1)
         assert cfg.max_retries == -1
 
-    def test_max_retries_accepts_zero(self) -> None:
-        """0 is valid: no retries."""
+    def test_max_retries_zero_still_makes_one_attempt(self) -> None:
+        """0 is accepted, and must mean "try once", never "never call it".
+
+        Asserting only that the model stored 0 said nothing about behaviour:
+        the retry decorator used to treat 0 as "skip the call entirely" and
+        return None, leaving the broker connection silently unestablished.
+        """
+        from courier.utils.decorators import retry_with_backoff
+
         cfg = AmqpBrokerConfig(**_MINIMAL_AMQP, max_retries=0)
-        assert cfg.max_retries == 0
+        calls: list[int] = []
+
+        @retry_with_backoff(max_retries=cfg.max_retries, base_delay=0)
+        def _connect() -> str:
+            calls.append(1)
+            return "connected"
+
+        assert _connect() == "connected"
+        assert len(calls) == 1
 
     def test_empty_host_rejected(self) -> None:
         with pytest.raises(ValidationError, match="host"):
@@ -182,8 +191,21 @@ class TestAmqpBrokerConfig:
         assert cfg.password == "p"
 
     def test_password_with_special_characters(self) -> None:
+        """A password with reserved characters must survive URL parsing.
+
+        Asserting the raw secret appears verbatim in the URL would pin the old
+        bug: unescaped ``/`` or ``#`` makes the parser read part of the
+        password as a host and port. What matters is that a client reading the
+        URL recovers the original credentials.
+        """
+        import kombu
+
         cfg = AmqpBrokerConfig(host="h", username="u", password="p@ss:w/rd")
-        assert "p@ss:w/rd" in cfg.to_url()
+        conn = kombu.Connection(cfg.to_url())
+
+        assert conn.password == "p@ss:w/rd"
+        assert conn.userid == "u"
+        assert conn.hostname == "h"
 
     def test_ipv4_host(self) -> None:
         cfg = AmqpBrokerConfig(host="192.168.1.1", username="u", password="p")

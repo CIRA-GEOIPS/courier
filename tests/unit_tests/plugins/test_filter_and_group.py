@@ -143,13 +143,13 @@ class TestBuilder:
         mocker.patch.object(builder, "_state", PluginRunState.RUNNING)
         assert builder.is_healthy() is True
 
-    def test_reap_group_bumps_overflow_counter(
+    def test_reap_group_retires_the_emitted_job(
         self,
         mock_service: MagicMock,
         make_frozen_file,
         mocker,
     ) -> None:
-        """_reap_group bumps _overflow_counters for popped job's base ID."""
+        """_reap_group clears the open-job pointer for the popped job's bucket."""
         builder = FilterAndGroupJobBuilder(
             mock_service,
             {
@@ -163,20 +163,21 @@ class TestBuilder:
         job = JobCls(name=group.name, identifier="jid_overflow_3", config={})
         job.add_file(make_frozen_file())
         group.jobs["jid_overflow_3"] = job
+        group._open_job_ids["jid"] = "jid_overflow_3"
 
         emit = mocker.patch.object(builder, "emit")
         builder._reap_group(group)
         emit.assert_called_once()
         assert "jid_overflow_3" not in group.jobs
-        assert group._overflow_counters["jid"] == 1
+        assert "jid" not in group._open_job_ids
 
-    def test_pop_ready_jobs_bumps_overflow_counter(
+    def test_pop_ready_jobs_retires_the_emitted_job(
         self,
         mock_service: MagicMock,
         make_frozen_file,
         mocker,
     ) -> None:
-        """_pop_ready_jobs bumps _overflow_counters for popped job's base ID."""
+        """_pop_ready_jobs clears the open-job pointer for the popped job."""
         builder = FilterAndGroupJobBuilder(
             mock_service, {"files_per_job": 1},
         )
@@ -185,11 +186,37 @@ class TestBuilder:
         job = JobCls(name=group.name, identifier="bucket_42", config={})
         job.add_file(make_frozen_file())
         group.jobs["bucket_42"] = job
+        group._open_job_ids["bucket_42"] = "bucket_42"
 
         mocker.patch.object(builder, "emit")
         builder._pop_ready_jobs(group, [job])
         assert "bucket_42" not in group.jobs
-        assert group._overflow_counters["bucket_42"] == 1
+        assert "bucket_42" not in group._open_job_ids
+
+    def test_emitted_bucket_does_not_recycle_its_job_id(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+        mocker,
+    ) -> None:
+        """A refilled bucket must get a new identifier, not the emitted one.
+
+        Regression guard: reusing the ID makes the dispatcher's dedupe LRU
+        treat the second job as a duplicate and drop it silently.
+        """
+        builder = FilterAndGroupJobBuilder(mock_service, {"files_per_job": 1})
+        group = builder.job_groups[0]
+        mocker.patch.object(builder, "emit")
+
+        first = make_frozen_file()
+        group.add_file(first)
+        (bucket_id,) = list(group.jobs)
+        builder._pop_ready_jobs(group, [group.jobs[bucket_id]])
+
+        group.add_file(make_frozen_file())
+        (second_id,) = list(group.jobs)
+
+        assert second_id != bucket_id
 
 
 # ─── _file_matches_filters ───────────────────────────────────────────────────

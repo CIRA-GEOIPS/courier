@@ -153,8 +153,38 @@ def test_prune_apply_deletes_orphans(
             ],
         )
     assert result.exit_code == 0, result.output
-    channel.queue_delete.assert_called_once_with("ns-JobReady-ghost")
+    # if_empty=True by default: an orphan holding queued jobs is reported
+    # rather than silently discarded.
+    channel.queue_delete.assert_called_once_with("ns-JobReady-ghost", if_empty=True)
     assert "deleted:  ns-JobReady-ghost" in result.output
+
+
+def test_prune_force_deletes_non_empty_queues(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """``--force`` opts out of the if_empty guard for a deliberate purge."""
+    channel = MagicMock()
+    conn = MagicMock()
+    conn.channel.return_value.__enter__.return_value = channel
+    conn_cls = MagicMock()
+    conn_cls.return_value.__enter__.return_value = conn
+
+    with patch("courier.cli.queues.Connection", conn_cls):
+        result = runner.invoke(
+            queues_app,
+            [
+                "prune",
+                "--config",
+                str(config_file),
+                "--candidate",
+                "ns-JobReady-ghost",
+                "--apply",
+                "--force",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    channel.queue_delete.assert_called_once_with("ns-JobReady-ghost", if_empty=False)
 
 
 def test_prune_from_file(
