@@ -8,7 +8,6 @@
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],
-	"containerEnv": {"PLUGINIFY_REBUILD_REGISTRIES": "1", "PLUGINIFY_NAMESPACE": "runcourier.dev.plugin_packages"},
 	"runArgs": [
 		"--network=courier_testing"
 	],

@@ -67,7 +67,6 @@ class Dispatcher(ServicePlugin):
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
-        # pluginify registration path: instantiated with only a module (or nothing).
         if identifier is None:
             raise ValueError(
                 f"Dispatcher {type(self).__name__} requires an identifier "

@@ -327,6 +327,7 @@ source_paths = ["src/courier"]
 only_mutate = [
     "src/courier/types/*",
     "src/courier/routing/*",
+    "src/courier/interfaces/*",
     "src/courier/interfaces/module_based/*",
     "src/courier/utils/*",
     "src/courier/broker/*",
