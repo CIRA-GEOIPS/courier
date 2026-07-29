@@ -9,13 +9,16 @@ import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
-from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import (
     FatalBrokerError,
     InvalidPluginConfigError,
     TransientBrokerError,
+)
+from courier.interfaces.discovery import (
+    ENTRY_POINT_PREFIX,
+    ClassPluginRegistry,
 )
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
@@ -663,15 +666,10 @@ class JobBuilder(ServicePlugin):
         )
 
 
-class JobBuilderInterface(BaseClassInterface):
-    """Interface for courier job builder plugins."""
-
-    name: ClassVar[str] = "job_builders"
-    plugin_class: ClassVar[type] = JobBuilder
-    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
-    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # ignoring odd capitalization to match Kubernetes apiVersion conventions
-    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
-
-
-job_builders = JobBuilderInterface()
+#: Registry of job builder plugins, read from the ``courier.job_builders``
+#: entry-point group. Hands back classes; ``PluginManager`` constructs them.
+job_builders = ClassPluginRegistry(
+    name="job_builders",
+    group=f"{ENTRY_POINT_PREFIX}.job_builders",
+    expected_base=JobBuilder,
+)

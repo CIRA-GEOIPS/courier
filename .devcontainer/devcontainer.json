@@ -4,7 +4,7 @@
 {
 	"name": "courier Devcontainer",
 	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
-	"postCreateCommand": "pip install -e .[doc,lint,test] && pluginify create",
+	"postCreateCommand": "pip install -e .[doc,lint,test]",
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],

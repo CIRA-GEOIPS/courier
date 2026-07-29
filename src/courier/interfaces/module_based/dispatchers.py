@@ -10,7 +10,6 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
-from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import (
     DISPATCHER_QUEUE,
@@ -19,6 +18,10 @@ from courier.constants import (
     job_ready_queue_for,
 )
 from courier.errors import CourierError
+from courier.interfaces.discovery import (
+    ENTRY_POINT_PREFIX,
+    ClassPluginRegistry,
+)
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
@@ -388,15 +391,10 @@ class Dispatcher(ServicePlugin):
         }
 
 
-class DispatcherInterface(BaseClassInterface):
-    """Interface for courier dispatcher plugins."""
-
-    name: ClassVar[str] = "dispatchers"
-    plugin_class: ClassVar[type] = Dispatcher
-    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
-    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # ignoring odd capitalization to match Kubernetes apiVersion conventions
-    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
-
-
-dispatchers = DispatcherInterface()
+#: Registry of dispatcher plugins, read from the ``courier.dispatchers``
+#: entry-point group. Hands back classes; ``PluginManager`` constructs them.
+dispatchers = ClassPluginRegistry(
+    name="dispatchers",
+    group=f"{ENTRY_POINT_PREFIX}.dispatchers",
+    expected_base=Dispatcher,
+)

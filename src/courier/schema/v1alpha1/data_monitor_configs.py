@@ -316,7 +316,7 @@ class Spec(BaseModel):
 
     file_metadata: Annotated[
         dict[str, FileMetadataEntry],
-        Field(alias="file-metadata", min_length=1),
+        Field(min_length=1),
     ]
 
     @field_validator("file_metadata", mode="before")
@@ -341,48 +341,28 @@ class Spec(BaseModel):
 
 
 class DataMonitorConfig(BaseModel):
-    """Root configuration model for data monitor YAML files."""
+    """A named set of filename-to-metadata rules.
+
+    Declared in Python and registered under the ``courier.data_monitor_configs``
+    entry-point group; a data monitor names one in its ``metadata-tools`` list.
+
+    These configs used to be YAML plugin files, which is why this model once
+    carried an ``apiVersion`` / ``interface`` / ``family`` / ``kind`` /
+    ``description`` / ``docstring`` envelope. Nothing ever read those six
+    fields — :func:`courier.utils.metadata.apply_metadata_from_configs` uses
+    :attr:`spec` and nothing else — and the entry-point group now supplies the
+    interface, so they are gone. Human-readable description belongs in the
+    declaring module's docstring.
+
+    ``extra="forbid"``: a config is data, and a mistyped key here fails
+    silently at match time rather than loudly at import.
+    """
 
     model_config = ConfigDict(
-        extra="allow",
+        extra="forbid",
         str_strip_whitespace=True,
         populate_by_name=True,
     )
 
-    api_version: Annotated[
-        str,
-        Field(
-            alias="apiVersion",
-            pattern=r"^runcourier\.dev/v[0-9]+(alpha[0-9]+|beta[0-9]+)?$",
-        ),
-    ]
-    interface: Annotated[str, Field(pattern=r"^data_monitor_configs$")]
-    family: Annotated[str, Field(pattern=r"^standard$")]
-    kind: Annotated[str, Field(pattern=r"^data_monitor_config$")] = (
-        "data_monitor_config"
-    )
     name: str
-    description: str
-    docstring: str
     spec: Spec
-
-    @field_validator("name", mode="after")
-    @classmethod
-    def lowercase_name(cls, value: str) -> str:
-        """Convert name to lowercase."""
-        return value.lower()
-
-    @field_validator("description", mode="after")
-    @classmethod
-    def validate_description_format(cls, value: str) -> str:
-        """Validate description starts with capital and ends with period."""
-        if not value:
-            msg = "description cannot be empty"
-            raise ValueError(msg)
-        if not value[0].isupper():
-            msg = "description must start with a capital letter"
-            raise ValueError(msg)
-        if not value.endswith("."):
-            msg = "description must end with a period"
-            raise ValueError(msg)
-        return value

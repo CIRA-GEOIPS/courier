@@ -27,8 +27,9 @@ from courier.schema.v1alpha1.service_config import ServiceConfigModel
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from pluginify.interfaces.base import BaseClassInterface, BaseYamlInterface
     from pydantic import BaseModel
+
+    from courier.interfaces.discovery import ClassPluginRegistry
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -68,7 +69,7 @@ KIND_MAPPING: dict[str, tuple[str, str]] = {
     "dispatchers": ("Dispatcher", "dispatcher"),
 }
 
-PLUGIN_REGISTRIES: dict[str, BaseYamlInterface | BaseClassInterface] = {
+PLUGIN_REGISTRIES: dict[str, ClassPluginRegistry] = {
     "data_monitors": data_monitors,
     "dispatchers": dispatchers,
     "job_builders": job_builders,
@@ -383,7 +384,7 @@ def prompt_category(
     table.add_column("Name", style="cyan")
     table.add_column("Description", style="dim")
     for number, plugin in enumerate(plugins, start=1):
-        desc = get_plugin_description(type(plugin)) or "(no description)"
+        desc = get_plugin_description(plugin) or "(no description)"
         if len(desc) > _MAX_DESC_LENGTH:
             desc = desc[: _MAX_DESC_LENGTH - _TRUNCATE_THRESHOLD] + "..."
         table.add_row(str(number), plugin.name, desc)
@@ -421,7 +422,7 @@ def prompt_category(
         console.print(f"  [green]✓[/green] [cyan]{matched.name}[/cyan]")
 
         # Discover the companion Config model
-        config_model = find_config_model(type(matched))
+        config_model = find_config_model(matched)
 
         # Prompt for config values
         config_values: dict[str, Any] = {}
@@ -433,7 +434,7 @@ def prompt_category(
 
         selections.append(
             PluginSelection(
-                plugin_class=type(matched),
+                plugin_class=matched,
                 plugin_name=matched.name,
                 interface_kind=kind_name,
                 yaml_kind=yaml_kind,

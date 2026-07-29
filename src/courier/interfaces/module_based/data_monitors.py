@@ -8,17 +8,19 @@ import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
-from pluginify.interfaces.base import BaseClassInterface
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import CourierError
+from courier.interfaces.discovery import (
+    ENTRY_POINT_PREFIX,
+    ClassPluginRegistry,
+)
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DATA_MONITOR_FILES_PROCESSED,
     DATA_MONITOR_LAST_PROCESSED_TIMESTAMP,
     collect_labeled,
 )
-from courier.schema import DataMonitorConfig
 from courier.tracing import (
     ATTR_FILE_HOSTNAME,
     ATTR_FILE_PATH,
@@ -70,8 +72,10 @@ class DataMonitorBasePlugin(ServicePlugin):
         # importing here to prevent circular import
         from courier.interfaces import data_monitor_configs  # noqa: PLC0415
 
+        # Already validated DataMonitorConfig instances -- the registry
+        # constructs them at import time.
         self.metadata_matchers = [
-            DataMonitorConfig(**data_monitor_configs.get_plugin(tool))
+            data_monitor_configs.get_plugin(tool)
             for tool in self.config.get("metadata-tools", [])
         ]
 
@@ -241,15 +245,10 @@ class DataMonitorBasePlugin(ServicePlugin):
         return result
 
 
-class DataMonitorInterface(BaseClassInterface):
-    """Interface for courier data monitor plugins."""
-
-    name: ClassVar[str] = "data_monitors"
-    plugin_class: ClassVar[type] = DataMonitorBasePlugin
-    required_args: ClassVar[dict[str, list[str]]] = {"standard": []}
-    required_kwargs: ClassVar[dict[str, list[str]]] = {"standard": []}
-    # ignoring odd capitalization to match Kubernetes apiVersion conventions
-    apiVersion: ClassVar[str] = "runcourier.dev/v1alpha1"  # noqa: N815
-
-
-data_monitors = DataMonitorInterface()
+#: Registry of data monitor plugins, read from the ``courier.data_monitors``
+#: entry-point group. Hands back classes; ``PluginManager`` constructs them.
+data_monitors = ClassPluginRegistry(
+    name="data_monitors",
+    group=f"{ENTRY_POINT_PREFIX}.data_monitors",
+    expected_base=DataMonitorBasePlugin,
+)

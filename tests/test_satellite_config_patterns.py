@@ -41,7 +41,7 @@ def _abi_filename(product: str, channel: int, satellite: str) -> str:
 
 
 def _load(name: str) -> DataMonitorConfig:
-    return DataMonitorConfig(**data_monitor_configs.get_plugin(name))
+    return data_monitor_configs.get_plugin(name)
 
 
 def _satellite_code(config_name: str) -> str:
