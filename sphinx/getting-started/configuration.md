@@ -370,11 +370,12 @@ the YAML keys under `spec.run[]` -- the short, unique names like
 `watch` or `dispatch`. Do not use plugin class names such as
 `file_system_poller_watchdog` or `serial_bash`.
 
-**`data_monitor_configs` identifiers are excluded.** Step identifiers
-that belong to `data_monitor_configs` (inline configuration templates)
-cannot be used with `--only`. The flag controls runtime plugins
-(`data_monitor`, `job_builder`, `dispatcher`), not YAML metadata
-configs.
+**Only runnable kinds may appear in `spec.run`.** Those are
+`data_monitor`, `job_builder`, and `dispatcher`. Metadata configs are
+not pipeline steps -- a data monitor names them in its
+`metadata-tools` list. Any other `kind` is rejected at startup rather
+than skipped, so a typo cannot produce a service that runs and
+processes nothing.
 
 **Avoid duplicate dispatchers.** A dispatcher consumes jobs from a
 shared queue. Running the same dispatcher identifier in two containers

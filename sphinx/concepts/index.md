@@ -18,4 +18,5 @@ adr/0004-frozen-file-mutable-file-split
 adr/0005-segregated-plugin-protocols
 adr/0006-dispatcher-routing
 adr/0007-behavioural-test-strategy
+adr/0008-entry-point-plugin-discovery
 ```
