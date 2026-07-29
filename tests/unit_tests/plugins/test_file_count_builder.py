@@ -118,6 +118,3 @@ class TestConstructor:
         builder = FileCountBuilder(mock_service, {})
         assert len(builder.job_groups) == 1
 
-    def test_module_init_short_circuits(self) -> None:
-        builder = FileCountBuilder(None, None)
-        assert not hasattr(builder, "job_groups")

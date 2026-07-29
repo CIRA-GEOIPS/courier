@@ -7,7 +7,6 @@ import queue
 import re
 import threading
 import time
-import types
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -343,13 +342,11 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = RabbitMQWatcherConfig.model_validate(config or {})
         self.health = False
 
@@ -718,5 +715,3 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         finally:
             self.health = False
 
-
-PLUGIN_CLASS = RabbitMQWatcher

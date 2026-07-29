@@ -14,7 +14,6 @@ import contextlib
 import fnmatch
 import threading
 import time
-import types
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -92,13 +91,11 @@ class SftpPoller(DataMonitorBasePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict[str, Any] | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = SftpPollerConfig.model_validate(config or {})
         self._seen: BoundedSeenSet[str] = BoundedSeenSet(self.validated.max_seen_files)
         self._stop_event = threading.Event()
@@ -360,5 +357,3 @@ class SftpPoller(DataMonitorBasePlugin):
             self._disconnect()
             self.health = False
 
-
-PLUGIN_CLASS = SftpPoller

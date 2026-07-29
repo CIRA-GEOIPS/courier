@@ -72,11 +72,6 @@ class TestConstructor:
         assert plugin._client is None
         assert plugin._sftp is None
 
-    def test_module_init_short_circuits(self) -> None:
-        plugin = SftpPoller(None, None)
-        assert not hasattr(plugin, "validated")
-
-
 # ─── URIs and patterns ──────────────────────────────────────────────────────
 
 

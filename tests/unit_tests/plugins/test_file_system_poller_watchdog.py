@@ -30,12 +30,6 @@ class TestConstructor:
         assert plugin.path_to_watch == str(tmp_path)
         assert plugin.health is False
 
-    def test_module_init_short_circuits(self) -> None:
-        """Plugin must not error when service is None (registration path)."""
-        plugin = FileSystemPoller(None, None)
-        # No path_to_watch set when service is None — registration mode
-        assert not hasattr(plugin, "path_to_watch")
-
     def test_missing_path_in_config_raises(self, mock_service: MagicMock) -> None:
         with pytest.raises(pydantic.ValidationError):
             FileSystemPoller(mock_service, {})

@@ -17,7 +17,6 @@ import json
 import queue
 import threading
 import time
-import types
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -112,13 +111,11 @@ class KafkaConsumer(DataMonitorBasePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict[str, Any] | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = KafkaConsumerConfig.model_validate(config or {})
         self.field_map = {**_DEFAULT_FIELD_MAP, **self.validated.field_map}
         self._stop_event = threading.Event()
@@ -381,5 +378,3 @@ class KafkaConsumer(DataMonitorBasePlugin):
         finally:
             self.health = False
 
-
-PLUGIN_CLASS = KafkaConsumer

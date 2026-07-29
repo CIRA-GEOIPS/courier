@@ -9,7 +9,6 @@ no route are counted as unmatched and dropped.
 from __future__ import annotations
 
 import threading
-import types
 from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -135,13 +134,11 @@ class MetadataRouterBuilder(JobBuilder):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated_config = MetadataRouterConfig.model_validate(config or {})
 
         self.job_groups = [
@@ -304,5 +301,3 @@ class MetadataRouterBuilder(JobBuilder):
                 job_builder_identifier=self.identifier,
             ).inc()
 
-
-PLUGIN_CLASS = MetadataRouterBuilder

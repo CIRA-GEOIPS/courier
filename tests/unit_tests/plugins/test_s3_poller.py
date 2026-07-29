@@ -70,11 +70,6 @@ class TestConstructor:
         assert plugin.health is False
         assert plugin.validated.bucket == "test-bucket"
 
-    def test_module_init_short_circuits(self) -> None:
-        plugin = S3Poller(None, None)
-        assert not hasattr(plugin, "validated")
-
-
 # ─── _matches_suffix ────────────────────────────────────────────────────────
 
 

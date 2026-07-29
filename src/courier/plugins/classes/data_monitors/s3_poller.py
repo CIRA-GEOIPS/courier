@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import threading
 import time
-import types
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -89,13 +88,11 @@ class S3Poller(DataMonitorBasePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict[str, Any] | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = S3PollerConfig.model_validate(config or {})
         self._seen: BoundedSeenSet[str] = BoundedSeenSet(self.validated.max_seen_keys)
         self._stop_event = threading.Event()
@@ -258,5 +255,3 @@ class S3Poller(DataMonitorBasePlugin):
         ).inc()
         return True
 
-
-PLUGIN_CLASS = S3Poller

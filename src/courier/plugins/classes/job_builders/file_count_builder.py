@@ -8,7 +8,6 @@ per-job timeout driven by :class:`Job.is_old`.
 
 from __future__ import annotations
 
-import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import jinja2
@@ -157,18 +156,14 @@ class FileCountBuilder(JobBuilder):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated_config = FileCountBuilderConfig.model_validate(config or {})
         self._logger.debug(
             f"Initializing FileCountBuilder with config {self.validated_config}",
         )
         self.job_groups = [FileCountJobGroup(self.validated_config)]
 
-
-PLUGIN_CLASS = FileCountBuilder

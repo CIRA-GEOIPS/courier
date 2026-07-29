@@ -111,10 +111,6 @@ class TestBuilder:
         builder = FilterAndGroupJobBuilder(mock_service, {})
         assert builder._reaper_thread is None
 
-    def test_module_init_short_circuits(self) -> None:
-        builder = FilterAndGroupJobBuilder(None, None)
-        assert not hasattr(builder, "validated_config")
-
     def test_reap_group_emits_and_removes(
         self, mock_service: MagicMock, make_frozen_file, mocker
     ) -> None:
