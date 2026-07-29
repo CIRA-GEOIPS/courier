@@ -57,6 +57,7 @@ concepts/index
 :caption: Contribute
 
 contribute/code-style
+contribute/writing-a-plugin
 ```
 
 ```{toctree}

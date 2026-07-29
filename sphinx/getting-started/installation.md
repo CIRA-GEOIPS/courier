@@ -91,7 +91,7 @@ python -c "import courier; print(courier.__version__)"
 **List available plugins:**
 
 ```
-python -c "from courier.interfaces import data_monitor_configs; print(data_monitor_configs.get_plugins())"
+courier plugins list
 ```
 
 You should see output without errors.
