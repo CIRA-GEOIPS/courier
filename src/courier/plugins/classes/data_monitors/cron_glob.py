@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import threading
 import time
-import types
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
@@ -119,13 +118,11 @@ class CronGlob(DataMonitorBasePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict[str, Any] | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         validated = CronGlobConfig.model_validate(config or {})
         # expanduser() so "~/data" behaves the way operators (and the
         # quick-start guide) expect rather than looking for a literal "~" dir.
@@ -250,5 +247,3 @@ class CronGlob(DataMonitorBasePlugin):
                 return True
         return False
 
-
-PLUGIN_CLASS = CronGlob

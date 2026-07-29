@@ -16,7 +16,6 @@ import socket
 import subprocess
 import threading
 import time
-import types
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -100,13 +99,11 @@ class SlurmDispatcher(Dispatcher):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict[str, Any] | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = SlurmDispatcherConfig.model_validate(config or {})
         self._slot_semaphore = threading.Semaphore(self.validated.max_concurrent_jobs)
         self._template = jinja2.Environment(autoescape=False).from_string(  # noqa: S701
@@ -385,5 +382,3 @@ class SlurmDispatcher(Dispatcher):
                     dispatcher_identifier=self.identifier,
                 ).dec()
 
-
-PLUGIN_CLASS = SlurmDispatcher

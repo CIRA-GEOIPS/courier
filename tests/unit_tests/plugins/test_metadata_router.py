@@ -81,10 +81,6 @@ class TestBuilder:
         )
         assert builder._has_timeout is True
 
-    def test_module_init_short_circuits(self) -> None:
-        builder = MetadataRouterBuilder(None, None)
-        assert not hasattr(builder, "job_groups")
-
     def test_reap_group_emits_ready(
         self, mock_service: MagicMock, make_frozen_file, mocker
     ) -> None:

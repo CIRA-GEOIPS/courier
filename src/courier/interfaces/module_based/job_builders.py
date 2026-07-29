@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
-import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
@@ -86,13 +85,11 @@ class JobBuilder(ServicePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         # pluginify registration path: instantiated with only a module (or nothing).
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.identifier = identifier or self.name
@@ -124,10 +121,6 @@ class JobBuilder(ServicePlugin):
         self._files_per_job = JOB_BUILDER_FILES_PER_JOB
         self._jobs_emitted = JOB_BUILDER_JOBS_EMITTED
         self._emit_failures = JOB_BUILDER_EMIT_FAILURES
-
-    def call(self) -> None:
-        """Plugins are driven by start()/stop(); call() is not used at runtime."""
-        raise NotImplementedError("Job builder plugins are invoked via start().")
 
     # ------------------------------------------------------------------
     # Lifecycle

@@ -35,10 +35,6 @@ class TestConstructor:
         assert isinstance(plugin.validated, SerialBashConfig)
         assert plugin.validated.bash_script == "echo {{ files[0].file }}"
 
-    def test_module_init_short_circuits(self) -> None:
-        plugin = SerialBashDispatcher(None, None)
-        assert not hasattr(plugin, "validated")
-
     def test_missing_bash_script_raises(self, mock_service: MagicMock) -> None:
         with pytest.raises(pydantic.ValidationError):
             SerialBashDispatcher(mock_service, {}, identifier="test-disp")

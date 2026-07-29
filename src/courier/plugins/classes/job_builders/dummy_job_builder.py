@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import types
 from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import BaseModel, Field
@@ -151,7 +150,7 @@ class DummyJobBuilder(JobBuilder):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
@@ -167,8 +166,6 @@ class DummyJobBuilder(JobBuilder):
             Run-step identifier from the service YAML (optional).
         """
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         cfg = config or {}
         self.validated = DummyJobBuilderConfig.model_validate(cfg)
         self.config = cfg
@@ -197,5 +194,3 @@ class DummyJobBuilder(JobBuilder):
         self._logger.debug("DummyJobBuilder handling incoming files")
         return super().handle_incoming_files()
 
-
-PLUGIN_CLASS = DummyJobBuilder

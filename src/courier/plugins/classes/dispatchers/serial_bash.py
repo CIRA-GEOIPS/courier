@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re as _re
 import socket
-import types
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -221,13 +220,11 @@ class SerialBashDispatcher(Dispatcher):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = SerialBashConfig.model_validate(config or {})
         self._template = jinja2.Environment(
             undefined=jinja2.DebugUndefined,
@@ -356,5 +353,3 @@ class SerialBashDispatcher(Dispatcher):
                 ),
             ]
 
-
-PLUGIN_CLASS = SerialBashDispatcher

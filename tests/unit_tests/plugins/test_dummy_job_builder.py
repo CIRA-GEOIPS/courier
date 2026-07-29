@@ -50,10 +50,6 @@ class TestDummyJobBuilder:
         builder = DummyJobBuilder(mock_service, {})
         assert builder.is_healthy() is True
 
-    def test_module_init_short_circuits(self) -> None:
-        builder = DummyJobBuilder(None, None)
-        assert not hasattr(builder, "job_groups")
-
     def test_process_job_group_removes_ready_job(
         self, mock_service: MagicMock, make_frozen_file
     ) -> None:

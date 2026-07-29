@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 import time
-import types
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
@@ -49,14 +48,10 @@ class DataMonitorBasePlugin(ServicePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
-        # pluginify registration path: instantiated with only a module (or nothing).
-        # Skip runtime setup; metadata collection reads class attributes directly.
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.identifier = identifier or self.name
@@ -80,10 +75,6 @@ class DataMonitorBasePlugin(ServicePlugin):
         ]
 
         self._files_processed = DATA_MONITOR_FILES_PROCESSED
-
-    def call(self) -> None:
-        """Plugins are driven by start()/stop(); call() is not used at runtime."""
-        raise NotImplementedError("Data monitor plugins are invoked via start().")
 
     def find_file(self) -> Generator[File, None, None]:
         """Yield File objects."""

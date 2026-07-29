@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
-import types
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -64,13 +63,11 @@ class Dispatcher(ServicePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         # pluginify registration path: instantiated with only a module (or nothing).
-        if service is None or isinstance(service, types.ModuleType):
-            return
         if identifier is None:
             raise ValueError(
                 f"Dispatcher {type(self).__name__} requires an identifier "
@@ -107,10 +104,6 @@ class Dispatcher(ServicePlugin):
         # duplicates; cross-replica strict dedupe is opt-in via state sync.
         # Thread-safe: only touched by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[str, None] = OrderedDict()
-
-    def call(self) -> None:
-        """Plugins are driven by start()/stop(); call() is not used at runtime."""
-        raise NotImplementedError("Dispatcher plugins are invoked via start().")
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""

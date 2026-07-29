@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import queue
-import types
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -44,13 +43,11 @@ class FileSystemPoller(DataMonitorBasePlugin):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = FileSystemPollerConfig.model_validate(config or {})
         self.health = False
         # expanduser() so "~/data" in a config behaves the way operators expect
@@ -133,5 +130,3 @@ class FileSystemPoller(DataMonitorBasePlugin):
             observer.stop()
             observer.join()
 
-
-PLUGIN_CLASS = FileSystemPoller

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import socket
-import types
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -222,13 +221,11 @@ class ParallelBashDispatcher(Dispatcher):
 
     def __init__(
         self,
-        service: Service | types.ModuleType | None = None,
+        service: Service,
         config: dict[str, Any] | None = None,
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        if service is None or isinstance(service, types.ModuleType):
-            return
         self.validated = ParallelBashConfig.model_validate(config or {})
         self._template = jinja2.Environment(
             undefined=jinja2.DebugUndefined,
@@ -398,5 +395,3 @@ class ParallelBashDispatcher(Dispatcher):
 
             return logs
 
-
-PLUGIN_CLASS = ParallelBashDispatcher
