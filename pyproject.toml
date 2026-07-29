@@ -152,6 +152,46 @@ lzl = "courier.cli.app:app"
 [tool.poetry.plugins."runcourier.dev.plugin_packages"]
 "courier" = "courier"
 
+# ---------------------------------------------------------------------------
+# Plugin declarations
+#
+# One entry-point group per interface. The key is the plugin name operators
+# write in a service config; the value points at the plugin class. Courier
+# reads these with importlib.metadata (see courier.interfaces.discovery) — no
+# filesystem scan and no registry cache.
+#
+# These tables are duplicated under [project.entry-points."courier.*"] at the
+# bottom of this file. That is deliberate: `requires = ["poetry-core>=1.0.0"]`
+# permits poetry-core 1.x, which ignores [project] entirely, so a release built
+# by either backend version must still ship every plugin. The duplication is
+# checked by test_pyproject_tables_agree — do not edit one table alone.
+#
+# Adding a plugin requires reinstalling, because entry points live in installed
+# distribution metadata. test_declared_plugins_are_installed catches a stale
+# editable install; test_plugin_classes_on_disk_are_declared catches a plugin
+# nobody declared.
+# ---------------------------------------------------------------------------
+
+[tool.poetry.plugins."courier.data_monitors"]
+cron_glob = "courier.plugins.classes.data_monitors.cron_glob:CronGlob"
+file_system_poller_watchdog = "courier.plugins.classes.data_monitors.file_system_poller_watchdog:FileSystemPoller"
+kafka_consumer = "courier.plugins.classes.data_monitors.kafka_consumer:KafkaConsumer"
+rabbit_mq_watcher = "courier.plugins.classes.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
+s3_poller = "courier.plugins.classes.data_monitors.s3_poller:S3Poller"
+sftp_poller = "courier.plugins.classes.data_monitors.sftp_poller:SftpPoller"
+
+[tool.poetry.plugins."courier.job_builders"]
+DummyJobBuilder = "courier.plugins.classes.job_builders.dummy_job_builder:DummyJobBuilder"
+file_count_builder = "courier.plugins.classes.job_builders.file_count_builder:FileCountBuilder"
+filter_and_group = "courier.plugins.classes.job_builders.filter_and_group:FilterAndGroupJobBuilder"
+metadata_router = "courier.plugins.classes.job_builders.metadata_router:MetadataRouterBuilder"
+
+[tool.poetry.plugins."courier.dispatchers"]
+http_dispatcher = "courier.plugins.classes.dispatchers.http_dispatcher:HttpDispatcher"
+parallel_bash = "courier.plugins.classes.dispatchers.parallel_bash:ParallelBashDispatcher"
+serial_bash = "courier.plugins.classes.dispatchers.serial_bash:SerialBashDispatcher"
+slurm_dispatcher = "courier.plugins.classes.dispatchers.slurm_dispatcher:SlurmDispatcher"
+
 [tool.poetry.urls]
 Homepage = "https://github.com/biosafetylvl5/courier"
 Issues = "https://github.com/biosafetylvl5/courier/issues"
@@ -382,6 +422,38 @@ line-ending = "lf"
 name = "runcourier"
 version = "1.0.0-alpha.12"
 requires-python = ">=3.11,<3.15"
+
+# Mirror of the [tool.poetry.plugins.*] tables above. Both are declared so the
+# plugins ship whichever poetry-core major builds the wheel: 1.x ignores
+# [project] and reads [tool.poetry.plugins], while 2.x reads [project] and
+# ignores [tool.poetry.plugins] *entirely* — the tables are alternatives, not
+# additive, so a group present in only one silently disappears on one backend.
+# Kept in sync by test_pyproject_tables_agree.
+
+# Removed in the same change that removes pluginify; mirrored here meanwhile so
+# the 2.x build does not drop it.
+[project.entry-points."runcourier.dev.plugin_packages"]
+courier = "courier"
+
+[project.entry-points."courier.data_monitors"]
+cron_glob = "courier.plugins.classes.data_monitors.cron_glob:CronGlob"
+file_system_poller_watchdog = "courier.plugins.classes.data_monitors.file_system_poller_watchdog:FileSystemPoller"
+kafka_consumer = "courier.plugins.classes.data_monitors.kafka_consumer:KafkaConsumer"
+rabbit_mq_watcher = "courier.plugins.classes.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
+s3_poller = "courier.plugins.classes.data_monitors.s3_poller:S3Poller"
+sftp_poller = "courier.plugins.classes.data_monitors.sftp_poller:SftpPoller"
+
+[project.entry-points."courier.job_builders"]
+DummyJobBuilder = "courier.plugins.classes.job_builders.dummy_job_builder:DummyJobBuilder"
+file_count_builder = "courier.plugins.classes.job_builders.file_count_builder:FileCountBuilder"
+filter_and_group = "courier.plugins.classes.job_builders.filter_and_group:FilterAndGroupJobBuilder"
+metadata_router = "courier.plugins.classes.job_builders.metadata_router:MetadataRouterBuilder"
+
+[project.entry-points."courier.dispatchers"]
+http_dispatcher = "courier.plugins.classes.dispatchers.http_dispatcher:HttpDispatcher"
+parallel_bash = "courier.plugins.classes.dispatchers.parallel_bash:ParallelBashDispatcher"
+serial_bash = "courier.plugins.classes.dispatchers.serial_bash:SerialBashDispatcher"
+slurm_dispatcher = "courier.plugins.classes.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
