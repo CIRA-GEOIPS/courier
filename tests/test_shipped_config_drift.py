@@ -12,6 +12,8 @@ either one.
 
 from __future__ import annotations
 
+import tomllib
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import pytest
@@ -162,3 +164,168 @@ def test_shipped_config_filters_reference_real_file_fields(
                 )
 
     assert not problems, "\n".join(problems)
+
+
+# ---------------------------------------------------------------------------
+# Entry-point declarations
+#
+# Plugins are declared in pyproject.toml and read from installed distribution
+# metadata. Three things can drift apart: the two toml tables, the toml and the
+# installed metadata, and the metadata and the plugin classes on disk. Each has
+# a silent failure mode, so each gets a guard.
+# ---------------------------------------------------------------------------
+
+_PYPROJECT = _REPO_ROOT / "pyproject.toml"
+
+#: Entry-point groups courier reads for plugins, mapped to the interface base
+#: class each member must subclass.
+_PLUGIN_GROUPS = (
+    "courier.data_monitors",
+    "courier.job_builders",
+    "courier.dispatchers",
+)
+
+
+def _pyproject() -> dict:
+    with _PYPROJECT.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def _declared_entry_points(table: str) -> dict[str, dict[str, str]]:
+    """Return ``{group: {name: target}}`` from one pyproject table.
+
+    *table* is ``"poetry"`` for ``[tool.poetry.plugins.*]`` or ``"project"``
+    for ``[project.entry-points.*]``.
+    """
+    data = _pyproject()
+    if table == "poetry":
+        return data["tool"]["poetry"].get("plugins", {})
+    return data["project"].get("entry-points", {})
+
+
+def test_pyproject_declares_plugin_groups() -> None:
+    """Guard the guard: a renamed table would make every check below vacuous."""
+    poetry = _declared_entry_points("poetry")
+    assert set(_PLUGIN_GROUPS) <= set(poetry), sorted(poetry)
+
+
+def test_pyproject_tables_agree() -> None:
+    """``[tool.poetry.plugins]`` and ``[project.entry-points]`` must match.
+
+    The two tables are alternatives, not additive: poetry-core 1.x ignores
+    ``[project]`` and reads the poetry table, while 2.x reads ``[project]`` and
+    ignores the poetry table *entirely*. A group declared in only one therefore
+    vanishes from wheels built by the other backend — which is exactly what
+    happened to ``runcourier.dev.plugin_packages`` when these tables were first
+    added, taking plugin discovery down with it.
+    """
+    poetry = _declared_entry_points("poetry")
+    project = _declared_entry_points("project")
+
+    assert set(poetry) == set(project), (
+        f"groups only in [tool.poetry.plugins]: {sorted(set(poetry) - set(project))}; "
+        f"only in [project.entry-points]: {sorted(set(project) - set(poetry))}"
+    )
+    for group in sorted(poetry):
+        assert poetry[group] == project[group], f"{group} differs between tables"
+
+
+@pytest.mark.parametrize("group", _PLUGIN_GROUPS)
+def test_declared_plugins_are_installed(group: str) -> None:
+    """Everything declared in pyproject must be in the installed metadata.
+
+    Entry points are read from the installed distribution, not the source tree,
+    so a plugin added to pyproject stays invisible until the package is
+    reinstalled. Without this guard the symptom is a config that validates and
+    then resolves nothing.
+    """
+    declared = set(_declared_entry_points("project")[group])
+    installed = {ep.name for ep in entry_points(group=group)}
+
+    missing = declared - installed
+    assert not missing, (
+        f"{group}: {sorted(missing)} declared in pyproject.toml but missing "
+        f"from installed metadata.\nRe-run:  pip install -e ."
+    )
+
+
+@pytest.mark.parametrize("group", _PLUGIN_GROUPS)
+def test_installed_plugins_are_declared(group: str) -> None:
+    """The reverse: nothing may linger in metadata that pyproject dropped."""
+    declared = set(_declared_entry_points("project")[group])
+    installed = {ep.name for ep in entry_points(group=group)}
+
+    stale = installed - declared
+    assert not stale, (
+        f"{group}: {sorted(stale)} present in installed metadata but no longer "
+        f"declared in pyproject.toml.\nRe-run:  pip install -e ."
+    )
+
+
+@pytest.mark.parametrize("group", _PLUGIN_GROUPS)
+def test_every_declared_plugin_loads_to_its_class(group: str) -> None:
+    """Each entry point must resolve to a class whose ``name`` matches its key.
+
+    Three separate silent failures live here. A typo'd module path or a renamed
+    class makes ``courier run`` resolve nothing for that plugin. A ``name``
+    ClassVar disagreeing with the entry-point key is worse: discovery succeeds,
+    but ``PluginManager`` registers the plugin under the class's own name, so
+    queue names and metrics label it differently from the config that asked for
+    it.
+    """
+    interface = group.removeprefix("courier.")
+    problems: list[str] = []
+
+    for entry_point in entry_points(group=group):
+        try:
+            loaded = entry_point.load()
+        except Exception as exc:  # noqa: BLE001 - reported, not handled
+            problems.append(f"{entry_point.name}: {entry_point.value} -> {exc!r}")
+            continue
+        if not isinstance(loaded, type):
+            problems.append(f"{entry_point.name}: {loaded!r} is not a class")
+            continue
+        if loaded.name != entry_point.name:
+            problems.append(
+                f"{entry_point.name}: class declares name={loaded.name!r}",
+            )
+        if loaded.interface != interface:
+            problems.append(
+                f"{entry_point.name}: class declares interface="
+                f"{loaded.interface!r}, expected {interface!r}",
+            )
+
+    assert not problems, "\n".join(problems)
+
+
+def test_plugin_classes_on_disk_are_declared() -> None:
+    """Every plugin module in the package must be declared as an entry point.
+
+    Discovery used to scan the filesystem, so dropping a file into
+    ``plugins/classes/`` was enough. Entry points are explicit, which is the
+    point — but it means a new plugin can be written, imported, tested in
+    isolation, and still be invisible to ``courier run``. This is the guard that
+    turns that into a failed test instead of a silent no-op.
+    """
+    plugin_root = _REPO_ROOT / "src" / "courier" / "plugins" / "classes"
+    declared_targets = {
+        target.split(":")[0]
+        for group in _PLUGIN_GROUPS
+        for target in _declared_entry_points("project")[group].values()
+    }
+
+    undeclared: list[str] = []
+    for path in sorted(plugin_root.rglob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        module = ".".join(
+            ("courier", "plugins", "classes", path.parent.name, path.stem),
+        )
+        if module not in declared_targets:
+            undeclared.append(module)
+
+    assert not undeclared, (
+        "plugin modules with no entry point declaration:\n"
+        + "\n".join(undeclared)
+        + "\nDeclare each in both pyproject.toml tables, then reinstall."
+    )
