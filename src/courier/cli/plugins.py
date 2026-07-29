@@ -29,9 +29,9 @@ if TYPE_CHECKING:
     )
     from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
-#: Shown when no service config supplies one. Previously this was
-#: pluginify's internal namespace ("runcourier.dev.plugin_packages"), which
-#: named an implementation detail rather than anything an operator set.
+#: Shown when no service config supplies one. This used to display the
+#: plugin-registry namespace, which named an implementation detail rather
+#: than anything an operator had set.
 DEFAULT_NAMESPACE = "courier"
 
 plugins_app = typer.Typer(

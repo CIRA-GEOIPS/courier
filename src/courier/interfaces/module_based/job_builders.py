@@ -89,7 +89,6 @@ class JobBuilder(ServicePlugin):
         config: dict | None = None,
         identifier: str | None = None,
     ) -> None:
-        # pluginify registration path: instantiated with only a module (or nothing).
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.identifier = identifier or self.name
