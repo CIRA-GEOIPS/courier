@@ -21,7 +21,6 @@ classifiers = [
 ]
 
 include = [
-    "src/courier/plugins/**/*.yaml",
     "src/courier/py.typed",
 ]
 
@@ -32,7 +31,6 @@ redis = { version = ">=4.0", optional = true }  # Required for HA state sync
 rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
-pluginify = "*"
 prometheus-client = "*"
 pydantic = "*"
 kombu = "*"
@@ -149,9 +147,6 @@ all-dispatchers = ["httpx"]
 courier = "courier.cli.app:app"
 lzl = "courier.cli.app:app"
 
-[tool.poetry.plugins."runcourier.dev.plugin_packages"]
-"courier" = "courier"
-
 # ---------------------------------------------------------------------------
 # Plugin declarations
 #
@@ -192,6 +187,15 @@ parallel_bash = "courier.plugins.classes.dispatchers.parallel_bash:ParallelBashD
 serial_bash = "courier.plugins.classes.dispatchers.serial_bash:SerialBashDispatcher"
 slurm_dispatcher = "courier.plugins.classes.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
+[tool.poetry.plugins."courier.data_monitor_configs"]
+gk2a_ami = "courier.plugins.configs.data_monitor_configs.gk2a_ami:CONFIG"
+goes16_abi = "courier.plugins.configs.data_monitor_configs.goes16_abi:CONFIG"
+goes18_abi = "courier.plugins.configs.data_monitor_configs.goes18_abi:CONFIG"
+goes19_abi = "courier.plugins.configs.data_monitor_configs.goes19_abi:CONFIG"
+himawari9_ahi = "courier.plugins.configs.data_monitor_configs.himawari9_ahi:CONFIG"
+meteosat10_seviri = "courier.plugins.configs.data_monitor_configs.meteosat10_seviri:CONFIG"
+meteosat9_seviri = "courier.plugins.configs.data_monitor_configs.meteosat9_seviri:CONFIG"
+
 [tool.poetry.urls]
 Homepage = "https://github.com/biosafetylvl5/courier"
 Issues = "https://github.com/biosafetylvl5/courier/issues"
@@ -215,10 +219,6 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = "croniter.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "pluginify.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -407,6 +407,9 @@ ban-relative-imports = "all"
 "__init__.py" = ["F401"]
 # Docstring RST tables exceed line length; cannot be wrapped
 "src/courier/plugins/classes/dispatchers/serial_bash.py" = ["E501"]
+# Metadata configs are data. A filename regex is one atomic token -- wrapping it
+# means editing the pattern, which is how ABI channels 7-10 got dropped once.
+"src/courier/plugins/configs/data_monitor_configs/*.py" = ["E501"]
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
@@ -430,11 +433,6 @@ requires-python = ">=3.11,<3.15"
 # additive, so a group present in only one silently disappears on one backend.
 # Kept in sync by test_pyproject_tables_agree.
 
-# Removed in the same change that removes pluginify; mirrored here meanwhile so
-# the 2.x build does not drop it.
-[project.entry-points."runcourier.dev.plugin_packages"]
-courier = "courier"
-
 [project.entry-points."courier.data_monitors"]
 cron_glob = "courier.plugins.classes.data_monitors.cron_glob:CronGlob"
 file_system_poller_watchdog = "courier.plugins.classes.data_monitors.file_system_poller_watchdog:FileSystemPoller"
@@ -454,6 +452,15 @@ http_dispatcher = "courier.plugins.classes.dispatchers.http_dispatcher:HttpDispa
 parallel_bash = "courier.plugins.classes.dispatchers.parallel_bash:ParallelBashDispatcher"
 serial_bash = "courier.plugins.classes.dispatchers.serial_bash:SerialBashDispatcher"
 slurm_dispatcher = "courier.plugins.classes.dispatchers.slurm_dispatcher:SlurmDispatcher"
+
+[project.entry-points."courier.data_monitor_configs"]
+gk2a_ami = "courier.plugins.configs.data_monitor_configs.gk2a_ami:CONFIG"
+goes16_abi = "courier.plugins.configs.data_monitor_configs.goes16_abi:CONFIG"
+goes18_abi = "courier.plugins.configs.data_monitor_configs.goes18_abi:CONFIG"
+goes19_abi = "courier.plugins.configs.data_monitor_configs.goes19_abi:CONFIG"
+himawari9_ahi = "courier.plugins.configs.data_monitor_configs.himawari9_ahi:CONFIG"
+meteosat10_seviri = "courier.plugins.configs.data_monitor_configs.meteosat10_seviri:CONFIG"
+meteosat9_seviri = "courier.plugins.configs.data_monitor_configs.meteosat9_seviri:CONFIG"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

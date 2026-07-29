@@ -56,14 +56,9 @@ _PLUGIN_MODULE = textwrap.dedent(
 
 
     CONFIG = DataMonitorConfig(
-        apiVersion="runcourier.dev/v1alpha1",
-        interface="data_monitor_configs",
-        family="standard",
         name="third_party_config",
-        description="A config shipped by someone other than courier.",
-        docstring="Matches nothing in particular.\n",
         spec={
-            "file-metadata": {
+            "file_metadata": {
                 "entry": {
                     "source": "somewhere",
                     "date": r".*s(?P<YYYY>\d{4})(?P<JJJ>\d{3}).*",

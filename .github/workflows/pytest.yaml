@@ -21,11 +21,6 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -e .[test]
           python3 -m pip install pytest
-      - name: Create Registries
-        run: |
-          export PLUGINIFY_REBUILD_REGISTRIES=0
-          export PLUGINIFY_NAMESPACE=runcourier.dev.plugin_packages
-          pluginify create
       - name: Run unit tests
         timeout-minutes: 10
         run: |

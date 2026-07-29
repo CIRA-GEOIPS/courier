@@ -7,7 +7,6 @@ import typer
 from courier.cli.init import init
 from courier.cli.plugins import plugins_app
 from courier.cli.queues import queues_app
-from courier.cli.registry import ensure_registry
 from courier.cli.run import run
 from courier.cli.validate import validate
 from courier.utils.logging import TRACE_LEVEL
@@ -35,7 +34,7 @@ def _pre_command(
         "[env: COURIER_LOG_LEVEL]",
     ),
 ) -> None:
-    """Pre-command callback: validates --log-level, ensures plugin registry."""
+    """Pre-command callback: validate --log-level."""
     ctx.ensure_object(dict)
     if log_level is not None:
         upper = log_level.upper()
@@ -45,7 +44,6 @@ def _pre_command(
                 f"'{log_level}' is not a valid log level. Choose from: {valid_levels}",
             )
         ctx.obj["log_level"] = upper
-    ensure_registry()
 
 
 app.command()(init)

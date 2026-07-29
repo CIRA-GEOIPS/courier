@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import typer
 
 from courier.cli.config_loader import load_config
-from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
+from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
 
@@ -94,29 +94,18 @@ def run_service(
                 f"Unknown plugin identifiers: {', '.join(sorted(unknown))}. "
                 f"Available: {', '.join(sorted(all_ids))}",
             )
-        dmc_ids = {
-            e.identifier for e in config.spec.run
-            if e.spec.kind == "data_monitor_configs"
-        }
-        dmc_in_only = only_set & dmc_ids
-        if dmc_in_only:
-            raise ValueError(
-                f"'data_monitor_configs' entries cannot be run with --only: "
-                f"{', '.join(sorted(dmc_in_only))}. "
-                "Use --only with data_monitor,"
-                " job_builder, or dispatcher identifiers.",
-            )
-
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
-        if entry.spec.kind == "data_monitor_configs":
-            continue  # YAML-based config, not a ServicePlugin
-        registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
-        if registry is None:
-            continue
-        plugin_obj = registry.get_plugin(entry.spec.name)
-        plugin_class = type(plugin_obj)
+        kind = normalize_kind(entry.spec.kind)
+        # An unrecognised kind used to be skipped silently, which produced a
+        # service that started up, reported healthy, and processed nothing.
+        if kind not in RUN_KINDS:
+            raise ValueError(
+                f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
+                f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+            )
+        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
         plugin_config: dict[str, Any] = (
             entry.spec.config if entry.spec.config is not None else {}
         )
