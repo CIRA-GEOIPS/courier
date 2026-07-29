@@ -21,6 +21,8 @@ import pytest
 from courier.cli.config_loader import load_config
 from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
 from courier.errors import ConfigurationError
+from courier.interfaces import data_monitor_configs
+from courier.schema import DataMonitorConfig
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -328,4 +330,106 @@ def test_plugin_classes_on_disk_are_declared() -> None:
         "plugin modules with no entry point declaration:\n"
         + "\n".join(undeclared)
         + "\nDeclare each in both pyproject.toml tables, then reinstall."
+    )
+
+
+#: The config interface. Separate from :data:`_PLUGIN_GROUPS` because its
+#: members are validated model instances rather than plugin classes.
+_CONFIG_GROUP = "courier.data_monitor_configs"
+
+
+def test_every_declared_config_loads_to_a_validated_model() -> None:
+    """Config entry points must resolve to models whose name matches the key.
+
+    The name is what a monitor's ``metadata-tools`` list refers to. If the
+    declaration and the model disagree, the config is unreachable by the name
+    operators write, and a monitor asking for it enriches nothing.
+    """
+    problems: list[str] = []
+
+    for entry_point in entry_points(group=_CONFIG_GROUP):
+        try:
+            loaded = entry_point.load()
+        except Exception as exc:  # noqa: BLE001 - reported, not handled
+            problems.append(f"{entry_point.name}: {entry_point.value} -> {exc!r}")
+            continue
+        if not isinstance(loaded, DataMonitorConfig):
+            problems.append(f"{entry_point.name}: {type(loaded).__name__}, not a config")
+            continue
+        if loaded.name != entry_point.name:
+            problems.append(
+                f"{entry_point.name}: config declares name={loaded.name!r}",
+            )
+
+    assert not problems, "\n".join(problems)
+
+
+def test_config_declarations_match_the_modules_on_disk() -> None:
+    """Every config module must be declared, and every declaration must exist."""
+    config_root = (
+        _REPO_ROOT / "src" / "courier" / "plugins" / "configs" / "data_monitor_configs"
+    )
+    on_disk = {
+        path.stem for path in config_root.glob("*.py") if path.name != "__init__.py"
+    }
+    declared = set(_declared_entry_points("project")[_CONFIG_GROUP])
+
+    assert on_disk == declared, (
+        f"only on disk: {sorted(on_disk - declared)}; "
+        f"only declared: {sorted(declared - on_disk)}"
+    )
+
+
+@pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
+def test_metadata_tools_reference_real_configs(config_path: Path) -> None:
+    """A monitor's ``metadata-tools`` must name configs that exist.
+
+    Previously unguarded, and the failure is silent: an unknown name raises
+    only when the monitor is constructed at run time, long after the config
+    validated. ``tests/example1.yaml`` names four satellite configs and
+    ``tests/geocolor_demo.yaml`` two, none of which any test checked.
+    """
+    available = set(data_monitor_configs.names())
+    missing: list[str] = []
+
+    for entry in load_config(config_path).spec.run:
+        config = entry.spec.config or {}
+        if not isinstance(config, dict):
+            continue
+        for tool in config.get("metadata-tools") or []:
+            if tool not in available:
+                missing.append(f"{entry.identifier}: metadata-tools/{tool!r}")
+
+    assert not missing, (
+        "\n".join(missing) + f"\navailable: {sorted(available)}"
+    )
+
+
+def test_shipped_configs_actually_use_metadata_tools() -> None:
+    """Guard the guard: the check above is vacuous if nothing declares any."""
+    total = 0
+    for config_path in _SERVICE_CONFIGS:
+        for entry in load_config(config_path).spec.run:
+            config = entry.spec.config or {}
+            if isinstance(config, dict):
+                total += len(config.get("metadata-tools") or [])
+
+    assert total >= 6, f"only {total} metadata-tools references found"
+
+
+def test_no_yaml_plugins_remain() -> None:
+    """Plugins are Python declared via entry points -- there is no YAML loader.
+
+    A ``.yaml`` under the package would look like a plugin to a reader and be
+    invisible to courier, which is the ambiguity removing the YAML format was
+    meant to end.
+    """
+    package_root = _REPO_ROOT / "src" / "courier"
+    stray = sorted(
+        str(path.relative_to(_REPO_ROOT))
+        for path in package_root.rglob("*.yaml")
+    )
+
+    assert not stray, "YAML files inside the package are never loaded:\n" + "\n".join(
+        stray,
     )
