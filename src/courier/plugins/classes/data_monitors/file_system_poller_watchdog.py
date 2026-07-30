@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from watchdog.events import DirCreatedEvent, FileCreatedEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import DATA_MONITOR_LAST_PROCESSED_TIMESTAMP
 from courier.types.file import File
 

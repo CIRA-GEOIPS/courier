@@ -28,7 +28,7 @@ from courier.dispatchers._output_file_pattern import (  # noqa: TC001
 from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
-from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.interfaces.dispatchers import Dispatcher
 from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
 from courier.tracing import (
     ATTR_CORRELATION_ID,

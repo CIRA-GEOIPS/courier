@@ -24,7 +24,7 @@ import jinja2
 from pydantic import BaseModel, Field, field_validator
 
 from courier.errors import InvalidPluginConfigError, PluginStartupError
-from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.interfaces.dispatchers import Dispatcher
 from courier.metrics import (
     DISPATCHER_SLURM_JOBS_PENDING,
     DISPATCHER_SLURM_SUBMISSIONS,

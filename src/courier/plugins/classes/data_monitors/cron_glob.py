@@ -49,7 +49,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from croniter import croniter
 from pydantic import BaseModel, field_validator
 
-from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import (
     DATA_MONITOR_LAST_SCAN_TIMESTAMP,
     DATA_MONITOR_SCAN_DURATION,

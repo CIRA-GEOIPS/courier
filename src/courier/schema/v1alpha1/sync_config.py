@@ -19,7 +19,7 @@ class RedisStateSyncConfig(FrozenModel):
     On startup the builder loads existing job state from Redis, enabling
     crash recovery without losing in-progress groupings.
 
-    Implementations: JobBuilder (courier.interfaces.module_based.job_builders)
+    Implementations: JobBuilder (courier.interfaces.job_builders)
 
     Configuration keys
     ------------------

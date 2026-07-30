@@ -18,9 +18,9 @@ class ServicePlugin(Protocol):
 
     Implementations
     ---------------
-    DataMonitorBasePlugin : courier.interfaces.module_based.data_monitors
-    JobBuilder : courier.interfaces.module_based.job_builders
-    Dispatcher : courier.interfaces.module_based.dispatchers
+    DataMonitorBasePlugin : courier.interfaces.data_monitors
+    JobBuilder : courier.interfaces.job_builders
+    Dispatcher : courier.interfaces.dispatchers
 
     Methods
     -------

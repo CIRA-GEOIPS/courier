@@ -8,7 +8,7 @@ generated.
 Metric provenance — which module emits each Prometheus metric family
 --------------------------------------------------------------------
 All metrics are defined in :mod:`courier.metrics` and emitted by call-sites
-in :mod:`courier.interfaces.module_based` and
+in :mod:`courier.interfaces` and
 :mod:`courier.plugins.classes`.  There is no ``courier.monitoring`` package.
 
 * ``courier_service_*`` — :mod:`courier.metrics`

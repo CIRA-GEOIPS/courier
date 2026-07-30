@@ -28,7 +28,7 @@ from pydantic import (
 )
 
 from courier.constants import PluginRunState
-from courier.interfaces.module_based.job_builders import JobBuilder
+from courier.interfaces.job_builders import JobBuilder
 from courier.metrics import JOB_BUILDER_TIMEOUT_EMISSIONS
 from courier.types.job import Job, JobGroup
 from courier.utils.datetime_utils import ensure_utc

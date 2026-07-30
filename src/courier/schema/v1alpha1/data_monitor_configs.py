@@ -152,8 +152,11 @@ class FileMetadataEntry(BaseModel):
         List of regex patterns for matching files.
     """
 
+    # ``extra="forbid"``: an entry is pure data, so a mistyped key here has no
+    # symptom at all -- the field it was meant to set keeps its default and the
+    # files it was meant to describe are enriched with nothing.
     model_config = ConfigDict(
-        extra="allow",
+        extra="forbid",
         str_strip_whitespace=True,
         populate_by_name=True,
     )

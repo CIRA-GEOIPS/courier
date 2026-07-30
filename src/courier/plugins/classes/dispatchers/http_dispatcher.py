@@ -16,7 +16,7 @@ import jinja2
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.errors import InvalidPluginConfigError
-from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.interfaces.dispatchers import Dispatcher
 from courier.metrics import (
     DISPATCHER_HTTP_REQUEST_DURATION,
     DISPATCHER_HTTP_RESPONSE_CODES,

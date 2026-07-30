@@ -1,9 +1,9 @@
 """Lazy Lemon Interface Module."""
 
 from courier.interfaces.configs import data_monitor_configs
-from courier.interfaces.module_based.data_monitors import data_monitors
-from courier.interfaces.module_based.dispatchers import dispatchers
-from courier.interfaces.module_based.job_builders import job_builders
+from courier.interfaces.data_monitors import data_monitors
+from courier.interfaces.dispatchers import dispatchers
+from courier.interfaces.job_builders import job_builders
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.service import Service, create_service_with_plugins
 
