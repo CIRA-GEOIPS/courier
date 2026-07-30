@@ -35,6 +35,35 @@ uv pip install runcourier
 
 Optional extras: `runcourier[doc]` for documentation tools, `runcourier[test]` for testing, `runcourier[doc,lint,test]` for development.
 
+### Plugin Extras
+
+A handful of plugins need a third-party package that courier does not install by
+default. All of them are *listed* on a plain install — `courier plugins list`
+shows every plugin without importing any of them — but naming one in a config
+without its extra fails with the install command you need:
+
+```text
+cron_glob requires the cron extra: pip install courier[cron]
+```
+
+| Extra | Provides | Needed by |
+| --- | --- | --- |
+| `courier[cron]` | `croniter` | `cron_glob` data monitor |
+| `courier[s3]` | `boto3`, `botocore` | `s3_poller` data monitor |
+| `courier[sftp]` | `paramiko` | `sftp_poller` data monitor |
+| `courier[kafka]` | `kafka-python` | `kafka_consumer` data monitor |
+| `courier[http]` | `httpx` | `http_dispatcher` |
+| `courier[ha]` | `redis` | Multi-instance state sync |
+| `courier[grafana]` | `grafanalib` | `courier dashboard` generation |
+| `courier[viz]` | `textual`, `httpx` | `courier viz` terminal UI |
+
+`courier[all-monitors]` and `courier[all-dispatchers]` install every plugin
+dependency for their side of the pipeline.
+
+The `file_system_poller_watchdog` monitor — the one used in
+{doc}`quick-start` and most examples — needs no extra; `watchdog` is a core
+dependency precisely because it backs the default.
+
 ### Using Nix (Recommended for Developers)
 
 For development work:

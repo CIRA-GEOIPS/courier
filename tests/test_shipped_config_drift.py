@@ -12,9 +12,12 @@ either one.
 
 from __future__ import annotations
 
+import importlib
+import sys
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -437,3 +440,91 @@ def test_no_yaml_plugins_remain() -> None:
     assert not stray, "YAML files inside the package are never loaded:\n" + "\n".join(
         stray,
     )
+
+
+# ---------------------------------------------------------------------------
+# Optional plugin dependencies
+#
+# Five plugins need a third-party package courier does not install by default.
+# Each imports it lazily so the module stays importable -- which is what lets
+# `courier plugins list` enumerate every plugin on a minimal install -- and
+# raises InvalidPluginConfigError naming the extra when the dependency is
+# actually needed.
+# ---------------------------------------------------------------------------
+
+#: ``(plugin name, module, third-party package, extra)``
+_OPTIONAL_DEPENDENCY_PLUGINS = [
+    ("cron_glob", "courier.plugins.data_monitors.cron_glob", "croniter", "cron"),
+    ("s3_poller", "courier.plugins.data_monitors.s3_poller", "boto3", "s3"),
+    ("sftp_poller", "courier.plugins.data_monitors.sftp_poller", "paramiko", "sftp"),
+    ("kafka_consumer", "courier.plugins.data_monitors.kafka_consumer", "kafka", "kafka"),
+    ("http_dispatcher", "courier.plugins.dispatchers.http_dispatcher", "httpx", "http"),
+]
+
+
+@pytest.mark.parametrize(
+    ("plugin_name", "module", "package", "extra"),
+    _OPTIONAL_DEPENDENCY_PLUGINS,
+    ids=[row[0] for row in _OPTIONAL_DEPENDENCY_PLUGINS],
+)
+def test_optional_dependency_is_declared_as_an_extra(
+    plugin_name: str,
+    module: str,
+    package: str,
+    extra: str,
+) -> None:
+    """Every extra a plugin tells operators to install must actually exist.
+
+    The error messages name ``courier[<extra>]``. If the extra were renamed or
+    never declared, that instruction would send the operator to a pip error.
+    """
+    extras = _pyproject()["tool"]["poetry"]["extras"]
+
+    assert extra in extras, f"{plugin_name} names courier[{extra}], which is not declared"
+    normalised = {name.replace("_", "-").lower() for name in extras[extra]}
+    assert package.replace("_", "-") in normalised or any(
+        package.replace("_", "-") in n for n in normalised
+    ), f"courier[{extra}] does not provide {package}: {sorted(extras[extra])}"
+
+
+@pytest.mark.parametrize(
+    ("plugin_name", "module", "package", "extra"),
+    _OPTIONAL_DEPENDENCY_PLUGINS,
+    ids=[row[0] for row in _OPTIONAL_DEPENDENCY_PLUGINS],
+)
+def test_optional_dependency_is_imported_lazily(
+    plugin_name: str,
+    module: str,
+    package: str,
+    extra: str,
+) -> None:
+    """The plugin module must import without its third-party dependency.
+
+    ``courier plugins list`` and the entry-point drift guards load every
+    declared plugin. A module-scope ``import boto3`` would make a minimal
+    install unable to even list its own plugins, and would take the whole
+    listing down rather than failing only the plugin that needs it.
+
+    ``sys.modules[name] = None`` makes ``import name`` raise ImportError, which
+    is what a missing install looks like from inside the module.
+    """
+    with mock.patch.dict(sys.modules, {package: None}):
+        for loaded in [module, *[m for m in list(sys.modules) if m == module]]:
+            sys.modules.pop(loaded, None)
+        importlib.import_module(module)  # must not raise
+
+
+def test_a_missing_optional_dependency_names_its_extra() -> None:
+    """The failure an operator actually hits must say how to fix itself.
+
+    Checked on ``cron_glob`` because its dependency is reached from config
+    validation, so one construction exercises the guard. A bare ImportError
+    here would name ``croniter``, which is not a string the operator ever
+    typed and does not tell them which extra supplies it.
+    """
+    from courier.errors import InvalidPluginConfigError
+    from courier.plugins.data_monitors.cron_glob import CronGlobConfig
+
+    with mock.patch.dict(sys.modules, {"croniter": None}):
+        with pytest.raises(InvalidPluginConfigError, match=r"courier\[cron\]"):
+            CronGlobConfig(path="/tmp", cron_expression="*/5 * * * *")

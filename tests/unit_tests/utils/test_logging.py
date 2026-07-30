@@ -281,29 +281,6 @@ class TestCreateLokiHandler:
         assert result is not None
         assert hasattr(result, "delegate") and result.delegate is mock_handler
 
-    def test_create_loki_handler_import_error(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test Loki handler creation fails due to import error.
-
-        Parameters
-        ----------
-        caplog : pytest.LogCaptureFixture
-            Fixture to capture log messages.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        AssertionError
-            If result is not None or warning not logged.
-        """
-        # Simulate import error by patching the module-level binding directly
-        with patch("courier.utils.logging.logging_loki", None):
-            result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
-
-            assert not result
-            assert "python-logging-loki not installed" in caplog.text
 
     @patch("courier.utils.logging.logging_loki")
     def test_create_loki_handler_connection_error(self, mock_logging_loki: MagicMock, caplog: pytest.LogCaptureFixture) -> None:

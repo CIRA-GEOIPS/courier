@@ -28,13 +28,11 @@ include = [
 python = ">=3.11,<3.15"
 rich = "*"
 redis = { version = ">=4.0", optional = true }  # Required for HA state sync
-rich-argparse = "*"
 jinja2 = "*"  # Required for templates and script creation
 watchdog = "*" # Required to listen for data (used by daemon)
 prometheus-client = "*"
 pydantic = "*"
 kombu = "*"
-croniter = "*"
 typer = "*"
 lexeme-type = "*"
 opentelemetry-api = ">=1.20"
@@ -49,6 +47,7 @@ boto3 = { version = ">=1.26", optional = true }
 botocore = { version = ">=1.29", optional = true }
 paramiko = { version = ">=3.0", optional = true }
 kafka-python = { version = ">=2.0", optional = true }
+croniter = { version = "*", optional = true }
 httpx = { version = ">=0.24", optional = true }
 
 # Optional dependencies for extras
@@ -118,6 +117,7 @@ test = [
     "botocore",                  # required by s3_poller tests
     "paramiko",                  # required by sftp_poller tests
     "kafka-python",              # required by kafka_consumer tests
+    "croniter",                  # required by cron_glob tests
     "httpx",                     # required by http_dispatcher tests
     "grafanalib",                # required by tests/unit_tests/dashboard/*
     "mutmut",                    # mutation testing; see .github/workflows/mutation.yaml
@@ -135,12 +135,13 @@ grafana = [
 s3 = ["boto3", "botocore"]       # Required for the s3_poller data monitor
 sftp = ["paramiko"]              # Required for the sftp_poller data monitor
 kafka = ["kafka-python"]         # Required for the kafka_consumer data monitor
+cron = ["croniter"]              # Required for the cron_glob data monitor
 http = ["httpx"]                 # Required for the http_dispatcher
 viz = [
     "textual",
     "httpx",
 ]
-all-monitors = ["boto3", "botocore", "paramiko", "kafka-python"]
+all-monitors = ["boto3", "botocore", "paramiko", "kafka-python", "croniter"]
 all-dispatchers = ["httpx"]
 
 [tool.poetry.scripts]
