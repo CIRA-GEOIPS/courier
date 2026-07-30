@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from courier.plugins.classes.data_monitors.rabbit_mq_watcher import (
+from courier.plugins.data_monitors.rabbit_mq_watcher import (
     RabbitMQWatcher,
     _parse_hostname_only,
     _parse_regex,

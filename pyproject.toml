@@ -168,33 +168,33 @@ lzl = "courier.cli.app:app"
 # ---------------------------------------------------------------------------
 
 [tool.poetry.plugins."courier.data_monitors"]
-cron_glob = "courier.plugins.classes.data_monitors.cron_glob:CronGlob"
-file_system_poller_watchdog = "courier.plugins.classes.data_monitors.file_system_poller_watchdog:FileSystemPoller"
-kafka_consumer = "courier.plugins.classes.data_monitors.kafka_consumer:KafkaConsumer"
-rabbit_mq_watcher = "courier.plugins.classes.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
-s3_poller = "courier.plugins.classes.data_monitors.s3_poller:S3Poller"
-sftp_poller = "courier.plugins.classes.data_monitors.sftp_poller:SftpPoller"
+cron_glob = "courier.plugins.data_monitors.cron_glob:CronGlob"
+file_system_poller_watchdog = "courier.plugins.data_monitors.file_system_poller_watchdog:FileSystemPoller"
+kafka_consumer = "courier.plugins.data_monitors.kafka_consumer:KafkaConsumer"
+rabbit_mq_watcher = "courier.plugins.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
+s3_poller = "courier.plugins.data_monitors.s3_poller:S3Poller"
+sftp_poller = "courier.plugins.data_monitors.sftp_poller:SftpPoller"
 
 [tool.poetry.plugins."courier.job_builders"]
-DummyJobBuilder = "courier.plugins.classes.job_builders.dummy_job_builder:DummyJobBuilder"
-file_count_builder = "courier.plugins.classes.job_builders.file_count_builder:FileCountBuilder"
-filter_and_group = "courier.plugins.classes.job_builders.filter_and_group:FilterAndGroupJobBuilder"
-metadata_router = "courier.plugins.classes.job_builders.metadata_router:MetadataRouterBuilder"
+DummyJobBuilder = "courier.plugins.job_builders.dummy_job_builder:DummyJobBuilder"
+file_count_builder = "courier.plugins.job_builders.file_count_builder:FileCountBuilder"
+filter_and_group = "courier.plugins.job_builders.filter_and_group:FilterAndGroupJobBuilder"
+metadata_router = "courier.plugins.job_builders.metadata_router:MetadataRouterBuilder"
 
 [tool.poetry.plugins."courier.dispatchers"]
-http_dispatcher = "courier.plugins.classes.dispatchers.http_dispatcher:HttpDispatcher"
-parallel_bash = "courier.plugins.classes.dispatchers.parallel_bash:ParallelBashDispatcher"
-serial_bash = "courier.plugins.classes.dispatchers.serial_bash:SerialBashDispatcher"
-slurm_dispatcher = "courier.plugins.classes.dispatchers.slurm_dispatcher:SlurmDispatcher"
+http_dispatcher = "courier.plugins.dispatchers.http_dispatcher:HttpDispatcher"
+parallel_bash = "courier.plugins.dispatchers.parallel_bash:ParallelBashDispatcher"
+serial_bash = "courier.plugins.dispatchers.serial_bash:SerialBashDispatcher"
+slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
 [tool.poetry.plugins."courier.data_monitor_configs"]
-gk2a_ami = "courier.plugins.configs.data_monitor_configs.gk2a_ami:CONFIG"
-goes16_abi = "courier.plugins.configs.data_monitor_configs.goes16_abi:CONFIG"
-goes18_abi = "courier.plugins.configs.data_monitor_configs.goes18_abi:CONFIG"
-goes19_abi = "courier.plugins.configs.data_monitor_configs.goes19_abi:CONFIG"
-himawari9_ahi = "courier.plugins.configs.data_monitor_configs.himawari9_ahi:CONFIG"
-meteosat10_seviri = "courier.plugins.configs.data_monitor_configs.meteosat10_seviri:CONFIG"
-meteosat9_seviri = "courier.plugins.configs.data_monitor_configs.meteosat9_seviri:CONFIG"
+gk2a_ami = "courier.plugins.data_monitor_configs.gk2a_ami:CONFIG"
+goes16_abi = "courier.plugins.data_monitor_configs.goes16_abi:CONFIG"
+goes18_abi = "courier.plugins.data_monitor_configs.goes18_abi:CONFIG"
+goes19_abi = "courier.plugins.data_monitor_configs.goes19_abi:CONFIG"
+himawari9_ahi = "courier.plugins.data_monitor_configs.himawari9_ahi:CONFIG"
+meteosat10_seviri = "courier.plugins.data_monitor_configs.meteosat10_seviri:CONFIG"
+meteosat9_seviri = "courier.plugins.data_monitor_configs.meteosat9_seviri:CONFIG"
 
 [tool.poetry.urls]
 Homepage = "https://github.com/biosafetylvl5/courier"
@@ -406,10 +406,10 @@ ban-relative-imports = "all"
 # Ignore import violations in __init__.py files
 "__init__.py" = ["F401"]
 # Docstring RST tables exceed line length; cannot be wrapped
-"src/courier/plugins/classes/dispatchers/serial_bash.py" = ["E501"]
+"src/courier/plugins/dispatchers/serial_bash.py" = ["E501"]
 # Metadata configs are data. A filename regex is one atomic token -- wrapping it
 # means editing the pattern, which is how ABI channels 7-10 got dropped once.
-"src/courier/plugins/configs/data_monitor_configs/*.py" = ["E501"]
+"src/courier/plugins/data_monitor_configs/*.py" = ["E501"]
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
@@ -434,33 +434,33 @@ requires-python = ">=3.11,<3.15"
 # Kept in sync by test_pyproject_tables_agree.
 
 [project.entry-points."courier.data_monitors"]
-cron_glob = "courier.plugins.classes.data_monitors.cron_glob:CronGlob"
-file_system_poller_watchdog = "courier.plugins.classes.data_monitors.file_system_poller_watchdog:FileSystemPoller"
-kafka_consumer = "courier.plugins.classes.data_monitors.kafka_consumer:KafkaConsumer"
-rabbit_mq_watcher = "courier.plugins.classes.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
-s3_poller = "courier.plugins.classes.data_monitors.s3_poller:S3Poller"
-sftp_poller = "courier.plugins.classes.data_monitors.sftp_poller:SftpPoller"
+cron_glob = "courier.plugins.data_monitors.cron_glob:CronGlob"
+file_system_poller_watchdog = "courier.plugins.data_monitors.file_system_poller_watchdog:FileSystemPoller"
+kafka_consumer = "courier.plugins.data_monitors.kafka_consumer:KafkaConsumer"
+rabbit_mq_watcher = "courier.plugins.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
+s3_poller = "courier.plugins.data_monitors.s3_poller:S3Poller"
+sftp_poller = "courier.plugins.data_monitors.sftp_poller:SftpPoller"
 
 [project.entry-points."courier.job_builders"]
-DummyJobBuilder = "courier.plugins.classes.job_builders.dummy_job_builder:DummyJobBuilder"
-file_count_builder = "courier.plugins.classes.job_builders.file_count_builder:FileCountBuilder"
-filter_and_group = "courier.plugins.classes.job_builders.filter_and_group:FilterAndGroupJobBuilder"
-metadata_router = "courier.plugins.classes.job_builders.metadata_router:MetadataRouterBuilder"
+DummyJobBuilder = "courier.plugins.job_builders.dummy_job_builder:DummyJobBuilder"
+file_count_builder = "courier.plugins.job_builders.file_count_builder:FileCountBuilder"
+filter_and_group = "courier.plugins.job_builders.filter_and_group:FilterAndGroupJobBuilder"
+metadata_router = "courier.plugins.job_builders.metadata_router:MetadataRouterBuilder"
 
 [project.entry-points."courier.dispatchers"]
-http_dispatcher = "courier.plugins.classes.dispatchers.http_dispatcher:HttpDispatcher"
-parallel_bash = "courier.plugins.classes.dispatchers.parallel_bash:ParallelBashDispatcher"
-serial_bash = "courier.plugins.classes.dispatchers.serial_bash:SerialBashDispatcher"
-slurm_dispatcher = "courier.plugins.classes.dispatchers.slurm_dispatcher:SlurmDispatcher"
+http_dispatcher = "courier.plugins.dispatchers.http_dispatcher:HttpDispatcher"
+parallel_bash = "courier.plugins.dispatchers.parallel_bash:ParallelBashDispatcher"
+serial_bash = "courier.plugins.dispatchers.serial_bash:SerialBashDispatcher"
+slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
 [project.entry-points."courier.data_monitor_configs"]
-gk2a_ami = "courier.plugins.configs.data_monitor_configs.gk2a_ami:CONFIG"
-goes16_abi = "courier.plugins.configs.data_monitor_configs.goes16_abi:CONFIG"
-goes18_abi = "courier.plugins.configs.data_monitor_configs.goes18_abi:CONFIG"
-goes19_abi = "courier.plugins.configs.data_monitor_configs.goes19_abi:CONFIG"
-himawari9_ahi = "courier.plugins.configs.data_monitor_configs.himawari9_ahi:CONFIG"
-meteosat10_seviri = "courier.plugins.configs.data_monitor_configs.meteosat10_seviri:CONFIG"
-meteosat9_seviri = "courier.plugins.configs.data_monitor_configs.meteosat9_seviri:CONFIG"
+gk2a_ami = "courier.plugins.data_monitor_configs.gk2a_ami:CONFIG"
+goes16_abi = "courier.plugins.data_monitor_configs.goes16_abi:CONFIG"
+goes18_abi = "courier.plugins.data_monitor_configs.goes18_abi:CONFIG"
+goes19_abi = "courier.plugins.data_monitor_configs.goes19_abi:CONFIG"
+himawari9_ahi = "courier.plugins.data_monitor_configs.himawari9_ahi:CONFIG"
+meteosat10_seviri = "courier.plugins.data_monitor_configs.meteosat10_seviri:CONFIG"
+meteosat9_seviri = "courier.plugins.data_monitor_configs.meteosat9_seviri:CONFIG"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -20,15 +20,15 @@ from courier.cli.init import (
     validate_config,
     write_yaml,
 )
-from courier.plugins.classes.data_monitors.file_system_poller_watchdog import (
+from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
     FileSystemPollerConfig,
 )
-from courier.plugins.classes.dispatchers.serial_bash import (
+from courier.plugins.dispatchers.serial_bash import (
     SerialBashDispatcher,
     SerialBashConfig,
 )
-from courier.plugins.classes.job_builders.dummy_job_builder import (
+from courier.plugins.job_builders.dummy_job_builder import (
     DummyJobBuilder,
     DummyJobBuilderConfig,
 )

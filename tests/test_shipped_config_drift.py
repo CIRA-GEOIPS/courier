@@ -304,12 +304,12 @@ def test_plugin_classes_on_disk_are_declared() -> None:
     """Every plugin module in the package must be declared as an entry point.
 
     Discovery used to scan the filesystem, so dropping a file into
-    ``plugins/classes/`` was enough. Entry points are explicit, which is the
+    ``plugins/`` was enough. Entry points are explicit, which is the
     point — but it means a new plugin can be written, imported, tested in
     isolation, and still be invisible to ``courier run``. This is the guard that
     turns that into a failed test instead of a silent no-op.
     """
-    plugin_root = _REPO_ROOT / "src" / "courier" / "plugins" / "classes"
+    plugin_root = _REPO_ROOT / "src" / "courier" / "plugins"
     declared_targets = {
         target.split(":")[0]
         for group in _PLUGIN_GROUPS
@@ -317,14 +317,20 @@ def test_plugin_classes_on_disk_are_declared() -> None:
     }
 
     undeclared: list[str] = []
-    for path in sorted(plugin_root.rglob("*.py")):
-        if path.name == "__init__.py":
-            continue
-        module = ".".join(
-            ("courier", "plugins", "classes", path.parent.name, path.stem),
-        )
-        if module not in declared_targets:
-            undeclared.append(module)
+    # One directory per interface, named after it. Scoped to the class-plugin
+    # interfaces so the sibling data_monitor_configs/ directory -- whose modules
+    # hold config instances, not plugin classes -- is not swept up here.
+    for group in _PLUGIN_GROUPS:
+        interface_dir = plugin_root / group.removeprefix("courier.")
+        assert interface_dir.is_dir(), f"missing plugin directory {interface_dir}"
+        for path in sorted(interface_dir.glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            module = ".".join(
+                ("courier", "plugins", path.parent.name, path.stem),
+            )
+            if module not in declared_targets:
+                undeclared.append(module)
 
     assert not undeclared, (
         "plugin modules with no entry point declaration:\n"
@@ -366,9 +372,7 @@ def test_every_declared_config_loads_to_a_validated_model() -> None:
 
 def test_config_declarations_match_the_modules_on_disk() -> None:
     """Every config module must be declared, and every declaration must exist."""
-    config_root = (
-        _REPO_ROOT / "src" / "courier" / "plugins" / "configs" / "data_monitor_configs"
-    )
+    config_root = _REPO_ROOT / "src" / "courier" / "plugins" / "data_monitor_configs"
     on_disk = {
         path.stem for path in config_root.glob("*.py") if path.name != "__init__.py"
     }

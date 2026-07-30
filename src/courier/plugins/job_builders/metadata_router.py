@@ -20,7 +20,7 @@ from courier.metrics import (
     JOB_BUILDER_TIMEOUT_EMISSIONS,
     JOB_BUILDER_UNMATCHED_FILES,
 )
-from courier.plugins.classes.job_builders.filter_and_group import (
+from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobGroup,
 )

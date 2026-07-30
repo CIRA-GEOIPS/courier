@@ -384,7 +384,7 @@ class ParallelBashDispatcher(Dispatcher):
                         emit_file=self.emit_file,
                     )
             # Also scan for COURIER_METRIC: lines (general-purpose custom gauge conduit)
-            from courier.plugins.classes.dispatchers.serial_bash import (
+            from courier.plugins.dispatchers.serial_bash import (
                 _ingest_courier_metrics,
             )
             for log in logs:

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.job_builders.metadata_router import (
+from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
     MetadataRouterConfig,
     RouteConfig,

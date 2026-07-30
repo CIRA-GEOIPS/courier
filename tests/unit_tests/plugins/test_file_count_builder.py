@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.job_builders.file_count_builder import (
+from courier.plugins.job_builders.file_count_builder import (
     FileCountBuilder,
     FileCountBuilderConfig,
     FileCountJobGroup,

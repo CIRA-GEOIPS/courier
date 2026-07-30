@@ -26,13 +26,13 @@ from courier.constants import (
 )
 from courier.errors import UnknownTargetError
 from courier.managers.plugin_manager import PluginStateInfo
-from courier.plugins.classes.data_monitors.cron_glob import CronGlob
-from courier.plugins.classes.dispatchers.serial_bash import SerialBashDispatcher
-from courier.plugins.classes.job_builders.dummy_job_builder import DummyJobBuilder
-from courier.plugins.classes.job_builders.filter_and_group import (
+from courier.plugins.data_monitors.cron_glob import CronGlob
+from courier.plugins.dispatchers.serial_bash import SerialBashDispatcher
+from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
+from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupJobBuilder,
 )
-from courier.plugins.classes.job_builders.metadata_router import (
+from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
 )
 from courier.service import Service
