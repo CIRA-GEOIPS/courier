@@ -9,7 +9,7 @@ Metric provenance — which module emits each Prometheus metric family
 --------------------------------------------------------------------
 All metrics are defined in :mod:`courier.metrics` and emitted by call-sites
 in :mod:`courier.interfaces` and
-:mod:`courier.plugins.classes`.  There is no ``courier.monitoring`` package.
+:mod:`courier.plugins`.  There is no ``courier.monitoring`` package.
 
 * ``courier_service_*`` — :mod:`courier.metrics`
 * ``courier_data_monitor_*`` — :mod:`courier.metrics`
@@ -1449,7 +1449,7 @@ def _pipeline_latency_row(
     """End-to-end pipeline latency from satellite scan time to product generation.
 
     Metrics are populated by deployment scripts via the ``COURIER_METRIC:``
-    stdout protocol (see :mod:`courier.plugins.classes.dispatchers.serial_bash`
+    stdout protocol (see :mod:`courier.plugins.dispatchers.serial_bash`
     docs).  Each dispatcher emits its own ``scan_to_*_latency_seconds`` gauge
     after every job.
     """

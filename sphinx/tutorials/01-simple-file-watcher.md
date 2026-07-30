@@ -303,7 +303,7 @@ Stop the service gracefully with `Ctrl+C`:
 - Check filename matches GOES-18 pattern
 - View available metadata configs: `courier plugins list`
 - See the `goes18_abi` metadata config in
-  `src/courier/plugins/configs/data_monitor_configs/goes18_abi.py` for pattern details.
+  `src/courier/plugins/data_monitor_configs/goes18_abi.py` for pattern details.
 
 ## What You Learned
 

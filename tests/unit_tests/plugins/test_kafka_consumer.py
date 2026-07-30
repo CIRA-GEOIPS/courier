@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.data_monitors.kafka_consumer import (
+from courier.plugins.data_monitors.kafka_consumer import (
     KafkaConsumer,
     KafkaConsumerConfig,
 )

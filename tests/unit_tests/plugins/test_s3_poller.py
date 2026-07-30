@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from courier.errors import InvalidPluginConfigError
-from courier.plugins.classes.data_monitors.s3_poller import (
+from courier.plugins.data_monitors.s3_poller import (
     S3Poller,
     S3PollerConfig,
 )

@@ -19,12 +19,12 @@ import prometheus_client
 import pytest
 
 from courier.config import ServiceConfig
-from courier.plugins.classes.data_monitors.cron_glob import CronGlob
-from courier.plugins.classes.data_monitors.file_system_poller_watchdog import (
+from courier.plugins.data_monitors.cron_glob import CronGlob
+from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
 )
-from courier.plugins.classes.dispatchers.serial_bash import SerialBashDispatcher
-from courier.plugins.classes.job_builders.dummy_job_builder import DummyJobBuilder
+from courier.plugins.dispatchers.serial_bash import SerialBashDispatcher
+from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
 from courier.service import Service
 
 # ---------------------------------------------------------------------------

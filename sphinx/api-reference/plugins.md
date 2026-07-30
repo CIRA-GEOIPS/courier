@@ -9,7 +9,7 @@ Courier plugins implement one of three interfaces:
 
 ### file_system_poller_watchdog
 
-:class:`~courier.plugins.classes.data_monitors.file_system_poller_watchdog.FileSystemPoller`
+:class:`~courier.plugins.data_monitors.file_system_poller_watchdog.FileSystemPoller`
 
 Watches a directory for new files and emits them to the pipeline.
 
@@ -17,7 +17,7 @@ Watches a directory for new files and emits them to the pipeline.
 
 ### serial_bash
 
-:class:`~courier.plugins.classes.dispatchers.serial_bash.SerialBashDispatcher`
+:class:`~courier.plugins.dispatchers.serial_bash.SerialBashDispatcher`
 
 Executes a single Jinja2-templated bash script for an entire job. All
 files are available in the template, producing one
@@ -29,7 +29,7 @@ and output file scanning.
 
 ### parallel_bash
 
-:class:`~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashDispatcher`
+:class:`~courier.plugins.dispatchers.parallel_bash.ParallelBashDispatcher`
 
 Executes a Jinja2-templated bash script independently for each file in
 the job. Up to ``max_workers`` scripts run concurrently.
@@ -40,12 +40,12 @@ and output file scanning.
 
 ### slurm_dispatcher
 
-:class:`~courier.plugins.classes.dispatchers.slurm_dispatcher.SlurmDispatcher`
+:class:`~courier.plugins.dispatchers.slurm_dispatcher.SlurmDispatcher`
 
 Submits jobs to a SLURM cluster via ``sbatch`` using Jinja2-templated
 job scripts.
 
-.. literalinclude:: ../../../src/courier/plugins/classes/dispatchers/slurm_dispatcher.py
+.. literalinclude:: ../../../src/courier/plugins/dispatchers/slurm_dispatcher.py
    :language: python
    :start-after: class SlurmDispatcher(Dispatcher):
    :end-before:     def __init__(
@@ -164,21 +164,21 @@ Example: Multi-stage YAML configuration
 
 ### DummyJobBuilder
 
-:class:`~courier.plugins.classes.job_builders.dummy_job_builder.DummyJobBuilder`
+:class:`~courier.plugins.job_builders.dummy_job_builder.DummyJobBuilder`
 
 Creates a minimal job for each file. Suitable for development and testing;
 for production, use `filter_and_group` or a custom builder.
 
 ### filter_and_group
 
-:class:`~courier.plugins.classes.job_builders.filter_and_group.FilterAndGroupJobBuilder`
+:class:`~courier.plugins.job_builders.filter_and_group.FilterAndGroupJobBuilder`
 
 Groups files into jobs by metadata filters and optional time windows.
 Jobs are emitted when the file count reaches ``files_per_job``, or when a
 ``window_timeout_seconds`` has elapsed and at least ``min_files`` have
 accumulated (dropout path).
 
-.. literalinclude:: ../../../src/courier/plugins/classes/job_builders/filter_and_group.py
+.. literalinclude:: ../../../src/courier/plugins/job_builders/filter_and_group.py
    :language: python
    :start-after: class FilterAndGroupJobBuilder(JobBuilder):
    :end-before:     interface: ClassVar[str] = "job_builders"
@@ -274,7 +274,7 @@ filters:
 
 ### MetadataRouterBuilder
 
-:class:`~courier.plugins.classes.job_builders.metadata_router.MetadataRouterBuilder`
+:class:`~courier.plugins.job_builders.metadata_router.MetadataRouterBuilder`
 
 Routes files to different dispatchers based on file metadata (source, instrument, etc.).
 

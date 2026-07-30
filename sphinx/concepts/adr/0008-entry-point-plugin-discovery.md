@@ -48,7 +48,7 @@ back was therefore a *different object* from the one an ordinary import produced
 False
 ```
 
-Both report `__module__ == "courier.plugins.classes.data_monitors.cron_glob"`, so
+Both report `__module__ == "courier.plugins.data_monitors.cron_glob"`, so
 nothing about the duplication is visible until something does an identity or
 `isinstance` check against the imported class. `find_config_model` survived only
 because it re-imports by module name and compares strings. This was a latent

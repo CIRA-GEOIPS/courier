@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pydantic
 import pytest
 
-from courier.plugins.classes.data_monitors.file_system_poller_watchdog import (
+from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
 )
 from courier.types.file import File
@@ -59,7 +59,7 @@ class TestFindFile:
 
         observer_instance = MagicMock()
         mocker.patch(
-            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
+            "courier.plugins.data_monitors.file_system_poller_watchdog.Observer",
             return_value=observer_instance,
         )
 
@@ -69,7 +69,7 @@ class TestFindFile:
         fake_queue = MagicMock()
         fake_queue.get.side_effect = [sample_path, sentinel]
         mocker.patch(
-            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.queue.Queue",
+            "courier.plugins.data_monitors.file_system_poller_watchdog.queue.Queue",
             return_value=fake_queue,
         )
 
@@ -93,7 +93,7 @@ class TestFindFile:
         observer_instance = MagicMock()
         observer_instance.start.side_effect = FileNotFoundError("nope")
         mocker.patch(
-            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
+            "courier.plugins.data_monitors.file_system_poller_watchdog.Observer",
             return_value=observer_instance,
         )
         with pytest.raises(RuntimeError, match="Cannot watch directory"):
@@ -112,7 +112,7 @@ class TestFindFile:
         observer_instance = MagicMock()
         observer_instance.schedule.side_effect = OSError("no such directory")
         mocker.patch(
-            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
+            "courier.plugins.data_monitors.file_system_poller_watchdog.Observer",
             return_value=observer_instance,
         )
         with pytest.raises(RuntimeError, match="Cannot watch directory"):
@@ -130,7 +130,7 @@ class TestFindFile:
         plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
         observer_instance = MagicMock()
         mocker.patch(
-            "courier.plugins.classes.data_monitors.file_system_poller_watchdog.Observer",
+            "courier.plugins.data_monitors.file_system_poller_watchdog.Observer",
             return_value=observer_instance,
         )
         plugin._stop_event.set()

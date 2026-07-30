@@ -13,7 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from courier.constants import PluginRunState
-from courier.plugins.classes.job_builders.filter_and_group import (
+from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobBuilder,
     FilterAndGroupJobGroup,

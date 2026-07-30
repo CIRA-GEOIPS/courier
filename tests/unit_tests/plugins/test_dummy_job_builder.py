@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from courier.plugins.classes.job_builders.dummy_job_builder import (
+from courier.plugins.job_builders.dummy_job_builder import (
     DummyJob,
     DummyJobBuilder,
     DummyJobGroup,
