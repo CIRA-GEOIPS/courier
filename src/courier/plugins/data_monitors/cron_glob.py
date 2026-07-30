@@ -46,9 +46,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from croniter import croniter
 from pydantic import BaseModel, field_validator
 
+from courier.errors import InvalidPluginConfigError
 from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import (
     DATA_MONITOR_LAST_SCAN_TIMESTAMP,
@@ -60,6 +60,23 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     from courier.service import Service
+
+
+def _croniter() -> Any:
+    """Return the ``croniter`` class, or explain which extra supplies it.
+
+    Imported lazily rather than at module scope so courier installs without
+    ``croniter`` unless this monitor is actually used. Entry-point discovery
+    imports a plugin module only when a config names it, so an operator who
+    never runs ``cron_glob`` never needs the dependency.
+    """
+    try:
+        from croniter import croniter  # noqa: PLC0415
+    except ImportError as exc:
+        raise InvalidPluginConfigError(
+            "cron_glob requires the cron extra: pip install courier[cron]",
+        ) from exc
+    return croniter
 
 
 class CronGlobConfig(BaseModel, frozen=True):
@@ -97,7 +114,7 @@ class CronGlobConfig(BaseModel, frozen=True):
     @classmethod
     def validate_cron_expression(cls, v: str) -> str:
         """Validate that the cron expression is a valid 5-field cron string."""
-        if not croniter.is_valid(v):
+        if not _croniter().is_valid(v):
             msg = f"Invalid cron expression: '{v}'"
             raise ValueError(msg)
         return v
@@ -158,7 +175,7 @@ class CronGlob(DataMonitorBasePlugin):
             msg = f"Directory '{self.scan_path}' does not exist."
             raise RuntimeError(msg)
 
-        cron = croniter(self.cron_expression, datetime.now())
+        cron = _croniter()(self.cron_expression, datetime.now())
 
         try:
             self.health = True
