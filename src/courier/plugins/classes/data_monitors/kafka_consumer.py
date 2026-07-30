@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from courier.errors import InvalidPluginConfigError
-from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import (
     DATA_MONITOR_CONNECTION_STATUS,
     DATA_MONITOR_CONSUMER_LAG,

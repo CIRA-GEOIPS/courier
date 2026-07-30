@@ -1,9 +1,9 @@
 # Plugins API Reference
 
 Courier plugins implement one of three interfaces:
-:class:`~courier.interfaces.module_based.data_monitors.DataMonitorBasePlugin`,
-:class:`~courier.interfaces.module_based.job_builders.JobBuilder`, or
-:class:`~courier.interfaces.module_based.dispatchers.Dispatcher`.
+:class:`~courier.interfaces.data_monitors.DataMonitorBasePlugin`,
+:class:`~courier.interfaces.job_builders.JobBuilder`, or
+:class:`~courier.interfaces.dispatchers.Dispatcher`.
 
 ## Standard Data Monitors
 
@@ -57,7 +57,7 @@ job scripts.
 
 .. py:method:: Dispatcher.emit_file(file: File) -> None
 
-All dispatchers inherit :meth:`emit_file` from the :class:`~courier.interfaces.module_based.dispatchers.Dispatcher`
+All dispatchers inherit :meth:`emit_file` from the :class:`~courier.interfaces.dispatchers.Dispatcher`
 base class. This method publishes an output :class:`~courier.types.file.File` to
 :data:`~courier.constants.FILE_FOUND_EXCHANGE` — the same fanout exchange that
 data monitors use — so downstream job builders can pick it up and create new

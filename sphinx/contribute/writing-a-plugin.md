@@ -27,7 +27,7 @@ already-validated **instance**, because a metadata config is data.
 
 from typing import ClassVar
 
-from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.interfaces.dispatchers import Dispatcher
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 

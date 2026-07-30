@@ -213,7 +213,7 @@ capacity.
 
 ## Pipeline Feedback with ``emit_file``
 
-The ``parallel_bash`` dispatcher supports the same :meth:`~courier.interfaces.module_based.dispatchers.Dispatcher.emit_file`
+The ``parallel_bash`` dispatcher supports the same :meth:`~courier.interfaces.dispatchers.Dispatcher.emit_file`
 mechanism as all dispatchers. After all per-file scripts complete, the
 dispatcher scans each script's output for file paths (if ``output_files`` is
 configured) and emits discovered files back into the pipeline.

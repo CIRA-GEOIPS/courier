@@ -168,7 +168,7 @@ what a test is defending.
   remember.
 
 - Mutation runs are slow — thousands of mutants per module — and are scoped to
-  `types`, `routing`, `interfaces/module_based`, `utils`, `broker`, and
+  `types`, `routing`, `interfaces`, `utils`, `broker`, and
   `managers`. The dashboard and viz packages get no mutation signal, because
   their mutants are overwhelmingly cosmetic (a changed panel width, a reworded
   description) and would bury the real findings.

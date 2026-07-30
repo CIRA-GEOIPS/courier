@@ -165,7 +165,7 @@ See {doc}`parallel_bash` for the parallel dispatcher documentation.
 .. py:method:: Dispatcher.emit_file(file: File) -> None
 
 All dispatchers inherit :meth:`emit_file` from the
-:class:`~courier.interfaces.module_based.dispatchers.Dispatcher` base class.
+:class:`~courier.interfaces.dispatchers.Dispatcher` base class.
 This method publishes an output :class:`~courier.types.file.File` to
 :data:`~courier.constants.FILE_FOUND_EXCHANGE` — the same fanout exchange that
 data monitors use — so downstream job builders can pick it up and create new
@@ -209,7 +209,7 @@ without writing custom dispatcher code.
 3. For each unique discovered path, a :class:`~courier.types.file.File` object
    is constructed with the hostname and any static or regex-extracted
    metadata.
-4. The file is emitted via :meth:`~courier.interfaces.module_based.dispatchers.Dispatcher.emit_file`,
+4. The file is emitted via :meth:`~courier.interfaces.dispatchers.Dispatcher.emit_file`,
    making it available to downstream job builders.
 
 ### OutputFilePattern Schema

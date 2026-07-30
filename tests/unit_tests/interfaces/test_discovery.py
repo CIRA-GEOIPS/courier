@@ -26,7 +26,7 @@ from courier.interfaces.discovery import (
     ConfigPluginRegistry,
     refresh,
 )
-from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.interfaces.dispatchers import Dispatcher
 from courier.schema import DataMonitorConfig
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ _PLUGIN_MODULE = textwrap.dedent(
 
     from typing import ClassVar
 
-    from courier.interfaces.module_based.dispatchers import Dispatcher
+    from courier.interfaces.dispatchers import Dispatcher
     from courier.schema import DataMonitorConfig
 
 

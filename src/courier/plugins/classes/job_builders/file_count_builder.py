@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import jinja2
 from pydantic import BaseModel, Field, field_validator
 
-from courier.interfaces.module_based.job_builders import JobBuilder
+from courier.interfaces.job_builders import JobBuilder
 from courier.types.job import Job, JobGroup
 
 if TYPE_CHECKING:

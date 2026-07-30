@@ -60,7 +60,7 @@ class JobBuilderStateSync:
     and the file-processing thread both acquire the group lock before
     any mutation.  Thread-safe: protected by ``_group_locks[group_name]``.
 
-    Implementations: JobBuilder (courier.interfaces.module_based.job_builders)
+    Implementations: JobBuilder (courier.interfaces.job_builders)
     """
 
     def __init__(

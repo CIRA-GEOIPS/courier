@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import BaseModel, Field
 
-from courier.interfaces.module_based.job_builders import JobBuilder
+from courier.interfaces.job_builders import JobBuilder
 from courier.types.job import Job, JobGroup
 
 if TYPE_CHECKING:

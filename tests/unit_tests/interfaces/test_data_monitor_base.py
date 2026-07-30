@@ -17,7 +17,7 @@ from prometheus_client import REGISTRY
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import PipelineError
-from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.types.file import File
 
 

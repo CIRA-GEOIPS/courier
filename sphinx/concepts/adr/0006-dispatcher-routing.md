@@ -148,4 +148,4 @@ step if label/selector demand materializes.
   queue is undeclarable; `preflight_check` fails if any target queue
   is undeclarable.
 - **Distributed deployment**: The queue-per-dispatcher design enables the `--only` flag to safely split pipelines across containers. See {doc}`../../getting-started/configuration` (Distributed Deployment with `--only`) for usage.
-- **Pipeline feedback loop**: Dispatchers can emit output files back to ``FILE_FOUND_EXCHANGE`` via :meth:`~courier.interfaces.module_based.dispatchers.Dispatcher.emit_file`, enabling multi-stage processing where one dispatcher's output becomes input for the next stage. See {doc}`../../api-reference/plugins` (Pipeline Feedback with ``emit_file``).
+- **Pipeline feedback loop**: Dispatchers can emit output files back to ``FILE_FOUND_EXCHANGE`` via :meth:`~courier.interfaces.dispatchers.Dispatcher.emit_file`, enabling multi-stage processing where one dispatcher's output becomes input for the next stage. See {doc}`../../api-reference/plugins` (Pipeline Feedback with ``emit_file``).

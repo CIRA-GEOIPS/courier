@@ -16,7 +16,7 @@ import kombu
 from kombu.exceptions import OperationalError
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
+from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 from courier.types.file import File
 from courier.utils.datetime_utils import parse_timestamp as _parse_timestamp
