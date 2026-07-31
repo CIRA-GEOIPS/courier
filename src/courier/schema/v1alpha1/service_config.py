@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from pydantic import (
@@ -180,6 +181,12 @@ class ServiceSpecModel(FrozenModel):
     heartbeat_interval: int = Field(
         default=30,
         description="Interval in seconds between service heartbeat messages.",
+    )
+    tracing_enabled: bool = Field(
+        default_factory=lambda: (
+            os.environ.get("COURIER_TRACING_ENABLED", "true").lower() != "false"
+        ),
+        description="Enable OpenTelemetry tracing. Defaults to environment variable",
     )
     broker: BrokerConfig = Field(
         default_factory=MemoryBrokerConfig,
