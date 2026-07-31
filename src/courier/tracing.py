@@ -26,6 +26,8 @@ import inspect
 import logging
 from typing import TYPE_CHECKING, Any
 
+from courier.utils.logging import route_external_logger
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -53,7 +55,7 @@ ATTR_PLUGIN_NAME = "plugin.name"
 ATTR_PLUGIN_VERSION = "plugin.version"
 ATTR_PLUGIN_FAMILY = "plugin.family"
 
-# Lazy-initialised so we can attach a Loki handler once config is known.
+# Lazy-initialized so we can attach a Loki handler once config is known.
 _console_logger = logging.getLogger(__name__)
 _tracer_logger: Any = _console_logger
 """Logger for tracing diagnostics.
@@ -78,6 +80,12 @@ def init_tracing(config: ServiceConfig) -> None:
     from courier.utils.logging import get_logger  # noqa: PLC0415
 
     _tracer_logger = get_logger("module", "tracing", config)
+
+    # Ensure opentelemetry's logs don't fall through to the console.
+    # Name is determined by their module paths
+    # (e.g. opentelemetry.sdk.trace.export), so "opentelemetry"
+    # refers to all logs coming from that module.
+    route_external_logger("opentelemetry", _tracer_logger)
 
     # Idempotent: if already initialized, return immediately
     if _tracer_provider is not None:
@@ -307,8 +315,7 @@ def extract_context(headers: dict[str, str]) -> Any:
         return extract(headers)
     except Exception:
         _tracer_logger.debug(
-            "Failed to extract trace context from headers %r; "
-            "returning empty context",
+            "Failed to extract trace context from headers %r; returning empty context",
             headers,
             exc_info=True,
         )
