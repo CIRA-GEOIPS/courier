@@ -1,6 +1,6 @@
 """Poll an S3 bucket on a fixed interval and emit new object keys.
 
-Requires the optional ``courier[s3]`` extra (``boto3`` + ``botocore``).
+Requires the optional ``data-courier[s3]`` extra (``boto3`` + ``botocore``).
 
 Configuration lives in :class:`S3PollerConfig`. Credentials can be supplied
 explicitly (``aws_access_key_id`` / ``aws_secret_access_key``) or left to
@@ -113,7 +113,7 @@ class S3Poller(DataMonitorBasePlugin):
             import boto3  # noqa: PLC0415
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "s3_poller requires the s3 extra: pip install courier[s3]",
+                "s3_poller requires the s3 extra: pip install data-courier[s3]",
             ) from exc
         kwargs: dict[str, Any] = {"region_name": self.validated.region}
         if self.validated.endpoint_url:
@@ -194,7 +194,7 @@ class S3Poller(DataMonitorBasePlugin):
             )
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "s3_poller requires the s3 extra: pip install courier[s3]",
+                "s3_poller requires the s3 extra: pip install data-courier[s3]",
             ) from exc
 
         client = self._build_client()

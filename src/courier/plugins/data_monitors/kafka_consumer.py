@@ -1,6 +1,6 @@
 """Consume messages from a Kafka topic and emit them as File objects.
 
-Requires the optional ``courier[kafka]`` extra (``kafka-python``).
+Requires the optional ``data-courier[kafka]`` extra (``kafka-python``).
 
 Messages are expected to be JSON-encoded dicts. A ``field_map`` allows the
 operator to translate producer-specific key names into the canonical
@@ -140,7 +140,8 @@ class KafkaConsumer(DataMonitorBasePlugin):
             from kafka import KafkaConsumer as _KafkaConsumer  # noqa: PLC0415
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "kafka_consumer requires the kafka extra: pip install courier[kafka]",
+                "kafka_consumer requires the kafka extra: "
+                "pip install data-courier[kafka]",
             ) from exc
 
         kwargs: dict[str, Any] = {

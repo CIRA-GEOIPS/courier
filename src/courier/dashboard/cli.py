@@ -167,7 +167,7 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
     except ImportError:
         typer.echo(
             "The 'dashboard' command requires the grafanalib library.\n"
-            "Install it with: pip install courier[grafana]",
+            "Install it with: pip install data-courier[grafana]",
         )
         raise typer.Exit(1) from None
 

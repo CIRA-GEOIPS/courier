@@ -128,7 +128,7 @@ def _dashboard_to_json(dashboard: Dashboard, indent: int = 2) -> str:
     except ImportError:
         raise ImportError(
             "grafanalib is required for dashboard serialization. "
-            "Install with: pip install courier[grafana]",
+            "Install with: pip install data-courier[grafana]",
         ) from None
 
     try:

@@ -38,7 +38,7 @@ Each plugin runs in its own thread with independent health monitoring and automa
 ## Quick Start
 
 ```bash
-pip install courier
+pip install data-courier
 ```
 
 ### Running the service

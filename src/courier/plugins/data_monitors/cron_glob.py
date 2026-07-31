@@ -74,7 +74,7 @@ def _croniter() -> Any:
         from croniter import croniter  # noqa: PLC0415
     except ImportError as exc:
         raise InvalidPluginConfigError(
-            "cron_glob requires the cron extra: pip install courier[cron]",
+            "cron_glob requires the cron extra: pip install data-courier[cron]",
         ) from exc
     return croniter
 

@@ -1,3 +1,41 @@
+Version 1.0.0-alpha.29 (2026-07-29)
+***********************************
+
+ * *Breaking*: Distribution renamed from ``runcourier`` to ``data-courier``
+ * *Breaking*: Plugin discovery moved from ``pluginify`` to Python entry points
+ * *Breaking*: YAML plugins removed; metadata configs are Python
+ * *Enhancement*: ``croniter`` is now the optional ``data-courier[cron]`` extra
+
+Distribution renamed to ``data-courier``
+========================================
+
+The project is published as ``data-courier`` on PyPI. ``courier`` was already
+taken, and ``runcourier`` will not receive further releases.
+
+**Nothing changes after installation.** The import package is still ``courier``
+and the CLI command is still ``courier``::
+
+    pip install data-courier      # was: pip install runcourier
+
+    import courier                # unchanged
+    courier run config.yaml       # unchanged
+
+The ``runcourier.dev/v1alpha1`` ``apiVersion`` in service configs is a schema
+namespace, not a package name, and is **unchanged**. Existing configs need no
+edits.
+
+Optional extras are now spelled ``data-courier[s3]``, ``data-courier[cron]`` and
+so on. The messages plugins emit when a dependency is missing name the correct
+package -- previously they said ``pip install courier[s3]``, which installs an
+unrelated project.
+
+``courier.__version__`` is read from installed distribution metadata
+====================================================================
+
+It was a hand-maintained constant and had drifted to ``1.0.0-alpha.12`` while
+the project shipped later versions. A release now bumps ``pyproject.toml``
+only.
+
 Version 0.2.0 (2026-05-14)
 **************************
 
