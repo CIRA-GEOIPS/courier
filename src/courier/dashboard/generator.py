@@ -49,7 +49,7 @@ def generate_dashboard(  # noqa: PLR0913
     """Generate one or more Grafana dashboard objects from a parsed config model.
 
     Imports ``grafanalib`` lazily so the module remains importable when the
-    optional ``courier[viz]`` extra is not installed.  Calling this function
+    optional ``data-courier[viz]`` extra is not installed.  Calling this function
     without ``grafanalib`` raises a descriptive :exc:`ImportError`.
 
     Parameters
@@ -106,7 +106,7 @@ def generate_dashboard(  # noqa: PLR0913
         raise ImportError(
             "grafanalib is required for dashboard generation. "
             "Install the optional dependency with:\n"
-            "    pip install courier[viz]",
+            "    pip install data-courier[viz]",
         )
 
     # ------------------------------------------------------------------

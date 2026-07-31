@@ -75,7 +75,7 @@ class JobBuilder(ServicePlugin):
     * Push every job mutation to the shared Redis hash so peers stay current.
     * Use Redis SET NX to guarantee that exactly one instance emits each job.
 
-    Requires ``pip install courier[ha]``.  Disabled by default (no
+    Requires ``pip install data-courier[ha]``.  Disabled by default (no
     ``state_sync`` key → no Redis dependency at runtime).
     """
 
@@ -632,7 +632,7 @@ class JobBuilder(ServicePlugin):
         ------
         InvalidPluginConfigError
             If ``state_sync`` is present but the ``redis`` package is not
-            installed (``pip install courier[ha]``).
+            installed (``pip install data-courier[ha]``).
         pydantic.ValidationError
             If the ``state_sync`` config values are invalid.
         """
@@ -648,7 +648,7 @@ class JobBuilder(ServicePlugin):
             )
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "state_sync requires the redis package: pip install courier[ha]",
+                "state_sync requires the redis package: pip install data-courier[ha]",
             ) from exc
         sync_config = RedisStateSyncConfig.model_validate(raw)
         return JobBuilderStateSync(

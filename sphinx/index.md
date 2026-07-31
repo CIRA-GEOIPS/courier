@@ -3,7 +3,7 @@
 [![Tests](https://github.com/biosafetylvl5/courier/workflows/Tests/badge.svg)](https://github.com/biosafetylvl5/courier)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 
-**Courier** (`courier` CLI, Python package `runcourier`) is a plugin-based
+**Courier** (`courier` CLI, Python package `data-courier`) is a plugin-based
 mid-level orchestration framework. It watches for data files, groups them
 into processing jobs, and dispatches them to workflows — in real time, on
 a schedule, or for historical reprocessing. It excels at geolocated data

@@ -1,6 +1,6 @@
 """Poll an SFTP server for new files matching a glob pattern.
 
-Requires the optional ``courier[sftp]`` extra (``paramiko``).
+Requires the optional ``data-courier[sftp]`` extra (``paramiko``).
 
 Configuration lives in :class:`SftpPollerConfig`. Supports either password or
 private-key authentication (exactly one must be supplied). The connection is
@@ -128,7 +128,7 @@ class SftpPoller(DataMonitorBasePlugin):
             import paramiko  # noqa: PLC0415
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "sftp_poller requires the sftp extra: pip install courier[sftp]",
+                "sftp_poller requires the sftp extra: pip install data-courier[sftp]",
             ) from exc
 
         client = paramiko.SSHClient()
@@ -303,7 +303,7 @@ class SftpPoller(DataMonitorBasePlugin):
             import paramiko  # noqa: PLC0415
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "sftp_poller requires the sftp extra: pip install courier[sftp]",
+                "sftp_poller requires the sftp extra: pip install data-courier[sftp]",
             ) from exc
 
         try:

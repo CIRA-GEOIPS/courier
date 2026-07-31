@@ -13,6 +13,7 @@ either one.
 from __future__ import annotations
 
 import importlib
+import re
 import sys
 import tomllib
 from importlib.metadata import entry_points
@@ -528,3 +529,133 @@ def test_a_missing_optional_dependency_names_its_extra() -> None:
     with mock.patch.dict(sys.modules, {"croniter": None}):
         with pytest.raises(InvalidPluginConfigError, match=r"courier\[cron\]"):
             CronGlobConfig(path="/tmp", cron_expression="*/5 * * * *")
+
+
+# ---------------------------------------------------------------------------
+# Distribution name and version
+#
+# The install name (data-courier) differs from the import name (courier)
+# because `courier` was taken on PyPI. That split is only safe if every place
+# that tells an operator what to install agrees with what is actually
+# published -- for most of this project's life it did not, and the docs and six
+# plugin error messages pointed at a package it does not own.
+# ---------------------------------------------------------------------------
+
+_DISTRIBUTION_NAME = "data-courier"
+
+#: Every extra courier declares, used to spot install instructions in prose.
+_KNOWN_EXTRAS = (
+    "cron", "s3", "sftp", "kafka", "http", "ha", "grafana", "viz",
+    "doc", "lint", "test", "all-monitors", "all-dispatchers",
+)
+
+
+def test_pyproject_name_tables_agree() -> None:
+    """Both tables must declare the same distribution name.
+
+    poetry-core 2.x reads ``[project]`` and ignores ``[tool.poetry]``; 1.x does
+    the reverse. Disagreeing names mean the wheel is published under a
+    different name depending on which backend built it.
+    """
+    data = _pyproject()
+    poetry_name = data["tool"]["poetry"]["name"]
+    project_name = data["project"]["name"]
+
+    assert poetry_name == project_name == _DISTRIBUTION_NAME, (
+        f"[tool.poetry].name={poetry_name!r}, [project].name={project_name!r}, "
+        f"expected {_DISTRIBUTION_NAME!r}"
+    )
+
+
+def _install_instruction_files() -> list[Path]:
+    """Files that tell an operator what to install."""
+    paths: list[Path] = [_REPO_ROOT / "README.md"]
+    for root in ("src", "sphinx", "examples"):
+        directory = _REPO_ROOT / root
+        if directory.is_dir():
+            paths += [
+                path for path in directory.rglob("*") if path.suffix in {".py", ".md"}
+            ]
+    return sorted(paths)
+
+
+def test_install_instructions_name_the_distribution() -> None:
+    """Every ``pip install <name>[<extra>]`` must name the real distribution.
+
+    This is the guard that was missing. The plugin error messages and the docs
+    said ``pip install courier[s3]`` while the project published as
+    ``runcourier`` -- an instruction that installs somebody else's package, and
+    nothing in the suite objected for the life of the repo.
+
+    Scoped to install commands that name one of courier's own extras, so
+    ``pip install -e .`` and third-party examples in the plugin-authoring guide
+    are left alone.
+    """
+    extras = "|".join(re.escape(extra) for extra in _KNOWN_EXTRAS)
+    # ``pip install NAME[extra]`` (note the whitespace -- omitting it here made
+    # this branch match nothing, so only the backticked form was checked) or a
+    # backticked ``NAME[extra]`` reference in prose.
+    pattern = re.compile(
+        rf"(?:pip install\s+|`+)([A-Za-z0-9._-]+)\[({extras})\]",
+    )
+    wrong: list[str] = []
+
+    for path in _install_instruction_files():
+        for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+            for name, extra in pattern.findall(line):
+                if name != _DISTRIBUTION_NAME:
+                    location = path.relative_to(_REPO_ROOT)
+                    wrong.append(f"{location}:{line_number}: {name}[{extra}]")
+
+    assert not wrong, (
+        f"install instructions naming something other than {_DISTRIBUTION_NAME!r}:\n"
+        + "\n".join(wrong)
+    )
+
+
+def test_no_bare_install_of_the_import_name() -> None:
+    """``pip install courier`` fetches an unrelated PyPI project."""
+    offenders: list[str] = []
+    for path in _install_instruction_files():
+        for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+            if re.search(r"pip install +courier\b", line):
+                offenders.append(f"{path.relative_to(_REPO_ROOT)}:{line_number}")
+
+    assert not offenders, (
+        "`pip install courier` installs a different project; use "
+        f"{_DISTRIBUTION_NAME!r}:\n" + "\n".join(offenders)
+    )
+
+
+def test_version_matches_pyproject() -> None:
+    """``courier.__version__`` must be the version the project declares.
+
+    It is derived from installed metadata precisely so this cannot drift, but
+    a stale editable install would still report the previous release. Compared
+    with ``packaging.version.Version`` so ``1.0.0-alpha.29`` and ``1.0.0a29``
+    -- the same version before and after PEP 440 normalisation -- compare equal.
+    """
+    from packaging.version import Version
+
+    import courier
+
+    declared = _pyproject()["project"]["version"]
+
+    assert Version(courier.__version__) == Version(declared), (
+        f"courier.__version__={courier.__version__!r} but pyproject declares "
+        f"{declared!r}; re-run: pip install -e ."
+    )
+
+
+def test_version_tuple_matches_version() -> None:
+    """The numeric tuple must track the string it is derived from."""
+    import courier
+
+    expected = tuple(
+        int(part) for part in courier.__version__.split(".")[:3]
+        if part.isdigit()
+    )
+
+    assert courier.__version_tuple__[: len(expected)] == expected, (
+        f"{courier.__version_tuple__} does not match {courier.__version__}"
+    )

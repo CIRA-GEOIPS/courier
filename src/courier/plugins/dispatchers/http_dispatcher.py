@@ -1,6 +1,6 @@
 """HTTP Dispatcher — POST/PUT a rendered JSON payload per job.
 
-Requires the optional ``courier[http]`` extra (``httpx``). The payload is
+Requires the optional ``data-courier[http]`` extra (``httpx``). The payload is
 generated from a Jinja2 template with a rich job/file context. Transient
 transport errors are retried with exponential backoff; HTTP status codes
 listed in ``success_status_codes`` mark the request as successful.
@@ -137,7 +137,8 @@ class HttpDispatcher(Dispatcher):
             import httpx  # noqa: PLC0415
         except ImportError as exc:
             raise InvalidPluginConfigError(
-                "http_dispatcher requires the http extra: pip install courier[http]",
+                "http_dispatcher requires the http extra: "
+                "pip install data-courier[http]",
             ) from exc
 
         headers = dict(self.validated.headers)

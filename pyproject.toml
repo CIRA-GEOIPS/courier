@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "runcourier"
+name = "data-courier"
 version = "1.0.0-alpha.29"
 description = "A plugin-based, event-driven orchestration framework for building data processing pipelines"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Evan Rose <none@email.com>"]
@@ -121,6 +121,7 @@ test = [
     "httpx",                     # required by http_dispatcher tests
     "grafanalib",                # required by tests/unit_tests/dashboard/*
     "mutmut",                    # mutation testing; see .github/workflows/mutation.yaml
+    "packaging",                 # version comparison in the name/version drift guards
 ]
 
 ha = [
@@ -423,7 +424,7 @@ skip-magic-trailing-comma = false
 line-ending = "lf"
 
 [project]
-name = "runcourier"
+name = "data-courier"
 version = "1.0.0-alpha.29"
 requires-python = ">=3.11,<3.15"
 
