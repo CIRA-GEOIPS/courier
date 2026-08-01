@@ -14,9 +14,12 @@ lifecycle is covered by ``tests/test_process_lifecycle.py``.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
+import click
 import pytest
+import typer.main
 from typer.testing import CliRunner
 
 from courier.cli.app import app
@@ -67,7 +70,11 @@ def test_help_renders(command: list[str]) -> None:
 def test_validate_accepts_every_shipped_config(config: Path) -> None:
     result = runner.invoke(app, ["validate", str(config)])
     assert result.exit_code == 0, result.output
-    assert "Config valid" in result.output
+    # Names the file it checked, summarises the pipeline, and offers the next
+    # command -- a bare "valid" leaves the operator to guess all three.
+    assert config.name in result.output
+    assert "pipeline step" in result.output
+    assert "courier run" in result.output
 
 
 def test_validate_rejects_a_malformed_config(tmp_path: Path) -> None:
@@ -78,13 +85,17 @@ def test_validate_rejects_a_malformed_config(tmp_path: Path) -> None:
     result = runner.invoke(app, ["validate", str(bad)])
 
     assert result.exit_code != 0
-    assert "Invalid config" in result.output
+    assert "is not valid" in result.output
+    # pydantic internals must not be the operator-facing message
+    assert "input_value=" not in result.output
+    assert "errors.pydantic.dev" not in result.output
 
 
 def test_validate_reports_a_missing_file(tmp_path: Path) -> None:
     result = runner.invoke(app, ["validate", str(tmp_path / "nope.yaml")])
-    assert result.exit_code != 0
-    assert "not found" in result.output
+    assert result.exit_code == 1
+    assert "No config file at" in result.output
+    assert "courier init" in result.output, "a dead end without a next step"
 
 
 # ── plugins ─────────────────────────────────────────────────────────────────
@@ -112,7 +123,7 @@ def test_plugins_list_json_is_machine_readable() -> None:
 def test_plugins_list_filtered_by_config(config: Path) -> None:
     """Filtering by config must return the plugins that config references."""
     result = runner.invoke(
-        app, ["plugins", "list", "--config", str(config), "--json"],
+        app, ["plugins", "list", str(config), "--json"],
     )
     assert result.exit_code == 0, result.output
 
@@ -126,7 +137,7 @@ def test_plugins_list_filtered_by_config(config: Path) -> None:
 @pytest.mark.parametrize("config", _SHIPPED_CONFIGS, ids=_CONFIG_IDS)
 def test_queues_list_reports_namespaced_queues(config: Path) -> None:
     """Queue names must be namespaced, or two services collide on one broker."""
-    result = runner.invoke(app, ["queues", "list", "--config", str(config)])
+    result = runner.invoke(app, ["queues", "list", str(config)])
     assert result.exit_code == 0, result.output
     assert "namespace:" in result.output
 
@@ -145,7 +156,7 @@ def test_queues_prune_dry_run_deletes_nothing(tmp_path: Path) -> None:
     config = _SHIPPED_CONFIGS[0]
     result = runner.invoke(
         app,
-        ["queues", "prune", "--config", str(config), "--candidate", "ghost-queue"],
+        ["queues", "prune", str(config), "--candidate", "ghost-queue"],
     )
     assert result.exit_code == 0, result.output
     assert "orphan:   ghost-queue" in result.output
@@ -212,5 +223,174 @@ def test_dashboard_reports_a_missing_config(tmp_path: Path) -> None:
     pytest.importorskip("grafanalib")
 
     result = runner.invoke(app, ["dashboard", str(tmp_path / "nope.yaml")])
-    assert result.exit_code != 0
-    assert "not found" in result.output
+    # Same message and same exit code as `validate`: a missing config must not
+    # read differently depending on which command noticed it.
+    assert result.exit_code == 1
+    assert "No config file at" in result.output
+
+
+# ---------------------------------------------------------------------------
+# The CLI as a contract with its own documentation
+#
+# Three bugs in this repo were all the same shape: an invocation written in the
+# docs that nobody ever executed. `courier dashboard config.yaml --only-metrics`
+# failed with "No such command"; the README's two headline examples,
+# `courier run --config` and `courier validate --config`, both failed with
+# "No such option". Each was correct prose about a CLI that did not exist.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+#: Tokens that stand in for a real value in prose. Never resolved.
+_PLACEHOLDER = re.compile(r"^[<{\[]|[>}\]]$|^\$|^\.\.\.$")
+
+
+def _iter_documented_invocations() -> list[tuple[str, int, str]]:
+    """Yield ``(source, line number, command)`` for every documented `courier` call.
+
+    Reads fenced code blocks and inline backtick spans from the README and every
+    docs page. Shell noise (prompts, pipes, comments) is stripped; anything that
+    is not a plain `courier ...` call is skipped.
+    """
+    sources = [_REPO_ROOT / "README.md"]
+    sources += sorted((_REPO_ROOT / "sphinx").rglob("*.md"))
+    sources += sorted((_REPO_ROOT / "examples").rglob("*.md"))
+
+    found: list[tuple[str, int, str]] = []
+    for path in sources:
+        in_fence = False
+        for number, raw in enumerate(path.read_text().splitlines(), start=1):
+            if raw.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+
+            # Inside a fence a line may start with the command; outside one,
+            # only a backticked span counts. Prose such as "courier loads it,
+            # rather than..." is a sentence, not an invocation.
+            pattern = r"(?:^|`|\$ )\s*(courier +[^`\n|>#]+)" if in_fence else (
+                r"`\s*(courier +[^`\n]+)`"
+            )
+            for match in re.finditer(pattern, raw):
+                command = match.group(1).strip().rstrip("\\").strip()
+                found.append((str(path.relative_to(_REPO_ROOT)), number, command))
+    return found
+
+
+def _root_command() -> click.Command:
+    """The real Click tree behind the Typer app."""
+    return typer.main.get_command(app)
+
+
+def _opts(command: click.Command) -> set[str]:
+    """Every option string this command accepts."""
+    return {opt for param in command.params for opt in getattr(param, "opts", [])}
+
+
+def _resolve(root: click.Command, tokens: list[str]) -> tuple[click.Command, list[str]]:
+    """Walk the Click tree to the command *tokens* names.
+
+    Duck-typed on ``get_command`` rather than ``isinstance(.., click.Group)``:
+    Typer's group class does not inherit from ``click.Group``, so an isinstance
+    check silently resolves nothing and the guard passes on everything.
+    """
+    command = root
+    index = 1  # skip "courier"
+    while index < len(tokens) and hasattr(command, "get_command"):
+        candidate = command.get_command(click.Context(command), tokens[index])
+        if candidate is None:
+            break
+        command = candidate
+        index += 1
+    return command, tokens[index:]
+
+
+def test_documented_invocations_were_found() -> None:
+    """Guard the guard: a changed docs layout would make the check vacuous."""
+    found = _iter_documented_invocations()
+    assert len(found) >= 15, f"only found {found}"
+
+
+def test_documented_invocations_parse() -> None:
+    """Every `courier ...` line in the docs must work against the real CLI.
+
+    Checks flags and subcommands only -- never that referenced files exist,
+    since the docs are full of `my-service.yaml` and `{output_path}`. A guard
+    that complained about those would be noise and would get switched off.
+    """
+    root = _root_command()
+    problems: list[str] = []
+
+    for source, line, command in _iter_documented_invocations():
+        tokens = command.split()
+        resolved, rest = _resolve(root, tokens)
+
+        # `courier <command> CONFIG` in a reference page is a template, not an
+        # invocation. Checking it would force docs to stop showing the shape.
+        if len(tokens) > 1 and _PLACEHOLDER.match(tokens[1]):
+            continue
+
+        if resolved is root and len(tokens) > 1 and not tokens[1].startswith("-"):
+            problems.append(f"{source}:{line}: unknown command {tokens[1]!r}")
+            continue
+
+        # Click attaches --help dynamically rather than as a declared param.
+        known = _opts(resolved) | {"--help"}
+        for token in rest:
+            if not token.startswith("-") or _PLACEHOLDER.match(token):
+                continue
+            flag = token.split("=", 1)[0]
+            if flag not in known:
+                problems.append(
+                    f"{source}:{line}: {' '.join(tokens[:2])} has no {flag!r}",
+                )
+
+    assert not problems, "documented commands that do not work:\n" + "\n".join(
+        problems,
+    )
+
+
+def test_top_level_help_describes_the_tool() -> None:
+    """`courier --help` must say what courier is, not how it is wired.
+
+    Typer uses the ``@app.callback`` docstring as the program description, so
+    this once read "Pre-command callback: validate --log-level" -- an
+    implementation detail, to someone asking what the tool does.
+    """
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "callback" not in result.output.lower()
+    assert "courier init" in result.output, "should name a first command to run"
+
+
+def test_version_flag_matches_the_package() -> None:
+    """`--version` is the question every operator asks a new binary first."""
+    import courier
+
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert courier.__version__ in result.output
+
+
+def test_config_is_positional_for_every_command() -> None:
+    """One noun, one grammar.
+
+    `courier queues list config.yaml` used to fail while
+    `courier validate config.yaml` worked, because queues took `--config`.
+    """
+    root = _root_command()
+    offenders: list[str] = []
+
+    for name in ("run", "validate", "dashboard"):
+        command = root.get_command(click.Context(root), name)
+        if command and "--config" in _opts(command):
+            offenders.append(name)
+
+    for group_name, sub in (("queues", "list"), ("queues", "prune"), ("plugins", "list")):
+        group = root.get_command(click.Context(root), group_name)
+        command = group.get_command(click.Context(group), sub)
+        if "--config" in _opts(command):
+            offenders.append(f"{group_name} {sub}")
+
+    assert not offenders, f"these take --config instead of a positional: {offenders}"

@@ -290,7 +290,7 @@ class TestRunCLIOnlyParsing:
     # ------------------------------------------------------------------
 
     @patch("courier.cli.run.run_service")
-    @patch("courier.cli.run.load_config")
+    @patch("courier.cli.run.load_config_or_exit")
     def test_only_empty_string_maps_to_none(
         self, mock_load_config, mock_run_service,
     ):
@@ -312,7 +312,7 @@ class TestRunCLIOnlyParsing:
     # ------------------------------------------------------------------
 
     @patch("courier.cli.run.run_service")
-    @patch("courier.cli.run.load_config")
+    @patch("courier.cli.run.load_config_or_exit")
     def test_only_lowercase_normalization(
         self, mock_load_config, mock_run_service,
     ):
@@ -334,7 +334,7 @@ class TestRunCLIOnlyParsing:
     # ------------------------------------------------------------------
 
     @patch("courier.cli.run.run_service")
-    @patch("courier.cli.run.load_config")
+    @patch("courier.cli.run.load_config_or_exit")
     def test_only_strips_spaces(
         self, mock_load_config, mock_run_service,
     ):
@@ -356,7 +356,7 @@ class TestRunCLIOnlyParsing:
     # ------------------------------------------------------------------
 
     @patch("courier.cli.run.run_service")
-    @patch("courier.cli.run.load_config")
+    @patch("courier.cli.run.load_config_or_exit")
     def test_only_deduplicates(
         self, mock_load_config, mock_run_service,
     ):
@@ -378,7 +378,7 @@ class TestRunCLIOnlyParsing:
     # ------------------------------------------------------------------
 
     @patch("courier.cli.run.run_service")
-    @patch("courier.cli.run.load_config")
+    @patch("courier.cli.run.load_config_or_exit")
     def test_only_trailing_comma_ignored(
         self, mock_load_config, mock_run_service,
     ):

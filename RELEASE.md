@@ -5,6 +5,9 @@ Version 1.0.0-alpha.29 (2026-07-29)
  * *Breaking*: Plugin discovery moved from ``pluginify`` to Python entry points
  * *Breaking*: YAML plugins removed; metadata configs are Python
  * *Enhancement*: ``croniter`` is now the optional ``data-courier[cron]`` extra
+ * *Breaking*: ``queues``/``plugins`` take a positional CONFIG, not ``--config``
+ * *Breaking*: ``courier dashboard`` requires its CONFIG argument
+ * *Enhancement*: ``courier --version``; clearer help, errors and validate output
 
 Distribution renamed to ``data-courier``
 ========================================
@@ -28,6 +31,30 @@ Optional extras are now spelled ``data-courier[s3]``, ``data-courier[cron]`` and
 so on. The messages plugins emit when a dependency is missing name the correct
 package -- previously they said ``pip install courier[s3]``, which installs an
 unrelated project.
+
+CLI takes a positional config everywhere
+========================================
+
+``courier queues list``, ``courier queues prune`` and ``courier plugins list``
+took ``--config/-c`` while ``run``, ``validate`` and ``dashboard`` took a
+positional argument, so ``courier queues list config.yaml`` failed while
+``courier validate config.yaml`` worked. All of them now take the config
+positionally::
+
+    courier queues list config.yaml      # was: --config config.yaml
+    courier queues prune config.yaml     # was: --config config.yaml
+    courier plugins list config.yaml     # was: --config config.yaml (optional)
+
+``courier dashboard`` now requires its config argument. It previously defaulted
+to ``courier.yaml``, a filename nothing in the project creates.
+
+``--namespace/-n`` is unchanged on the commands that have it.
+
+Also in this release: ``courier --version``; ``courier --help`` describes the
+tool rather than an internal callback; validation failures name the offending
+config key instead of printing pydantic internals; ``courier validate`` reports
+what it validated and the command to run next; and ``courier queues list``
+gained ``--json`` to match ``courier plugins list``.
 
 ``courier.__version__`` is read from installed distribution metadata
 ====================================================================

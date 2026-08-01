@@ -46,13 +46,13 @@ pip install data-courier
 Point Courier at a YAML config and start it:
 
 ```bash
-courier run --config my_config.yaml
+courier run my_config.yaml
 ```
 
 Validate your config before running:
 
 ```bash
-courier validate --config my_config.yaml
+courier validate my_config.yaml
 ```
 
 ### Writing a data monitor
