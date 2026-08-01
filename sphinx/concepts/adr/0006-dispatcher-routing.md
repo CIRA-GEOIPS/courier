@@ -129,7 +129,7 @@ step if label/selector demand materializes.
   with more than 100 dispatchers should review broker limits.
 - **Retired queue cleanup** — removing a dispatcher from config does
   not delete its queue from RabbitMQ. Operators run
-  `courier queues prune --config PATH` (same `ServiceConfigModel` +
+  `courier queues prune CONFIG` (same `ServiceConfigModel` +
   `TargetResolver` the runtime uses; dry-run default, `--apply`
   required to delete).
 

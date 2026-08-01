@@ -12,7 +12,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from courier.cli.config_loader import load_config
+from courier.cli.feedback import load_config_or_exit
 from courier.interfaces import (
     data_monitor_configs,
     data_monitors,
@@ -40,14 +40,11 @@ plugins_app = typer.Typer(
     no_args_is_help=True,
 )
 
-_CONFIG_OPTION = typer.Option(
-    "--config",
-    "-c",
-    exists=True,
-    readable=True,
-    help=(
-        "Path to a service YAML. Returns only plugins referenced in the service config."
-    ),
+# Positional and optional: with no config every installed plugin is listed;
+# with one, only the plugins that config actually references.
+_CONFIG_ARGUMENT = typer.Argument(
+    metavar="[CONFIG]",
+    help="Service YAML to filter by. Omit to list every installed plugin.",
 )
 _NAMESPACE_OPTION = typer.Option(
     "--namespace",
@@ -143,7 +140,7 @@ def get_plugins(
     if not isinstance(config_file, Path):
         config = config_file
     else:
-        config = load_config(config_file)
+        config = load_config_or_exit(config_file)
     if config:
         namespace = (
             config.metadata.namespace if config.metadata.namespace else namespace
@@ -221,12 +218,13 @@ def _render_plugins_json(namespace: str, plugins: list[list[str]]) -> None:
 
 @plugins_app.command("list")
 def list_cmd(
-    config: Annotated[Path | None, _CONFIG_OPTION] = None,
+    config: Annotated[Path | None, _CONFIG_ARGUMENT] = None,
     namespace: Annotated[str | None, _NAMESPACE_OPTION] = None,
     json_output: Annotated[bool, _JSON_OPTION] = False,
 ) -> None:
     """Print every plugin the service is expected to use."""
-    ns, plugins = get_plugins(load_config(config) if config else None, namespace)
+    loaded = load_config_or_exit(config) if config else None
+    ns, plugins = get_plugins(loaded, namespace)
     if json_output:
         _render_plugins_json(ns, plugins)
     else:

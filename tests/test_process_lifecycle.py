@@ -238,4 +238,9 @@ def test_courier_validate_exits_zero_without_starting_a_service(
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Config valid" in result.stdout
+    # Behaviour, not copy: it confirms the file, summarises the pipeline, and
+    # offers the next command. Pinning the exact sentence made this test fail
+    # when the wording improved.
+    assert "is valid" in result.stdout
+    assert "pipeline step" in result.stdout
+    assert "courier run" in result.stdout

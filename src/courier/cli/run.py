@@ -6,11 +6,11 @@ import logging
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
-from courier.cli.config_loader import load_config
+from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
@@ -146,7 +146,13 @@ def run_service(
 
 def run(
     ctx: typer.Context,
-    config_file: Path,
+    config_file: Annotated[
+        Path,
+        typer.Argument(
+            metavar="CONFIG",
+            help="Service YAML describing the pipeline to run.",
+        ),
+    ],
     only: str | None = typer.Option(
         None,
         "--only",
@@ -158,11 +164,7 @@ def run(
     ),
 ) -> None:
     """Run the service with a config file."""
-    if not config_file.exists():
-        typer.echo(f"Error: File {config_file} not found")
-        raise typer.Exit(1)
-
-    config = load_config(config_file)
+    config = load_config_or_exit(config_file)
     log_level = ctx.obj.get("log_level") if ctx.obj else None
 
     # Parse --only

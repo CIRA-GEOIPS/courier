@@ -20,7 +20,29 @@ VALID_LOG_LEVELS: dict[str, int] = {
     "CRITICAL": logging.CRITICAL,
 }
 
-app = typer.Typer()
+# The help text is set here rather than left to the callback's docstring.
+# Typer uses ``@app.callback``'s docstring as the program description, so the
+# tool used to introduce itself as "Pre-command callback: validate --log-level"
+# -- an implementation detail, to someone asking what courier is.
+app = typer.Typer(
+    help=(
+        "Watch for data, group it into jobs, and dispatch those jobs to "
+        "processing workflows.\n\n"
+        "A courier service is described by one YAML config. Start with "
+        "'courier init' to generate one interactively, 'courier validate' to "
+        "check it, then 'courier run' to start the service."
+    ),
+    no_args_is_help=True,
+)
+
+
+def _show_version(*, value: bool) -> None:
+    """Print the version and exit, before any other argument is processed."""
+    if value:
+        from courier import __version__  # noqa: PLC0415
+
+        typer.echo(f"courier {__version__}")
+        raise typer.Exit
 
 
 @app.callback()
@@ -33,8 +55,16 @@ def _pre_command(
         help="Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL "
         "[env: COURIER_LOG_LEVEL]",
     ),
+    version: bool = typer.Option(  # noqa: ARG001 - consumed by the callback
+        False,
+        "--version",
+        "-V",
+        callback=lambda value: _show_version(value=value),
+        is_eager=True,
+        help="Show the installed courier version and exit.",
+    ),
 ) -> None:
-    """Pre-command callback: validate --log-level."""
+    """Validate global options before dispatching to a command."""
     ctx.ensure_object(dict)
     if log_level is not None:
         upper = log_level.upper()
@@ -67,7 +97,20 @@ except ImportError:
 try:
     from courier.dashboard.cli import dashboard
 
-    app.command("dashboard")(dashboard)
+    # Examples live in the epilog rather than the docstring: Typer renders a
+    # docstring verbatim, so a numpydoc "Examples\n--------" section printed its
+    # own underline into --help as a row of literal dashes.
+    app.command(
+        "dashboard",
+        # Typer's rich renderer rewraps the epilog and ignores Click's \b
+        # escape, so a multi-line example block collapses into a run-on
+        # paragraph. One example that survives rewrapping, and a pointer
+        # to the reference page that lists the rest.
+        epilog=(
+            "Example:  courier dashboard config.yaml --split-by kind "
+            "-o ./dashboards/"
+        ),
+    )(dashboard)
 except ImportError:
     pass  # dashboard extra not installed — command won't be available
 
