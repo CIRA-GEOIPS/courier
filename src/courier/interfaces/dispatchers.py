@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import threading
 import time
+import traceback
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -117,7 +119,10 @@ class Dispatcher(ServicePlugin):
             self._logger.debug(f"Yielding execution log for job: {job}")
             return [
                 ExecutionLog(
-                    return_code=None, stdout=None, stderr=None, hostname=None,
+                    return_code=None,
+                    stdout=None,
+                    stderr=None,
+                    hostname=None,
                 ),
             ]
 
@@ -170,10 +175,11 @@ class Dispatcher(ServicePlugin):
             if broker._connection and broker._connection.connected:
                 with broker._connection.channel() as channel:
                     queue_name = self.parent_service._broker_manager.get_queue_name(
-                        self.incoming_queue
+                        self.incoming_queue,
                     )
                     _, message_count, _ = channel.queue_declare(
-                        queue=queue_name, passive=True,
+                        queue=queue_name,
+                        passive=True,
                     )
                     DISPATCHER_QUEUE_DEPTH.labels(
                         dispatcher_identifier=self.identifier,
@@ -184,7 +190,7 @@ class Dispatcher(ServicePlugin):
         ).set(0)
 
     def _run_handle_incoming_jobs(self) -> None:
-        """Wrapper that exits the process on any unhandled exception."""
+        """Exit the process on any unhandled exception."""
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "dispatcher.handle_incoming_jobs",
@@ -196,12 +202,11 @@ class Dispatcher(ServicePlugin):
             try:
                 self.handle_incoming_jobs()
             except Exception:
-                import os
-                import traceback
                 traceback.print_exc()
                 span.set_status(Status(StatusCode.ERROR))
                 self._logger.critical(
-                    "Fatal error in dispatcher %s: exiting", self.name,
+                    "Fatal error in dispatcher %s: exiting",
+                    self.name,
                 )
                 os._exit(1)
 

@@ -254,4 +254,3 @@ class S3Poller(DataMonitorBasePlugin):
             error_type=code,
         ).inc()
         return True
-

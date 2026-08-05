@@ -232,7 +232,9 @@ def _sanitise_plugin_config(raw_config: Any) -> dict[str, Any]:
     return {}
 
 
-def _build_plugins(config: ServiceConfigModel) -> tuple[
+def _build_plugins(
+    config: ServiceConfigModel,
+) -> tuple[
     list[PluginInfo],
     list[PluginInfo],
     list[PluginInfo],
@@ -332,14 +334,10 @@ def _compute_upstream_deps(
         return set()
 
     local_jb_ids = {
-        jb.identifier
-        for jb in job_builders
-        if jb.identifier in local_identifiers
+        jb.identifier for jb in job_builders if jb.identifier in local_identifiers
     }
     local_disp_ids = {
-        d.identifier
-        for d in dispatchers
-        if d.identifier in local_identifiers
+        d.identifier for d in dispatchers if d.identifier in local_identifiers
     }
 
     upstream: set[str] = set()
@@ -371,14 +369,10 @@ def _compute_downstream_deps(
         return set()
 
     local_jb_ids = {
-        jb.identifier
-        for jb in job_builders
-        if jb.identifier in local_identifiers
+        jb.identifier for jb in job_builders if jb.identifier in local_identifiers
     }
     local_disp_ids = {
-        d.identifier
-        for d in dispatchers
-        if d.identifier in local_identifiers
+        d.identifier for d in dispatchers if d.identifier in local_identifiers
     }
 
     downstream: set[str] = set()
@@ -474,10 +468,15 @@ def parse_config(
         run_kinds=run_kinds,
     )
     upstream_deps = _compute_upstream_deps(
-        local_identifiers, data_monitors, job_builders, dispatchers,
+        local_identifiers,
+        data_monitors,
+        job_builders,
+        dispatchers,
     )
     downstream_deps = _compute_downstream_deps(
-        local_identifiers, job_builders, dispatchers,
+        local_identifiers,
+        job_builders,
+        dispatchers,
     )
 
     return DashboardModel(

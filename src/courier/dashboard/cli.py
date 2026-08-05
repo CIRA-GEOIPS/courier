@@ -1,4 +1,5 @@
 """CLI entry point for ``courier dashboard``."""
+
 from __future__ import annotations
 
 from pathlib import (
@@ -9,7 +10,7 @@ from typing import Annotated
 import typer
 
 
-def dashboard(  # noqa: PLR0913
+def dashboard(  # noqa: PLR0913, PLR0917
     config: Annotated[
         Path,
         typer.Argument(
@@ -21,7 +22,8 @@ def dashboard(  # noqa: PLR0913
     output: Annotated[
         Path | None,
         typer.Option(
-            "--output", "-o",
+            "--output",
+            "-o",
             help=(
                 "Output path. A file path writes a single .json file; "
                 "a directory path writes one file per dashboard. "
@@ -45,8 +47,7 @@ def dashboard(  # noqa: PLR0913
         str | None,
         typer.Option(
             "--run-identifiers",
-            help="Comma-separated plugin identifiers to filter "
-                 "(cluster sub-section).",
+            help="Comma-separated plugin identifiers to filter (cluster sub-section).",
         ),
     ] = None,
     run_kinds: Annotated[
@@ -54,7 +55,7 @@ def dashboard(  # noqa: PLR0913
         typer.Option(
             "--run-kinds",
             help="Comma-separated plugin kinds to filter: "
-                 "data_monitor, job_builder, dispatcher.",
+            "data_monitor, job_builder, dispatcher.",
         ),
     ] = None,
     # Live detection
@@ -63,7 +64,7 @@ def dashboard(  # noqa: PLR0913
         typer.Option(
             "--live",
             help="Auto-detect active plugins from a running Courier "
-                 "instance's Prometheus metrics.",
+            "instance's Prometheus metrics.",
         ),
     ] = False,
     prom_host: Annotated[
@@ -218,8 +219,7 @@ def dashboard(  # noqa: PLR0913
             )
         else:
             typer.echo(
-                "No active plugins detected. "
-                "Proceeding with config-defined plugins.",
+                "No active plugins detected. Proceeding with config-defined plugins.",
             )
 
     # Resolve mode
@@ -230,8 +230,7 @@ def dashboard(  # noqa: PLR0913
     }
     if split_by not in mode_map:
         typer.echo(
-            f"Invalid --split-by value: '{split_by}'. "
-            "Choose: unified, kind, plugin.",
+            f"Invalid --split-by value: '{split_by}'. Choose: unified, kind, plugin.",
         )
         raise typer.Exit(1)
 

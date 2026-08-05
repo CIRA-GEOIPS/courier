@@ -30,6 +30,7 @@ from courier.dispatchers._output_scanner import (
 )
 from courier.interfaces.dispatchers import Dispatcher
 from courier.metrics import DISPATCHER_PARALLEL_WORKERS_ACTIVE
+from courier.plugins.dispatchers.serial_bash import _ingest_courier_metrics
 from courier.tracing import (
     ATTR_CORRELATION_ID,
     ATTR_JOB_ID,
@@ -317,7 +318,11 @@ class ParallelBashDispatcher(Dispatcher):
                 futures = {}
                 for ff in frozen_files:
                     try:
-                        script_body = self._render_script(ff, job_context, all_file_dicts)
+                        script_body = self._render_script(
+                            ff,
+                            job_context,
+                            all_file_dicts,
+                        )
                     except jinja2.TemplateError as exc:
                         self._logger.warning(
                             f"Template render failed for {ff.file}: {exc}",
@@ -347,11 +352,15 @@ class ParallelBashDispatcher(Dispatcher):
                             script_body,
                             self.validated.timeout_seconds,
                             hostname,
-                            logger=self._logger if self.validated.log_to_logger else None,
+                            logger=self._logger
+                            if self.validated.log_to_logger
+                            else None,
                             log_to_logger=self.validated.log_to_logger,
                             log_prefix=log_prefix,
                             log_to_file=self.validated.log_to_file,
-                            log_file_path=log_path if self.validated.log_to_file else None,
+                            log_file_path=log_path
+                            if self.validated.log_to_file
+                            else None,
                             log_only_errors=self.validated.log_only_errors,
                             env=env,
                         )
@@ -384,9 +393,6 @@ class ParallelBashDispatcher(Dispatcher):
                         emit_file=self.emit_file,
                     )
             # Also scan for COURIER_METRIC: lines (general-purpose custom gauge conduit)
-            from courier.plugins.dispatchers.serial_bash import (
-                _ingest_courier_metrics,
-            )
             for log in logs:
                 _ingest_courier_metrics(log.stdout or "", self.identifier)
 
@@ -394,4 +400,3 @@ class ParallelBashDispatcher(Dispatcher):
                 span.set_status(Status(StatusCode.ERROR))
 
             return logs
-

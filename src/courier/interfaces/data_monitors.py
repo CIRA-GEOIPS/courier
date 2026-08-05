@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
+import traceback
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
@@ -101,7 +103,7 @@ class DataMonitorBasePlugin(ServicePlugin):
             )
 
     def _run_find_and_emit_files(self) -> None:
-        """Wrapper that exits the process on any unhandled exception."""
+        """Exit the process on any unhandled exception."""
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "data_monitor.handle_incoming_files",
@@ -113,12 +115,11 @@ class DataMonitorBasePlugin(ServicePlugin):
             try:
                 self.find_and_emit_files()
             except Exception:
-                import os
-                import traceback
                 traceback.print_exc()
                 span.set_status(Status(StatusCode.ERROR))
                 self._logger.critical(
-                    "Fatal error in data monitor %s: exiting", self.name,
+                    "Fatal error in data monitor %s: exiting",
+                    self.name,
                 )
                 os._exit(1)
 
@@ -126,9 +127,7 @@ class DataMonitorBasePlugin(ServicePlugin):
         """Find file and put in file queue."""
         tracer = get_tracer(__name__)
         for incoming_file in self.find_file():
-            incoming_path = (
-                str(incoming_file.file) if incoming_file.file else ""
-            )
+            incoming_path = str(incoming_file.file) if incoming_file.file else ""
             with tracer.start_as_current_span(
                 "data_monitor.process_file",
                 attributes={
@@ -149,17 +148,13 @@ class DataMonitorBasePlugin(ServicePlugin):
                     )
                     self._logger.info(f"Found file: {file_with_metadata}")
                     emitted_path = (
-                        str(file_with_metadata.file)
-                        if file_with_metadata.file
-                        else ""
+                        str(file_with_metadata.file) if file_with_metadata.file else ""
                     )
                     with tracer.start_as_current_span(
                         "data_monitor.emit_file",
                         attributes={
                             ATTR_FILE_PATH: emitted_path,
-                            ATTR_FILE_HOSTNAME: (
-                                file_with_metadata.hostname or ""
-                            ),
+                            ATTR_FILE_HOSTNAME: (file_with_metadata.hostname or ""),
                         },
                     ):
                         self.emit(file_with_metadata)

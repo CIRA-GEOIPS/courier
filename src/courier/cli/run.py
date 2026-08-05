@@ -116,7 +116,8 @@ def run_service(
         plugin_registrations,
     )
     dispatcher_ids = {
-        e.identifier for e in config.spec.run
+        e.identifier
+        for e in config.spec.run
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
@@ -125,8 +126,7 @@ def run_service(
     if only_set is not None:
         # Filter builder_targets to only builders in only_set
         builder_targets = {
-            bid: targets for bid, targets in builder_targets.items()
-            if bid in only_set
+            bid: targets for bid, targets in builder_targets.items() if bid in only_set
         }
         # Add targets of included builders to dispatcher_ids
         # (queues must be pre-declared on broker even if dispatcher runs elsewhere)
@@ -157,10 +157,10 @@ def run(
         None,
         "--only",
         help="Comma-separated plugin identifiers to run. "
-             "Allows one config to serve multiple containers: "
-             "e.g. 'courier run config.yaml --only my-dm' for the data monitor, "
-             "'courier run config.yaml --only my-builder,my-dispatcher'"
-             " for processing.",
+        "Allows one config to serve multiple containers: "
+        "e.g. 'courier run config.yaml --only my-dm' for the data monitor, "
+        "'courier run config.yaml --only my-builder,my-dispatcher'"
+        " for processing.",
     ),
 ) -> None:
     """Run the service with a config file."""

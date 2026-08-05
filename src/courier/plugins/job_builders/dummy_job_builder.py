@@ -193,4 +193,3 @@ class DummyJobBuilder(JobBuilder):
         """
         self._logger.debug("DummyJobBuilder handling incoming files")
         return super().handle_incoming_files()
-

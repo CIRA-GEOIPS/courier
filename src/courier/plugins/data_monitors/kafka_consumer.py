@@ -378,4 +378,3 @@ class KafkaConsumer(DataMonitorBasePlugin):
                         raise exc from e
         finally:
             self.health = False
-

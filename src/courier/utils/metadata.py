@@ -163,7 +163,7 @@ def _check_field_conflict(
     return existing_value
 
 
-def _collect_metadata_from_entry(  # noqa: PLR0913
+def _collect_metadata_from_entry(  # noqa: PLR0913, PLR0917
     file_obj: File,
     updates: dict[str, Any],
     entry: FileMetadataEntry,

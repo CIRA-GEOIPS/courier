@@ -263,4 +263,3 @@ class CronGlob(DataMonitorBasePlugin):
             if self._stop_event.wait(timeout=1.0):
                 return True
         return False
-

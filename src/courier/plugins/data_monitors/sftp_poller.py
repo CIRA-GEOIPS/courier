@@ -356,4 +356,3 @@ class SftpPoller(DataMonitorBasePlugin):
         finally:
             self._disconnect()
             self.health = False
-

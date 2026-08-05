@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import threading
 import time
+import traceback
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
@@ -326,7 +328,7 @@ class JobBuilder(ServicePlugin):
         _do_publish()
 
     def _run_handle_incoming_files(self) -> None:
-        """Wrapper that exits the process on any unhandled exception."""
+        """Exit the process on any unhandled exception."""
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "job_builder.handle_incoming_files",
@@ -338,12 +340,11 @@ class JobBuilder(ServicePlugin):
             try:
                 self.handle_incoming_files()
             except Exception:
-                import os
-                import traceback
                 traceback.print_exc()
                 span.set_status(Status(StatusCode.ERROR))
                 self._logger.critical(
-                    "Fatal error in job builder %s: exiting", self.name,
+                    "Fatal error in job builder %s: exiting",
+                    self.name,
                 )
                 os._exit(1)
 

@@ -107,8 +107,7 @@ try:
         # paragraph. One example that survives rewrapping, and a pointer
         # to the reference page that lists the rest.
         epilog=(
-            "Example:  courier dashboard config.yaml --split-by kind "
-            "-o ./dashboards/"
+            "Example:  courier dashboard config.yaml --split-by kind -o ./dashboards/"
         ),
     )(dashboard)
 except ImportError:

@@ -115,7 +115,8 @@ def _humanise(location: str, message: str) -> str:
     else:
         # "List should have at least 1 item after validation, not 0"
         least = re.match(
-            r"List should have at least (\d+) item.* not (\d+)$", message,
+            r"List should have at least (\d+) item.* not (\d+)$",
+            message,
         )
         if least:
             wanted, found = least.groups()

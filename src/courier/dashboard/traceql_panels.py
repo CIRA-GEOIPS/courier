@@ -119,8 +119,7 @@ def _build_trace_overview_row(
         Table(
             title="Error Spans",
             description=(
-                "Any span whose OTel status code indicates "
-                "an error (status.code = 2)."
+                "Any span whose OTel status code indicates an error (status.code = 2)."
             ),
             dataSource=uid,
             targets=[_target("{ status = error }", datasource_uid=uid)],
@@ -271,8 +270,7 @@ def _build_job_builder_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ {attr_group} != "" }}'
-                    f" | count() by({attr_group})",
+                    f'{{ {attr_group} != "" }} | count() by({attr_group})',
                     datasource_uid=uid,
                     table_type="traces",
                 ),
@@ -350,14 +348,11 @@ def _build_metadata_router_traces_row(
     panels.append(
         Table(
             title="Router Latency",
-            description=(
-                "Average duration of ``metadata_router.route_file`` spans."
-            ),
+            description=("Average duration of ``metadata_router.route_file`` spans."),
             dataSource=uid,
             targets=[
                 _target(
-                    '{ name = "metadata_router.route_file" }'
-                    " | avg(duration)",
+                    '{ name = "metadata_router.route_file" } | avg(duration)',
                     datasource_uid=uid,
                     table_type="traces",
                 ),
@@ -444,7 +439,7 @@ def _build_dispatcher_traces_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ {attr_rc} > 0 }}',
+                    f"{{ {attr_rc} > 0 }}",
                     datasource_uid=uid,
                 ),
             ],
@@ -486,8 +481,7 @@ def _build_trace_gap_detection_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f'{{ name =~ "{PluginKind.DATA_MONITOR.value}.*" }}'
-                    " | count()",
+                    f'{{ name =~ "{PluginKind.DATA_MONITOR.value}.*" }} | count()',
                     datasource_uid=uid,
                     table_type="traces",
                 ),
@@ -576,7 +570,7 @@ def _build_correlated_trace_view_row(
             dataSource=uid,
             targets=[
                 _target(
-                    f"{{ {attr_corr} = \"$correlation_id\" }}",
+                    f'{{ {attr_corr} = "$correlation_id" }}',
                     datasource_uid=uid,
                 ),
             ],

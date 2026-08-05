@@ -381,4 +381,3 @@ class SlurmDispatcher(Dispatcher):
                     dispatcher_name=self.name,
                     dispatcher_identifier=self.identifier,
                 ).dec()
-

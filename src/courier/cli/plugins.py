@@ -101,6 +101,7 @@ def normalize_kind(kind: str) -> str:
     """
     return _KIND_TO_REGISTRY_KEY.get(Lexeme(kind), kind)
 
+
 # Distinct color per plugin type for at-a-glance scanning.
 _TYPE_STYLES: dict[str, str] = {
     "data_monitor_configs": "cyan",

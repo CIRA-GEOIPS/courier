@@ -366,6 +366,3 @@ def get_logger(
     )
 
     return adapter
-
-
-

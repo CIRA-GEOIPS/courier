@@ -714,4 +714,3 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     _last_yield_time = time.monotonic()
         finally:
             self.health = False
-
