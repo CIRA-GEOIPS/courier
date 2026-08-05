@@ -11,10 +11,10 @@ WORKDIR /courier
 RUN python -m venv .venv && source .venv/bin/activate
 
 # pyproject.toml args
-ARG EXTRAS=""
+ARG COURIER_EXTRAS=""
 
-RUN if [ -n "$EXTRAS" ]; then \
-    pip install -e ".[${EXTRAS}]"; \
+RUN if [ -n "$COURIER_EXTRAS" ]; then \
+    pip install -e ".[${COURIER_EXTRAS}]"; \
   else \
     pip install -e .; \
   fi
