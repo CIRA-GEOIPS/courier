@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.job_builders.metadata_router import (
+from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
     MetadataRouterConfig,
     RouteConfig,
@@ -80,10 +80,6 @@ class TestBuilder:
             {"routes": [_route(window_timeout_seconds=1.0)]},
         )
         assert builder._has_timeout is True
-
-    def test_module_init_short_circuits(self) -> None:
-        builder = MetadataRouterBuilder(None, None)
-        assert not hasattr(builder, "job_groups")
 
     def test_reap_group_emits_ready(
         self, mock_service: MagicMock, make_frozen_file, mocker

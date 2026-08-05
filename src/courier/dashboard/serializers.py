@@ -74,12 +74,14 @@ def _rows_to_grafana11_panels(rows: list[dict]) -> list[dict]:
         ]
 
         # Emit row divider
-        flat.append({
-            "type": "row",
-            "gridPos": {"h": 1, "w": 24, "x": 0, "y": y_cursor},
-            "title": title,
-            "collapsed": row.get("collapse", False),
-        })
+        flat.append(
+            {
+                "type": "row",
+                "gridPos": {"h": 1, "w": 24, "x": 0, "y": y_cursor},
+                "title": title,
+                "collapsed": row.get("collapse", False),
+            },
+        )
         y_cursor += 1
 
         if not sub_panels:
@@ -128,7 +130,7 @@ def _dashboard_to_json(dashboard: Dashboard, indent: int = 2) -> str:
     except ImportError:
         raise ImportError(
             "grafanalib is required for dashboard serialization. "
-            "Install with: pip install courier[grafana]",
+            "Install with: pip install data-courier[grafana]",
         ) from None
 
     try:
@@ -146,8 +148,7 @@ def _dashboard_to_json(dashboard: Dashboard, indent: int = 2) -> str:
     raw_rows = data.get("rows")
     if raw_rows and not data.get("panels"):
         row_data = [
-            r.to_json_data() if hasattr(r, "to_json_data") else r
-            for r in raw_rows
+            r.to_json_data() if hasattr(r, "to_json_data") else r for r in raw_rows
         ]
         data["panels"] = _rows_to_grafana11_panels(row_data)
         data["rows"] = []

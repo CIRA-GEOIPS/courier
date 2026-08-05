@@ -10,7 +10,7 @@ import jinja2
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.dispatchers.parallel_bash import (
+from courier.plugins.dispatchers.parallel_bash import (
     ParallelBashConfig,
     ParallelBashDispatcher,
     _run_script,
@@ -124,7 +124,7 @@ class TestGetExecutionLog:
     ) -> None:
         plugin = ParallelBashDispatcher(mock_service, _make_config(max_workers=2), identifier="test-disp")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=0, stdout="ok", stderr=""),
         )
         files = (
@@ -150,7 +150,7 @@ class TestGetExecutionLog:
             identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=2, stdout="", stderr=""),
         )
         files = tuple(
@@ -165,7 +165,7 @@ class TestGetExecutionLog:
     ) -> None:
         """TemplateError on one file produces failure log; other files continue."""
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=0, stdout="ok", stderr=""),
         )
         file1 = make_frozen_file(file=Path("/data/file1.nc"))
@@ -200,7 +200,7 @@ class TestGetExecutionLog:
 class TestRunScript:
     def test_success(self, mocker) -> None:
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            "courier.plugins.dispatchers.parallel_bash.execute_bash_script",
             return_value=BashExecResult(return_code=0, stdout="ok", stderr=""),
         )
         log = _run_script("echo hi", 60.0, "h1")
@@ -209,7 +209,7 @@ class TestRunScript:
 
     def test_oserror_returns_failure(self, mocker) -> None:
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            "courier.plugins.dispatchers.parallel_bash.execute_bash_script",
             return_value=BashExecResult(return_code=-1, stdout="", stderr="boom"),
         )
         log = _run_script("x", 60.0, "h")
@@ -240,7 +240,7 @@ class TestLogToLogger:
         mocker.patch.object(plugin._logger, "warning")
         # Mock _run_script to return successful ExecutionLogs
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=0, stdout="ok", stderr=""),
         )
         files = (
@@ -272,7 +272,7 @@ class TestLogToLogger:
             captured_prefixes.append(kwargs.get("log_prefix", ""))
             return ExecutionLog(return_code=0, stdout="", stderr="")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
         )
         job = make_job(files=(make_frozen_file(file=Path("/data/file1.nc")),))
@@ -310,7 +310,7 @@ class TestLogToFile:
                 log_file_path=str(kwargs.get("log_file_path", "")),
             )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
         )
         files = (
@@ -347,7 +347,7 @@ class TestLogToFile:
                 log_file_path=str(kwargs.get("log_file_path", "")),
             )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
         )
         job = make_job(files=(make_frozen_file(file=Path("/a.nc")),))
@@ -373,7 +373,7 @@ class TestLogOnlyErrors:
             identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=0, stdout="", stderr=""),
         )
         files = (
@@ -413,7 +413,7 @@ class TestFailFastWithLogging:
             # First file fails, triggering fail_fast
             return ExecutionLog(return_code=1, stdout="", stderr="fail")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash._run_script",
+            "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
         )
         files = tuple(
@@ -506,7 +506,7 @@ class TestPythonVenvEnvPropagation:
             return BashExecResult(return_code=0, stdout="ok", stderr="")
 
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            "courier.plugins.dispatchers.parallel_bash.execute_bash_script",
             side_effect=_fake_execute,
         )
 
@@ -538,7 +538,7 @@ class TestPythonVenvEnvPropagation:
             return BashExecResult(return_code=0, stdout="ok", stderr="")
 
         mocker.patch(
-            "courier.plugins.classes.dispatchers.parallel_bash.execute_bash_script",
+            "courier.plugins.dispatchers.parallel_bash.execute_bash_script",
             side_effect=_fake_execute,
         )
 

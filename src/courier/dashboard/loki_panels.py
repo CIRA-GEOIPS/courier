@@ -31,7 +31,7 @@ def _target(
     datasource_uid: str,
     legend: str = "",
 ) -> dict:
-    """Return a grafanalib-compatible inline target dict for a LogQL query.
+    r"""Return a grafanalib-compatible inline target dict for a LogQL query.
 
     Parameters
     ----------
@@ -79,10 +79,7 @@ _PER_PLUGIN_H = 8
 def _build_log_overview_row(datasource: str, y: int) -> tuple[list, int]:
     """Log Overview -- log level distribution + log rate over time."""
     service_filter = '{service="$service"}'
-    level_filter = (
-        f"{service_filter}"
-        ' | level != ""'
-    )
+    level_filter = f'{service_filter} | level != ""'
 
     panels = [
         Table(
@@ -123,10 +120,7 @@ def _build_log_overview_row(datasource: str, y: int) -> tuple[list, int]:
 
 def _build_error_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Error logs -- filtered to ERROR level."""
-    error_filter = (
-        '{service="$service"}'
-        ' | level = "ERROR"'
-    )
+    error_filter = '{service="$service"} | level = "ERROR"'
 
     panels = [
         Table(
@@ -166,10 +160,8 @@ def _build_error_log_row(datasource: str, y: int) -> tuple[list, int]:
 
 
 def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
-    """Data Monitor log stream."""
-    dm_filter = (
-        '{service="$service", plugin="$dm_log_plugin"}'
-    )
+    """Build the data monitor log stream row."""
+    dm_filter = '{service="$service", plugin="$dm_log_plugin"}'
     panels = [
         Table(
             title="Data Monitor: Log Rate by Level",
@@ -209,9 +201,7 @@ def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
 
 def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Job Builder log stream."""
-    jb_filter = (
-        '{service="$service", plugin="$jb_log_plugin"}'
-    )
+    jb_filter = '{service="$service", plugin="$jb_log_plugin"}'
     panels = [
         Table(
             title="Job Builder: Log Rate by Level",
@@ -251,9 +241,7 @@ def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
 
 def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
     """Dispatcher log stream."""
-    dp_filter = (
-        '{service="$service", plugin="$dp_log_plugin"}'
-    )
+    dp_filter = '{service="$service", plugin="$dp_log_plugin"}'
     panels = [
         Table(
             title="Dispatcher: Log Rate by Level",
@@ -293,10 +281,7 @@ def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
 
 def _build_log_search_row(datasource: str, y: int) -> tuple[list, int]:
     """Full log search -- grep-style query with template variable."""
-    search_filter = (
-        '{service="$service"}'
-        " |~ `$log_search`"
-    )
+    search_filter = '{service="$service"} |~ `$log_search`'
     panels = [
         Table(
             title="Log Search Results",
@@ -353,7 +338,7 @@ def build_loki_templates(model: DashboardModel) -> list:
             allValue=".*",
             includeAll=False,
             multi=False,
-        )
+        ),
     )
 
     dm_names = [p.plugin_name for p in model.data_monitors]
@@ -369,7 +354,7 @@ def build_loki_templates(model: DashboardModel) -> list:
                 allValue=".*",
                 includeAll=True,
                 multi=False,
-            )
+            ),
         )
 
     jb_names = [p.plugin_name for p in model.job_builders]
@@ -385,7 +370,7 @@ def build_loki_templates(model: DashboardModel) -> list:
                 allValue=".*",
                 includeAll=True,
                 multi=False,
-            )
+            ),
         )
 
     dp_names = [p.plugin_name for p in model.dispatchers]
@@ -401,7 +386,7 @@ def build_loki_templates(model: DashboardModel) -> list:
                 allValue=".*",
                 includeAll=True,
                 multi=False,
-            )
+            ),
         )
 
     templates.append(
@@ -413,7 +398,7 @@ def build_loki_templates(model: DashboardModel) -> list:
             allValue=".*",
             includeAll=False,
             multi=False,
-        )
+        ),
     )
 
     return templates

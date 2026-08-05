@@ -307,8 +307,7 @@ def extract_context(headers: dict[str, str]) -> Any:
         return extract(headers)
     except Exception:
         _tracer_logger.debug(
-            "Failed to extract trace context from headers %r; "
-            "returning empty context",
+            "Failed to extract trace context from headers %r; returning empty context",
             headers,
             exc_info=True,
         )

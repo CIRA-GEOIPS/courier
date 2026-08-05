@@ -1,13 +1,18 @@
 """Logging infrastructure for courier with Loki integration.
 
-This module provides comprehensive logging support with optional Grafana Loki
+This module provides comprehensive logging support with Grafana Loki
 integration, custom TRACE logging level, and contextualized loggers for
 services, managers, and plugins.
+
+``python-logging-loki`` is a required dependency: Loki shipping is a
+first-class part of courier's observability story, and an optional import
+meant an operator who set ``loki_enabled`` got a warning and console-only
+logs instead of the logs they asked for.
 
 Functions
 ---------
 get_logger
-    Create a contextualized logger with optional Loki integration.
+    Create a contextualized logger with Loki integration.
 """
 
 from __future__ import annotations
@@ -17,15 +22,11 @@ import sys
 import time
 from typing import TYPE_CHECKING, Any
 
+import logging_loki  # type: ignore[import-untyped]
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
     from courier.config import ServiceConfig
-
-try:
-    import logging_loki  # type: ignore[import-untyped]
-except ImportError:
-    logging_loki = None
 
 # Define TRACE logging level (below DEBUG=10)
 TRACE_LEVEL = 5
@@ -167,8 +168,6 @@ def _create_loki_handler(
                                         {"service": "test"}, logger)
     """
     try:
-        if not logging_loki or logging_loki is None:
-            raise ImportError  # noqa: TRY301
         logging_loki.emitter.LokiEmitter.level_tag = "level"
 
         raw_handler = logging_loki.LokiHandler(
@@ -178,12 +177,6 @@ def _create_loki_handler(
         )
 
         handler = _ResilientLokiHandler(raw_handler)
-    except ImportError:
-        fallback_logger.warning(
-            "python-logging-loki not installed. Falling back to console-only logging. "
-            "Install with: pip install python-logging-loki",
-        )
-        return None
     except (ConnectionError, OSError) as e:
         fallback_logger.warning(
             f"Failed to initialize Loki handler: {e}. "
@@ -373,6 +366,3 @@ def get_logger(
     )
 
     return adapter
-
-
-

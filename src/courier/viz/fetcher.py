@@ -55,9 +55,7 @@ def _matching_samples(
         return []
     wanted = set(labels.items())
     return [
-        value
-        for label_set, value in metrics[name].items()
-        if wanted <= set(label_set)
+        value for label_set, value in metrics[name].items() if wanted <= set(label_set)
     ]
 
 

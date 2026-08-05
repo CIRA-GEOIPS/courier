@@ -2,7 +2,7 @@
 
 This module is optional and requires the ``redis`` package::
 
-    pip install courier[ha]
+    pip install data-courier[ha]
 
 Design
 ------
@@ -48,6 +48,11 @@ if TYPE_CHECKING:
     from courier.types.job import Job, JobGroup
 
 
+def _as_str(value: bytes | str) -> str:
+    """Decode a Redis hash value to ``str``."""
+    return value.decode("utf-8") if isinstance(value, bytes) else value
+
+
 class JobBuilderStateSync:
     """Redis-backed HA state synchronizer for a single job builder.
 
@@ -60,7 +65,7 @@ class JobBuilderStateSync:
     and the file-processing thread both acquire the group lock before
     any mutation.  Thread-safe: protected by ``_group_locks[group_name]``.
 
-    Implementations: JobBuilder (courier.interfaces.module_based.job_builders)
+    Implementations: JobBuilder (courier.interfaces.job_builders)
     """
 
     def __init__(
@@ -370,7 +375,7 @@ class JobBuilderStateSync:
         """Load and merge remote jobs for a single group from its hash."""
         client = self._require_client()
         try:
-            remote: dict[str, str] = client.hgetall(
+            remote = client.hgetall(
                 self._hash_key(job_group.name),
             )
         except redis.RedisError as exc:
@@ -385,7 +390,7 @@ class JobBuilderStateSync:
         lock = self._group_locks.get(job_group.name)
         with lock if lock is not None else contextlib.nullcontext():
             for job_id, job_json in remote.items():
-                self._merge_job(job_group, job_id, job_json)
+                self._merge_job(job_group, _as_str(job_id), _as_str(job_json))
 
     def _merge_job(
         self,
@@ -466,7 +471,7 @@ class JobBuilderStateSync:
         """Fetch a job from the Redis hash and merge it into the local group."""
         client = self._require_client()
         try:
-            job_json: str | None = client.hget(
+            job_json = client.hget(
                 self._hash_key(job_group.name),
                 job_id,
             )
@@ -481,7 +486,7 @@ class JobBuilderStateSync:
             return
         if job_json is None:
             return
-        self._merge_job(job_group, job_id, job_json)
+        self._merge_job(job_group, job_id, _as_str(job_json))
 
     # ------------------------------------------------------------------
     # Key helpers

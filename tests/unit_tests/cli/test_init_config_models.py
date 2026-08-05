@@ -5,13 +5,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.data_monitors.file_system_poller_watchdog import (
+from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPollerConfig,
 )
-from courier.plugins.classes.data_monitors.rabbit_mq_watcher import (
+from courier.plugins.data_monitors.rabbit_mq_watcher import (
     RabbitMQWatcherConfig,
 )
-from courier.plugins.classes.job_builders.dummy_job_builder import (
+from courier.plugins.job_builders.dummy_job_builder import (
     DummyJobBuilderConfig,
 )
 

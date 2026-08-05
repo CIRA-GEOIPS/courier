@@ -1,6 +1,6 @@
 # Serial Bash Dispatcher (`serial_bash`)
 
-:class:`~courier.plugins.classes.dispatchers.serial_bash.SerialBashDispatcher`
+:class:`~courier.plugins.dispatchers.serial_bash.SerialBashDispatcher`
 
 Executes a single Jinja2-templated bash script for an entire job. One script
 is rendered and executed per job — all files in the job are available in the
@@ -10,7 +10,7 @@ files).
 
 ## Configuration
 
-:class:`~courier.plugins.classes.dispatchers.serial_bash.SerialBashConfig`
+:class:`~courier.plugins.dispatchers.serial_bash.SerialBashConfig`
 
 .. list-table::
    :header-rows: 1
@@ -146,7 +146,7 @@ an ``ExecutionLog`` with ``return_code=-1``.
 
 Use :class:`SerialBashDispatcher` when your script processes **all files
 together** (one invocation, one :class:`~courier.types.execution_log.ExecutionLog`).
-Use :class:`~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashDispatcher`
+Use :class:`~courier.plugins.dispatchers.parallel_bash.ParallelBashDispatcher`
 when each file should be processed **independently** (N invocations, N
 ``ExecutionLog``\\s).
 
@@ -165,7 +165,7 @@ See {doc}`parallel_bash` for the parallel dispatcher documentation.
 .. py:method:: Dispatcher.emit_file(file: File) -> None
 
 All dispatchers inherit :meth:`emit_file` from the
-:class:`~courier.interfaces.module_based.dispatchers.Dispatcher` base class.
+:class:`~courier.interfaces.dispatchers.Dispatcher` base class.
 This method publishes an output :class:`~courier.types.file.File` to
 :data:`~courier.constants.FILE_FOUND_EXCHANGE` — the same fanout exchange that
 data monitors use — so downstream job builders can pick it up and create new
@@ -209,12 +209,12 @@ without writing custom dispatcher code.
 3. For each unique discovered path, a :class:`~courier.types.file.File` object
    is constructed with the hostname and any static or regex-extracted
    metadata.
-4. The file is emitted via :meth:`~courier.interfaces.module_based.dispatchers.Dispatcher.emit_file`,
+4. The file is emitted via :meth:`~courier.interfaces.dispatchers.Dispatcher.emit_file`,
    making it available to downstream job builders.
 
 ### OutputFilePattern Schema
 
-Each entry in ``output_files`` is an :class:`~courier.plugins.classes.dispatchers._output_file_pattern.OutputFilePattern`:
+Each entry in ``output_files`` is an :class:`~courier.plugins.dispatchers._output_file_pattern.OutputFilePattern`:
 
 .. list-table::
    :header-rows: 1
@@ -365,7 +365,7 @@ Key points:
 ## Custom Prometheus Metrics via ``COURIER_METRIC:`` Stdout Protocol
 
 Both :class:`SerialBashDispatcher` and
-:class:`~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashDispatcher`
+:class:`~courier.plugins.dispatchers.parallel_bash.ParallelBashDispatcher`
 recognise a special ``COURIER_METRIC:`` prefix in the bash script's stdout.
 This lets deployment scripts emit custom Prometheus gauge values without any
 courier code changes — useful for application-specific metrics like
@@ -459,7 +459,7 @@ virtual environment's versions.
 
 ## API Reference
 
-.. literalinclude:: ../../../../src/courier/plugins/classes/dispatchers/serial_bash.py
+.. literalinclude:: ../../../../src/courier/plugins/dispatchers/serial_bash.py
    :language: python
    :start-after: class SerialBashDispatcher(Dispatcher):
    :end-before:     def __init__(

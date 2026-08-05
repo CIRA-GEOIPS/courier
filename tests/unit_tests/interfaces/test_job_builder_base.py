@@ -23,7 +23,7 @@ from prometheus_client import REGISTRY
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import FatalBrokerError, TransientBrokerError
-from courier.interfaces.module_based.job_builders import JobBuilder
+from courier.interfaces.job_builders import JobBuilder
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
 

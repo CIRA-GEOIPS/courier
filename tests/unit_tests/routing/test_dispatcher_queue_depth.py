@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from prometheus_client import REGISTRY
 
-from courier.interfaces.module_based.dispatchers import Dispatcher
+from courier.interfaces.dispatchers import Dispatcher
 
 _METRIC = "courier_dispatcher_queue_depth"
 

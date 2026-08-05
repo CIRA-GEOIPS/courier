@@ -270,7 +270,7 @@ class CourierViz(App):
     # Auto-refresh worker
     # ------------------------------------------------------------------
 
-    @work(exclusive=True)  # type: ignore[untyped-decorator]
+    @work(exclusive=True)
     async def _do_refresh(self) -> None:
         """Fetch metrics and update the display.
 

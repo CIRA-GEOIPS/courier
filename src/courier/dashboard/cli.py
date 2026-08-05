@@ -1,27 +1,29 @@
 """CLI entry point for ``courier dashboard``."""
+
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import (
+    Path,  # noqa: TC003 — Typer reads the annotation at runtime
+)
 from typing import Annotated
 
 import typer
 
 
-def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
+def dashboard(  # noqa: PLR0913, PLR0917
     config: Annotated[
-        Path | None,
+        Path,
         typer.Argument(
-            help=(
-                "Path to courier service config YAML/JSON file. "
-                "Defaults to 'courier.yaml' in the current directory."
-            ),
+            metavar="CONFIG",
+            help="Service YAML to build the dashboard from.",
         ),
-    ] = None,
+    ],
     # Output
     output: Annotated[
         Path | None,
         typer.Option(
-            "--output", "-o",
+            "--output",
+            "-o",
             help=(
                 "Output path. A file path writes a single .json file; "
                 "a directory path writes one file per dashboard. "
@@ -45,8 +47,7 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
         str | None,
         typer.Option(
             "--run-identifiers",
-            help="Comma-separated plugin identifiers to filter "
-                 "(cluster sub-section).",
+            help="Comma-separated plugin identifiers to filter (cluster sub-section).",
         ),
     ] = None,
     run_kinds: Annotated[
@@ -54,7 +55,7 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
         typer.Option(
             "--run-kinds",
             help="Comma-separated plugin kinds to filter: "
-                 "data_monitor, job_builder, dispatcher.",
+            "data_monitor, job_builder, dispatcher.",
         ),
     ] = None,
     # Live detection
@@ -63,7 +64,7 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
         typer.Option(
             "--live",
             help="Auto-detect active plugins from a running Courier "
-                 "instance's Prometheus metrics.",
+            "instance's Prometheus metrics.",
         ),
     ] = False,
     prom_host: Annotated[
@@ -154,12 +155,6 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
     panels and TraceQL trace search panels — only for the plugins
     actually configured.
 
-    Examples
-    --------
-    courier dashboard
-    courier dashboard config.yaml --split-by kind
-    courier dashboard config.yaml --run-identifiers my-dm --live
-    courier dashboard --only-metrics -o dashboard.json
     """
     # Lazy import — grafanalib is only required when the command runs
     try:
@@ -167,26 +162,14 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
     except ImportError:
         typer.echo(
             "The 'dashboard' command requires the grafanalib library.\n"
-            "Install it with: pip install courier[grafana]",
+            "Install it with: pip install data-courier[grafana]",
         )
         raise typer.Exit(1) from None
 
-    # Resolve config path
-    if config is None:
-        config = Path("courier.yaml")
-        if not config.exists():
-            config = Path("courier.yml")
-            if not config.exists():
-                typer.echo(
-                    "No config file specified and no "
-                    "courier.yaml/courier.yml found.\n"
-                    "Usage: courier dashboard CONFIG [OPTIONS]",
-                )
-                raise typer.Exit(1)
-
     if not config.exists():
-        typer.echo(f"Config file not found: {config}")
-        raise typer.Exit(1)
+        from courier.cli.feedback import abort_missing_config  # noqa: PLC0415
+
+        abort_missing_config(config)
 
     # Lazy imports — dashboard modules are only needed when the command runs
     from courier.dashboard import DashboardGenerationMode  # noqa: PLC0415
@@ -236,8 +219,7 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
             )
         else:
             typer.echo(
-                "No active plugins detected. "
-                "Proceeding with config-defined plugins.",
+                "No active plugins detected. Proceeding with config-defined plugins.",
             )
 
     # Resolve mode
@@ -248,8 +230,7 @@ def dashboard(  # noqa: PLR0912, PLR0913, PLR0915
     }
     if split_by not in mode_map:
         typer.echo(
-            f"Invalid --split-by value: '{split_by}'. "
-            "Choose: unified, kind, plugin.",
+            f"Invalid --split-by value: '{split_by}'. Choose: unified, kind, plugin.",
         )
         raise typer.Exit(1)
 

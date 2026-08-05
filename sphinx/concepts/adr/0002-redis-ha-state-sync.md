@@ -17,7 +17,7 @@ Use Redis with `SET NX` (set-if-not-exists) as a lightweight distributed lock. W
 `state_sync` is enabled in the job builder config, `JobBuilderStateSync` claims emit
 rights for each ready job. Only the instance that wins the `SET NX` race emits the job.
 
-The Redis dependency is optional (`pip install courier[ha]`) and the code path is
+The Redis dependency is optional (`pip install data-courier[ha]`) and the code path is
 entirely disabled when no `state_sync` key is present in the config.
 
 ## Alternatives Considered
@@ -38,7 +38,7 @@ entirely disabled when no `state_sync` key is present in the config.
 ## Consequences
 
 - **Infrastructure**: HA deployments now require a running Redis instance and the `ha`
-  extra (`pip install courier[ha]`). Single-instance deployments are unaffected.
+  extra (`pip install data-courier[ha]`). Single-instance deployments are unaffected.
   - **Optional dependency**: The Redis client package is only required when
   `state_sync` is configured. Services that do not use state sync have
   no Redis dependency at all.

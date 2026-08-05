@@ -6,12 +6,12 @@ import logging
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
-from courier.cli.config_loader import load_config
-from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
+from courier.cli.feedback import load_config_or_exit
+from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
 
@@ -113,13 +113,15 @@ def run_service(
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
-        if entry.spec.kind == "data_monitor_configs":
-            continue  # YAML-based config, not a ServicePlugin
-        registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
-        if registry is None:
-            continue
-        plugin_obj = registry.get_plugin(entry.spec.name)
-        plugin_class = type(plugin_obj)
+        kind = normalize_kind(entry.spec.kind)
+        # An unrecognised kind used to be skipped silently, which produced a
+        # service that started up, reported healthy, and processed nothing.
+        if kind not in RUN_KINDS:
+            raise ValueError(
+                f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
+                f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+            )
+        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
         plugin_config: dict[str, Any] = (
             entry.spec.config if entry.spec.config is not None else {}
         )
@@ -160,7 +162,13 @@ def run_service(
 
 def run(
     ctx: typer.Context,
-    config_file: Path,
+    config_file: Annotated[
+        Path,
+        typer.Argument(
+            metavar="CONFIG",
+            help="Service YAML describing the pipeline to run.",
+        ),
+    ],
     only: str | None = typer.Option(
         None,
         "--only",
@@ -172,11 +180,7 @@ def run(
     ),
 ) -> None:
     """Run the service with a config file."""
-    if not config_file.exists():
-        typer.echo(f"Error: File {config_file} not found")
-        raise typer.Exit(1)
-
-    config = load_config(config_file)
+    config = load_config_or_exit(config_file)
     log_level = ctx.obj.get("log_level") if ctx.obj else None
 
     # Parse --only

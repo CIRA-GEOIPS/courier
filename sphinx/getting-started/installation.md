@@ -28,12 +28,43 @@ All dependencies are automatically installed.
 Install the latest stable release from PyPI:
 
 ```
-uv pip install runcourier
+uv pip install data-courier
 ```
 
-> **Note:** The Python package is named `runcourier` but is installed and imported as `courier`. The CLI command is `courier`.
+> **Note:** The distribution is named `data-courier` on PyPI (the name
+> `courier` was already taken), but it installs and imports as `courier`.
+> The CLI command is `courier`.
 
-Optional extras: `runcourier[doc]` for documentation tools, `runcourier[test]` for testing, `runcourier[doc,lint,test]` for development.
+Optional extras: `data-courier[doc]` for documentation tools, `data-courier[test]` for testing, `data-courier[doc,lint,test]` for development.
+
+### Plugin Extras
+
+A handful of plugins need a third-party package that courier does not install by
+default. All of them are *listed* on a plain install — `courier plugins list`
+shows every plugin without importing any of them — but naming one in a config
+without its extra fails with the install command you need:
+
+```text
+cron_glob requires the cron extra: pip install data-courier[cron]
+```
+
+| Extra | Provides | Needed by |
+| --- | --- | --- |
+| `data-courier[cron]` | `croniter` | `cron_glob` data monitor |
+| `data-courier[s3]` | `boto3`, `botocore` | `s3_poller` data monitor |
+| `data-courier[sftp]` | `paramiko` | `sftp_poller` data monitor |
+| `data-courier[kafka]` | `kafka-python` | `kafka_consumer` data monitor |
+| `data-courier[http]` | `httpx` | `http_dispatcher` |
+| `data-courier[ha]` | `redis` | Multi-instance state sync |
+| `data-courier[grafana]` | `grafanalib` | `courier dashboard` generation |
+| `data-courier[viz]` | `textual`, `httpx` | `courier viz` terminal UI |
+
+`data-courier[all-monitors]` and `data-courier[all-dispatchers]` install every plugin
+dependency for their side of the pipeline.
+
+The `file_system_poller_watchdog` monitor — the one used in
+{doc}`quick-start` and most examples — needs no extra; `watchdog` is a core
+dependency precisely because it backs the default.
 
 ### Using Nix (Recommended for Developers)
 
@@ -91,7 +122,7 @@ python -c "import courier; print(courier.__version__)"
 **List available plugins:**
 
 ```
-python -c "from courier.interfaces import data_monitor_configs; print(data_monitor_configs.get_plugins())"
+courier plugins list
 ```
 
 You should see output without errors.

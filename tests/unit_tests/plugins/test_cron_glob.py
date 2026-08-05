@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.data_monitors.cron_glob import (
+from courier.plugins.data_monitors.cron_glob import (
     CronGlob,
     CronGlobConfig,
 )

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.data_monitors.sftp_poller import (
+from courier.plugins.data_monitors.sftp_poller import (
     SftpPoller,
     SftpPollerConfig,
 )
@@ -71,11 +71,6 @@ class TestConstructor:
         assert plugin.health is False
         assert plugin._client is None
         assert plugin._sftp is None
-
-    def test_module_init_short_circuits(self) -> None:
-        plugin = SftpPoller(None, None)
-        assert not hasattr(plugin, "validated")
-
 
 # ─── URIs and patterns ──────────────────────────────────────────────────────
 

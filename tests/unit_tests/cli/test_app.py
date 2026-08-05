@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
+import re
+
 from typer.testing import CliRunner
 
 from courier.cli.app import VALID_LOG_LEVELS, app
 
 runner = CliRunner()
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Typer forces ANSI colour under GITHUB_ACTIONS; ignore it when matching."""
+    return _ANSI_ESCAPE.sub("", text)
+
 
 def test_help_shows_log_level_flag() -> None:
     """``courier --help`` includes ``--log-level`` and ``-l`` in its output."""
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--log-level" in result.output
-    assert "-l" in result.output
+    output = _plain(result.output)
+    assert "--log-level" in output
+    assert "-l" in output
 
 
 def test_log_level_valid_levels_accepted() -> None:

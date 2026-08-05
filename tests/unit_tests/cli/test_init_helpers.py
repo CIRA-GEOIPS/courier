@@ -9,24 +9,24 @@ from courier.cli.init_helpers import (
     get_field_metadata,
     get_plugin_description,
 )
-from courier.plugins.classes.data_monitors.s3_poller import S3Poller, S3PollerConfig
-from courier.plugins.classes.data_monitors.file_system_poller_watchdog import (
+from courier.plugins.data_monitors.s3_poller import S3Poller, S3PollerConfig
+from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
     FileSystemPollerConfig,
 )
-from courier.plugins.classes.data_monitors.rabbit_mq_watcher import (
+from courier.plugins.data_monitors.rabbit_mq_watcher import (
     RabbitMQWatcher,
     RabbitMQWatcherConfig,
 )
-from courier.plugins.classes.job_builders.dummy_job_builder import (
+from courier.plugins.job_builders.dummy_job_builder import (
     DummyJobBuilder,
     DummyJobBuilderConfig,
 )
-from courier.plugins.classes.job_builders.metadata_router import (
+from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
     MetadataRouterConfig,
 )
-from courier.plugins.classes.dispatchers.serial_bash import (
+from courier.plugins.dispatchers.serial_bash import (
     SerialBashDispatcher,
     SerialBashConfig,
 )
