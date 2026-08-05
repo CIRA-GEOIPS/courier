@@ -69,6 +69,7 @@ def run_service(
             namespace=config.metadata.namespace or "default",
             service_id=config.metadata.name,
             heartbeat_interval=config.spec.heartbeat_interval,
+            tracing_enabled=config.spec.tracing_enabled,
             broker_max_retries=config.spec.broker.max_retries,
             log_level=log_level,
         )
@@ -78,6 +79,7 @@ def run_service(
             namespace=config.metadata.namespace or "default",
             service_id=config.metadata.name,
             heartbeat_interval=config.spec.heartbeat_interval,
+            tracing_enabled=config.spec.tracing_enabled,
             broker_max_retries=config.spec.broker.max_retries,
         )
     # Build plugin registration tuples from the config's run spec.
@@ -94,6 +96,20 @@ def run_service(
                 f"Unknown plugin identifiers: {', '.join(sorted(unknown))}. "
                 f"Available: {', '.join(sorted(all_ids))}",
             )
+        dmc_ids = {
+            e.identifier
+            for e in config.spec.run
+            if e.spec.kind == "data_monitor_configs"
+        }
+        dmc_in_only = only_set & dmc_ids
+        if dmc_in_only:
+            raise ValueError(
+                f"'data_monitor_configs' entries cannot be run with --only: "
+                f"{', '.join(sorted(dmc_in_only))}. "
+                "Use --only with data_monitor,"
+                " job_builder, or dispatcher identifiers.",
+            )
+
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
