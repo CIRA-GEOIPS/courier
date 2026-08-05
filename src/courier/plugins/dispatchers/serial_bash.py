@@ -119,7 +119,7 @@ class SerialBashConfig(BaseModel, frozen=True):
     def _validate_python_venv(cls, v: str | None) -> str | None:
         if v is None:
             return v
-        venv_path = Path(v).resolve()
+        venv_path = Path(v).expanduser().resolve()
         if not venv_path.is_dir():
             raise ValueError(
                 f"python_venv is not a directory: {v}",
