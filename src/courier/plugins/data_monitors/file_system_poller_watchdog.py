@@ -129,4 +129,3 @@ class FileSystemPoller(DataMonitorBasePlugin):
             self.health = False
             observer.stop()
             observer.join()
-

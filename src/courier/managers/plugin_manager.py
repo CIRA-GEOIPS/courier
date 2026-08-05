@@ -226,8 +226,7 @@ class PluginManager(ServiceManager):
                         if now - _last_health_warn > health_warn_interval:
                             _last_health_warn = now
                             self._logger.warning(
-                                "Health check for %s raised an exception; "
-                                "retrying...",
+                                "Health check for %s raised an exception; retrying...",
                                 plugin_info.plugin.name,
                             )
                     time.sleep(0.1)
@@ -395,7 +394,9 @@ class PluginManager(ServiceManager):
                                 is_healthy = plugin_info.plugin.is_healthy()
                                 self._plugin_health_metric.labels(
                                     plugin_name=plugin_info.plugin.name,
-                                    plugin_identifier=self._plugin_identifier(plugin_info.plugin),
+                                    plugin_identifier=self._plugin_identifier(
+                                        plugin_info.plugin,
+                                    ),
                                 ).set(1 if is_healthy else 0)
 
                                 if not is_healthy:
@@ -590,10 +591,8 @@ class PluginManager(ServiceManager):
 
         # Phase 3: Verify at least one plugin started successfully.
         with self._lock:
-            running = [info for info in plugins
-                       if info.state == PluginRunState.RUNNING]
-            failed = [info for info in plugins
-                      if info.state == PluginRunState.FAILED]
+            running = [info for info in plugins if info.state == PluginRunState.RUNNING]
+            failed = [info for info in plugins if info.state == PluginRunState.FAILED]
         if failed and not running:
             names = ", ".join(
                 f"{info.plugin.name}={info.error_message or 'unknown'}"

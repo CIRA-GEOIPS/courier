@@ -166,4 +166,3 @@ class FileCountBuilder(JobBuilder):
             f"Initializing FileCountBuilder with config {self.validated_config}",
         )
         self.job_groups = [FileCountJobGroup(self.validated_config)]
-

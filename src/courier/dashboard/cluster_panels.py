@@ -251,9 +251,7 @@ def _build_boundary_metrics(
             "<table>"
             "<tr>"
             "<th>Source</th><th>Target</th><th>Direction</th>"
-            "</tr>"
-            + "".join(rows_html)
-            + "</table>"
+            "</tr>" + "".join(rows_html) + "</table>"
             "</div>"
         )
 
@@ -448,7 +446,7 @@ def _build_peer_latency(
                     _make_target(
                         (
                             "time() - "
-                            f'{_COURIER_PREFIX}_data_monitor_last_processed_timestamp_seconds'
+                            f"{_COURIER_PREFIX}_data_monitor_last_processed_timestamp_seconds"
                             f'{{monitor_identifier="{dep_id}"}}'
                         ),
                         instant=True,

@@ -47,7 +47,7 @@ _logger = get_logger("module", "serial_bash", None)
 #: The value pattern is deliberately permissive; :func:`_ingest_courier_metrics`
 #: validates it with ``float()`` and skips anything that fails.
 _COURIER_METRIC_RE = _re.compile(
-    r"^COURIER_METRIC:\s+(?P<metric_name>\S+)\s+(?P<value>-?[\d.e+-]+)"
+    r"^COURIER_METRIC:\s+(?P<metric_name>\S+)\s+(?P<value>-?[\d.e+-]+)",
 )
 
 
@@ -308,7 +308,9 @@ class SerialBashDispatcher(Dispatcher):
                     Path(self.validated.log_dir) / f"dispatch_{safe_id}_{ts}.log"
                 )
 
-            log_prefix = f"[job: {job.identifier}]" if self.validated.log_to_logger else ""
+            log_prefix = (
+                f"[job: {job.identifier}]" if self.validated.log_to_logger else ""
+            )
 
             env: dict[str, str] | None = None
             if self.validated.python_venv:
@@ -329,7 +331,8 @@ class SerialBashDispatcher(Dispatcher):
                 env=env,
             )
             span.set_attribute(
-                ATTR_EXECUTION_RETURN_CODE, result.return_code,
+                ATTR_EXECUTION_RETURN_CODE,
+                result.return_code,
             )
             if result.return_code != 0:
                 span.set_status(Status(StatusCode.ERROR))
@@ -352,4 +355,3 @@ class SerialBashDispatcher(Dispatcher):
                     log_file_path=result.log_file_path,
                 ),
             ]
-

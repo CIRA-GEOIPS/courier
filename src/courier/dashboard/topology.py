@@ -37,7 +37,7 @@ _RE2_ESCAPE_RE = _re.compile(r"([.^$*+?{}\[\]()\\|])")
 
 
 def _re2_escape(text: str) -> str:
-    """Escape *text* for use as a literal inside a PromQL ``=~""`` regex.
+    r"""Escape *text* for use as a literal inside a PromQL ``=~""`` regex.
 
     Escapes only the characters that are RE2 metacharacters.  Does **not**
     escape hyphens, exclamation marks, or hashes — those are literal in
@@ -51,18 +51,18 @@ def _re2_escape(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 COLORS: dict[str, str] = {
-    "DATA_MONITOR": "#33C7FF",      # cyan — data ingest
-    "JOB_BUILDER": "#FFB357",       # amber — transformation
-    "DISPATCHER": "#C85EFA",        # purple — execution
-    "MUTED": "#8A9BB5",             # muted blue-gray for deps/de-emphasis
-    "HEALTHY": "#73BF69",           # green — healthy/running
-    "UNHEALTHY": "#F2495C",         # red — unhealthy/failed
-    "LOCAL_HIGHLIGHT": "#F5E050",   # gold — highlights local plugins
-    "ROW_BG": "#1E1E2E",            # dark row background
-    "HEADER_BG": "#181825",         # slightly darker header
-    "BORDER": "#45475A",            # subtle border
-    "TEXT": "#CDD6F4",              # primary text (Catppuccin Text)
-    "TEXT_MUTED": "#6C7086",        # muted text (Catppuccin Overlay0)
+    "DATA_MONITOR": "#33C7FF",  # cyan — data ingest
+    "JOB_BUILDER": "#FFB357",  # amber — transformation
+    "DISPATCHER": "#C85EFA",  # purple — execution
+    "MUTED": "#8A9BB5",  # muted blue-gray for deps/de-emphasis
+    "HEALTHY": "#73BF69",  # green — healthy/running
+    "UNHEALTHY": "#F2495C",  # red — unhealthy/failed
+    "LOCAL_HIGHLIGHT": "#F5E050",  # gold — highlights local plugins
+    "ROW_BG": "#1E1E2E",  # dark row background
+    "HEADER_BG": "#181825",  # slightly darker header
+    "BORDER": "#45475A",  # subtle border
+    "TEXT": "#CDD6F4",  # primary text (Catppuccin Text)
+    "TEXT_MUTED": "#6C7086",  # muted text (Catppuccin Overlay0)
 }
 
 # ---------------------------------------------------------------------------
@@ -74,6 +74,9 @@ _CONFIG_VALUE_MAX_LEN: int = 32
 
 _REDACTED: str = "•••"
 """Placeholder rendered in place of a secret config value."""
+
+_EM_DASH: str = "\u2014"
+"""Em dash used as an empty-config placeholder in summary tables."""
 
 _SECRET_KEY_MARKERS: tuple[str, ...] = (
     "password",
@@ -102,6 +105,7 @@ def _is_secret_key(key: str) -> bool:
     """Return ``True`` when *key* names a credential-bearing config field."""
     lowered = key.lower()
     return any(marker in lowered for marker in _SECRET_KEY_MARKERS)
+
 
 # ---------------------------------------------------------------------------
 # Shared style fragments (embedded in HTML panels)
@@ -134,9 +138,7 @@ _BADGE_BASE: str = (
     "font-size:11px;font-weight:700;text-transform:uppercase;"
 )
 
-_FLOW_ARROW: str = (
-    f'<span style="color:{COLORS["MUTED"]};margin:0 6px;">\u2192</span>'
-)
+_FLOW_ARROW: str = f'<span style="color:{COLORS["MUTED"]};margin:0 6px;">\u2192</span>'
 
 
 # ---------------------------------------------------------------------------
@@ -235,9 +237,7 @@ def _build_topology_row(model: DashboardModel) -> Row:
                 f"background:{COLORS['ROW_BG']};"
                 f"border-left:3px solid {COLORS['LOCAL_HIGHLIGHT']};"
             )
-            id_style = (
-                f"color:{COLORS['LOCAL_HIGHLIGHT']};font-weight:700;"
-            )
+            id_style = f"color:{COLORS['LOCAL_HIGHLIGHT']};font-weight:700;"
 
         # Target display — show flow arrows when routing downstream
         if plugin.targets:
@@ -245,25 +245,20 @@ def _build_topology_row(model: DashboardModel) -> Row:
                 (
                     f'<code style="font-size:12px;'
                     f'color:{COLORS["TEXT"]};">'
-                    f'{_html.escape(t)}</code>'
+                    f"{_html.escape(t)}</code>"
                 )
                 for t in plugin.targets
             )
             target_cell = f"{_FLOW_ARROW}{target_spans}"
         else:
-            target_cell = (
-                f'<span style="color:{COLORS["TEXT_MUTED"]};">'
-                "\u2014</span>"
-            )
+            target_cell = f'<span style="color:{COLORS["TEXT_MUTED"]};">\u2014</span>'
 
         config_summary = _build_config_summary(plugin.config)
         badge = _build_kind_badge(kind_name, kind_color)
 
         # Build the row HTML with f-string for the wrapper, using
         # pre-built fragments to stay under the line-length limit.
-        code_open = (
-            f'<code style="font-size:12px;color:{COLORS["TEXT"]};">'
-        )
+        code_open = f'<code style="font-size:12px;color:{COLORS["TEXT"]};">'
         code_close = "</code>"
         td_meta = (
             f"font-size:11px;color:{COLORS['TEXT_MUTED']};"
@@ -281,7 +276,7 @@ def _build_topology_row(model: DashboardModel) -> Row:
             f"<td style='{_TD_STYLE}'>"
             f"{code_open}{_html.escape(plugin.plugin_name)}{code_close}</td>"
             f"<td style='{_TD_STYLE}{td_meta}'>"
-            f"{config_summary if config_summary else '\u2014'}</td>"
+            f"{config_summary if config_summary else _EM_DASH}</td>"
             f"<td style='{_TD_STYLE}'>{target_cell}</td>"
             f"</tr>",
         )
@@ -297,12 +292,7 @@ def _build_topology_row(model: DashboardModel) -> Row:
         "</tr>"
     )
 
-    content = (
-        f"<table style='{_TABLE_STYLE}'>"
-        f"{header}"
-        f"{''.join(html_rows)}"
-        f"</table>"
-    )
+    content = f"<table style='{_TABLE_STYLE}'>{header}{''.join(html_rows)}</table>"
 
     # Height: 50px header + ~34px per plugin row
     row_height = max(120, 50 + len(model.plugins) * 34)
@@ -344,9 +334,7 @@ def _build_flow_rate_row(model: DashboardModel, datasource: str) -> Row:
 
     # Build a regex matching all builder identifiers in the model so a single
     # PromQL query returns every active edge at once.
-    builder_pattern = "|".join(
-        _re2_escape(builder_id) for builder_id in model.routing
-    )
+    builder_pattern = "|".join(_re2_escape(builder_id) for builder_id in model.routing)
 
     targets = [
         Target(
@@ -487,18 +475,14 @@ def _build_summary_row(model: DashboardModel) -> Row:
         kind_color = COLORS.get(kind_name, COLORS["MUTED"])
 
         config_keys = (
-            ", ".join(sorted(plugin.config.keys()))
-            if plugin.config
-            else "\u2014"
+            ", ".join(sorted(plugin.config.keys())) if plugin.config else "\u2014"
         )
 
         target_list = ", ".join(plugin.targets) if plugin.targets else "\u2014"
 
         badge = _build_kind_badge(kind_name, kind_color)
 
-        code_open = (
-            f'<code style="font-size:12px;color:{COLORS["TEXT"]};">'
-        )
+        code_open = f'<code style="font-size:12px;color:{COLORS["TEXT"]};">'
         code_close = "</code>"
         td_meta = (
             f"font-size:11px;color:{COLORS['TEXT_MUTED']};"
@@ -532,12 +516,7 @@ def _build_summary_row(model: DashboardModel) -> Row:
         "</tr>"
     )
 
-    content = (
-        f"<table style='{_TABLE_STYLE}'>"
-        f"{header}"
-        f"{''.join(html_rows)}"
-        f"</table>"
-    )
+    content = f"<table style='{_TABLE_STYLE}'>{header}{''.join(html_rows)}</table>"
 
     # Height: header + rows + sub-section note if applicable
     row_height = 50 + len(model.plugins) * 34
@@ -566,7 +545,7 @@ def _build_kind_badge(kind_name: str, color: str) -> str:
     """Render a small coloured badge for a plugin kind."""
     return (
         f'<span style="{_BADGE_BASE}'
-        f"background:{color};color:#fff;\">"
+        f'background:{color};color:#fff;">'
         f"{_html.escape(kind_name)}</span>"
     )
 
@@ -587,7 +566,7 @@ def _build_config_summary(config: dict, max_keys: int = 3) -> str:
         else:
             val_str = str(value)
             if len(val_str) > _CONFIG_VALUE_MAX_LEN:
-                val_str = val_str[:_CONFIG_VALUE_MAX_LEN - 3] + "..."
+                val_str = val_str[: _CONFIG_VALUE_MAX_LEN - 3] + "..."
         items.append(
             f"<span style='color:{COLORS['TEXT']};'>"
             f"{_html.escape(key)}</span>"
@@ -646,11 +625,7 @@ def _build_dep_table(
         dataSource=datasource,
         targets=[
             Target(
-                expr=(
-                    "courier_plugin_state{"
-                    f'plugin_name=~"{identifier_pattern}"'
-                    "}"
-                ),
+                expr=(f'courier_plugin_state{{plugin_name=~"{identifier_pattern}"}}'),
                 format=TABLE_TARGET_FORMAT,
                 instant=True,
                 refId="A",
@@ -695,10 +670,7 @@ def build_subsection_header(
         return None
 
     id_spans: list[str] = []
-    code_fmt = (
-        f"<code style='color:{COLORS['LOCAL_HIGHLIGHT']};"
-        f"font-weight:700;'>"
-    )
+    code_fmt = f"<code style='color:{COLORS['LOCAL_HIGHLIGHT']};font-weight:700;'>"
     for i in sorted(local_ids):
         id_spans.append(f"{code_fmt}{_html.escape(i)}</code>")
     id_list = ", ".join(id_spans)

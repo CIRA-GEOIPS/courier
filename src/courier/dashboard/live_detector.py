@@ -123,12 +123,10 @@ def detect_active_plugins(
     # Law 1 (Early Exit): handle all fetch failures at the boundary.
     # ------------------------------------------------------------------
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=timeout) as response:
             if response.status != _HTTP_OK:
                 return LiveDetectionResult(
-                    error_message=(
-                        f"Metrics endpoint returned HTTP {response.status}"
-                    ),
+                    error_message=(f"Metrics endpoint returned HTTP {response.status}"),
                 )
             raw_text = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
@@ -155,8 +153,7 @@ def detect_active_plugins(
     # Determine active identifiers — those whose state is in _ACTIVE_STATES.
     # ------------------------------------------------------------------
     identifiers = {
-        name for name, state in plugin_states.items()
-        if state in _ACTIVE_STATES
+        name for name, state in plugin_states.items() if state in _ACTIVE_STATES
     }
 
     return LiveDetectionResult(

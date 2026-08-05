@@ -300,4 +300,3 @@ class MetadataRouterBuilder(JobBuilder):
                 job_builder_name=self.name,
                 job_builder_identifier=self.identifier,
             ).inc()
-

@@ -100,9 +100,7 @@ def retry_with_backoff(
                     return func(*args, **kwargs)
                 except exceptions as e:
                     last_exc = e
-                    is_last_attempt = (
-                        not is_infinite and attempt == max_retries - 1
-                    )
+                    is_last_attempt = not is_infinite and attempt == max_retries - 1
                     if is_last_attempt:
                         _logger.exception(
                             f"Max retries ({max_retries}) reached for {func.__name__}",

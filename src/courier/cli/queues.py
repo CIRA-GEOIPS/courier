@@ -86,7 +86,9 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
     config = load_config_or_exit(config_file)
     ns = namespace or config.metadata.namespace or "default"
     dispatcher_ids = {
-        e.identifier for e in config.spec.run if normalize_kind(e.spec.kind) == "dispatchers"
+        e.identifier
+        for e in config.spec.run
+        if normalize_kind(e.spec.kind) == "dispatchers"
     }
     resolver = build_default_resolver(dispatcher_ids)
     queues: set[str] = set()

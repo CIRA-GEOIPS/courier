@@ -179,7 +179,11 @@ class Service:
                 ):
                     w3c_headers = inject_trace_headers()
                     publish_fanout(
-                        conn, exchange, message, confirm=confirm, headers=w3c_headers,
+                        conn,
+                        exchange,
+                        message,
+                        confirm=confirm,
+                        headers=w3c_headers,
                     )
                 BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
             return
@@ -608,7 +612,9 @@ class Service:
                 if not self._health_check():
                     raise RuntimeError("Service health check failed after startup")  # noqa: TRY301
 
-                self._logger.info(f"Service {self._config.service_id} started successfully")
+                self._logger.info(
+                    f"Service {self._config.service_id} started successfully",
+                )
                 self._run_heartbeat_loop()
 
             except KeyboardInterrupt:

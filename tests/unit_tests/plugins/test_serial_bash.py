@@ -580,10 +580,10 @@ class TestPythonVenvEnvPropagation:
         make_job,
     ) -> None:
         """When python_venv is set, env dict with VIRTUAL_ENV and PATH is passed."""
-        venv_path = sys.prefix
+        venv_path = Path(sys.prefix).resolve()
         plugin = SerialBashDispatcher(
             mock_service,
-            _make_config(python_venv=venv_path),
+            _make_config(python_venv=str(venv_path)),
             identifier="test-disp",
         )
         target = "courier.plugins.dispatchers.serial_bash.execute_bash_script"
@@ -599,7 +599,8 @@ class TestPythonVenvEnvPropagation:
         env = call_kwargs["env"]
         assert isinstance(env, dict)
         assert "VIRTUAL_ENV" in env
-        assert env["PATH"].startswith(str(Path(venv_path) / "bin"))
+        assert env["VIRTUAL_ENV"] == str(venv_path)
+        assert env["PATH"].startswith(str(venv_path / "bin"))
 
     def test_python_venv_not_set_env_is_none(
         self,

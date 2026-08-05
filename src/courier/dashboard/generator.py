@@ -126,8 +126,7 @@ def generate_dashboard(  # noqa: PLR0913
         mode_enum = mode
     else:
         raise TypeError(
-            f"mode must be DashboardGenerationMode or str, "
-            f"got {type(mode).__name__}",
+            f"mode must be DashboardGenerationMode or str, got {type(mode).__name__}",
         )
 
     # ------------------------------------------------------------------
@@ -297,24 +296,16 @@ def _build_kind_model(
         namespace=model.namespace,
         description=model.description,
         plugins=kind_plugins,
-        data_monitors=[
-            p for p in kind_plugins if p.kind is PluginKind.DATA_MONITOR
-        ],
-        job_builders=[
-            p for p in kind_plugins if p.kind is PluginKind.JOB_BUILDER
-        ],
-        dispatchers=[
-            p for p in kind_plugins if p.kind is PluginKind.DISPATCHER
-        ],
+        data_monitors=[p for p in kind_plugins if p.kind is PluginKind.DATA_MONITOR],
+        job_builders=[p for p in kind_plugins if p.kind is PluginKind.JOB_BUILDER],
+        dispatchers=[p for p in kind_plugins if p.kind is PluginKind.DISPATCHER],
         routing={},
         has_metadata_router=(
             model.has_metadata_router and kind is PluginKind.JOB_BUILDER
         ),
         has_slurm=model.has_slurm and kind is PluginKind.DISPATCHER,
         has_http=model.has_http and kind is PluginKind.DISPATCHER,
-        has_parallel_bash=(
-            model.has_parallel_bash and kind is PluginKind.DISPATCHER
-        ),
+        has_parallel_bash=(model.has_parallel_bash and kind is PluginKind.DISPATCHER),
     )
 
 
@@ -342,10 +333,12 @@ def _split_by_plugin(  # noqa: PLR0913
     for plugin in model.plugins:
         plugin_model = _build_plugin_model(model, plugin)
         plugin_name_str = _make_dashboard_name(
-            model, suffix=plugin.identifier,
+            model,
+            suffix=plugin.identifier,
         )
         plugin_uid_str = _make_dashboard_uid(
-            model, suffix=plugin.identifier,
+            model,
+            suffix=plugin.identifier,
         )
 
         templates, rows = _assemble_unified_panels(
@@ -362,9 +355,7 @@ def _split_by_plugin(  # noqa: PLR0913
                 templates,
                 rows,
                 name=(
-                    plugin_name_str
-                    if name is None
-                    else f"{name} - {plugin.identifier}"
+                    plugin_name_str if name is None else f"{name} - {plugin.identifier}"
                 ),
                 uid=(
                     plugin_uid_str
@@ -373,8 +364,7 @@ def _split_by_plugin(  # noqa: PLR0913
                 ),
                 tags=tags,
                 description=(
-                    f"{model.description or ''}"
-                    f" [{plugin.identifier}]".strip()
+                    f"{model.description or ''} [{plugin.identifier}]".strip()
                 ),
             ),
         )
@@ -406,19 +396,11 @@ def _build_plugin_model(
             and plugin.plugin_name == "metadata_router"
         ),
         has_slurm=(
-            model.has_slurm
-            and is_dp
-            and plugin.plugin_name == "slurm_dispatcher"
+            model.has_slurm and is_dp and plugin.plugin_name == "slurm_dispatcher"
         ),
-        has_http=(
-            model.has_http
-            and is_dp
-            and plugin.plugin_name == "http_dispatcher"
-        ),
+        has_http=(model.has_http and is_dp and plugin.plugin_name == "http_dispatcher"),
         has_parallel_bash=(
-            model.has_parallel_bash
-            and is_dp
-            and plugin.plugin_name == "parallel_bash"
+            model.has_parallel_bash and is_dp and plugin.plugin_name == "parallel_bash"
         ),
     )
 
@@ -439,37 +421,43 @@ def _build_trace_templates(model: DashboardModel) -> list:
 
     templates: list[Template] = []
 
-    templates.append(Template(
-        name="dm_source",
-        label="Data Monitor Source",
-        type="textbox",
-        query="",
-    ))
+    templates.append(
+        Template(
+            name="dm_source",
+            label="Data Monitor Source",
+            type="textbox",
+            query="",
+        ),
+    )
 
     if model.job_builders:
         jb_names = sorted({jb.plugin_name for jb in model.job_builders})
         if jb_names:
-            templates.append(Template(
-                name="jb_trace_plugin",
-                label="Job Builder (Traces)",
-                type="custom",
-                query=",".join(jb_names),
-                multi=True,
-                includeAll=True,
-                allValue=".*",
-            ))
+            templates.append(
+                Template(
+                    name="jb_trace_plugin",
+                    label="Job Builder (Traces)",
+                    type="custom",
+                    query=",".join(jb_names),
+                    multi=True,
+                    includeAll=True,
+                    allValue=".*",
+                ),
+            )
 
-    templates.append(Template(
-        name="correlation_id",
-        label="Correlation ID",
-        type="textbox",
-        query="",
-    ))
+    templates.append(
+        Template(
+            name="correlation_id",
+            label="Correlation ID",
+            type="textbox",
+            query="",
+        ),
+    )
 
     return templates
 
 
-def _assemble_unified_panels(
+def _assemble_unified_panels(  # noqa: PLR0913
     model: DashboardModel,
     *,
     only_metrics: bool,
@@ -542,13 +530,16 @@ def _assemble_unified_panels(
     # -- TraceQL panels ----------------------------------------------------
     if not only_metrics and not only_logs:
         # Visual divider between Prometheus metrics and Tempo traces
-        panel_rows.append(RowPanel(
-            title="Distributed Traces (Tempo)",
-            gridPos=GridPos(h=1, w=24, x=0, y=0),
-        ))
+        panel_rows.append(
+            RowPanel(
+                title="Distributed Traces (Tempo)",
+                gridPos=GridPos(h=1, w=24, x=0, y=0),
+            ),
+        )
 
         traceql_panels = build_traceql_panels(
-            model, datasource=traces_datasource,
+            model,
+            datasource=traces_datasource,
         )
         panel_rows.extend(traceql_panels)
 
@@ -557,13 +548,16 @@ def _assemble_unified_panels(
 
     # -- Loki (LogQL) panels -----------------------------------------------
     if loki_datasource and not only_metrics and not only_traces:
-        panel_rows.append(RowPanel(
-            title="Application Logs (Loki)",
-            gridPos=GridPos(h=1, w=24, x=0, y=0),
-        ))
+        panel_rows.append(
+            RowPanel(
+                title="Application Logs (Loki)",
+                gridPos=GridPos(h=1, w=24, x=0, y=0),
+            ),
+        )
 
         loki_panels = build_loki_panels(
-            model, datasource=loki_datasource,
+            model,
+            datasource=loki_datasource,
         )
         panel_rows.extend(loki_panels)
 
@@ -573,7 +567,8 @@ def _assemble_unified_panels(
     # Only-logs mode: generate only Loki panels (even without --loki-datasource)
     elif only_logs:
         loki_panels = build_loki_panels(
-            model, datasource=loki_datasource or "Loki",
+            model,
+            datasource=loki_datasource or "Loki",
         )
         panel_rows.extend(loki_panels)
 

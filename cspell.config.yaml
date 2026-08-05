@@ -105,6 +105,51 @@ words:
   - misrouting
   - fanout
   - duplicatable
+  - apikey
+  - behaviour
+  - Catppuccin
+  - colours
+  - datatable
+  - Fira
+  - flatlined
+  - getpgid
+  - humanise
+  - initialisation
+  - initialised
+  - killpg
+  - lookback
+  - millis
+  - mydash
+  - mypipeline
+  - normalisation
+  - normalised
+  - normalises
+  - Normalise
+  - Normalising
+  - numpydoc
+  - percentunit
+  - pipeable
+  - Predeclaring
+  - preproc
+  - Recognised
+  - recognised
+  - recognises
+  - sanitise
+  - slugified
+  - STRIPPABLE
+  - Succ
+  - succ
+  - Summarise
+  - TCSS
+  - THHMM
+  - topo
+  - traceql
+  - tracestate
+  - unacked
+  - unetcomp
+  - unrecognised
+  - userinfo
+  - visualise
 ignoreWords:
   - includehidden
   - intersphinx
