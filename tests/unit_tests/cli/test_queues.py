@@ -54,7 +54,7 @@ def runner() -> CliRunner:
 
 def test_list_prints_expected_queues(runner: CliRunner, config_file: Path) -> None:
     """``list`` prints namespace-prefixed expected queues for every dispatcher."""
-    result = runner.invoke(queues_app, ["list", "--config", str(config_file)])
+    result = runner.invoke(queues_app, ["list", str(config_file)])
     assert result.exit_code == 0, result.output
     assert "namespace: ns" in result.output
     assert "ns-JobReady-runner-a" in result.output
@@ -65,7 +65,7 @@ def test_list_namespace_override(runner: CliRunner, config_file: Path) -> None:
     """``--namespace`` overrides the metadata namespace."""
     result = runner.invoke(
         queues_app,
-        ["list", "--config", str(config_file), "--namespace", "other"],
+        ["list", str(config_file), "--namespace", "other"],
     )
     assert result.exit_code == 0, result.output
     assert "other-JobReady-runner-a" in result.output
@@ -74,7 +74,7 @@ def test_list_namespace_override(runner: CliRunner, config_file: Path) -> None:
 
 def test_prune_requires_candidates(runner: CliRunner, config_file: Path) -> None:
     """``prune`` with no candidates exits non-zero with a diagnostic."""
-    result = runner.invoke(queues_app, ["prune", "--config", str(config_file)])
+    result = runner.invoke(queues_app, ["prune", str(config_file)])
     assert result.exit_code == 2
     assert "no candidates" in result.output
 
@@ -89,7 +89,6 @@ def test_prune_dry_run_reports_orphans(
             queues_app,
             [
                 "prune",
-                "--config",
                 str(config_file),
                 "--candidate",
                 "ns-JobReady-runner-a,ns-JobReady-ghost,ns-other-orphan",
@@ -113,7 +112,6 @@ def test_prune_no_orphans_short_circuits(
             queues_app,
             [
                 "prune",
-                "--config",
                 str(config_file),
                 "--candidate",
                 "ns-JobReady-runner-a",
@@ -143,7 +141,6 @@ def test_prune_apply_deletes_orphans(
             queues_app,
             [
                 "prune",
-                "--config",
                 str(config_file),
                 "--candidate",
                 "ns-JobReady-ghost",
@@ -175,7 +172,6 @@ def test_prune_force_deletes_non_empty_queues(
             queues_app,
             [
                 "prune",
-                "--config",
                 str(config_file),
                 "--candidate",
                 "ns-JobReady-ghost",
@@ -202,7 +198,6 @@ def test_prune_from_file(
             queues_app,
             [
                 "prune",
-                "--config",
                 str(config_file),
                 "--from-file",
                 str(listing),

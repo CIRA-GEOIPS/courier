@@ -301,9 +301,9 @@ Stop the service gracefully with `Ctrl+C`:
 **Metadata not extracted:**
 
 - Check filename matches GOES-18 pattern
-- View available metadata configs:
-  `from courier.interfaces import data_monitor_configs; print(data_monitor_configs.get_plugins())`
-- See the `goes18_abi` metadata config in `src/courier/plugins/yaml/data_monitor_configs/goes18_abi.yaml` for pattern details.
+- View available metadata configs: `courier plugins list`
+- See the `goes18_abi` metadata config in
+  `src/courier/plugins/data_monitor_configs/goes18_abi.py` for pattern details.
 
 ## What You Learned
 

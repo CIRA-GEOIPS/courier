@@ -14,7 +14,7 @@ import pytest
 
 from courier.broker.kombu import redact_broker_url
 from courier.dashboard.topology import _build_config_summary, _is_secret_key
-from courier.plugins.classes.dispatchers.serial_bash import _ingest_courier_metrics
+from courier.plugins.dispatchers.serial_bash import _ingest_courier_metrics
 from courier.schema.v1alpha1.broker_config import AmqpBrokerConfig, RedisBrokerConfig
 from courier.utils.functional import slugify_for_filename
 

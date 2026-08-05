@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from courier.plugins.classes.job_builders.filter_and_group import (
+from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobGroup,
 )

@@ -8,8 +8,8 @@ generated.
 Metric provenance — which module emits each Prometheus metric family
 --------------------------------------------------------------------
 All metrics are defined in :mod:`courier.metrics` and emitted by call-sites
-in :mod:`courier.interfaces.module_based` and
-:mod:`courier.plugins.classes`.  There is no ``courier.monitoring`` package.
+in :mod:`courier.interfaces` and
+:mod:`courier.plugins`.  There is no ``courier.monitoring`` package.
 
 * ``courier_service_*`` — :mod:`courier.metrics`
 * ``courier_data_monitor_*`` — :mod:`courier.metrics`
@@ -260,8 +260,7 @@ def _hq(
     """
     selector = f"{{{labels}}}" if labels else ""
     return (
-        f"histogram_quantile({quantile},"
-        f" rate({metric}_bucket{selector}[{interval}]))"
+        f"histogram_quantile({quantile}, rate({metric}_bucket{selector}[{interval}]))"
     )
 
 
@@ -357,8 +356,8 @@ def build_prometheus_templates(model: DashboardModel) -> list[Template]:
                     name="route_target",
                     label="Route Target",
                     options=route_ids,
-        ),
-    )
+                ),
+            )
 
     # -- Job Builder plugins ------------------------------------------------
     if model.job_builders:
@@ -427,7 +426,8 @@ def _collect_route_targets(model: DashboardModel) -> list[str]:
 
 
 def _service_overview_panels(
-    _model: DashboardModel, gs: _GenState,
+    _model: DashboardModel,
+    gs: _GenState,
 ) -> RowPanel:
     """Generate the Service Overview section with four KPI stat panels.
 
@@ -436,7 +436,7 @@ def _service_overview_panels(
     an operator needs at a glance.
     """
     y_row = _advance(gs, 0)  # RowPanel header at this Y (0)
-    gs.y = y_row + 1          # stats start one row below the header
+    gs.y = y_row + 1  # stats start one row below the header
 
     panels: list[Stat] = []
 
@@ -461,8 +461,7 @@ def _service_overview_panels(
             gs,
             title="Active Plugins",
             expr=(
-                f"count({_PREFIX}_plugin_state"
-                f'{{plugin_name=~"$plugin_filter"}} == 3)'
+                f'count({_PREFIX}_plugin_state{{plugin_name=~"$plugin_filter"}} == 3)'
             ),
             x=6,
             thresholds=[
@@ -482,9 +481,7 @@ def _service_overview_panels(
         _stat_panel_h(
             gs,
             title="Files Processed /s",
-            expr=(
-                f"sum({_rate(f'{_PREFIX}_data_monitor_files_processed_total')})"
-            ),
+            expr=(f"sum({_rate(f'{_PREFIX}_data_monitor_files_processed_total')})"),
             x=12,
             thresholds=[
                 Threshold("red", 0, 0.0),
@@ -700,7 +697,8 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
             targets=[
                 _target(
                     _rate(
-                        f"{_PREFIX}_data_monitor_files_processed_total", lbl,
+                        f"{_PREFIX}_data_monitor_files_processed_total",
+                        lbl,
                     ),
                     "{{monitor_name}}",
                 ),
@@ -837,7 +835,8 @@ def _metadata_router_row(model: DashboardModel, gs: _GenState) -> RowPanel | Non
             targets=[
                 _target(
                     _rate(
-                        f"{_PREFIX}_job_builder_route_matches_total", lbl,
+                        f"{_PREFIX}_job_builder_route_matches_total",
+                        lbl,
                     ),
                     "{{route_name}} — {{target}}",
                 ),
@@ -1019,10 +1018,12 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     )
 
     success_rate = _rate(
-        f"{_PREFIX}_dispatcher_jobs_processed_total", lbl + ', status="success"',
+        f"{_PREFIX}_dispatcher_jobs_processed_total",
+        lbl + ', status="success"',
     )
     executed_rate = _rate(
-        f"{_PREFIX}_dispatcher_jobs_processed_total", lbl,
+        f"{_PREFIX}_dispatcher_jobs_processed_total",
+        lbl,
     )
 
     panels.append(
@@ -1221,7 +1222,8 @@ def _http_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
     )
 
     http_rate = _rate(
-        f"{_PREFIX}_dispatcher_http_response_codes_total", lbl,
+        f"{_PREFIX}_dispatcher_http_response_codes_total",
+        lbl,
     )
     panels.append(
         _timeseries(
@@ -1444,12 +1446,13 @@ def _broker_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
 
 
 def _pipeline_latency_row(
-    _model: DashboardModel, gs: _GenState,
+    _model: DashboardModel,
+    gs: _GenState,
 ) -> RowPanel:
     """End-to-end pipeline latency from satellite scan time to product generation.
 
     Metrics are populated by deployment scripts via the ``COURIER_METRIC:``
-    stdout protocol (see :mod:`courier.plugins.classes.dispatchers.serial_bash`
+    stdout protocol (see :mod:`courier.plugins.dispatchers.serial_bash`
     docs).  Each dispatcher emits its own ``scan_to_*_latency_seconds`` gauge
     after every job.
     """
@@ -1473,24 +1476,24 @@ def _pipeline_latency_row(
             ),
             targets=[
                 _target(
-                    f'{_PREFIX}_custom_gauge'
+                    f"{_PREFIX}_custom_gauge"
                     '{metric_name="scan_to_l1b_latency_seconds"}',
                     "L1b preproc",
                 ),
                 _target(
-                    f'{_PREFIX}_custom_gauge'
+                    f"{_PREFIX}_custom_gauge"
                     '{metric_name="scan_to_cwc_latency_seconds"}',
                     "CWC profiles",
                     ref="B",
                 ),
                 _target(
-                    f'{_PREFIX}_custom_gauge'
+                    f"{_PREFIX}_custom_gauge"
                     '{metric_name="scan_to_cwp_latency_seconds"}',
                     "CWP inference",
                     ref="C",
                 ),
                 _target(
-                    f'{_PREFIX}_custom_gauge'
+                    f"{_PREFIX}_custom_gauge"
                     '{metric_name="scan_to_3d_latency_seconds"}',
                     "3D cloud",
                     ref="D",
@@ -1624,15 +1627,9 @@ def _pipeline_summary_row(_model: DashboardModel, gs: _GenState) -> RowPanel:
     )
 
     # --- Sub-row 2: Throughput (last 5m) — increase()-based for direct count view
-    dm_increase = (
-        f"sum(increase({_PREFIX}_data_monitor_files_processed_total[5m]))"
-    )
-    jb_increase = (
-        f"sum(increase({_PREFIX}_job_builder_jobs_built_total[5m]))"
-    )
-    dp_increase = (
-        f"sum(increase({_PREFIX}_dispatcher_jobs_processed_total[5m]))"
-    )
+    dm_increase = f"sum(increase({_PREFIX}_data_monitor_files_processed_total[5m]))"
+    jb_increase = f"sum(increase({_PREFIX}_job_builder_jobs_built_total[5m]))"
+    dp_increase = f"sum(increase({_PREFIX}_dispatcher_jobs_processed_total[5m]))"
     py2 = _advance(gs, 8)
     panels.append(
         _timeseries(

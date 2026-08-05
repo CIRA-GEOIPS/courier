@@ -267,7 +267,9 @@ def messages(
     queue: "kombu.Queue",
     stop_event: threading.Event | None = None,
 ) -> Generator[
-    tuple[str, Callable[[], None], Callable[[], None], dict[str, str]], None, None,
+    tuple[str, Callable[[], None], Callable[[], None], dict[str, str]],
+    None,
+    None,
 ]:
     """Yield ``(body, ack, reject)`` tuples from *queue* until *stop_event* is set.
 
@@ -408,7 +410,9 @@ def declare_fanout_queue(
     queue_name = f"{exchange.name}-fanout-{uuid.uuid4().hex[:12]}"
     try:
         q = kombu.Queue(
-            queue_name, exchange=exchange, exclusive=True,
+            queue_name,
+            exchange=exchange,
+            exclusive=True,
             channel=conn.channel(),
         )
         q.declare()

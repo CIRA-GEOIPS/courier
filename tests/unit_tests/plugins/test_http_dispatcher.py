@@ -9,7 +9,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from courier.plugins.classes.dispatchers.http_dispatcher import (
+from courier.plugins.dispatchers.http_dispatcher import (
     HttpDispatcher,
     HttpDispatcherConfig,
 )
@@ -101,7 +101,7 @@ class TestSendWithRetries:
         self, mock_service: MagicMock, mocker
     ) -> None:
         mocker.patch(
-            "courier.plugins.classes.dispatchers.http_dispatcher.time.sleep",
+            "courier.plugins.dispatchers.http_dispatcher.time.sleep",
         )
         plugin = HttpDispatcher(
             mock_service,

@@ -23,7 +23,7 @@ The `courier dashboard` command reads your Courier service configuration and gen
 ### Installation
 
 ```bash
-pip install courier[grafana]
+pip install data-courier[grafana]
 ```
 
 ### Basic Usage

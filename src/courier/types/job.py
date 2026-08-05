@@ -60,7 +60,7 @@ class Job:
         a dict.  Consumers should be prepared for either form.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913, PLR0917
         self,
         name: str,
         identifier: str,

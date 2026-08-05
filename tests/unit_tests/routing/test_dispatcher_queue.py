@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from courier.constants import FILE_FOUND_EXCHANGE
-from courier.interfaces.module_based.dispatchers import Dispatcher, _DEDUPE_LRU_SIZE
+from courier.interfaces.dispatchers import Dispatcher, _DEDUPE_LRU_SIZE
 from courier.types.file import File
 
 

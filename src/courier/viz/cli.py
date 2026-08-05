@@ -29,7 +29,7 @@ def viz(
     except ImportError:
         typer.echo(
             "The 'viz' command requires the Textual library.\n"
-            "Install it with: pip install courier[viz]",
+            "Install it with: pip install data-courier[viz]",
         )
         raise typer.Exit(1) from None
 

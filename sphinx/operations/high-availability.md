@@ -106,10 +106,10 @@ files. The same last-write-wins merge applies at load time.
 State sync requires:
 
 - **Redis 4.0+** (pub/sub and `SET NX EX` are used)
-- The `courier[ha]` package extra:
+- The `data-courier[ha]` package extra:
 
 ```bash
-pip install courier[ha]
+pip install data-courier[ha]
 ```
 
 This installs the `redis` Python package. If `state_sync` is configured but

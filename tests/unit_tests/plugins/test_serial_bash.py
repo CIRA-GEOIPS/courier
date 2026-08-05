@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pydantic
 import pytest
 
-from courier.plugins.classes.dispatchers.serial_bash import (
+from courier.plugins.dispatchers.serial_bash import (
     SerialBashConfig,
     SerialBashDispatcher,
 )
@@ -34,10 +34,6 @@ class TestConstructor:
         )
         assert isinstance(plugin.validated, SerialBashConfig)
         assert plugin.validated.bash_script == "echo {{ files[0].file }}"
-
-    def test_module_init_short_circuits(self) -> None:
-        plugin = SerialBashDispatcher(None, None)
-        assert not hasattr(plugin, "validated")
 
     def test_missing_bash_script_raises(self, mock_service: MagicMock) -> None:
         with pytest.raises(pydantic.ValidationError):
@@ -79,7 +75,7 @@ class TestGetExecutionLog:
             mock_service, _make_config(), identifier="test-disp",
         )
         execute = mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=fake_bash_exec_result(return_code=0, stdout="hi"),
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
@@ -141,7 +137,7 @@ class TestGetExecutionLog:
             mock_service, _make_config(), identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=fake_bash_exec_result(
                 return_code=-1,
                 stderr="Script execution timed out after 1.0s",
@@ -164,7 +160,7 @@ class TestGetExecutionLog:
             mock_service, _make_config(), identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=fake_bash_exec_result(
                 return_code=-1,
                 stderr="Error executing script: boom",
@@ -193,7 +189,7 @@ class TestGetExecutionLog:
             return fake_bash_exec_result()
 
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             side_effect=fake_execute,
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/single.nc")),))
@@ -225,7 +221,7 @@ class TestGetExecutionLog:
             return fake_bash_exec_result()
 
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             side_effect=fake_execute,
         )
         job = make_job(
@@ -264,7 +260,7 @@ class TestLogToLogger:
             identifier="test-disp",
         )
         mock_exec = mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=0, stdout="hello\n", stderr="", log_file_path=None,
             ),
@@ -288,7 +284,7 @@ class TestLogToLogger:
             identifier="test-disp",
         )
         mock_exec = mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=1, stdout="", stderr="error msg\n", log_file_path=None,
             ),
@@ -319,7 +315,7 @@ class TestLogToFile:
             identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=0,
                 stdout="processed\n",
@@ -350,7 +346,7 @@ class TestLogToFile:
         )
         expected_path = str(log_dir / "dispatch_test_20260101T000000000000.log")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=0,
                 stdout="ok",
@@ -380,7 +376,7 @@ class TestLogOnlyErrors:
             identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=0, stdout="", stderr="", log_file_path=None,
             ),
@@ -403,7 +399,7 @@ class TestLogOnlyErrors:
             identifier="test-disp",
         )
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=1, stdout="", stderr="error occurred", log_file_path=None,
             ),
@@ -440,7 +436,7 @@ class TestCombinedModes:
         mocker.patch.object(plugin._logger, "debug")
         mocker.patch.object(plugin._logger, "warning")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=0,
                 stdout="ok",
@@ -477,7 +473,7 @@ class TestLogFileOnError:
         )
         expected_path = str(log_dir / "dispatch_test_timeout.log")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script",
+            "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
                 return_code=-1,
                 stdout="",
@@ -584,13 +580,13 @@ class TestPythonVenvEnvPropagation:
         make_job,
     ) -> None:
         """When python_venv is set, env dict with VIRTUAL_ENV and PATH is passed."""
-        venv_path = sys.prefix
+        venv_path = Path(sys.prefix).resolve()
         plugin = SerialBashDispatcher(
             mock_service,
-            _make_config(python_venv=venv_path),
+            _make_config(python_venv=str(venv_path)),
             identifier="test-disp",
         )
-        target = "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script"
+        target = "courier.plugins.dispatchers.serial_bash.execute_bash_script"
         with patch(target, return_value=BashExecResult(
             return_code=0, stdout="ok", stderr="",
         )) as mock_exec:
@@ -603,7 +599,8 @@ class TestPythonVenvEnvPropagation:
         env = call_kwargs["env"]
         assert isinstance(env, dict)
         assert "VIRTUAL_ENV" in env
-        assert env["PATH"].startswith(str(Path(venv_path) / "bin"))
+        assert env["VIRTUAL_ENV"] == str(venv_path)
+        assert env["PATH"].startswith(str(venv_path / "bin"))
 
     def test_python_venv_not_set_env_is_none(
         self,
@@ -617,7 +614,7 @@ class TestPythonVenvEnvPropagation:
             _make_config(python_venv=None),
             identifier="test-disp",
         )
-        target = "courier.plugins.classes.dispatchers.serial_bash.execute_bash_script"
+        target = "courier.plugins.dispatchers.serial_bash.execute_bash_script"
         with patch(target, return_value=BashExecResult(
             return_code=0, stdout="ok", stderr="",
         )) as mock_exec:

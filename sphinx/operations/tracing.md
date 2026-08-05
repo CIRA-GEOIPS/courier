@@ -165,7 +165,7 @@ For operational monitoring and tracing workflows, see
 | `dispatcher.emit_execution_log`      | `Dispatcher`          | Publishing an execution log record (child of `dispatch_job`) |
 | `metadata_router.route_file`         | `MetadataRouterBuilder` | Routing an incoming file to the first matching route's job group |
 
-**Note on `metadata_router.route_file`**: The `MetadataRouterBuilder` (a `JobBuilder` subclass in `src/courier/plugins/classes/job_builders/metadata_router.py`) replaces `job_builder.build_job` with its own top-level span. It does not emit `build_job` or `process_job_group` — those are only used by the base `JobBuilder`.
+**Note on `metadata_router.route_file`**: The `MetadataRouterBuilder` (a `JobBuilder` subclass in `src/courier/plugins/job_builders/metadata_router.py`) replaces `job_builder.build_job` with its own top-level span. It does not emit `build_job` or `process_job_group` — those are only used by the base `JobBuilder`.
 
 ### Attribute Keys
 

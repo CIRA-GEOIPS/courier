@@ -38,7 +38,7 @@ Each plugin runs in its own thread with independent health monitoring and automa
 ## Quick Start
 
 ```bash
-pip install courier
+pip install data-courier
 ```
 
 ### Running the service
@@ -46,13 +46,13 @@ pip install courier
 Point Courier at a YAML config and start it:
 
 ```bash
-courier run --config my_config.yaml
+courier run my_config.yaml
 ```
 
 Validate your config before running:
 
 ```bash
-courier validate --config my_config.yaml
+courier validate my_config.yaml
 ```
 
 ### Writing a data monitor

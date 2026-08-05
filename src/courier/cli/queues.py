@@ -16,6 +16,7 @@ portable and auditable.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path  # noqa: TC003 — Typer reads annotation at runtime.
 from typing import Annotated
 
@@ -23,7 +24,7 @@ import typer
 from kombu import Connection
 from kombu.exceptions import OperationalError
 
-from courier.cli.config_loader import load_config
+from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import normalize_kind
 from courier.constants import (
     DISPATCHER_QUEUE,
@@ -37,12 +38,12 @@ queues_app = typer.Typer(
 )
 
 
-_CONFIG_OPTION = typer.Option(
-    "--config",
-    "-c",
-    exists=True,
-    readable=True,
-    help="Path to the service YAML.",
+# Positional, not an option: `run`, `validate` and `dashboard` all take the
+# config this way, and `courier queues list config.yaml` failing while
+# `courier validate config.yaml` worked was a needless second grammar.
+_CONFIG_ARGUMENT = typer.Argument(
+    metavar="CONFIG",
+    help="Path to the service YAML whose queues are being inspected.",
 )
 _NAMESPACE_OPTION = typer.Option(
     "--namespace",
@@ -82,10 +83,12 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
     and their auto-generated consumer queues (``amq.gen-*``) are excluded
     because they are managed by the broker.
     """
-    config = load_config(config_file)
+    config = load_config_or_exit(config_file)
     ns = namespace or config.metadata.namespace or "default"
     dispatcher_ids = {
-        e.identifier for e in config.spec.run if normalize_kind(e.spec.kind) == "dispatchers"
+        e.identifier
+        for e in config.spec.run
+        if normalize_kind(e.spec.kind) == "dispatchers"
     }
     resolver = build_default_resolver(dispatcher_ids)
     queues: set[str] = set()
@@ -100,7 +103,7 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
 
 
 def _broker_url(config_file: Path) -> str:
-    return load_config(config_file).spec.broker.to_url()
+    return load_config_or_exit(config_file).spec.broker.to_url()
 
 
 def _read_candidates(
@@ -119,16 +122,31 @@ def _read_candidates(
     return values
 
 
+_JSON_OPTION = typer.Option(
+    "--json",
+    "-j",
+    help="Emit machine-readable JSON to stdout instead of plain text.",
+)
+
+
 @queues_app.command("list")
 def list_cmd(
-    config: Annotated[Path, _CONFIG_OPTION],
+    config: Annotated[Path, _CONFIG_ARGUMENT],
     namespace: Annotated[str | None, _NAMESPACE_OPTION] = None,
+    json_output: Annotated[bool, _JSON_OPTION] = False,
 ) -> None:
     """Print every queue the service is expected to use.
 
     Exchanges are managed separately.
     """
     ns, queues = _expected_queues(config, namespace)
+    if json_output:
+        # Matches `plugins list --json`, so both listings can be piped into jq
+        # rather than one of them needing to be scraped.
+        typer.echo(
+            json.dumps({"namespace": ns, "queues": sorted(queues)}, indent=2),
+        )
+        return
     typer.echo(f"namespace: {ns}")
     for name in sorted(queues):
         typer.echo(name)
@@ -136,7 +154,7 @@ def list_cmd(
 
 @queues_app.command("prune")
 def prune_cmd(  # noqa: PLR0913
-    config: Annotated[Path, _CONFIG_OPTION],
+    config: Annotated[Path, _CONFIG_ARGUMENT],
     *,
     candidate: Annotated[list[str] | None, _CANDIDATE_OPTION] = None,
     from_file: Annotated[Path | None, _FROM_FILE_OPTION] = None,

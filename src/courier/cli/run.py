@@ -6,12 +6,12 @@ import logging
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
-from courier.cli.config_loader import load_config
-from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
+from courier.cli.feedback import load_config_or_exit
+from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
 
@@ -94,29 +94,18 @@ def run_service(
                 f"Unknown plugin identifiers: {', '.join(sorted(unknown))}. "
                 f"Available: {', '.join(sorted(all_ids))}",
             )
-        dmc_ids = {
-            e.identifier for e in config.spec.run
-            if e.spec.kind == "data_monitor_configs"
-        }
-        dmc_in_only = only_set & dmc_ids
-        if dmc_in_only:
-            raise ValueError(
-                f"'data_monitor_configs' entries cannot be run with --only: "
-                f"{', '.join(sorted(dmc_in_only))}. "
-                "Use --only with data_monitor,"
-                " job_builder, or dispatcher identifiers.",
-            )
-
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
-        if entry.spec.kind == "data_monitor_configs":
-            continue  # YAML-based config, not a ServicePlugin
-        registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
-        if registry is None:
-            continue
-        plugin_obj = registry.get_plugin(entry.spec.name)
-        plugin_class = type(plugin_obj)
+        kind = normalize_kind(entry.spec.kind)
+        # An unrecognised kind used to be skipped silently, which produced a
+        # service that started up, reported healthy, and processed nothing.
+        if kind not in RUN_KINDS:
+            raise ValueError(
+                f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
+                f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+            )
+        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
         plugin_config: dict[str, Any] = (
             entry.spec.config if entry.spec.config is not None else {}
         )
@@ -127,7 +116,8 @@ def run_service(
         plugin_registrations,
     )
     dispatcher_ids = {
-        e.identifier for e in config.spec.run
+        e.identifier
+        for e in config.spec.run
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
@@ -136,8 +126,7 @@ def run_service(
     if only_set is not None:
         # Filter builder_targets to only builders in only_set
         builder_targets = {
-            bid: targets for bid, targets in builder_targets.items()
-            if bid in only_set
+            bid: targets for bid, targets in builder_targets.items() if bid in only_set
         }
         # Add targets of included builders to dispatcher_ids
         # (queues must be pre-declared on broker even if dispatcher runs elsewhere)
@@ -157,23 +146,25 @@ def run_service(
 
 def run(
     ctx: typer.Context,
-    config_file: Path,
+    config_file: Annotated[
+        Path,
+        typer.Argument(
+            metavar="CONFIG",
+            help="Service YAML describing the pipeline to run.",
+        ),
+    ],
     only: str | None = typer.Option(
         None,
         "--only",
         help="Comma-separated plugin identifiers to run. "
-             "Allows one config to serve multiple containers: "
-             "e.g. 'courier run config.yaml --only my-dm' for the data monitor, "
-             "'courier run config.yaml --only my-builder,my-dispatcher'"
-             " for processing.",
+        "Allows one config to serve multiple containers: "
+        "e.g. 'courier run config.yaml --only my-dm' for the data monitor, "
+        "'courier run config.yaml --only my-builder,my-dispatcher'"
+        " for processing.",
     ),
 ) -> None:
     """Run the service with a config file."""
-    if not config_file.exists():
-        typer.echo(f"Error: File {config_file} not found")
-        raise typer.Exit(1)
-
-    config = load_config(config_file)
+    config = load_config_or_exit(config_file)
     log_level = ctx.obj.get("log_level") if ctx.obj else None
 
     # Parse --only

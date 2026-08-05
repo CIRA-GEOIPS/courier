@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from courier.errors import PluginStartupError
-from courier.plugins.classes.dispatchers.slurm_dispatcher import (
+from courier.plugins.dispatchers.slurm_dispatcher import (
     SlurmDispatcher,
     SlurmDispatcherConfig,
 )
@@ -54,7 +54,7 @@ class TestConstructor:
     ) -> None:
         plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.slurm_dispatcher.shutil.which",
+            "courier.plugins.dispatchers.slurm_dispatcher.shutil.which",
             return_value=None,
         )
         with pytest.raises(PluginStartupError, match="sbatch"):
@@ -98,7 +98,7 @@ class TestSubmit:
         plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
         result = MagicMock(returncode=0, stdout="Submitted batch job 12345\n", stderr="")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.slurm_dispatcher.subprocess.run",
+            "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
             return_value=result,
         )
         job_id = plugin._submit(make_job(), tmp_path / "s.sbatch")
@@ -110,7 +110,7 @@ class TestSubmit:
         plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
         result = MagicMock(returncode=0, stdout="98765\n", stderr="")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.slurm_dispatcher.subprocess.run",
+            "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
             return_value=result,
         )
         assert plugin._submit(make_job(), tmp_path / "s.sbatch") == "98765"
@@ -121,7 +121,7 @@ class TestSubmit:
         plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
         result = MagicMock(returncode=1, stdout="", stderr="rejected")
         mocker.patch(
-            "courier.plugins.classes.dispatchers.slurm_dispatcher.subprocess.run",
+            "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
             return_value=result,
         )
         assert plugin._submit(make_job(), tmp_path / "s.sbatch") is None

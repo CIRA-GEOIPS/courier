@@ -1,6 +1,6 @@
 # Parallel Bash Dispatcher (`parallel_bash`)
 
-:class:`~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashDispatcher`
+:class:`~courier.plugins.dispatchers.parallel_bash.ParallelBashDispatcher`
 
 Executes a Jinja2-templated bash script independently for each file in the
 job. Up to ``max_workers`` scripts run concurrently via
@@ -9,7 +9,7 @@ its own :class:`~courier.types.execution_log.ExecutionLog`.
 
 ## Configuration
 
-:class:`~courier.plugins.classes.dispatchers.parallel_bash.ParallelBashConfig`
+:class:`~courier.plugins.dispatchers.parallel_bash.ParallelBashConfig`
 
 .. list-table::
    :header-rows: 1
@@ -178,7 +178,7 @@ strings; attribute access on undefined variables raises
 
 ## Serial vs Parallel
 
-Use :class:`~courier.plugins.classes.dispatchers.serial_bash.SerialBashDispatcher`
+Use :class:`~courier.plugins.dispatchers.serial_bash.SerialBashDispatcher`
 when your script processes **all files together** (one invocation, one
 :class:`~courier.types.execution_log.ExecutionLog`). Use
 :class:`ParallelBashDispatcher` when each file should be processed
@@ -213,7 +213,7 @@ capacity.
 
 ## Pipeline Feedback with ``emit_file``
 
-The ``parallel_bash`` dispatcher supports the same :meth:`~courier.interfaces.module_based.dispatchers.Dispatcher.emit_file`
+The ``parallel_bash`` dispatcher supports the same :meth:`~courier.interfaces.dispatchers.Dispatcher.emit_file`
 mechanism as all dispatchers. After all per-file scripts complete, the
 dispatcher scans each script's output for file paths (if ``output_files`` is
 configured) and emits discovered files back into the pipeline.
@@ -251,7 +251,7 @@ rather than once for the entire job.
 
 ### OutputFilePattern Schema
 
-Same as :class:`~courier.plugins.classes.dispatchers._output_file_pattern.OutputFilePattern`.
+Same as :class:`~courier.plugins.dispatchers._output_file_pattern.OutputFilePattern`.
 See :ref:`output-file-scanning-serial` in the :doc:`serial_bash` documentation
 for the full schema reference.
 
@@ -357,7 +357,7 @@ receives its own copy, so this is thread-safe.
 
 ## API Reference
 
-.. literalinclude:: ../../../../src/courier/plugins/classes/dispatchers/parallel_bash.py
+.. literalinclude:: ../../../../src/courier/plugins/dispatchers/parallel_bash.py
    :language: python
    :start-after: class ParallelBashDispatcher(Dispatcher):
    :end-before:     def __init__(

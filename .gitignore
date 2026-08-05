@@ -142,12 +142,9 @@ tests/multiprocessing/temp_scripts/
 
 
 __pycache__
-registered_plugins.json
-registered_plugins.yaml
 
 
 .claude/**/*
-pluginify
 .opencode
 .ocx
 uv.lock

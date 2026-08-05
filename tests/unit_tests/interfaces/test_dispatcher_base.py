@@ -17,7 +17,7 @@ from prometheus_client import REGISTRY
 
 from courier.constants import PluginRunState, job_ready_queue_for
 from courier.errors import CourierError, PipelineError
-from courier.interfaces.module_based.dispatchers import (
+from courier.interfaces.dispatchers import (
     _DEDUPE_LRU_SIZE,
     Dispatcher,
 )

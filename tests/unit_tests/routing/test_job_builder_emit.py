@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from courier.errors import FatalBrokerError, TransientBrokerError
-from courier.plugins.classes.job_builders.filter_and_group import (
+from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupJobBuilder,
 )
 from courier.types.job import Job
