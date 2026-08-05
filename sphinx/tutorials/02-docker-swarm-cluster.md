@@ -177,7 +177,7 @@ watcher:
 
 ```
   courier-watcher:
-    image: ghcr.io/biosafetylvl5/courier:latest
+    image: dgshanee/courier:latest
     command:
       - "courier"
       - "run"
@@ -218,7 +218,7 @@ together:
 
 ```
   courier-processor:
-    image: ghcr.io/biosafetylvl5/courier:latest
+    image: dgshanee/courier:latest
     command:
       - "courier"
       - "run"
@@ -350,7 +350,7 @@ services:
       RABBITMQ_DEFAULT_PASS: admin_test
 
   courier-watcher:
-    image: ghcr.io/biosafetylvl5/courier:latest
+    image: dgshanee/courier:latest
     command:
       - "courier"
       - "run"
@@ -368,7 +368,7 @@ services:
       - rabbitmq
 
   courier-processor:
-    image: ghcr.io/biosafetylvl5/courier:latest
+    image: dgshanee/courier:latest
     command:
       - "courier"
       - "run"
@@ -420,7 +420,7 @@ Add a Jaeger all-in-one service to `docker-compose.yml`:
 
 ```
   jaeger:
-    image: jaegertracing/all-in-one:1.68
+    image: jaegertracing/all-in-one:1.68.0
     ports:
       - "16686:16686"
       - "4318:4318"
@@ -468,7 +468,7 @@ services:
       RABBITMQ_DEFAULT_PASS: admin_test
 
   courier-watcher:
-    image: ghcr.io/biosafetylvl5/courier:latest
+    image: dgshanee/courier:latest
     command:
       - "courier"
       - "run"
@@ -487,7 +487,7 @@ services:
       - rabbitmq
 
   courier-processor:
-    image: ghcr.io/biosafetylvl5/courier:latest
+    image: dgshanee/courier:latest
     command:
       - "courier"
       - "run"
@@ -529,7 +529,7 @@ services:
       - prometheus
 
   jaeger:
-    image: jaegertracing/all-in-one:1.68
+    image: jaegertracing/all-in-one:1.68.0
     ports:
       - "16686:16686"
       - "4318:4318"
