@@ -92,7 +92,7 @@ def test_shipped_config_heartbeat_is_plausible_in_seconds(
     service published health metrics every ~17 minutes. Anything above a few
     minutes is almost certainly the same unit confusion returning.
     """
-    interval = load_config(config_path).spec.heartbeat_interval
+    interval = load_config(config_path).spec.service_config.heartbeat_interval
     assert 0 < interval <= 300, (
         f"{config_path.name}: heartbeat_interval={interval}s is implausible; "
         f"the field is seconds, not milliseconds"

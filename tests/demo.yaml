@@ -11,7 +11,8 @@ metadata:
     metadata. Downstream job builders and dispatchers can filter and act on these
     files as they arrive.
 spec:
-  heartbeat_interval: 30 # seconds between health-metric publications
+  service_config:
+    heartbeat_interval: 30 # seconds between health-metric publications
   broker:
     host: rabbitmqhost
     port: 5672
