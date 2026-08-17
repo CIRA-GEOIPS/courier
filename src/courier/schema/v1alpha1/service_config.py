@@ -24,6 +24,8 @@ from courier.schema.v1alpha1.broker_config import (
     MemoryBrokerConfig,
 )
 
+from courier.config import ServiceConfig
+
 __all__ = [
     "DispatcherQueueConfig",
     "MicroserviceDefinitionModel",
@@ -178,16 +180,6 @@ class MicroserviceModel(FrozenModel):
 class ServiceSpecModel(FrozenModel):
     """The `spec` section of a courier service configuration."""
 
-    heartbeat_interval: int = Field(
-        default=30,
-        description="Interval in seconds between service heartbeat messages.",
-    )
-    tracing_enabled: bool = Field(
-        default_factory=lambda: (
-            os.environ.get("COURIER_TRACING_ENABLED", "true").lower() != "false"
-        ),
-        description="Enable OpenTelemetry tracing. Defaults to environment variable",
-    )
     broker: BrokerConfig = Field(
         default_factory=MemoryBrokerConfig,
         description="Broker connection config. Defaults to in-memory when omitted.",
@@ -205,6 +197,13 @@ class ServiceSpecModel(FrozenModel):
             "Always emits a WARNING log so operators never auto-wire silently. "
             "Set ``false`` in HA deployments to make the absence of an "
             "explicit target a preflight error."
+        ),
+    )
+    service_config: ServiceConfig = Field(
+        default=ServiceConfig(),
+        description=(
+            "All options relating to environment variables that can be overriden "
+            "with YAML configuration"
         ),
     )
 
