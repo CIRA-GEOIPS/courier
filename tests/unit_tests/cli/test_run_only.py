@@ -9,7 +9,7 @@ import pytest
 
 from courier.cli.run import run as cli_run
 from courier.cli.run import run_service
-
+from courier.config import ServiceConfig
 
 def _make_entry(identifier: str, kind: str, name: str, config: dict | None = None):
     """Build a mock config run entry with the given attributes."""
@@ -24,13 +24,15 @@ def _make_entry(identifier: str, kind: str, name: str, config: dict | None = Non
 def _make_config(entries, **extra_spec_attrs):
     """Build a mock config from a list of run entries."""
     config = MagicMock()
+
     config.spec.run = entries
     config.spec.broker.to_url.return_value = "memory://"
-    config.metadata.namespace = "test"
-    config.metadata.name = "test-service"
-    config.spec.heartbeat_interval = 30
     config.spec.broker.max_retries = 5
     config.spec.allow_implicit_target = True
+    config.spec.service_config = ServiceConfig(heartbeat_interval=30)
+    
+    config.metadata.namespace = "test"
+    config.metadata.name = "test-service"
     for attr, value in extra_spec_attrs.items():
         setattr(config.spec, attr, value)
     return config
