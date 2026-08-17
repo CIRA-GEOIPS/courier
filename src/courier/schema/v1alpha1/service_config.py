@@ -184,6 +184,10 @@ class ServiceSpecModel(FrozenModel):
         default_factory=MemoryBrokerConfig,
         description="Broker connection config. Defaults to in-memory when omitted.",
     )
+    heartbeat_interval: int = Field(
+        default=30,
+        description="Interval in seconds between service heartbeat messages.",
+    )
     run: list[MicroserviceModel] = Field(
         ...,
         min_length=1,

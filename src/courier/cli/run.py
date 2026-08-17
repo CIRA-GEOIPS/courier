@@ -71,6 +71,7 @@ def run_service(
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
         service_id = config.metadata.name,
+        heartbeat_interval = config.spec.heartbeat_interval,
     )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
