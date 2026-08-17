@@ -9,7 +9,8 @@ metadata:
     file and makes a single job out of it and a bash script job dispatcher that
     just echos out the filename as a proof of concept.
 spec:
-  heartbeat_interval: 30 # seconds; drives prometheus and loki heartbeats
+  service_config:
+    heartbeat_interval: 30 # seconds; drives prometheus and loki heartbeats
   broker:
     host: rabbitmq
     port: 5672
