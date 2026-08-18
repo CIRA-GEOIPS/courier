@@ -319,14 +319,14 @@ class Dispatcher(ServicePlugin):
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
         tracer = get_tracer(__name__)
-        executor = ThreadPoolExecutor(max_workers=self.config['max_workers'])
+        executor = ThreadPoolExecutor(max_workers=self.config.get("max_workers", 5))
         while not self._stop_event.is_set():
             for job_string, parent_ctx in self.parent_service.consume(
                 self.incoming_queue,
                 stop_event=self._stop_event,
                 on_subscribed=self._subscribed.set,
             ):
-                if self.config['async']:
+                if self.config.get('async', False):
                     executor.submit(self._handle_single_job,
                                     job_string,
                                     parent_ctx,
