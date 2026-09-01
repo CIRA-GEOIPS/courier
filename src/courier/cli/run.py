@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import dataclasses
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
@@ -63,23 +64,14 @@ def run_service(
         If set, only run plugins whose identifiers are in this set.
         Keyword-only; passed from the ``--only`` CLI flag.
     """
-    if log_level is not None:
-        service_config = ServiceConfig(
-            broker_url=config.spec.broker.to_url(),
-            namespace=config.metadata.namespace or "default",
-            service_id=config.metadata.name,
-            heartbeat_interval=config.spec.heartbeat_interval,
-            broker_max_retries=config.spec.broker.max_retries,
-            log_level=log_level,
-        )
-    else:
-        service_config = ServiceConfig(
-            broker_url=config.spec.broker.to_url(),
-            namespace=config.metadata.namespace or "default",
-            service_id=config.metadata.name,
-            heartbeat_interval=config.spec.heartbeat_interval,
-            broker_max_retries=config.spec.broker.max_retries,
-        )
+        
+    # since ServiceClass is an immutable object, we replace all necessary attributes
+    # from the parent class into the `spec.service_config` overrides
+    service_config = dataclasses.replace(config.spec.service_config,
+        broker_url=config.spec.broker.to_url(),
+        namespace=config.metadata.namespace or "default",
+        service_id = config.metadata.name,
+    )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
         tuple[type[ServicePlugin], dict[str, Any], str | None]
@@ -94,6 +86,20 @@ def run_service(
                 f"Unknown plugin identifiers: {', '.join(sorted(unknown))}. "
                 f"Available: {', '.join(sorted(all_ids))}",
             )
+        dmc_ids = {
+            e.identifier
+            for e in config.spec.run
+            if e.spec.kind == "data_monitor_configs"
+        }
+        dmc_in_only = only_set & dmc_ids
+        if dmc_in_only:
+            raise ValueError(
+                f"'data_monitor_configs' entries cannot be run with --only: "
+                f"{', '.join(sorted(dmc_in_only))}. "
+                "Use --only with data_monitor,"
+                " job_builder, or dispatcher identifiers.",
+            )
+
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue

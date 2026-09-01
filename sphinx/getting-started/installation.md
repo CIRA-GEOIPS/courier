@@ -71,9 +71,10 @@ dependency precisely because it backs the default.
 For development work:
 
 ```
-git clone https://github.com/biosafetylvl5/courier.git
+git clone https://github.com/CIRA-GEOIPS/courier.git
 cd courier
 nix-shell -p uv python312
+uv venv && source .venv/bin/activate
 uv pip install -e ".[doc,lint,test]"
 ```
 
