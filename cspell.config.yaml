@@ -150,6 +150,7 @@ words:
   - unrecognised
   - userinfo
   - visualise
+  - opentelemetry
 ignoreWords:
   - includehidden
   - intersphinx
