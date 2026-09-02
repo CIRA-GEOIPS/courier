@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from pathlib import Path  # noqa: TC003 — needed at runtime for Typer annotation introspection
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any, TYPE_CHECKING
 
 import typer
 
@@ -49,13 +49,16 @@ def run_service(
     only_set: set[str] | None = None,
 ) -> None:
     """Build and start the service from a validated config model.
+
     Parameters
     ----------
     config : Any
         Validated ServiceConfigModel instance.
+
     log_level : str or None, optional
         Log level from CLI --log-level flag. If None, uses
         ServiceConfig default (env var COURIER_LOG_LEVEL or 'DEBUG').
+
     only_set : set[str] or None, optional
         If set, only run plugins whose identifiers are in this set.
         Keyword-only; passed from the ``--only`` CLI flag.
@@ -66,7 +69,10 @@ def run_service(
             lvl = getattr(logging, log_level.upper())
             logging.getLogger().setLevel(lvl)
         except Exception:
-            logger.warning("Invalid log level %r; leaving logger level unchanged", log_level)
+            logger.warning(
+                "Invalid log level %r; leaving logger level unchanged",
+                log_level,
+            )
 
     # since ServiceClass is an immutable object, we replace all necessary attributes
     # from the parent class into the `spec.service_config` overrides
