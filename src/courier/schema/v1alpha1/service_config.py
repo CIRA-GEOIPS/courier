@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from courier.config import ServiceConfig
 from courier.schema.v1alpha1.base import (
     FrozenModel,
     _ensure_api_version,
@@ -22,8 +23,6 @@ from courier.schema.v1alpha1.broker_config import (
     BrokerConfig,
     MemoryBrokerConfig,
 )
-
-from courier.config import ServiceConfig
 
 __all__ = [
     "DispatcherQueueConfig",
@@ -201,7 +200,7 @@ class ServiceSpecModel(FrozenModel):
     service_config: ServiceConfig = Field(
         default=ServiceConfig(),
         description=(
-            "All options relating to environment variables that can be overriden "
+            "All options relating to environment variables that can be overridden "
             "with YAML configuration"
         ),
     )

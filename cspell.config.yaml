@@ -153,6 +153,7 @@ words:
   - unrecognised
   - userinfo
   - visualise
+  - opentelemetry
   - broker_url
   - ServiceConfig
   - PLUGIN_REGISTRIES
@@ -166,6 +167,7 @@ words:
   - AMQP
   - TTL
 ignoreWords:
+  - traceparent
   - includehidden
   - intersphinx
   - undoc

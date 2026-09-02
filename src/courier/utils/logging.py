@@ -366,3 +366,35 @@ def get_logger(
     )
 
     return adapter
+
+
+def route_external_logger(logger_name: str, target: ContextAdapter) -> None:
+    """Adapt stray loggers to a specified logging system.
+
+    Lets external loggers (e.g. OpenTelemetry's error logging) go through
+    the same pipeline as courier's logging system instead of falling through to
+    the console.
+
+    Parameters
+    ----------
+    logger_name : str
+        Name of the logger as it relates to their module path
+    target : ContextAdapter
+        The target logging system to adapt to
+
+    Returns
+    -------
+    None
+        Configures the external context in-place
+
+    Examples
+    --------
+    >>> route_external_logger("opentelemetry", otel_logger)
+    >>> route_external_logger("grafana", grafana_logger)
+    """
+    external = logging.getLogger(logger_name)
+    external.propagate = False
+    external.setLevel(target.logger.level)
+    for handler in target.logger.handlers:
+        if handler not in external.handlers:
+            external.addHandler(handler)
