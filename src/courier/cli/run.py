@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from pathlib import Path  # noqa: TC003 — needed at runtime for Typer annotation introspection
-from typing import Annotated, Any, TYPE_CHECKING
+from pathlib import (
+    Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
+)
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 

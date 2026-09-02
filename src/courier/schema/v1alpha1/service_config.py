@@ -11,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from courier.config import ServiceConfig
 from courier.schema.v1alpha1.base import (
     FrozenModel,
     _ensure_api_version,
@@ -22,8 +23,6 @@ from courier.schema.v1alpha1.broker_config import (
     BrokerConfig,
     MemoryBrokerConfig,
 )
-
-from courier.config import ServiceConfig
 
 __all__ = [
     "DispatcherQueueConfig",
