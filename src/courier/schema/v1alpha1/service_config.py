@@ -200,7 +200,7 @@ class ServiceSpecModel(FrozenModel):
     service_config: ServiceConfig = Field(
         default=ServiceConfig(),
         description=(
-            "All options relating to environment variables that can be overriden "
+            "All options relating to environment variables that can be overridden "
             "with YAML configuration"
         ),
     )

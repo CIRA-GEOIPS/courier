@@ -167,6 +167,7 @@ words:
   - AMQP
   - TTL
 ignoreWords:
+  - traceparent
   - includehidden
   - intersphinx
   - undoc
