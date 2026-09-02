@@ -1,0 +1,31 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "courier",
+    "microservice",
+    "preflight",
+    "metadata_router",
+    "dmc",
+    "dmc_ids",
+    "broker_url",
+    "ServiceConfig",
+    "namespace",
+    "typer",
+    "isort",
+    "ruff",
+    "cspell",
+    "AMQP",
+    "TTL",
+    "envvar",
+    "job_builders",
+    "dispatchers",
+    "PLUGIN_REGISTRIES",
+    "RUN_KINDS"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    ".venv/**",
+    ".git/**"
+  ]
+}
