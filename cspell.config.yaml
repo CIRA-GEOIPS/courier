@@ -1,5 +1,8 @@
 version: "0.2"
-ignorePaths: []
+ignorePaths:
+  - "node_modules/**"
+  - ".venv/**"
+  - ".git/**"
 dictionaryDefinitions: []
 dictionaries: []
 words:
@@ -150,6 +153,18 @@ words:
   - unrecognised
   - userinfo
   - visualise
+  - broker_url
+  - ServiceConfig
+  - PLUGIN_REGISTRIES
+  - RUN_KINDS
+  - job_builders
+  - dispatchers
+  - dmc_ids
+  - preflight
+  - metadata_router
+  - envvar
+  - AMQP
+  - TTL
 ignoreWords:
   - includehidden
   - intersphinx
