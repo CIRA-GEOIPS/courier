@@ -2,7 +2,8 @@ FROM python:3.13-alpine
 
 # install dependencies
 RUN apk add \
-  git 
+  git \
+  bash
 
 # clone courier and install courier dependencies
 RUN git clone https://github.com/CIRA-GEOIPS/courier.git
