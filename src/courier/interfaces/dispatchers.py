@@ -7,8 +7,10 @@ import os
 import threading
 import time
 import traceback
+from pathlib import Path
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, ClassVar
+from pydantic import BaseModel, Field, model_validator
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
 
@@ -18,6 +20,11 @@ from courier.constants import (
     PluginRunState,
     job_ready_queue_for,
 )
+
+from courier.dispatchers._output_file_pattern import (  # noqa: TC001
+OutputFilePattern,
+)
+
 from courier.errors import CourierError
 from courier.interfaces.discovery import (
     ENTRY_POINT_PREFIX,
@@ -54,6 +61,30 @@ _DEDUPE_LRU_SIZE = 1024
 if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.file import File
+
+class DispatcherConfig(BaseModel, frozen=True):
+    """Base model for dispatcher configs."""
+    timeout_seconds: float = Field(default=3600.0, gt=0)
+    log_to_logger: bool = Field(default=False)
+    log_to_file: bool = Field(default=False)
+    log_dir: str = Field(default="")
+    log_only_errors: bool = Field(default=False)
+    output_files: list[OutputFilePattern] | None = Field(default=None)
+    scan_stderr: bool = Field(default=False)
+    
+    @model_validator(mode="after")
+    def _validate_logging_config(self) -> DispatcherConfig:
+        if self.log_to_file and not self.log_dir:
+            raise ValueError("log_dir is required when log_to_file=True")
+        if self.log_to_file:
+            log_dir_path = Path(self.log_dir)
+            if not log_dir_path.is_dir():
+                log_dir_path.mkdir(parents=True, exist_ok=True)
+            elif not os.access(self.log_dir, os.W_OK):
+                raise ValueError(f"log_dir is not writable: {self.log_dir}")
+        return self
+
+
 
 
 class Dispatcher(ServicePlugin):
