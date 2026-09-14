@@ -51,7 +51,7 @@ Aka we have overlapping sets that cannot be treated as strict subsets. There is 
 overlap though!
 
 Thus, we have decided that most falcons should export their runnability via an inheritance
-structure — e.g. the `sh` falcon is the parent to the `bash` falcon, and the `bash` falcon is
+structure — e.g. the `sh` falcon class is the parent to the `bash` falcon class, and the `bash` falcon is
 the parent to `perl`, Python, Haskell etc. Those falcons should have the ability to *both*
 export the information needed to run the user-provided payload via `sh` *as well as* the "raw"
 payload itself.
