@@ -581,8 +581,27 @@ def publish_fanout(
     """Publish *body* to a fanout *exchange* using *conn*.
 
     Same error-handling strategy as :func:`publish`.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    exchange : kombu.Exchange
+        Fanout exchange to publish to.
+    body : str
+        Message body.
+    confirm : bool, optional
+        Wait for a publisher confirm where the transport supports it.
     headers : dict or None, optional
         Message headers to attach (used for trace context propagation).
+
+    Notes
+    -----
+    The pending-message gauge is *not* incremented here. A fanout publish
+    lands in every bound queue, and the consumer side decrements against the
+    queue it read from, so counting one exchange-labelled increment here left
+    the two halves as different series -- one only ever rising, the other only
+    ever falling. The caller, which knows the bound queues, does the counting.
     """
     scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
     use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
@@ -601,8 +620,6 @@ def publish_fanout(
                 declare=[exchange],
                 headers=headers or {},
             )
-            # Best-effort tracking: may drift.
-            BROKER_MESSAGES_PENDING.labels(queue_name=exchange.name).inc()
 
 
 def declare_bound_queue(
