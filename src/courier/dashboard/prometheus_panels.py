@@ -673,7 +673,7 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
         return None
 
     dm_plugin_names = {dm.plugin_name for dm in model.data_monitors}
-    _poll_monitors = {"s3_poller", "sftp_poller", "cron_glob"}
+    _poll_monitors = {"s3_poller", "cron_glob"}
     has_poll_monitors = bool(dm_plugin_names & _poll_monitors)
 
     y_row = _advance(gs, 1)
@@ -716,7 +716,7 @@ def _data_monitor_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
                 title="Processing Time (avg)",
                 description=(
                     "Average scan duration for poll-based data monitors "
-                    "(s3_poller, sftp_poller, cron_glob). "
+                    "(s3_poller, cron_glob). "
                     "Event-driven monitors do not emit this metric."
                 ),
                 targets=[
