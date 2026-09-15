@@ -25,10 +25,10 @@ from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupJobGroup,
 )
 from courier.tracing import ATTR_FILE_PATH, ATTR_FILE_SOURCE, get_tracer
-from courier.types.file import FrozenFile
 
 if TYPE_CHECKING:
     from courier.service import Service
+    from courier.types.file import FrozenFile
     from courier.types.job import Job, JobGroup
 
 
@@ -199,7 +199,14 @@ class MetadataRouterBuilder(JobBuilder):
             FILE_FOUND_EXCHANGE,
             stop_event=self._stop_event,
             on_subscribed=self._subscribed.set,
+            subscriber=self.identifier,
         ):
+            # Parsed before the span opens: the span name is only bound inside
+            # the with-block, so a guard placed after it could not skip the
+            # message without referencing an unbound name.
+            file = self._parse_file_message(str(file_string))
+            if file is None:
+                continue
             start_time = time.time()
             with tracer.start_as_current_span(
                 "metadata_router.route_file",
@@ -209,31 +216,9 @@ class MetadataRouterBuilder(JobBuilder):
                     job_builder_name=self.name,
                     job_builder_identifier=self.identifier,
                 ).inc()
-                file = FrozenFile.from_string(str(file_string))
                 span.set_attribute(ATTR_FILE_PATH, str(file.file) if file.file else "")
                 span.set_attribute(ATTR_FILE_SOURCE, file.source or "")
-                matched = False
-                for jg, route_name in zip(
-                    self.job_groups,
-                    self._route_names,
-                    strict=True,
-                ):
-                    if not jg.file_is_relevant(file):
-                        continue
-                    self._process_job_group(jg, file)
-                    JOB_BUILDER_ROUTE_MATCHES.labels(
-                        job_builder_name=self.name,
-                        job_builder_identifier=self.identifier,
-                        route_name=route_name,
-                    ).inc()
-                    matched = True
-                    break
-                if not matched:
-                    self._logger.debug(f"No route matched file {file}")
-                    JOB_BUILDER_UNMATCHED_FILES.labels(
-                        job_builder_name=self.name,
-                        job_builder_identifier=self.identifier,
-                    ).inc()
+                self._route_file(file)
                 self._file_processing_duration.labels(
                     job_builder_name=self.name,
                     job_builder_identifier=self.identifier,
@@ -244,6 +229,30 @@ class MetadataRouterBuilder(JobBuilder):
                 ).set(
                     len(self.job_groups),
                 )
+
+    def _route_file(self, file: FrozenFile) -> None:
+        """Send *file* to the first route that claims it.
+
+        Parameters
+        ----------
+        file : FrozenFile
+            The file to route.
+        """
+        for jg, route_name in zip(self.job_groups, self._route_names, strict=True):
+            if not jg.file_is_relevant(file):
+                continue
+            self._process_job_group(jg, file)
+            JOB_BUILDER_ROUTE_MATCHES.labels(
+                job_builder_name=self.name,
+                job_builder_identifier=self.identifier,
+                route_name=route_name,
+            ).inc()
+            return
+        self._logger.debug(f"No route matched file {file}")
+        JOB_BUILDER_UNMATCHED_FILES.labels(
+            job_builder_name=self.name,
+            job_builder_identifier=self.identifier,
+        ).inc()
 
     def _targets_for_group(self, job_group: JobGroup) -> tuple[str, ...]:
         """Return per-route targets, falling back to the builder default.

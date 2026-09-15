@@ -524,9 +524,16 @@ class PluginManager(ServiceManager):
 
         Bounded by ``plugin_health_check_interval``: a consumer that cannot
         attach must not stop the service from coming up, so a timeout is
-        logged and startup continues. Producers may then emit into a fanout
-        with nothing bound, which is exactly the loss this guards against —
-        hence WARNING rather than DEBUG.
+        logged and startup continues.
+
+        Since file-found queues became durable and are declared during
+        preflight, this ordering is a latency and visibility nicety rather
+        than a guard against loss: the first files are processed as soon as
+        they arrive instead of waiting on the broker, and a consumer that
+        cannot declare its queue is visible before producers add load.
+
+        Note this runs once during :meth:`start` and is **not** re-run when
+        the monitor restarts a failed plugin.
         """
         if not consumers:
             return
@@ -538,9 +545,11 @@ class PluginManager(ServiceManager):
             remaining = max(0.0, deadline - time.time())
             if not waiter(remaining):
                 self._logger.warning(
-                    "Plugin %s did not attach to its broker queue within %.1fs; "
-                    "starting producers anyway — messages published before it "
-                    "attaches may be dropped by the fanout exchange.",
+                    "Plugin %s did not report its broker subscription within "
+                    "%.1fs; starting producers anyway. Its queue is declared "
+                    "during preflight so nothing is dropped, but messages wait "
+                    "on the broker until it attaches. If this repeats, look for "
+                    "a FatalBrokerError from that plugin.",
                     info.plugin.name,
                     self._config.plugin_health_check_interval,
                 )
@@ -562,14 +571,11 @@ class PluginManager(ServiceManager):
 
         # Phase 1: Start consumers, and only then producers.
         #
-        # The file-found exchange is a fanout: the broker discards anything
-        # published while no queue is bound to it. Data monitors are producers
-        # and several of them emit immediately on start (cron_glob with
-        # run_on_start, or any watchdog seeing a pre-existing file), so
-        # starting them alongside the builders means every file emitted before
-        # the builders finish binding is dropped — no error, no metric, no log.
-        # Registration order made this likely rather than rare: monitors are
-        # declared first in a config, so their threads were created first.
+        # Consumers first, then producers. Durable file-found queues are
+        # declared during preflight, so this is no longer what prevents loss;
+        # it keeps the first files moving promptly instead of sitting on the
+        # broker, and surfaces a consumer that cannot declare its queue before
+        # producers start adding load.
         with self._lock:
             consumers, producers = self._partition_by_role()
             for plugin_info in consumers:

@@ -1,10 +1,17 @@
-"""Startup-ordering guarantees for the file-found fanout exchange.
+"""Startup-ordering guarantees for the file-found exchange.
 
-A fanout exchange discards any message published while no queue is bound to
-it. Data monitors are producers and several emit immediately on start
-(``cron_glob`` with ``run_on_start``, or a watchdog seeing a pre-existing
-file), so a monitor that runs before the job builders have bound loses those
-files silently — no error, no metric, no log line.
+Consumers are started before producers so the first files are processed as
+they arrive rather than sitting on the broker, and so a consumer that cannot
+declare its queue is visible before producers add load.
+
+This ordering used to be what prevented data loss, because each builder bound
+an exclusive queue that existed only while it was connected. It no longer is:
+each builder now consumes a durable ``FilesFound-<identifier>`` queue that
+every container declares during preflight, so a file published before a
+builder attaches waits on the broker instead of being discarded. Survival
+across a builder being down is covered by ``tests/rabbitmq/``, which needs a
+real broker -- the in-memory transport ignores exclusivity entirely and cannot
+express it.
 
 These tests pin the invariant rather than the timing. The natural race window
 is short enough that a wall-clock test passes on an idle machine whether or
@@ -200,8 +207,8 @@ class TestConsumeSubscriptionSignal:
     def test_on_subscribed_fires_before_the_first_yield(self) -> None:
         """The callback is the barrier's evidence that the queue is bound.
 
-        If it fired after the first message arrived it would be useless: the
-        producer would already have published into an unbound fanout.
+        If it fired after the first message arrived it would be useless as an
+        ordering signal: the producer would already have been released.
         """
         import uuid
 
@@ -230,6 +237,7 @@ class TestConsumeSubscriptionSignal:
                     events.append("subscribed"),
                     subscribed.set(),
                 ),
+                subscriber="builder",
             ):
                 events.append("message")
                 break

@@ -10,11 +10,14 @@ from urllib.parse import urlsplit, urlunsplit
 import kombu
 import kombu.exceptions
 from kombu.exceptions import (
+    ChannelError,
     KombuError,
     OperationalError,
 )
+from kombu.exceptions import ConnectionError as KombuConnectionError
 
 from courier.config import ServiceConfig
+from courier.constants import FILE_FOUND_EXCHANGE, file_found_queue_for
 from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.managers.base import ServiceManager
 from courier.metrics import (
@@ -28,6 +31,31 @@ from courier.utils.logging import get_logger
 # Memory transport does not implement broker-level publisher confirms;
 # passing ``confirm=True`` to it is a silent no-op.
 _MEMORY_TRANSPORT_SCHEMES: frozenset[str] = frozenset({"memory"})
+
+#: Everything a transport can raise while declaring or publishing. Kombu
+#: re-exports amqp's ``ChannelError`` and ``ConnectionError``, so classifying
+#: a channel error needs no direct dependency on the lower-level library.
+_BROKER_ERRORS: tuple[type[BaseException], ...] = (
+    KombuError,
+    ChannelError,
+    KombuConnectionError,
+    OSError,
+)
+
+#: AMQP reply codes that retrying the same operation can never fix.
+_FATAL_REPLY_CODES: frozenset[int] = frozenset({403, 404, 405, 406})
+
+#: Operator-actionable remedy per fatal reply code.
+_FATAL_HINTS: dict[int, str] = {
+    403: "the broker user lacks configure or write permission for this name",
+    404: "the exchange or queue no longer exists; restart courier to redeclare it",
+    405: "another connection holds this queue exclusively; stop that client first",
+    406: (
+        "a queue with this name already exists with different "
+        "durable/exclusive/auto_delete/arguments; drain and delete it "
+        "(courier queues prune CONFIG --candidate <name> --apply), then restart"
+    ),
+}
 
 _logger = get_logger("module", "broker.kombu", None)
 
@@ -55,36 +83,190 @@ def redact_broker_url(url: str) -> str:
     )
 
 
-def _normalize_publish_error(
-    exc: "kombu.exceptions.KombuError",
-    target_name: str,
-) -> "Exception":
-    """Classify a Kombu publish/declare error as transient or fatal.
+def _reply_code(exc: BaseException) -> int | None:
+    """Return the AMQP reply code carried by *exc*, if any.
 
     Parameters
     ----------
-    exc : kombu.exceptions.KombuError
-        The exception raised by Kombu.
-    target_name : str
-        Name of the queue or exchange for error messages.
+    exc : BaseException
+        Exception raised by a transport.
 
     Returns
     -------
-    Exception
-        :class:`TransientBrokerError` for recoverable failures,
-        :class:`FatalBrokerError` otherwise.
+    int or None
+        The reply code, or ``None`` when the exception carries none.
+    """
+    code = getattr(exc, "reply_code", None) or getattr(exc, "code", None)
+    return code if isinstance(code, int) and code > 0 else None
+
+
+def _error_types(
+    conn: "kombu.Connection",
+    attr: str,
+) -> tuple[type[BaseException], ...]:
+    """Return one of the connection's transport-specific error tuples.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        Connection whose transport defines the tuple.
+    attr : str
+        Attribute name, e.g. ``"channel_errors"``.
+
+    Returns
+    -------
+    tuple[type[BaseException], ...]
+        Exception classes, filtered so a stub connection degrades gracefully.
+    """
+    raw = getattr(conn, attr, None) or ()
+    return tuple(t for t in raw if isinstance(t, type))
+
+
+def _is_fatal_channel_error(conn: "kombu.Connection", exc: BaseException) -> bool:
+    """Return whether *exc* is a channel error that retrying cannot fix.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        Connection the error came from.
+    exc : BaseException
+        Exception to classify.
+
+    Returns
+    -------
+    bool
+        ``True`` for an irrecoverable channel error.
+    """
+    if _reply_code(exc) in _FATAL_REPLY_CODES:
+        return True
+    return isinstance(exc, _error_types(conn, "channel_errors")) and not isinstance(
+        exc,
+        _error_types(conn, "recoverable_channel_errors"),
+    )
+
+
+def _is_transient(conn: "kombu.Connection", exc: BaseException) -> bool:
+    """Return whether *exc* is worth retrying.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        Connection the error came from.
+    exc : BaseException
+        Exception to classify.
+
+    Returns
+    -------
+    bool
+        ``True`` when a retry could succeed.
     """
     if isinstance(exc, OperationalError):
-        return TransientBrokerError(
-            f"transient publish failure to {target_name!r}: {exc}",
-        )
-    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
-        return TransientBrokerError(
-            f"transient publish failure to {target_name!r}: {exc}",
-        )
-    return FatalBrokerError(
-        f"fatal publish failure to {target_name!r}: {exc}",
+        return True
+    if _is_fatal_channel_error(conn, exc):
+        return False
+    recoverable = (
+        *_error_types(conn, "recoverable_channel_errors"),
+        *_error_types(conn, "recoverable_connection_errors"),
+        # Genuine socket failures, which every transport can raise.
+        ConnectionError,
+        TimeoutError,
+        OSError,
     )
+    return isinstance(exc, recoverable)
+
+
+def classify_broker_error(
+    conn: "kombu.Connection",
+    exc: BaseException,
+    target_name: str,
+    action: str,
+) -> Exception | None:
+    """Map a transport error onto courier's broker error types.
+
+    Three ordering decisions matter here, each of which was a real defect:
+
+    * the explicit fatal reply codes are checked first, because py-amqp
+      classes ``ResourceLocked`` (405) as *recoverable* and retrying it
+      forever is not what an operator wants;
+    * the fatal-channel check runs before the transient tuples, because on the
+      in-memory transport ``recoverable_connection_errors`` falls back to
+      including every channel error, which would make a 406 look retryable;
+    * the connection-error tuple is deliberately *not* treated as transient,
+      because it is the base of both the recoverable and the irrecoverable
+      connection errors. Genuine socket failures are still caught by the
+      builtin ``(ConnectionError, TimeoutError, OSError)`` arm.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        Connection the error came from; supplies the transport's error tuples.
+    exc : BaseException
+        Exception raised by the transport.
+    target_name : str
+        Queue or exchange the operation targeted.
+    action : str
+        Present participle describing the operation, e.g. ``"declaring queue"``.
+
+    Returns
+    -------
+    Exception or None
+        A :class:`TransientBrokerError` or :class:`FatalBrokerError`, or
+        ``None`` when *exc* is not a broker error and should propagate as-is.
+    """
+    if _is_transient(conn, exc):
+        return TransientBrokerError(
+            f"transient failure while {action} {target_name!r}: {exc}",
+        )
+    known = (
+        KombuError,
+        *_error_types(conn, "channel_errors"),
+        *_error_types(conn, "connection_errors"),
+    )
+    if not isinstance(exc, known):
+        return None
+    hint = _FATAL_HINTS.get(_reply_code(exc) or 0)
+    tail = f"; {hint}" if hint else ""
+    return FatalBrokerError(
+        f"fatal failure while {action} {target_name!r}: {exc}{tail}",
+    )
+
+
+@contextmanager
+def broker_error_triage(
+    conn: "kombu.Connection",
+    target_name: str,
+    action: str,
+) -> Generator[None, None, None]:
+    """Translate transport errors raised inside the block into broker errors.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        Connection the operation runs on.
+    target_name : str
+        Queue or exchange the operation targets.
+    action : str
+        Present participle describing the operation.
+
+    Yields
+    ------
+    None
+        Control returns to the caller's block.
+
+    Raises
+    ------
+    TransientBrokerError
+        On a retryable failure.
+    FatalBrokerError
+        On a failure retrying cannot fix, with an operator-actionable hint.
+    """
+    try:
+        yield
+    except _BROKER_ERRORS as exc:
+        mapped = classify_broker_error(conn, exc, target_name, action)
+        if mapped is None:
+            raise
+        raise mapped from exc
 
 
 def _normalize_headers(raw_headers: dict | None) -> dict[str, str]:
@@ -194,16 +376,27 @@ def declare_queue(
         Queue name.
     **kwargs : Any
         Extra keyword arguments forwarded to ``kombu.Queue`` (e.g.
-        ``durable=True``, ``exclusive=False``).
+        ``durable=True``, ``exclusive=False``). Passing ``exchange=`` and
+        ``routing_key=`` is meaningful: one ``declare()`` then declares the
+        exchange, the queue *and* the binding between them.
 
     Returns
     -------
     kombu.Queue
         A queue object bound to *conn*'s channel and already declared on the
         broker.
+
+    Raises
+    ------
+    TransientBrokerError
+        On a retryable declaration failure.
+    FatalBrokerError
+        On a failure retrying cannot fix, such as a 406 from redeclaring an
+        existing queue with different properties.
     """
-    q: kombu.Queue = kombu.Queue(name, channel=conn.channel(), **kwargs)
-    q.declare()
+    with broker_error_triage(conn, name, "declaring queue"):
+        q: kombu.Queue = kombu.Queue(name, channel=conn.channel(), **kwargs)
+        q.declare()
     return q
 
 
@@ -241,7 +434,7 @@ def publish(
     """
     scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
     use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
-    try:
+    with broker_error_triage(conn, queue.name, "publishing to"):
         producer_cls = kombu.Producer
         with producer_cls(conn) as producer:
             if use_confirm:
@@ -258,14 +451,13 @@ def publish(
             )
             # Best-effort tracking: may drift on requeue or restart.
             BROKER_MESSAGES_PENDING.labels(queue_name=queue.name).inc()
-    except KombuError as exc:
-        raise _normalize_publish_error(exc, queue.name) from exc
 
 
 def messages(
     conn: "kombu.Connection",
     queue: "kombu.Queue",
     stop_event: threading.Event | None = None,
+    prefetch_count: int | None = None,
 ) -> Generator[
     tuple[str, Callable[[], None], Callable[[], None], dict[str, str]],
     None,
@@ -286,6 +478,12 @@ def messages(
     stop_event : threading.Event or None, optional
         When set, the generator exits after delivering any already-buffered
         messages.  Pass ``None`` to run until the caller closes the generator.
+    prefetch_count : int or None, optional
+        Maximum unacknowledged messages the broker may push (AMQP
+        ``basic.qos``).  ``None`` sends no quality-of-service frame at all,
+        which is the broker default of *unlimited* -- so the first consumer to
+        attach to a queue holding a backlog would have the whole backlog
+        pushed to it at once, unacknowledged.
 
     Yields
     ------
@@ -297,13 +495,24 @@ def messages(
     Notes
     -----
     ``reject`` always requeues (``requeue=True``).
+
+    Prefetch bounds broker-side memory and how many messages are redelivered
+    if a consumer dies mid-drain.  It does not make a drain faster: the caller
+    acknowledges one message at a time, so processing stays serial.  A larger
+    window also lengthens shutdown, because the buffered messages are drained
+    before ``stop_event`` is rechecked.
     """
     buffer: stdlib_queue.Queue[tuple[Any, kombu.Message]] = stdlib_queue.Queue()
 
     def _on_message(body: Any, message: kombu.Message) -> None:
         buffer.put((body, message))
 
-    with kombu.Consumer(conn, queues=[queue], callbacks=[_on_message]):
+    with kombu.Consumer(
+        conn,
+        queues=[queue],
+        callbacks=[_on_message],
+        prefetch_count=prefetch_count,
+    ):
         while stop_event is None or not stop_event.is_set():
             with suppress(TimeoutError):
                 conn.drain_events(timeout=0.5)
@@ -326,8 +535,28 @@ def declare_fanout_exchange(
     conn: "kombu.Connection",
     name: str,
 ) -> "kombu.Exchange":
-    """Declare and return a durable fanout Exchange on *conn*."""
-    try:
+    """Declare and return a durable fanout Exchange on *conn*.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    name : str
+        Namespaced exchange name.
+
+    Returns
+    -------
+    kombu.Exchange
+        The declared exchange.
+
+    Raises
+    ------
+    TransientBrokerError
+        On a retryable declaration failure.
+    FatalBrokerError
+        On a failure retrying cannot fix.
+    """
+    with broker_error_triage(conn, name, "declaring fanout exchange"):
         exchange = kombu.Exchange(
             name,
             type="fanout",
@@ -335,20 +564,7 @@ def declare_fanout_exchange(
             channel=conn.channel(),
         )
         exchange.declare()
-    except OperationalError as exc:
-        raise TransientBrokerError(
-            f"transient failure declaring fanout exchange {name!r}: {exc}",
-        ) from exc
-    except (ConnectionError, TimeoutError, OSError) as exc:
-        raise TransientBrokerError(
-            f"transient failure declaring fanout exchange {name!r}: {exc}",
-        ) from exc
-    except KombuError as exc:
-        raise FatalBrokerError(
-            f"fatal failure declaring fanout exchange {name!r}: {exc}",
-        ) from exc
-    else:
-        return exchange
+    return exchange
 
 
 def publish_fanout(
@@ -366,7 +582,7 @@ def publish_fanout(
     """
     scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
     use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
-    try:
+    with broker_error_triage(conn, exchange.name, "publishing to"):
         producer_cls = kombu.Producer
         with producer_cls(conn) as producer:
             if use_confirm:
@@ -383,53 +599,64 @@ def publish_fanout(
             )
             # Best-effort tracking: may drift.
             BROKER_MESSAGES_PENDING.labels(queue_name=exchange.name).inc()
-    except KombuError as exc:
-        raise _normalize_publish_error(exc, exchange.name) from exc
 
 
-def declare_fanout_queue(
+def declare_bound_queue(
     conn: "kombu.Connection",
     exchange: "kombu.Exchange",
+    name: str,
 ) -> "kombu.Queue":
-    """Declare and return an exclusive queue bound to *exchange*.
+    """Declare durable queue *name* and bind it to fanout *exchange*.
 
-    The queue name is derived from the exchange name with a per-process
-    UUID suffix so it is unique across consumers and does NOT start with
-    ``amq.`` (RabbitMQ 3.13+ rejects the ``amq.*`` prefix that would be
-    generated by an empty-string server-named queue).  ``exclusive=True``
-    ensures the queue is auto-deleted when the consumer disconnects, and
-    the fanout binding guarantees every consumer's queue receives a copy
-    of each published message.
+    Declared ``durable``, non-exclusive and non-auto-delete, so the queue and
+    its binding outlive the consumer's connection. That is the whole point:
+    with the previous exclusive queue the broker deleted the subscription the
+    moment a job builder disconnected, and every file published while it was
+    down was discarded with no error anywhere (issue #44).
+
+    Every replica of one builder identifier shares this queue, so replicas are
+    competing consumers rather than each receiving a copy.
+
+    No queue arguments are set. Adding one later would make redeclaration fail
+    with a 406 for every existing deployment, so the argument set is
+    deliberately empty and bounded growth is an operator policy concern.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    exchange : kombu.Exchange
+        The fanout exchange to bind to.
+    name : str
+        Namespaced queue name, from
+        :func:`courier.constants.file_found_queue_for`. It never starts with
+        ``amq.``, which RabbitMQ reserves.
+
+    Returns
+    -------
+    kombu.Queue
+        The declared, bound queue.
+
+    Raises
+    ------
+    TransientBrokerError
+        On a retryable declaration failure.
+    FatalBrokerError
+        On a failure retrying cannot fix, such as a 406 from an existing queue
+        with different properties.
     """
-    import uuid  # noqa: PLC0415
-
-    # NOTE: Opens a new channel (conn.channel()) separate from the exchange's
-    # channel.  In service.py:consume(), kombu.Consumer opens yet another
-    # channel internally.  All channels share the same connection and are
-    # closed when conn is closed — no leak.
-    queue_name = f"{exchange.name}-fanout-{uuid.uuid4().hex[:12]}"
-    try:
+    with broker_error_triage(conn, name, "declaring file-found queue"):
         q = kombu.Queue(
-            queue_name,
+            name,
             exchange=exchange,
-            exclusive=True,
+            routing_key="",
+            durable=True,
+            exclusive=False,
+            auto_delete=False,
             channel=conn.channel(),
         )
         q.declare()
-    except OperationalError as exc:
-        raise TransientBrokerError(
-            f"transient failure declaring fanout queue: {exc}",
-        ) from exc
-    except (ConnectionError, TimeoutError, OSError) as exc:
-        raise TransientBrokerError(
-            f"transient failure declaring fanout queue: {exc}",
-        ) from exc
-    except KombuError as exc:
-        raise FatalBrokerError(
-            f"fatal failure declaring fanout queue: {exc}",
-        ) from exc
-    else:
-        return q
+    return q
 
 
 # ---------------------------------------------------------------------------
@@ -667,3 +894,47 @@ class MessageBrokerManager(ServiceManager):
         if new_queue_name not in self._queues:
             self._queues[new_queue_name] = queue_config
         return new_queue_name
+
+    def _file_found_queue_config(self) -> dict[str, Any]:
+        """Return the kwargs that make a queue durable and fanout-bound.
+
+        Returns
+        -------
+        dict[str, Any]
+            Keyword arguments for ``kombu.Queue``. Declaring with an
+            ``exchange`` and ``routing_key`` creates the exchange, the queue
+            and the binding in one call.
+        """
+        return {
+            "durable": True,
+            "exclusive": False,
+            "auto_delete": False,
+            "routing_key": "",
+            "exchange": kombu.Exchange(
+                self.get_queue_name(FILE_FOUND_EXCHANGE),
+                type="fanout",
+                durable=True,
+            ),
+        }
+
+    def add_file_found_queue(self, builder_identifier: str) -> str:
+        """Register a job builder's durable file-found queue.
+
+        One helper feeds both producer-side predeclaration and the consumer,
+        so :meth:`add_queue`'s first-registration-wins behaviour cannot end up
+        storing two different sets of arguments for the same queue.
+
+        Parameters
+        ----------
+        builder_identifier : str
+            The job builder's ``spec.run[*].identifier`` value.
+
+        Returns
+        -------
+        str
+            The namespaced queue name.
+        """
+        return self.add_queue(
+            file_found_queue_for(builder_identifier),
+            **self._file_found_queue_config(),
+        )

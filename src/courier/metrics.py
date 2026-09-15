@@ -140,6 +140,13 @@ JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
     ["job_builder_name", "job_builder_identifier", "target", "reason"],
 )
 
+JOB_BUILDER_MALFORMED_MESSAGES: Counter = Counter(
+    "courier_job_builder_malformed_messages_total",
+    "File-found messages acknowledged and dropped because the body would "
+    "not parse as a File",
+    ["job_builder_name", "job_builder_identifier"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher metrics

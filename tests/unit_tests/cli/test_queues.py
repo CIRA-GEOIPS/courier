@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from kombu.exceptions import ChannelError
 from typer.testing import CliRunner
 
 from courier.cli.queues import queues_app
@@ -206,3 +207,147 @@ def test_prune_from_file(
     assert result.exit_code == 0, result.output
     assert "orphan:   ns-JobReady-ghost" in result.output
     assert "preserve: ns-JobReady-runner-a" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Durable per-builder file-found queues (issue #44)
+# ---------------------------------------------------------------------------
+
+
+def test_list_includes_a_file_found_queue_per_builder(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """Each job builder's durable queue is part of the expected set."""
+    result = runner.invoke(queues_app, ["list", str(config_file)])
+
+    assert result.exit_code == 0
+    assert "ns-FilesFound-builder" in result.output
+    # The fanout exchange is not a queue and prune deletes queues.
+    assert "ns-FilesFoundExchange" not in result.output
+
+
+def test_list_namespace_override_applies_to_file_found_queues(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """The namespace override reaches the new family too."""
+    result = runner.invoke(
+        queues_app,
+        ["list", str(config_file), "--namespace", "other"],
+    )
+
+    assert result.exit_code == 0
+    assert "other-FilesFound-builder" in result.output
+    assert "ns-FilesFound-builder" not in result.output
+
+
+def test_prune_preserves_builder_queues_and_flags_legacy_names(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """A live builder queue is preserved; the pre-durable name is an orphan.
+
+    Before the queue was made durable, builders consumed
+    ``<ns>-FilesFoundExchange-fanout-<uuid>`` queues that the broker deleted on
+    disconnect. Anything still carrying that shape is genuinely abandoned,
+    while the new name holds the backlog for a builder that is merely down --
+    deleting it is exactly the data loss this change exists to prevent.
+    """
+    result = runner.invoke(
+        queues_app,
+        [
+            "prune",
+            str(config_file),
+            "--candidate",
+            "ns-FilesFound-builder,ns-FilesFound-renamed,"
+            "ns-FilesFoundExchange-fanout-0123456789ab",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "preserve: ns-FilesFound-builder" in result.output
+    assert "orphan:   ns-FilesFound-renamed" in result.output
+    assert "orphan:   ns-FilesFoundExchange-fanout-0123456789ab" in result.output
+
+
+def test_prune_never_deletes_a_live_builder_queue(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """``--apply`` leaves the expected builder queue alone."""
+    with patch("courier.cli.queues.Connection") as conn_cls:
+        conn = MagicMock()
+        channel = MagicMock()
+        conn_cls.return_value.__enter__.return_value = conn
+        conn.channel.return_value.__enter__.return_value = channel
+
+        result = runner.invoke(
+            queues_app,
+            [
+                "prune",
+                str(config_file),
+                "--candidate",
+                "ns-FilesFound-builder,ns-FilesFound-gone",
+                "--apply",
+            ],
+        )
+
+    assert result.exit_code == 0
+    deleted = [call.args[0] for call in channel.queue_delete.call_args_list]
+    assert deleted == ["ns-FilesFound-gone"]
+
+
+def test_prune_reports_a_non_empty_queue_instead_of_crashing(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """A 406 is reported with the ``--force`` hint rather than a traceback.
+
+    RabbitMQ answers an ``if_empty`` delete of a non-empty queue with a
+    precondition failure, which is a channel error rather than an operational
+    one -- so the existing hint was unreachable dead code and the command
+    aborted with a raw traceback instead.
+    """
+    failure = ChannelError("Queue.delete: (406) PRECONDITION_FAILED - not empty")
+    failure.reply_code = 406
+
+    with patch("courier.cli.queues.Connection") as conn_cls:
+        conn = MagicMock()
+        channel = MagicMock()
+        channel.queue_delete.side_effect = failure
+        conn_cls.return_value.__enter__.return_value = conn
+        conn.channel.return_value.__enter__.return_value = channel
+
+        result = runner.invoke(
+            queues_app,
+            ["prune", str(config_file), "--candidate", "ns-JobReady-ghost", "--apply"],
+        )
+
+    assert result.exit_code == 1
+    assert "failed:   ns-JobReady-ghost" in result.output
+    assert "(non-empty? rerun with --force)" in result.output
+
+
+def test_prune_does_not_suggest_force_for_a_missing_queue(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """A 404 gets no ``--force`` hint, because forcing cannot fix it."""
+    failure = ChannelError("Queue.delete: (404) NOT_FOUND")
+    failure.reply_code = 404
+
+    with patch("courier.cli.queues.Connection") as conn_cls:
+        conn = MagicMock()
+        channel = MagicMock()
+        channel.queue_delete.side_effect = failure
+        conn_cls.return_value.__enter__.return_value = conn
+        conn.channel.return_value.__enter__.return_value = channel
+
+        result = runner.invoke(
+            queues_app,
+            ["prune", str(config_file), "--candidate", "ns-JobReady-ghost", "--apply"],
+        )
+
+    assert result.exit_code == 1
+    assert "(non-empty? rerun with --force)" not in result.output

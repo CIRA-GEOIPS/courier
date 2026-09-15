@@ -31,6 +31,7 @@ from courier.metrics import (
     JOB_BUILDER_JOBS_BUILT,
     JOB_BUILDER_JOBS_DISCARDED,
     JOB_BUILDER_JOBS_EMITTED,
+    JOB_BUILDER_MALFORMED_MESSAGES,
     collect_labeled,
 )
 from courier.tracing import (
@@ -54,6 +55,10 @@ if TYPE_CHECKING:
     from courier.service import Service
     from courier.sync.job_builder_state_sync import JobBuilderStateSync
     from courier.types.job import Job, JobGroup
+
+
+#: Bytes of a malformed message body echoed into the error log.
+_MALFORMED_BODY_PREVIEW = 512
 
 
 class JobBuilder(ServicePlugin):
@@ -100,10 +105,11 @@ class JobBuilder(ServicePlugin):
         # broker loop returns on stop(). See Dispatcher.__init__ for why this
         # is per-instance rather than service-wide.
         self._stop_event = threading.Event()
-        # Set once this builder's queue is bound to the file-found fanout
-        # exchange. Producers must not start before this: a fanout exchange
-        # drops messages published while nothing is bound, so files emitted
-        # during the startup window would be lost with no error anywhere.
+        # Set once this builder's durable queue is declared and bound to the
+        # file-found exchange. PluginManager waits on it before starting
+        # producers so the first files move promptly; since the queue is
+        # durable and predeclared during preflight, nothing is lost if the
+        # wait times out.
         self._subscribed = threading.Event()
         self.job_groups: list[JobGroup] = []
         # Thread-safe: _group_locks protects job_group.jobs dicts when
@@ -356,9 +362,14 @@ class JobBuilder(ServicePlugin):
             FILE_FOUND_EXCHANGE,
             stop_event=self._stop_event,
             on_subscribed=self._subscribed.set,
+            subscriber=self.identifier,
         ):
             start_time = time.time()
-            file = FrozenFile.from_string(str(file_string))
+            file = self._parse_file_message(str(file_string))
+            if file is None:
+                # Acknowledged and dropped: returning to the consume loop is
+                # what acknowledges it.
+                continue
             with tracer.start_as_current_span(
                 "job_builder.build_job",
                 context=parent_ctx,
@@ -390,6 +401,46 @@ class JobBuilder(ServicePlugin):
             self._logger.info("handle_incoming_files loop exited on shutdown")
         else:
             self._logger.error("Exiting handle_incoming_files loop unexpectedly")
+
+    def _parse_file_message(self, body: str) -> FrozenFile | None:
+        """Decode one file-found body, or log and count a malformed one.
+
+        A catch-all is deliberate, not lazy. ``FrozenFile.from_string`` is
+        ``from_dict(json.loads(...))`` and the field extraction calls ``.get``
+        on the result, so a body of ``[]``, ``null`` or a bare number raises
+        ``AttributeError`` -- which an enumerated ``(ValueError, KeyError)``
+        guard would miss, and which used to reach the process-exit handler.
+
+        That mattered little when the queue was deleted on disconnect. On a
+        durable queue a message that kills the consumer is redelivered
+        forever, so one malformed body would wedge every replica in turn.
+
+        Parameters
+        ----------
+        body : str
+            Raw message body.
+
+        Returns
+        -------
+        FrozenFile or None
+            The parsed file, or ``None`` when the body is unusable.
+        """
+        try:
+            return FrozenFile.from_string(body)
+        except Exception:  # parser boundary: anything raised here is poison
+            JOB_BUILDER_MALFORMED_MESSAGES.labels(
+                job_builder_name=self.name,
+                job_builder_identifier=self.identifier,
+            ).inc()
+            self._logger.exception(
+                "Dropping malformed file-found message for builder %s "
+                "(%d bytes); first %d shown: %r",
+                self.identifier,
+                len(body),
+                _MALFORMED_BODY_PREVIEW,
+                body[:_MALFORMED_BODY_PREVIEW],
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Per-group helpers (complexity-bounded)
