@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from courier.interfaces.plugin_protocol import ServicePlugin
     from courier.managers.base import ServiceManager
 from courier.metrics import (
+    BROKER_MESSAGES_PENDING,
     BROKER_MESSAGES_RECEIVED,
     BROKER_MESSAGES_SENT,
     SERVICE_HEALTH,
@@ -187,6 +188,12 @@ class Service:
                         confirm=confirm,
                         headers=w3c_headers,
                     )
+                # Counted per bound queue, which is what each consumer
+                # decrements. A single exchange-labelled increment made the
+                # two halves different series: one climbing forever, the
+                # other going negative as a backlog drained.
+                for bound in self._file_found_queue_names():
+                    BROKER_MESSAGES_PENDING.labels(queue_name=bound).inc()
                 BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
             return
         # --- Direct queue path
@@ -210,6 +217,19 @@ class Service:
                 w3c_headers = inject_trace_headers()
                 publish(conn, q, message, confirm=confirm, headers=w3c_headers)
             BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
+
+    def _file_found_queue_names(self) -> tuple[str, ...]:
+        """Return the namespaced file-found queue name of every job builder.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One name per builder identifier known to this service.
+        """
+        return tuple(
+            self._broker_manager.get_queue_name(file_found_queue_for(ident))
+            for ident in sorted(self._builder_identifiers)
+        )
 
     def consume(
         self,
