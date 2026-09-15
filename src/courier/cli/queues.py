@@ -1,9 +1,10 @@
 """CLI ``courier queues`` sub-app — list and prune broker queues.
 
-Expected queue and exchange names come from the service YAML via the
-same :class:`courier.routing.TargetResolver` the runtime uses, so there
-is no drift between "what should exist" in production and "what the CLI
-compares against".
+Expected queue names come from the service YAML via the same helpers the
+runtime uses --- :class:`courier.routing.TargetResolver` for the per-dispatcher
+job-ready queues and :func:`courier.constants.file_found_queue_for` for the
+durable per-builder file-found queues --- so there is no drift between "what
+should exist" in production and "what the CLI compares against".
 
 ``list`` prints the expected names. ``prune`` takes an explicit list of
 candidate names on the command line (or piped via ``--from-file``), diffs
@@ -22,12 +23,14 @@ from typing import Annotated
 
 import typer
 from kombu import Connection
-from kombu.exceptions import OperationalError
+from kombu.exceptions import ChannelError, OperationalError
 
 from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import normalize_kind
 from courier.constants import (
     DISPATCHER_QUEUE,
+    file_found_queue_for,
+    namespaced_queue_name,
 )
 from courier.routing import build_default_resolver
 
@@ -79,9 +82,12 @@ _FORCE_OPTION = typer.Option(
 def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set[str]]:
     """Return ``(namespace, expected_queue_names)`` from the validated config.
 
-    Returns only queue names --- exchanges (e.g. ``FilesFoundExchange``)
-    and their auto-generated consumer queues (``amq.gen-*``) are excluded
-    because they are managed by the broker.
+    Three families are expected: ``<ns>-JobReady-<dispatcher>`` per
+    dispatcher, ``<ns>-FilesFound-<builder>`` per job builder, and the shared
+    ``<ns>-DispatcherQueue``.
+
+    Only queues are returned. The fanout exchange ``<ns>-FilesFoundExchange``
+    is excluded because ``prune`` deletes queues, not exchanges.
     """
     config = load_config_or_exit(config_file)
     ns = namespace or config.metadata.namespace or "default"
@@ -90,16 +96,55 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
         for e in config.spec.run
         if normalize_kind(e.spec.kind) == "dispatchers"
     }
+    builder_ids = {
+        e.identifier
+        for e in config.spec.run
+        if normalize_kind(e.spec.kind) == "job_builders"
+    }
     resolver = build_default_resolver(dispatcher_ids)
     queues: set[str] = set()
     for ident in resolver.known_identifiers():
-        queues.add(f"{ns}-{resolver.resolve(ident)}")
-    # Note: {ns}-FilesFoundExchange is a fanout *exchange*, not a
-    # queue, so it is intentionally excluded from the queue-expected set.
-    # The fanout pattern uses anonymous exclusive queues (amq.gen-*)
-    # which are auto-deleted by the broker and must never be pruned.
-    queues.add(f"{ns}-{DISPATCHER_QUEUE}")
+        queues.add(namespaced_queue_name(ns, resolver.resolve(ident)))
+    # Each job builder consumes the fanout exchange through a durable named
+    # queue. Those ARE expected and must survive a prune: they hold the
+    # backlog for a builder that is down or not yet deployed. Before the queue
+    # was made durable, builders used exclusive
+    # <ns>-FilesFoundExchange-fanout-<uuid> queues that the broker deleted on
+    # disconnect; any name in that older shape is a genuine orphan.
+    for ident in sorted(builder_ids):
+        queues.add(namespaced_queue_name(ns, file_found_queue_for(ident)))
+    queues.add(namespaced_queue_name(ns, DISPATCHER_QUEUE))
     return ns, queues
+
+
+#: Reply code RabbitMQ answers with when ``if_empty`` deletion finds messages.
+_PRECONDITION_FAILED = 406
+
+
+def _delete_hint(exc: Exception, *, force: bool) -> str:
+    """Return the follow-up advice for a failed queue deletion.
+
+    The ``--force`` hint is only appended for a precondition failure, which is
+    what a non-empty queue answers. Appending it to a missing-queue or
+    permission error would send an operator round a loop that forcing cannot
+    break.
+
+    Parameters
+    ----------
+    exc : Exception
+        The error the broker raised.
+    force : bool
+        Whether ``--force`` was already given.
+
+    Returns
+    -------
+    str
+        Text to append to the failure line, possibly empty.
+    """
+    code = getattr(exc, "reply_code", None) or getattr(exc, "code", None)
+    if code == _PRECONDITION_FAILED and not force:
+        return "  (non-empty? rerun with --force)"
+    return ""
 
 
 def _broker_url(config_file: Path) -> str:
@@ -172,9 +217,11 @@ def prune_cmd(  # noqa: PLR0913
     ns, expected = _expected_queues(config, namespace)
     candidates = _read_candidates(candidate, from_file)
 
-    # Fan-out consumers use server-generated exclusive queue names
-    # (e.g. amq.gen-xyz...). These are auto-managed by the broker and
-    # MUST NOT be deleted --- they carry live consumer state.
+    # Names starting with amq. are server-generated (reply queues, anonymous
+    # consumers created by other tools). Courier never creates them --- its
+    # file-found queues are <ns>-FilesFound-<builder> and appear in the
+    # expected set above --- but refusing them is cheap defence on a shared
+    # vhost.
     _server_gen_prefix = "amq."
     unsafe = [q for q in candidates if q.startswith(_server_gen_prefix)]
     if unsafe:
@@ -217,11 +264,10 @@ def prune_cmd(  # noqa: PLR0913
                     # unrecoverable. Use --force to override.
                     channel.queue_delete(name, if_empty=not force)
                     typer.echo(f"deleted:  {name}")
-                except OperationalError as exc:
+                except (OperationalError, ChannelError) as exc:
                     failures.append((name, str(exc)))
                     typer.echo(
-                        f"failed:   {name}: {exc}"
-                        + ("" if force else "  (non-empty? rerun with --force)"),
+                        f"failed:   {name}: {exc}{_delete_hint(exc, force=force)}",
                         err=True,
                     )
     except OperationalError as exc:

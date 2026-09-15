@@ -64,6 +64,14 @@ def run_service(
     only_set : set[str] or None, optional
         If set, only run plugins whose identifiers are in this set.
         Keyword-only; passed from the ``--only`` CLI flag.
+
+    Notes
+    -----
+    ``--only`` filters which plugins *run*, and which dispatchers and builder
+    targets take part in routing validation. It deliberately does not filter
+    the job-builder identifiers handed to the service: every container
+    predeclares a durable file-found queue for every builder in the YAML, so
+    the order containers start in cannot lose files.
     """
     # Use the CLI-provided log level if given so the parameter is actually used
     if log_level is not None:
@@ -139,8 +147,15 @@ def run_service(
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
+    # Every job builder in the YAML, regardless of --only. Each one needs a
+    # durable FilesFound-<builder> queue declared by *this* container, so a
+    # producer never publishes into a fanout exchange with nothing bound to it
+    # (issue #44). Routing validation below still sees only the filtered set.
+    all_builder_targets = _collect_builder_targets(config)
+    builder_identifiers = frozenset(all_builder_targets)
+
     # Union: add any dispatcher targeted by builders in the filtered set
-    builder_targets = _collect_builder_targets(config)
+    builder_targets = all_builder_targets
     if only_set is not None:
         # Filter builder_targets to only builders in only_set
         builder_targets = {
@@ -158,6 +173,7 @@ def run_service(
             "allow_implicit_target",
             True,
         ),
+        builder_identifiers=builder_identifiers,
     )
     service.start()
 

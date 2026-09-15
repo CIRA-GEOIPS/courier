@@ -94,3 +94,54 @@ def test_oversized_queue_name_rejected() -> None:
     )
     with pytest.raises(ConfigurationError):
         svc.preflight_check()
+
+
+# ---------------------------------------------------------------------------
+# Durable per-builder file-found queues (issue #44)
+# ---------------------------------------------------------------------------
+
+
+def test_oversized_file_found_queue_name_rejected() -> None:
+    """A namespace that overflows the AMQP limit fails preflight.
+
+    Checked against the *namespaced* name, which is what the broker sees.
+    Validating the base name alone let an over-long namespace through to a
+    broker error at publish time.
+    """
+    svc = Service(ServiceConfig(broker_url="memory://", namespace="n" * 240))
+    svc.configure_routing(
+        dispatcher_identifiers=["r"],
+        builder_targets={},
+        builder_identifiers=["b" * 20],
+    )
+    with pytest.raises(ConfigurationError):
+        svc.preflight_check()
+
+
+def test_malformed_builder_identifier_rejected_at_preflight() -> None:
+    """A builder identifier that cannot be a queue name fails fast."""
+    svc = _service()
+    svc.configure_routing(
+        dispatcher_identifiers=["only"],
+        builder_targets={},
+        builder_identifiers=["bad id"],
+    )
+    with pytest.raises(ConfigurationError):
+        svc.preflight_check()
+
+
+def test_builder_identifiers_backfilled_from_builder_targets() -> None:
+    """Harnesses that only pass builder targets still get their queues.
+
+    Every test and embedded harness that skips ``configure_routing``'s new
+    argument produces this shape, so the backfill is what keeps them working.
+    """
+    svc = _service()
+    svc.configure_routing(
+        dispatcher_identifiers=["only"],
+        builder_targets={"builder": ()},
+    )
+    svc.preflight_check()
+
+    assert "builder" in svc._builder_identifiers  # noqa: SLF001
+    assert "t-FilesFound-builder" in svc._broker_manager._queues  # noqa: SLF001

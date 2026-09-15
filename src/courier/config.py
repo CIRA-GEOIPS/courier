@@ -35,6 +35,13 @@ class ServiceConfig:
     broker_max_retries : int, optional
         Maximum retry attempts for broker operations. Defaults to environment
         variable BROKER_MAX_RETRIES or 5.
+    broker_prefetch_count : int, optional
+        Maximum unacknowledged messages the broker may push to one courier
+        consumer (AMQP ``basic.qos``). Applies to both the file-found and the
+        job-ready consumers. Defaults to environment variable
+        BROKER_PREFETCH_COUNT or 1, and must be at least 1 because 0 means
+        unlimited in AMQP. Raising it speeds up draining a backlog, at the cost
+        of more redeliveries if a replica dies mid-drain.
     heartbeat_interval : int, optional
         Interval in seconds between heartbeat metric updates. Default is 30.
     plugin_restart_delay : int, optional
@@ -112,6 +119,9 @@ class ServiceConfig:
     broker_max_retries: int = field(
         default_factory=lambda: int(os.environ.get("BROKER_MAX_RETRIES", "5")),
     )
+    broker_prefetch_count: int = field(
+        default_factory=lambda: int(os.environ.get("BROKER_PREFETCH_COUNT", "1")),
+    )
     heartbeat_interval: int = 30
     plugin_restart_delay: int = field(
         default_factory=lambda: int(os.environ.get("PLUGIN_RESTART_DELAY", "5")),
@@ -162,9 +172,15 @@ class ServiceConfig:
     )
 
     def __post_init__(self) -> None:
-        """Validate tracing_sample_rate range."""
+        """Validate tracing_sample_rate range and the consumer prefetch."""
         if not (0.0 <= self.tracing_sample_rate <= 1.0):
             raise ConfigurationError(
                 "tracing_sample_rate must be between 0.0 and 1.0, "
                 f"got {self.tracing_sample_rate}",
+            )
+        if self.broker_prefetch_count < 1:
+            raise ConfigurationError(
+                "broker_prefetch_count must be at least 1 "
+                f"(0 means unlimited in AMQP and is refused), "
+                f"got {self.broker_prefetch_count}",
             )

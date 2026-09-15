@@ -27,6 +27,17 @@ DISPATCHER_QUEUE: str = QueueName.DISPATCHER
 #: namespaces them further with ``<namespace>-``.
 JOB_READY_PREFIX = "JobReady"
 
+#: Prefix for per-job-builder file-found queues. Full queue names are
+#: ``FilesFound-<builder_identifier>``, namespaced further by
+#: :class:`MessageBrokerManager` to ``<namespace>-FilesFound-<identifier>``.
+#:
+#: Every replica of one builder identifier shares this queue, so they are
+#: competing consumers rather than each receiving a copy. The name deliberately
+#: omits ``Exchange`` so it can never collide with the exclusive
+#: ``<namespace>-FilesFoundExchange-fanout-<uuid>`` queues used before the
+#: queue was made durable.
+FILE_FOUND_QUEUE_PREFIX = "FilesFound"
+
 # RabbitMQ queue-name limit (AMQP 0-9-1 spec).
 MAX_QUEUE_NAME_LENGTH = 255
 
@@ -47,7 +58,9 @@ def validate_dispatcher_identifier(identifier: str) -> None:
     Parameters
     ----------
     identifier : str
-        Dispatcher identifier from the YAML ``spec.run[*].identifier`` field.
+        Dispatcher or job-builder identifier from the YAML
+        ``spec.run[*].identifier`` field. Both become queue names, so both
+        are held to the same rules.
 
     Raises
     ------
@@ -89,6 +102,66 @@ def job_ready_queue_for(dispatcher_identifier: str) -> str:
     """
     validate_dispatcher_identifier(dispatcher_identifier)
     return f"{JOB_READY_PREFIX}-{dispatcher_identifier}"
+
+
+def file_found_queue_for(builder_identifier: str) -> str:
+    """Return the durable file-found queue name a job builder consumes from.
+
+    The returned string is the *base* queue name without any service
+    namespace — :meth:`MessageBrokerManager.get_queue_name` prefixes it.
+
+    Parameters
+    ----------
+    builder_identifier : str
+        The job builder's ``spec.run[*].identifier`` value.
+
+    Returns
+    -------
+    str
+        ``FilesFound-<builder_identifier>``.
+
+    Raises
+    ------
+    InvalidIdentifierError
+        If *builder_identifier* fails :func:`validate_dispatcher_identifier`.
+    """
+    validate_dispatcher_identifier(builder_identifier)
+    return f"{FILE_FOUND_QUEUE_PREFIX}-{builder_identifier}"
+
+
+def namespaced_queue_name(namespace: str, base_name: str) -> str:
+    """Return ``<namespace>-<base_name>``, rejecting oversized results.
+
+    The broker enforces the limit on the *namespaced* name, so checking the
+    base name alone lets an over-long namespace through to a broker error at
+    publish time. Both the runtime and ``courier queues`` build names through
+    this helper so they cannot disagree about what is too long.
+
+    Parameters
+    ----------
+    namespace : str
+        Service namespace.
+    base_name : str
+        Queue name without the namespace prefix.
+
+    Returns
+    -------
+    str
+        The namespaced queue name.
+
+    Raises
+    ------
+    InvalidIdentifierError
+        If the namespaced name exceeds :data:`MAX_QUEUE_NAME_LENGTH`.
+    """
+    full = f"{namespace}-{base_name}"
+    if len(full) > MAX_QUEUE_NAME_LENGTH:
+        raise InvalidIdentifierError(
+            full,
+            f"namespaced queue name exceeds {MAX_QUEUE_NAME_LENGTH} characters; "
+            "shorten the namespace or the identifier",
+        )
+    return full
 
 
 class PluginRunState(Enum):

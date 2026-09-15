@@ -1,3 +1,14 @@
+# RabbitMQ for the tests that need a real broker.
+#
+# Outside the devcontainer, which creates the shared network itself:
+#
+#     docker network create courier_testing 2>/dev/null || true
+#     docker compose -f tests/docker-compose.rabbitmq-testing.yaml up -d
+#     export COURIER_TEST_AMQP_URL='amqp://admin:admin_test@localhost:5672//'
+#     python -m pytest -m rabbitmq --no-cov
+#
+# The default guest user is restricted to loopback and would be refused from
+# another container, which is why these tests authenticate as admin.
 services:
   rabbitmq:
     image: rabbitmq:management
@@ -9,6 +20,11 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin_test
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     networks:
       - courier_testing
     stdin_open: true
