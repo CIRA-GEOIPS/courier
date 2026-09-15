@@ -43,7 +43,9 @@ jobs:
     #environment: pypi
     needs: [build]
     runs-on: ubuntu-latest
-    #if: github.event_name == 'release'
+    # Commented out, this job published to PyPI on any manual workflow_dispatch,
+    # which is the one trigger a person reaches for when testing the workflow.
+    if: github.event_name == 'release'
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
