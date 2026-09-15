@@ -22,6 +22,12 @@ jobs:
           RABBITMQ_DEFAULT_PASS: admin_test
         options: >-
           --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 10s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 12
     steps:
       - name: Check out the repository code
         uses: actions/checkout@v6
@@ -53,3 +59,11 @@ jobs:
           COURIER_TEST_AMQP_URL: amqp://admin:admin_test@localhost:5672//
         run: |
           python3 -m pytest -m rabbitmq --no-cov
+      - name: Run Redis-backed tests
+        # The in-process fake has no Lua runtime, so the server-side union
+        # that lets two replicas of one builder share a job only runs here.
+        timeout-minutes: 10
+        env:
+          COURIER_TEST_REDIS_URL: redis://localhost:6379/0
+        run: |
+          python3 -m pytest -m redis --no-cov

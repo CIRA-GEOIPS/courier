@@ -287,7 +287,7 @@ norecursedirs = ["xarray_utils"]
 # scheduling, so leaving them in the default run means developers stop running
 # tests locally at all. Opt in with `-m integration`, or run everything with
 # `-m ""`. CI runs both (see .github/workflows/pytest.yaml).
-addopts = "-v -rf --ff --cov=src --cov-report=term-missing --cov-report=xml --timeout=300 -m \"not limited_test_dataset_availability and not integration and not docker and not rabbitmq\""
+addopts = "-v -rf --ff --cov=src --cov-report=term-missing --cov-report=xml --timeout=300 -m \"not limited_test_dataset_availability and not integration and not docker and not rabbitmq and not redis\""
 # A hung consumer thread used to wedge the whole run (and the nightly badge
 # job) until the CI job timed out hours later. Fail the test instead.
 timeout = 300
@@ -301,6 +301,7 @@ markers = [
     "contract: property-based serialization round-trip tests between pipeline stages.",
     "docker: drives real containers built from the Dockerfile. Needs a docker daemon and COURIER_TEST_IMAGE; deselected by default, select with '-m docker'.",
     "rabbitmq: needs a live RabbitMQ reachable via COURIER_TEST_AMQP_URL; deselected by default, select with '-m rabbitmq'.",
+    "redis: needs a live Redis reachable via COURIER_TEST_REDIS_URL; deselected by default, select with '-m redis'.",
 ]
 
 [tool.coverage.run]

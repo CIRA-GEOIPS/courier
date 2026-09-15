@@ -130,6 +130,40 @@ class RoutingError(ConfigurationError):
     """Base class for dispatcher-routing configuration errors."""
 
 
+class UnsafeReplicationError(ConfigurationError):
+    """Raised when replicating a job builder would split its jobs.
+
+    Replicas of one builder identifier are competing consumers of a single
+    queue, so each sees a different subset of the files that belong to a job.
+    A builder that gathers files into a job therefore needs shared state to
+    reassemble them; without it every job is emitted short, which is
+    indistinguishable from losing files.
+
+    Attributes
+    ----------
+    identifier : str
+        The job builder's run-step identifier.
+    peers : int
+        Consumers already attached to its queue.
+    """
+
+    def __init__(self, identifier: str, peers: int) -> None:
+        self.identifier = identifier
+        self.peers = peers
+        super().__init__(
+            f"Job builder {identifier!r} groups files into jobs and already has "
+            f"{peers} other consumer(s) on its queue, but has no shared state "
+            f"to reassemble a job from. Every job would be split across "
+            f"replicas and emitted short.\n"
+            f"Either run a single replica of this identifier, give each "
+            f"replica its own identifier, or add a state_sync block to its "
+            f"config:\n"
+            f"    config:\n"
+            f"      state_sync:\n"
+            f"        host: <redis host>",
+        )
+
+
 class InvalidIdentifierError(RoutingError):
     """Raised when a dispatcher identifier violates naming rules.
 

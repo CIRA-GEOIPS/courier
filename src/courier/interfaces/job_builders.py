@@ -138,9 +138,18 @@ class JobBuilder(ServicePlugin):
         """Start main thread, connecting to Redis first if sync is enabled."""
         if self._state == PluginRunState.RUNNING:
             return
+        # Locks are populated unconditionally. They used to appear only when
+        # state sync was configured, so without it every group mutation ran
+        # unprotected even though the timeout reaper mutates the same groups
+        # from its own thread. Subclasses that build their own dict in
+        # __init__ keep it: replacing it here handed the reaper a different
+        # lock object than the one it had already captured.
+        for group in self.job_groups:
+            self._group_locks.setdefault(group.name, threading.Lock())
+        self._check_replication_safety()
         if self._sync is not None:
-            self._group_locks = {jg.name: threading.Lock() for jg in self.job_groups}
             self._sync.connect()  # raises StateSyncConnectionError if unreachable
+            self._sync.set_merge_callback(self._emit_ready_jobs)
             self._sync.start(self.job_groups, self._group_locks)
         self._stop_event.clear()
         self._subscribed.clear()
@@ -166,6 +175,67 @@ class JobBuilder(ServicePlugin):
     def is_healthy(self) -> bool:
         """Check if plugin is healthy."""
         return self._state == PluginRunState.RUNNING
+
+    @property
+    def accumulates(self) -> bool:
+        """Whether any group gathers more than one file into a job.
+
+        Derived from the configured group capacity rather than declared, so it
+        cannot drift from what the builder actually does. A builder that emits
+        one job per file is safe to replicate with no shared state; one that
+        gathers files is not, because replicas see different files.
+        """
+        return any(
+            int(getattr(group.config, "files_per_job", 1) or 1) != 1
+            for group in self.job_groups
+        )
+
+    def _check_replication_safety(self) -> None:
+        """Refuse to start if replicating this builder would split its jobs.
+
+        Raises
+        ------
+        UnsafeReplicationError
+            When another consumer is already attached to this builder's queue
+            and nothing would let the two reassemble a job.
+        """
+        from courier.errors import UnsafeReplicationError  # noqa: PLC0415
+        from courier.sync.guards import (  # noqa: PLC0415
+            ReplicationVerdict,
+            replication_verdict,
+        )
+
+        peers = self._peer_consumer_count()
+        verdict = replication_verdict(
+            accumulates=self.accumulates,
+            shared_state=self._sync is not None,
+            observed_consumers=peers,
+        )
+        if verdict is ReplicationVerdict.REFUSE:
+            raise UnsafeReplicationError(self.identifier, peers)
+        if verdict is ReplicationVerdict.UNDETECTABLE:
+            self._logger.warning(
+                "Job builder %r groups files into jobs and has no state_sync "
+                "block. Running a second replica of this identifier would "
+                "split every job across replicas and emit them short. No peer "
+                "is attached right now, so startup continues.",
+                self.identifier,
+            )
+
+    def _peer_consumer_count(self) -> int:
+        """Return consumers already on this builder's queue, or 0 if unknown."""
+        from courier.constants import file_found_queue_for  # noqa: PLC0415
+
+        manager = getattr(self.parent_service, "_broker_manager", None)
+        counter = getattr(manager, "consumer_count", None)
+        namer = getattr(manager, "get_queue_name", None)
+        if counter is None or namer is None:
+            return 0
+        try:
+            count = counter(namer(file_found_queue_for(self.identifier)))
+        except Exception:  # a stub service in a unit test, or an odd transport
+            return 0
+        return int(count or 0)
 
     def wait_until_subscribed(self, timeout: float) -> bool:
         """Block until this builder is bound to the file-found exchange.
@@ -595,6 +665,38 @@ class JobBuilder(ServicePlugin):
         for job_id in deletions:
             self._sync.push_job_deletion(group_name, job_id)
 
+    def _emit_ready_jobs(self, job_group: JobGroup) -> None:
+        """Emit any job in *job_group* that is now complete.
+
+        Called after a peer's update is merged in. Under competing consumers
+        the replica that receives a job's last file is often not the one
+        holding the rest of it, so completion is frequently discovered during
+        a merge rather than while handling a file. Without this the finished
+        job would wait for an unrelated file to arrive, or for a timeout
+        reaper to notice it.
+
+        Emission stays exclusive the same way it does on the file path: jobs
+        are removed under the group lock before being published, and the
+        shared claim decides which replica actually dispatches.
+
+        Parameters
+        ----------
+        job_group : JobGroup
+            Group whose jobs were just merged.
+        """
+        lock = self._group_locks.get(job_group.name)
+        with lock if lock is not None else contextlib.nullcontext():
+            ready = self._claim_ready_jobs(job_group)
+        if not ready:
+            return
+        self._push_deletions(job_group.name, [job.identifier for job in ready])
+        targets = self._targets_for_group(job_group)
+        for job in ready:
+            self._logger.info(
+                f"Job {job.identifier} completed by a peer's files; emitting",
+            )
+            self.emit(job, targets)
+
     def _claim_ready_jobs(self, job_group: JobGroup) -> list[Job]:
         """Remove and return every ready job, taking ownership of each.
 
@@ -706,7 +808,12 @@ class JobBuilder(ServicePlugin):
         return JobBuilderStateSync(
             config=sync_config,
             namespace=service.config.namespace,
-            builder_name=self.name,
+            # Keyed by the run-step identifier, not the plugin class name.
+            # Two builders of the same class in one config shared a keyspace
+            # and could claim each other's emissions, while replicas of one
+            # run step -- which genuinely must share -- are keyed the same
+            # because they run the same identifier.
+            builder_name=self.identifier,
         )
 
 

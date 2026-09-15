@@ -42,6 +42,10 @@ _BROKER_ERRORS: tuple[type[BaseException], ...] = (
     OSError,
 )
 
+#: Position of the consumer count in an AMQP queue.declare-ok reply,
+#: which is (queue name, message count, consumer count).
+_CONSUMER_COUNT_FIELD = 2
+
 #: AMQP reply codes that retrying the same operation can never fix.
 _FATAL_REPLY_CODES: frozenset[int] = frozenset({403, 404, 405, 406})
 
@@ -894,6 +898,44 @@ class MessageBrokerManager(ServiceManager):
         if new_queue_name not in self._queues:
             self._queues[new_queue_name] = queue_config
         return new_queue_name
+
+    def consumer_count(self, queue_name: str) -> int:
+        """Return how many consumers are attached to *queue_name*.
+
+        A passive declare reports the queue's consumer count. It reports
+        nothing about durability or exclusivity, so this is used only to
+        answer "am I alone on this queue?".
+
+        Parameters
+        ----------
+        queue_name : str
+            Fully namespaced queue name.
+
+        Returns
+        -------
+        int
+            Attached consumers, or 0 when the queue does not exist yet or the
+            transport does not report it.
+        """
+        try:
+            with self.get_connection_context() as conn, conn.channel() as channel:
+                result = kombu.Queue(queue_name, channel=channel).queue_declare(
+                    passive=True,
+                )
+        except Exception:  # unknown queue, or a transport that cannot answer
+            return 0
+        count = getattr(result, "consumer_count", None)
+        if count is None and isinstance(result, (tuple, list)):
+            # queue.declare-ok is (name, message_count, consumer_count).
+            count = (
+                result[_CONSUMER_COUNT_FIELD]
+                if len(
+                    result,
+                )
+                > _CONSUMER_COUNT_FIELD
+                else 0
+            )
+        return int(count or 0)
 
     def _file_found_queue_config(self) -> dict[str, Any]:
         """Return the kwargs that make a queue durable and fanout-bound.
