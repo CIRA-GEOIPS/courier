@@ -1,0 +1,266 @@
+name: Docker
+# Pull requests build the image FROM THE PULL REQUEST'S OWN CODE and test it,
+# but never log in and never push. Pushes to main and published releases build,
+# push by digest UNTAGGED, test the pushed digest, and only then move tags onto
+# it -- so the artifact users pull is the artifact that was tested.
+#
+# There is deliberately no `paths:` filter. A path-filtered job that is also a
+# required status check never reports on unrelated pull requests and blocks
+# them forever.
+on:
+  pull_request:
+  push:
+    branches: 'main'
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build and test on each architecture natively. Emulated cross-building would
+  # emulate a from-source dependency build, and `--load` does not work for a
+  # multi-platform build, so an emulated image could not be tested at all.
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: Build and test image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - name: Check out the repository code
+        uses: actions/checkout@v4
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build the runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          tags: courier:ci
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Build the test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: test
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          tags: courier:ci-test
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Smoke the runtime image
+        run: |
+          set -euo pipefail
+          docker run --rm courier:ci
+          docker run --rm courier:ci courier --version
+          docker run --rm courier:ci /bin/bash -c 'echo bash-ok'
+          docker run --rm -v "$PWD/config.yaml:/cfg/config.yaml:ro" \
+            courier:ci courier validate /cfg/config.yaml
+      - name: Run the repository suite inside the image
+        run: |
+          docker run --rm courier:ci-test python -m pytest -q --no-cov
+          docker run --rm courier:ci-test python -m pytest -m integration -q --no-cov
+      - name: Set up Python for the container tier
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install the test extra
+        run: python3 -m pip install -e ".[test]"
+      - name: Run the container tests
+        env:
+          COURIER_TEST_IMAGE: courier:ci
+          COURIER_TEST_DOCKER_REQUIRED: '1'
+        timeout-minutes: 20
+        run: python3 -m pytest -m docker --no-cov
+  # ---------------------------------------------------------------------------
+  # Push each architecture by digest, untagged, then test the pushed digest.
+  # Nothing is tagged until every architecture has been tested.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish image (${{ matrix.arch }})
+    if: github.event_name == 'push' || github.event_name == 'release'
+    needs: [build-and-test]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - name: Check out the repository code
+        uses: actions/checkout@v4
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push by digest, untagged
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: ${{ matrix.platform }}
+          push: true
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Smoke the PUSHED digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          ref="${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+          docker run --rm "$ref"
+          docker run --rm "$ref" courier --version
+          docker run --rm -v "$PWD/config.yaml:/cfg/config.yaml:ro" \
+            "$ref" courier validate /cfg/config.yaml
+      # A matrix job cannot hand distinct values to a later job through
+      # `outputs:` -- every matrix entry writes the same keys and the last one
+      # to finish wins. Digests travel as artifacts instead.
+      - name: Record the digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+      - name: Upload the digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+  # ---------------------------------------------------------------------------
+  # Join the tested digests into one tagged manifest.
+  #
+  # `latest` and `main` are applied EXPLICITLY. Every release this project has
+  # cut is a pre-release, and the default tagging rules never apply `latest` to
+  # a pre-release, so without these the requirement in issue #31 would silently
+  # never happen. Tags derive from the git ref, never from pyproject, because
+  # the newest tag's committed version is two releases behind.
+  # ---------------------------------------------------------------------------
+  tag:
+    name: Tag the tested image
+    if: github.event_name == 'push' || github.event_name == 'release'
+    needs: [publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the tested digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=main,enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{raw}}
+      - name: Create the manifest from the tested digests
+        working-directory: /tmp/digests
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          repo="${REGISTRY}/${IMAGE_NAME}"
+          args=""
+          for tag in $TAGS; do
+            args="$args --tag $tag"
+          done
+          sources=""
+          for digest in *; do
+            sources="$sources ${repo}@sha256:${digest}"
+          done
+          echo "tagging:$args"
+          echo "from:$sources"
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $args $sources
+      - name: Verify every tag resolves to a tested digest
+        working-directory: /tmp/digests
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            manifest=$(docker buildx imagetools inspect "$tag" --raw)
+            for digest in *; do
+              echo "$manifest" | grep -q "sha256:${digest}" || {
+                echo "::error::$tag does not include tested digest sha256:${digest}"
+                exit 1
+              }
+            done
+            echo "ok: $tag"
+          done
+      - name: Resolve the manifest digest
+        id: manifest
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          tag=$(echo "$TAGS" | head -n1)
+          digest=$(docker buildx imagetools inspect "$tag" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
