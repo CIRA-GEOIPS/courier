@@ -69,7 +69,10 @@ instance/
 .scrapy
 
 # Sphinx documentation
-docs/_build/
+# docs/ is the COMMITTED build output: 12 MB of a 13.8 MB repo, and nothing in
+# the image or the test suite reads it. Excluding it shrinks the build context
+# by roughly 85%.
+docs/
 sphinx/_build/
 
 # PyBuilder
