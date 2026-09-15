@@ -202,6 +202,38 @@ class JobGroup:
         """Return list of ready jobs."""
         return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
 
+    def adopt_job(self, job_id: str) -> None:
+        """Register a job that arrived from outside as its bucket's open job.
+
+        A job restored from shared state, or merged from a peer, is in
+        ``jobs`` but is not recorded as the bucket's *open* job and has not
+        advanced the sequence counter. The next file for that bucket would
+        therefore mint the bucket id again and overwrite the restored job,
+        silently discarding every file it had already accumulated.
+
+        That is a data-loss bug on a plain single-instance restart, and it is
+        the reason two replicas could mint the same identifier for different
+        halves of one job.
+
+        Parameters
+        ----------
+        job_id : str
+            Identifier of a job already present in :attr:`jobs`.
+        """
+        base_id = self._base_id(job_id)
+        self._open_job_ids[base_id] = job_id
+        # Keep the counter ahead of any sequence already in use, so a later
+        # job for this bucket cannot collide with one that exists.
+        if _OVERFLOW_SEPARATOR in job_id:
+            suffix = job_id.rsplit(_OVERFLOW_SEPARATOR, 1)[1]
+            sequence = int(suffix) if suffix.isdigit() else 0
+        else:
+            sequence = 0
+        self._job_sequence[base_id] = max(
+            self._job_sequence.get(base_id, 0),
+            sequence + 1,
+        )
+
     @staticmethod
     def _base_id(job_id: str) -> str:
         """Strip any ``_overflow_N`` suffix to recover the bucket ID."""
