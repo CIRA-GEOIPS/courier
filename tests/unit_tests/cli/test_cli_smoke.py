@@ -105,7 +105,7 @@ def test_plugins_list_names_the_builtin_plugins() -> None:
     """The registry must actually resolve, not just render an empty table."""
     result = runner.invoke(app, ["plugins", "list"])
     assert result.exit_code == 0, result.output
-    for expected in ("serial_bash", "filter_and_group", "cron_glob"):
+    for expected in ("filter_and_group", "cron_glob"):
         assert expected in result.output
 
 

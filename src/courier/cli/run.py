@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import typer
 
 from courier.cli.feedback import load_config_or_exit
-from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
+from courier.cli.plugins import NECESSARY_REGISTRIES, PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
 from courier.service import create_service_with_plugins
 
@@ -121,7 +121,10 @@ def run_service(
                 f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
                 f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
             )
-        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
+        if kind in PLUGIN_REGISTRIES:
+            plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
+        elif kind in NECESSARY_REGISTRIES:
+            plugin_class = NECESSARY_REGISTRIES[kind].base
         plugin_config: dict[str, Any] = (
             entry.spec.config if entry.spec.config is not None else {}
         )

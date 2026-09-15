@@ -23,8 +23,7 @@ from unittest import mock
 import pytest
 
 from courier.cli.config_loader import load_config
-from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
-from courier.errors import ConfigurationError
+from courier.cli.plugins import NECESSARY_REGISTRIES, PLUGIN_REGISTRIES, normalize_kind
 from courier.interfaces import data_monitor_configs
 from courier.schema import DataMonitorConfig
 
@@ -68,7 +67,10 @@ def test_shipped_config_references_real_plugins(config_path: Path) -> None:
     missing: list[str] = []
 
     for entry in config.spec.run:
-        registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
+        kind = normalize_kind(entry.spec.kind)
+        if kind in NECESSARY_REGISTRIES:
+            continue
+        registry = PLUGIN_REGISTRIES[kind]
         if registry is None:
             missing.append(f"{entry.identifier}: unknown kind {entry.spec.kind!r}")
             continue
@@ -188,7 +190,6 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 _PLUGIN_GROUPS = (
     "courier.data_monitors",
     "courier.job_builders",
-    "courier.dispatchers",
 )
 
 

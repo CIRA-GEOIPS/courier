@@ -21,7 +21,7 @@ from courier.constants import (
 from courier.errors import CourierError
 from courier.interfaces.discovery import (
     ENTRY_POINT_PREFIX,
-    ClassPluginRegistry,
+    NecessaryPlugin
 )
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
@@ -388,10 +388,8 @@ class Dispatcher(ServicePlugin):
         }
 
 
-#: Registry of dispatcher plugins, read from the ``courier.dispatchers``
-#: entry-point group. Hands back classes; ``PluginManager`` constructs them.
-dispatchers = ClassPluginRegistry(
+# exposes the base dispatcher class as a necessary plugin that is not configurable
+dispatchers = NecessaryPlugin(
     name="dispatchers",
-    group=f"{ENTRY_POINT_PREFIX}.dispatchers",
-    expected_base=Dispatcher,
+    base=Dispatcher,
 )

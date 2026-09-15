@@ -19,6 +19,7 @@ from courier.interfaces import (
     dispatchers,
     job_builders,
 )
+from courier.interfaces.discovery import NecessaryPlugin
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -62,8 +63,11 @@ _JSON_OPTION = typer.Option(
 PLUGIN_REGISTRIES: dict[str, ClassPluginRegistry | ConfigPluginRegistry] = {
     "data_monitor_configs": data_monitor_configs,
     "data_monitors": data_monitors,
-    "dispatchers": dispatchers,
     "job_builders": job_builders,
+}
+
+NECESSARY_REGISTRIES: dict[str, NecessaryPlugin] = {
+    "dispatchers": dispatchers
 }
 
 #: Interfaces that can appear as a ``spec.run`` step. ``data_monitor_configs``
@@ -106,7 +110,6 @@ def normalize_kind(kind: str) -> str:
 _TYPE_STYLES: dict[str, str] = {
     "data_monitor_configs": "cyan",
     "data_monitors": "magenta",
-    "dispatchers": "green",
     "job_builders": "yellow",
 }
 
