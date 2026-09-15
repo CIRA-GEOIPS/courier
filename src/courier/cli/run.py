@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
@@ -42,6 +43,36 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
             declared.extend(cfg.get("targets") or [])
         out[entry.identifier] = tuple(declared)
     return out
+
+
+def _resolve_service_id(config: Any) -> str:
+    """Return the identity this process reports in logs and traces.
+
+    Precedence is explicit configuration, then the environment, then the
+    config's metadata name. The metadata name used to win unconditionally,
+    which made ``SERVICE_ID`` dead: every replica of one YAML reported the
+    same identity, so logs and traces could not be told apart. That matters
+    more now that running several replicas of one service is routine.
+
+    Parameters
+    ----------
+    config : Any
+        Validated service configuration model.
+
+    Returns
+    -------
+    str
+        The resolved service identifier.
+    """
+    configured = getattr(config.spec.service_config, "service_id", "") or ""
+    # The dataclass default is a generated placeholder, not a deliberate
+    # choice, so it must not outrank the metadata name.
+    if configured and not configured.startswith("watcher-service-"):
+        return str(configured)
+    from_env = os.environ.get("SERVICE_ID", "")
+    if from_env:
+        return from_env
+    return str(config.metadata.name)
 
 
 def run_service(
@@ -90,7 +121,7 @@ def run_service(
         config.spec.service_config,
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
-        service_id=config.metadata.name,
+        service_id=_resolve_service_id(config),
     )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
