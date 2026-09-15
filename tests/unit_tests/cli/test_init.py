@@ -133,7 +133,7 @@ class TestResolvePluginChoice:
         return _FakeRegistry(
             "file_system_poller_watchdog",
             "s3_poller",
-            "sftp_poller",
+            "slurm_dispatcher",
         ).get_plugins()
 
     @pytest.mark.parametrize(
@@ -141,7 +141,7 @@ class TestResolvePluginChoice:
         [
             ("1", "file_system_poller_watchdog"),
             ("2", "s3_poller"),
-            ("3", "sftp_poller"),
+            ("3", "slurm_dispatcher"),
             ("  2  ", "s3_poller"),
         ],
     )
@@ -188,7 +188,7 @@ class TestResolvePluginChoice:
 
         assert matched is None
         assert "s3_poller" in problem
-        assert "sftp_poller" in problem
+        assert "slurm_dispatcher" in problem
 
     def test_an_exact_name_beats_a_prefix_of_another(self) -> None:
         plugins = _FakeRegistry("poller", "poller_extended").get_plugins()

@@ -45,7 +45,6 @@ grafanalib = { version = ">=0.7.0", optional = true }
 # Optional plugin dependencies (see [tool.poetry.extras])
 boto3 = { version = ">=1.26", optional = true }
 botocore = { version = ">=1.29", optional = true }
-paramiko = { version = ">=3.0", optional = true }
 kafka-python = { version = ">=2.0", optional = true }
 croniter = { version = "*", optional = true }
 httpx = { version = ">=0.24", optional = true }
@@ -115,7 +114,6 @@ test = [
     "hypothesis",                # property-based testing for round-trip tests
     "boto3",                     # required by s3_poller tests
     "botocore",                  # required by s3_poller tests
-    "paramiko",                  # required by sftp_poller tests
     "kafka-python",              # required by kafka_consumer tests
     "croniter",                  # required by cron_glob tests
     "httpx",                     # required by http_dispatcher tests
@@ -134,7 +132,6 @@ grafana = [
 
 # Optional extras for individual plugins (installed only when used)
 s3 = ["boto3", "botocore"]       # Required for the s3_poller data monitor
-sftp = ["paramiko"]              # Required for the sftp_poller data monitor
 kafka = ["kafka-python"]         # Required for the kafka_consumer data monitor
 cron = ["croniter"]              # Required for the cron_glob data monitor
 http = ["httpx"]                 # Required for the http_dispatcher
@@ -142,7 +139,7 @@ viz = [
     "textual",
     "httpx",
 ]
-all-monitors = ["boto3", "botocore", "paramiko", "kafka-python", "croniter"]
+all-monitors = ["boto3", "botocore", "kafka-python", "croniter"]
 all-dispatchers = ["httpx"]
 
 [tool.poetry.scripts]
@@ -175,7 +172,6 @@ file_system_poller_watchdog = "courier.plugins.data_monitors.file_system_poller_
 kafka_consumer = "courier.plugins.data_monitors.kafka_consumer:KafkaConsumer"
 rabbit_mq_watcher = "courier.plugins.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
 s3_poller = "courier.plugins.data_monitors.s3_poller:S3Poller"
-sftp_poller = "courier.plugins.data_monitors.sftp_poller:SftpPoller"
 
 [tool.poetry.plugins."courier.job_builders"]
 DummyJobBuilder = "courier.plugins.job_builders.dummy_job_builder:DummyJobBuilder"
@@ -225,10 +221,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "paramiko.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -444,7 +436,6 @@ file_system_poller_watchdog = "courier.plugins.data_monitors.file_system_poller_
 kafka_consumer = "courier.plugins.data_monitors.kafka_consumer:KafkaConsumer"
 rabbit_mq_watcher = "courier.plugins.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
 s3_poller = "courier.plugins.data_monitors.s3_poller:S3Poller"
-sftp_poller = "courier.plugins.data_monitors.sftp_poller:SftpPoller"
 
 [project.entry-points."courier.job_builders"]
 DummyJobBuilder = "courier.plugins.job_builders.dummy_job_builder:DummyJobBuilder"

@@ -457,7 +457,6 @@ def test_no_yaml_plugins_remain() -> None:
 _OPTIONAL_DEPENDENCY_PLUGINS = [
     ("cron_glob", "courier.plugins.data_monitors.cron_glob", "croniter", "cron"),
     ("s3_poller", "courier.plugins.data_monitors.s3_poller", "boto3", "s3"),
-    ("sftp_poller", "courier.plugins.data_monitors.sftp_poller", "paramiko", "sftp"),
     ("kafka_consumer", "courier.plugins.data_monitors.kafka_consumer", "kafka", "kafka"),
     ("http_dispatcher", "courier.plugins.dispatchers.http_dispatcher", "httpx", "http"),
 ]
@@ -545,7 +544,7 @@ _DISTRIBUTION_NAME = "data-courier"
 
 #: Every extra courier declares, used to spot install instructions in prose.
 _KNOWN_EXTRAS = (
-    "cron", "s3", "sftp", "kafka", "http", "ha", "grafana", "viz",
+    "cron", "s3", "kafka", "http", "ha", "grafana", "viz",
     "doc", "lint", "test", "all-monitors", "all-dispatchers",
 )
 
