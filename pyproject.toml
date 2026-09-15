@@ -73,6 +73,11 @@ types-dateparser = { version = "*", optional = true }
 fakeredis = { version = "*", optional = true }
 hypothesis = { version = "*", optional = true }
 mutmut = { version = "*", optional = true }
+# Named in the extras below. Without a declaration here the build backend
+# drops them silently: neither appeared in any built wheel, and a drift
+# guard imports packaging directly.
+packaging = { version = "*", optional = true }
+pre-commit = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 # Development dependencies that are always installed for development
