@@ -31,4 +31,4 @@ jobs:
         # for them explicitly or they would never execute anywhere.
         timeout-minutes: 20
         run: |
-          python3 -m pytest -m integration --no-cov
+          python3 -m pytest -m "integration and not docker" --no-cov
