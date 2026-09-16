@@ -114,6 +114,7 @@ _TYPE_STYLES: dict[str, str] = {
     "data_monitor_configs": "cyan",
     "data_monitors": "magenta",
     "job_builders": "yellow",
+    "falconers": "red",
 }
 
 
