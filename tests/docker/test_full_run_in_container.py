@@ -46,8 +46,13 @@ def test_split_containers_share_one_config_over_amqp(pipeline: Pipeline) -> None
     """Two containers split one config with ``--only`` and still deliver.
 
     This is the deployment the project documents, and the first test to cross a
-    process *and* a container boundary.  The consumer starts first because a
-    fanout exchange discards anything published before a queue is bound.
+    process *and* a container boundary.
+
+    The consumer is started first here only to keep the test's gates simple.
+    It is no longer *required*: since preflight predeclares every builder's
+    durable queue, a producer that starts alone publishes into a bound queue
+    and nothing is discarded.  ``tests/docker/test_durable_queue_restart.py``
+    asserts that directly by starting the producer first.
     """
     config = build_config(pipeline.namespace, pipeline.broker)
 
