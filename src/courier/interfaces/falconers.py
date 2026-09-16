@@ -8,6 +8,8 @@ from courier.interfaces.discovery import (
         ENTRY_POINT_PREFIX
 )
 from courier.service import Service
+from courier.types.execution_log import ExecutionLog
+from courier.types.job import Job
 from courier.utils.logging import get_logger
 
 class FalconerConfig(BaseModel):
@@ -32,8 +34,10 @@ class Falconer(ServicePlugin):
         self.parent_service = service
         self.config = config or {}
 
+    def send_for_payload(self, job: Job) -> list[ExecutionLog]:
+        return [ExecutionLog()]
     def start(self) -> None:
-        self._logger.info("FALCONER IS ACTIVE")
+        return
     def stop(self) -> None:
         return
     def is_healthy(self) -> bool:
