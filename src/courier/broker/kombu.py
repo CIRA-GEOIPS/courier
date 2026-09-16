@@ -23,7 +23,9 @@ from courier.managers.base import ServiceManager
 from courier.metrics import (
     BROKER_CONNECTED,
     BROKER_CONNECTIONS,
+    BROKER_MESSAGES_DEAD_LETTERED,
     BROKER_MESSAGES_PENDING,
+    BROKER_MESSAGES_REDELIVERED,
 )
 from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
@@ -41,6 +43,18 @@ _BROKER_ERRORS: tuple[type[BaseException], ...] = (
     KombuConnectionError,
     OSError,
 )
+
+#: Header carrying how many times courier has handed one message to a consumer.
+#: It travels with the message rather than living in the consumer's memory
+#: because the plugin interfaces treat an unhandled exception as fatal and call
+#: ``os._exit``: an in-process counter would be reset by the very crash it is
+#: meant to be counting, and the message would be retried forever across
+#: container restarts.
+DELIVERY_ATTEMPT_HEADER = "x-courier-delivery-attempt"
+
+#: Bytes of a retried or parked body written to the log. Enough to identify the
+#: message without shipping a whole payload on every retry.
+_PARKED_BODY_PREVIEW = 512
 
 #: Position of the consumer count in an AMQP queue.declare-ok reply,
 #: which is (queue name, message count, consumer count).
@@ -457,6 +471,160 @@ def publish(
             BROKER_MESSAGES_PENDING.labels(queue_name=queue.name).inc()
 
 
+def declare_dead_letter_queue(
+    conn: "kombu.Connection",
+    name: str,
+) -> "kombu.Queue":
+    """Declare the durable queue that parks messages a consumer gave up on.
+
+    Bound to nothing and reachable only through the default exchange, so the
+    only thing that ever writes to it is :func:`redeliver_or_park`. It is
+    declared when a consumer subscribes rather than when the first message is
+    parked: a name that is too long, or a broker user without ``configure``
+    permission, is then a startup failure instead of a failure at exactly the
+    moment there is a poison message with nowhere to put it.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    name : str
+        Dead-letter queue name, from
+        :func:`courier.constants.dead_letter_queue_for`.
+
+    Returns
+    -------
+    kombu.Queue
+        The declared queue.
+
+    Raises
+    ------
+    TransientBrokerError
+        On a retryable declaration failure.
+    FatalBrokerError
+        On a failure retrying cannot fix.
+    """
+    with broker_error_triage(conn, name, "declaring dead-letter queue"):
+        q = kombu.Queue(
+            name,
+            durable=True,
+            exclusive=False,
+            auto_delete=False,
+            channel=conn.channel(),
+        )
+        q.declare()
+    return q
+
+
+def delivery_attempt(headers: dict[str, str]) -> int:
+    """Return how many times *headers*' message has already been delivered.
+
+    Parameters
+    ----------
+    headers : dict[str, str]
+        Normalized headers as yielded by :func:`messages`.
+
+    Returns
+    -------
+    int
+        1 for a message courier has not handed to a consumer before, which
+        covers both a fresh publish and every message already sitting on a
+        queue when this version is deployed. A header that is missing,
+        unparseable or below 1 is treated the same way: the count is a bound
+        on retries, so an unreadable one must not be able to exhaust it.
+    """
+    try:
+        attempt = int(headers.get(DELIVERY_ATTEMPT_HEADER, "1"))
+    except (TypeError, ValueError):
+        return 1
+    return max(attempt, 1)
+
+
+def redeliver_or_park(  # noqa: PLR0913, PLR0917 -- one delivery's worth of state
+    conn: "kombu.Connection",
+    queue: "kombu.Queue",
+    dead_letter: "kombu.Queue",
+    body: str,
+    headers: dict[str, str],
+    max_redeliveries: int,
+) -> bool:
+    """Republish *body* for another attempt, or park it once attempts run out.
+
+    The caller acknowledges the original delivery afterwards, so a message is
+    never both queued for retry and still outstanding. Publishing before
+    acknowledging means a crash in between duplicates the message rather than
+    losing it, and the dispatcher already skips a job identifier it has just
+    seen.
+
+    A retry is republished to the *tail* of its own queue rather than rejected
+    back to the head. That is the part that unblocks the pipeline: everything
+    queued behind an unprocessable message is delivered while that message
+    waits its next turn, instead of never being reached at all.
+
+    Parameters
+    ----------
+    conn : kombu.Connection
+        An open broker connection.
+    queue : kombu.Queue
+        The queue the message came from, and the target of a retry. Published
+        through the default exchange, so a queue bound to the file-found
+        fanout is retried on its own without every other builder receiving a
+        copy.
+    dead_letter : kombu.Queue
+        Where the message goes once it has used up its attempts.
+    body : str
+        The message body, unchanged.
+    headers : dict[str, str]
+        The delivered message's headers. Carried across so the retry stays
+        part of the same trace.
+    max_redeliveries : int
+        Further attempts allowed after the first. 0 parks immediately.
+
+    Returns
+    -------
+    bool
+        ``True`` if the message was parked, ``False`` if it was requeued for
+        another attempt.
+
+    Raises
+    ------
+    TransientBrokerError
+        If the republish fails and is worth retrying.
+    FatalBrokerError
+        If the republish fails in a way retrying cannot fix. The caller has
+        not acknowledged yet, so the message is redelivered rather than lost.
+    """
+    attempt = delivery_attempt(headers)
+    if attempt > max_redeliveries:
+        publish(conn, dead_letter, body, confirm=True, headers=dict(headers))
+        BROKER_MESSAGES_DEAD_LETTERED.labels(queue_name=queue.name).inc()
+        _logger.error(
+            "Parked a message on %r after %d attempt(s) on %r: it is no longer "
+            "blocking the queue and no longer being retried, and needs an "
+            "operator. First %d bytes: %r",
+            dead_letter.name,
+            attempt,
+            queue.name,
+            _PARKED_BODY_PREVIEW,
+            body[:_PARKED_BODY_PREVIEW],
+        )
+        return True
+
+    retry_headers = {**headers, DELIVERY_ATTEMPT_HEADER: str(attempt + 1)}
+    publish(conn, queue, body, confirm=True, headers=retry_headers)
+    BROKER_MESSAGES_REDELIVERED.labels(queue_name=queue.name).inc()
+    _logger.warning(
+        "Requeued a message on %r for attempt %d of %d after the consumer "
+        "raised; it goes behind the current backlog. First %d bytes: %r",
+        queue.name,
+        attempt + 1,
+        max_redeliveries + 1,
+        _PARKED_BODY_PREVIEW,
+        body[:_PARKED_BODY_PREVIEW],
+    )
+    return False
+
+
 def messages(
     conn: "kombu.Connection",
     queue: "kombu.Queue",
@@ -498,7 +666,13 @@ def messages(
 
     Notes
     -----
-    ``reject`` always requeues (``requeue=True``).
+    ``reject`` requeues (``requeue=True``) and counts nothing. It returns the
+    message to the head of the queue unchanged, which is right for a consumer
+    that is shutting down and wrong for one that just failed on the message --
+    see :meth:`courier.service.Service._relay`, which uses ``reject`` only on
+    ``GeneratorExit`` and routes a genuine failure through
+    :func:`redeliver_or_park` instead.
+
 
     Prefetch bounds broker-side memory and how many messages are redelivered
     if a consumer dies mid-drain.  It does not make a drain faster: the caller
@@ -638,9 +812,15 @@ def declare_bound_queue(
     Every replica of one builder identifier shares this queue, so replicas are
     competing consumers rather than each receiving a copy.
 
-    No queue arguments are set. Adding one later would make redeclaration fail
-    with a 406 for every existing deployment, so the argument set is
-    deliberately empty and bounded growth is an operator policy concern.
+    No queue arguments are set, and none may be added. A durable queue's
+    arguments are part of what the broker compares on redeclaration, so
+    introducing one -- ``x-dead-letter-exchange`` being the obvious
+    candidate -- would answer 406 on every deployment that has already
+    declared this queue, and courier would refuse to start until each was
+    drained and deleted. Poison messages are therefore bounded from the
+    consumer side instead, by :func:`redeliver_or_park`, which needs no
+    argument on this queue and so needs no migration.
+
 
     Parameters
     ----------

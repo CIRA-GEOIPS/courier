@@ -42,6 +42,13 @@ class ServiceConfig:
         BROKER_PREFETCH_COUNT or 1, and must be at least 1 because 0 means
         unlimited in AMQP. Raising it speeds up draining a backlog, at the cost
         of more redeliveries if a replica dies mid-drain.
+    broker_max_redeliveries : int, optional
+        How many further attempts a message gets after the consumer raises on
+        it, before it is parked on ``<queue>-DeadLetter``. Defaults to
+        environment variable BROKER_MAX_REDELIVERIES or 3, and must not be
+        negative; 0 parks on the first failure. There is no unlimited setting:
+        retrying one message forever is what made a single unprocessable
+        message block every message behind it.
     heartbeat_interval : int, optional
         Interval in seconds between heartbeat metric updates. Default is 30.
     plugin_restart_delay : int, optional
@@ -122,6 +129,9 @@ class ServiceConfig:
     broker_prefetch_count: int = field(
         default_factory=lambda: int(os.environ.get("BROKER_PREFETCH_COUNT", "1")),
     )
+    broker_max_redeliveries: int = field(
+        default_factory=lambda: int(os.environ.get("BROKER_MAX_REDELIVERIES", "3")),
+    )
     heartbeat_interval: int = 30
     plugin_restart_delay: int = field(
         default_factory=lambda: int(os.environ.get("PLUGIN_RESTART_DELAY", "5")),
@@ -172,7 +182,7 @@ class ServiceConfig:
     )
 
     def __post_init__(self) -> None:
-        """Validate tracing_sample_rate range and the consumer prefetch."""
+        """Validate the sample rate, the prefetch, and the redelivery bound."""
         if not (0.0 <= self.tracing_sample_rate <= 1.0):
             raise ConfigurationError(
                 "tracing_sample_rate must be between 0.0 and 1.0, "
@@ -183,4 +193,10 @@ class ServiceConfig:
                 "broker_prefetch_count must be at least 1 "
                 f"(0 means unlimited in AMQP and is refused), "
                 f"got {self.broker_prefetch_count}",
+            )
+        if self.broker_max_redeliveries < 0:
+            raise ConfigurationError(
+                "broker_max_redeliveries must not be negative "
+                "(0 parks a failing message on the first attempt), "
+                f"got {self.broker_max_redeliveries}",
             )

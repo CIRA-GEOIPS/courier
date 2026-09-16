@@ -23,6 +23,7 @@ import kombu
 import pytest
 
 from courier.config import ServiceConfig
+from courier.constants import dead_letter_queue_for
 
 AMQP_URL_ENV = "COURIER_TEST_AMQP_URL"
 
@@ -89,10 +90,14 @@ def raw_conn(amqp_url: str, namespace: str) -> Iterator[kombu.Connection]:
     finally:
         with conn.channel() as channel:
             for suffix in ("FilesFound-jb", "JobReady-dp", "DispatcherQueue"):
-                try:
-                    channel.queue_delete(f"{namespace}-{suffix}")
-                except Exception:  # noqa: BLE001 -- teardown is best effort
-                    pass
+                for name in (
+                    f"{namespace}-{suffix}",
+                    dead_letter_queue_for(f"{namespace}-{suffix}"),
+                ):
+                    try:
+                        channel.queue_delete(name)
+                    except Exception:  # noqa: BLE001 -- teardown is best effort
+                        pass
             try:
                 channel.exchange_delete(f"{namespace}-FilesFoundExchange")
             except Exception:  # noqa: BLE001 -- teardown is best effort

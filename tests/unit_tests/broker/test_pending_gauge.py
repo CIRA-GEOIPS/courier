@@ -66,6 +66,11 @@ def test_consuming_returns_the_gauge_to_zero() -> None:
     This is the property that was broken: the publisher and the consumer
     labelled their halves differently, so draining a queue drove its series
     negative while the exchange's series never came back down.
+
+    The consumer runs to acknowledgement rather than ``break``-ing on the
+    first message, because a message still in hand when the loop is abandoned
+    now counts as a failed attempt and is requeued -- correctly raising the
+    gauge again. Acknowledging is the path this test is about.
     """
     namespace = f"pg-{uuid.uuid4().hex[:8]}"
     service = _service(namespace, frozenset({"solo"}))
@@ -84,7 +89,6 @@ def test_consuming_returns_the_gauge_to_zero() -> None:
             subscriber="solo",
         ):
             received.append(body)
-            break
 
     worker = threading.Thread(target=_run, daemon=True)
     worker.start()

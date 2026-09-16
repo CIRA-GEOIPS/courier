@@ -29,6 +29,7 @@ from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import normalize_kind
 from courier.constants import (
     DISPATCHER_QUEUE,
+    dead_letter_queue_for,
     file_found_queue_for,
     namespaced_queue_name,
 )
@@ -84,7 +85,7 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
 
     Three families are expected: ``<ns>-JobReady-<dispatcher>`` per
     dispatcher, ``<ns>-FilesFound-<builder>`` per job builder, and the shared
-    ``<ns>-DispatcherQueue``.
+    ``<ns>-DispatcherQueue`` -- each with a ``-DeadLetter`` companion.
 
     Only queues are returned. The fanout exchange ``<ns>-FilesFoundExchange``
     is excluded because ``prune`` deletes queues, not exchanges.
@@ -114,6 +115,12 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
     for ident in sorted(builder_ids):
         queues.add(namespaced_queue_name(ns, file_found_queue_for(ident)))
     queues.add(namespaced_queue_name(ns, DISPATCHER_QUEUE))
+    # Every consumed queue has a dead-letter queue alongside it, holding the
+    # messages the service gave up on. Those are the only copy of a message
+    # that failed repeatedly, so a prune must preserve them; deleting one
+    # discards exactly the evidence an operator pruned the broker to go and
+    # look at.
+    queues |= {dead_letter_queue_for(name) for name in queues}
     return ns, queues
 
 
