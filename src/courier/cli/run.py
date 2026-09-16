@@ -13,6 +13,7 @@ import typer
 from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import NECESSARY_REGISTRIES, PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
+from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.service import create_service_with_plugins
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,36 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
             declared.extend(cfg.get("targets") or [])
         out[entry.identifier] = tuple(declared)
     return out
+
+def get_registered_plugin(plugin_registrations, entry):
+    kind = normalize_kind(entry.spec.kind)
+    if kind not in RUN_KINDS:
+        raise ValueError(
+            f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
+            f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+        )
+    if kind in PLUGIN_REGISTRIES:
+        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
+        plugin_config: dict[str, Any] = (
+            entry.spec.config if entry.spec.config is not None else {}
+        )
+
+        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
+
+        for kind in PLUGIN_REGISTRIES[kind].nested_values:
+            get_registered_plugin(plugin_registrations, MicroserviceModel.model_validate(entry.spec.config[kind]))
+    elif kind in NECESSARY_REGISTRIES:
+        plugin_class = NECESSARY_REGISTRIES[kind].expected_base
+        plugin_config: dict[str, Any] = (
+            entry.spec.config if entry.spec.config is not None else {}
+        )
+        
+        for kind in NECESSARY_REGISTRIES[kind].nested_values:
+            get_registered_plugin(plugin_registrations, MicroserviceModel.model_validate(entry.spec.config[kind]))
+    else:
+        raise ValueError(
+            f"{entry.identifier!r}: {entry.spec.kind!r} is not a valid"
+        )
 
 
 def run_service(
@@ -113,22 +144,9 @@ def run_service(
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
-        kind = normalize_kind(entry.spec.kind)
+        get_registered_plugin(plugin_registrations, entry)
         # An unrecognised kind used to be skipped silently, which produced a
         # service that started up, reported healthy, and processed nothing.
-        if kind not in RUN_KINDS:
-            raise ValueError(
-                f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
-                f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
-            )
-        if kind in PLUGIN_REGISTRIES:
-            plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
-        elif kind in NECESSARY_REGISTRIES:
-            plugin_class = NECESSARY_REGISTRIES[kind].base
-        plugin_config: dict[str, Any] = (
-            entry.spec.config if entry.spec.config is not None else {}
-        )
-        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
 
     service = create_service_with_plugins(
         service_config,

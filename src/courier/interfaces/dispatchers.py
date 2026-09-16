@@ -20,9 +20,9 @@ from courier.constants import (
 )
 from courier.errors import CourierError
 from courier.interfaces.discovery import (
-    ENTRY_POINT_PREFIX,
-    NecessaryPlugin
+    ClassPluginRegistry
 )
+from courier.interfaces.falconers import FalconerConfig, Falconer
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
@@ -49,12 +49,13 @@ from courier.types.job import Job
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
+from pydantic import BaseModel, Field
+
 _DEDUPE_LRU_SIZE = 1024
 
 if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.file import File
-
 
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""
@@ -105,6 +106,7 @@ class Dispatcher(ServicePlugin):
         # duplicates; cross-replica strict dedupe is opt-in via state sync.
         # Thread-safe: only touched by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[str, None] = OrderedDict()
+        self.falconer: Falconer
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
@@ -145,6 +147,10 @@ class Dispatcher(ServicePlugin):
         """
         self._logger.debug(f"Emitting file: {file}")
         self.parent_service.emit(queue=FILE_FOUND_EXCHANGE, message=str(file))
+
+    def _build_falconer_from_registry(self, falconer_config: dict):
+        pass
+        # return PLUGIN_REGISTRIES["falconers"].get_plugin(falconer_config.name)
 
     def _recently_seen(self, job_identifier: str) -> bool:
         """Return True if *job_identifier* is in the bounded LRU.
@@ -387,9 +393,13 @@ class Dispatcher(ServicePlugin):
             ),
         }
 
+class DispatcherRegistryWrapper(ClassPluginRegistry):
+    def get_plugin(self, name: str) -> type[ServicePlugin]:
+        return self.expected_base
 
-# exposes the base dispatcher class as a necessary plugin that is not configurable
-dispatchers = NecessaryPlugin(
+dispatchers = ClassPluginRegistry(
     name="dispatchers",
-    base=Dispatcher,
+    group="",
+    expected_base=Dispatcher,
+    nested_values=["falconer"]
 )
