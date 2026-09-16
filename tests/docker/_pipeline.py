@@ -19,10 +19,11 @@ rather than as errors.
 
 from __future__ import annotations
 
+import json
 import textwrap
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from tests._helpers import poll_until
 from tests.docker.conftest import (
@@ -230,18 +231,24 @@ class Pipeline:
         return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
     def queue_stats(self) -> dict[str, tuple[int, int]]:
-        """Return ``{queue name: (ready messages, consumers)}`` for the broker.
+        """Return ``{queue name: (undelivered messages, consumers)}``.
 
         Both numbers come from one call so they describe the same instant. A
         queue that exists with zero consumers and a rising message count is the
         exact shape of the bug this tier exists to prove fixed: before the queue
         was durable it simply vanished with its consumer, taking the backlog.
 
+        The count is ``rabbitmqctl``'s ``messages``, which is ready **plus
+        unacknowledged** -- not ready alone. That is the reading every drain
+        gate in this tier depends on: a message handed to a consumer that has
+        not yet acknowledged it still counts here, so "the queue reached zero"
+        means the work is genuinely finished rather than merely dispatched.
+
         Returns
         -------
         dict[str, tuple[int, int]]
-            Mapping of queue name to ready-message count and consumer count.
-            Empty when the broker cannot be queried.
+            Mapping of queue name to undelivered-message count and consumer
+            count.  Empty when the broker cannot be queried.
         """
         result = run(
             [
@@ -384,6 +391,50 @@ class Pipeline:
                 return True
         return arrived()
 
+    def _read_from_volume(self, command: str, attempts: int = 3) -> list[str]:
+        """Run a read-only shell *command* on the volume and return its lines.
+
+        The ``|| true`` is what makes the result trustworthy. Without it, "the
+        file does not exist yet" and "the docker daemon hiccuped" both arrive
+        as a non-zero exit with empty output, and a caller polling for a value
+        cannot tell them apart -- so a single transient exec failure reads as
+        a real observation of an empty directory. Tests built on that were
+        failing with messages accusing the system under test of losing data.
+
+        With the guard, a non-zero return can only mean the exec itself failed,
+        which is retried and then raised rather than silently returned as data.
+
+        Parameters
+        ----------
+        command : str
+            Shell command whose stdout is the observation.
+        attempts : int, optional
+            Tries before giving up.  Default 3.
+
+        Returns
+        -------
+        list[str]
+            Stripped non-empty output lines.
+
+        Raises
+        ------
+        RuntimeError
+            If the command could not be executed at all.
+        """
+        helper = self._data_helper()
+        last = ""
+        for _ in range(attempts):
+            result = run(["docker", "exec", helper, "sh", "-c", f"{command} || true"])
+            if result.returncode == 0:
+                return [
+                    line.strip() for line in result.stdout.splitlines() if line.strip()
+                ]
+            last = result.stderr.strip()
+        raise RuntimeError(
+            f"could not read the data volume ({command!r}) after {attempts} "
+            f"attempts; last error: {last}",
+        )
+
     def listdir(self, path: str) -> list[str]:
         """Return the entries of *path* inside the data volume.
 
@@ -397,11 +448,197 @@ class Pipeline:
         list[str]
             Entry names, empty when the directory is missing.
         """
-        helper = self._data_helper()
+        return self._read_from_volume(f"ls -1 {path} 2>/dev/null")
+
+    def read_lines(self, path: str) -> list[str]:
+        """Return the non-empty lines of a text file inside the data volume.
+
+        A test that has to tell one dispatch from two cannot look at the output
+        directory: the shipped script copies the input to a fixed destination,
+        so a second dispatch overwrites the first and leaves no trace. A script
+        that *appends* a line per execution does leave one, but the record then
+        lives on the volume rather than in a log, and the volume is only
+        reachable through the helper container.
+
+        Parameters
+        ----------
+        path : str
+            Absolute file path inside ``/data``.
+
+        Returns
+        -------
+        list[str]
+            Stripped lines, empty when the file does not exist yet.
+
+        Raises
+        ------
+        RuntimeError
+            If the volume could not be read, so that a daemon hiccup is never
+            mistaken for an empty ledger.
+        """
+        return self._read_from_volume(f"cat {path} 2>/dev/null")
+
+    def seed_many(self, prefix: str, count: int) -> list[str]:
+        """Create ``<prefix>-1.dat`` .. ``<prefix>-<count>.dat`` and return them.
+
+        The counted counterpart of :meth:`seed_until`, which creates an unknown
+        number of files and so can never be the basis of an exactly-once count.
+        Each phase of a test must use its own prefix: the monitor fires on
+        creation only, so a reused name would simply never be seen again.
+
+        Parameters
+        ----------
+        prefix : str
+            Basename stem, unique to the phase being measured.
+        count : int
+            Number of files to create.
+
+        Returns
+        -------
+        list[str]
+            Absolute paths created, in creation order.
+        """
+        paths = [f"/data/in/{prefix}-{index}.dat" for index in range(1, count + 1)]
+        for path in paths:
+            self.seed(path)
+        return paths
+
+    def scrape_metrics(self, container: str, port: int = 9187) -> str:
+        """Return a container's Prometheus exposition text.
+
+        The scrape execs the *target* container rather than reaching it over
+        the network: the data helper is started without ``--network`` and this
+        tier publishes no host ports, so 127.0.0.1 inside the container is the
+        only address that exists. One scrape per assertion point, so every
+        number read from it describes the same instant.
+
+        Parameters
+        ----------
+        container : str
+            Container name to scrape.
+        port : int, optional
+            Port the service's metrics endpoint listens on.  Default 9187.
+
+        Returns
+        -------
+        str
+            Exposition text, empty when the endpoint could not be read.
+        """
         result = run(
-            ["docker", "exec", helper, "sh", "-c", f"ls -1 {path} 2>/dev/null"],
+            [
+                "docker", "exec", container, "python", "-c",
+                "import urllib.request;"
+                "print(urllib.request.urlopen("
+                f"'http://127.0.0.1:{port}/metrics', timeout=5).read().decode())",
+            ],
+            timeout=60.0,
         )
-        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return result.stdout if result.returncode == 0 else ""
+
+    def publish_message(
+        self,
+        queue: str,
+        payload: dict[str, Any],
+        timeout: float = 120.0,
+    ) -> None:
+        """Publish one JSON notification into a broker queue, and confirm it.
+
+        Used by tests that drive a queue-consuming data monitor, where the
+        input to the pipeline is a broker message rather than a file creation.
+
+        Why a throwaway container rather than the host or the broker
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        Three routes exist and only one of them works in this tier.
+
+        * From the host venv with kombu: impossible. The broker publishes no
+          host ports and is reached only by container DNS on a per-test
+          user-defined network, and publishing 5672 would reintroduce exactly
+          the collision this tier was designed to avoid.
+        * With ``rabbitmqadmin`` inside the broker: impossible. It is a python
+          script shipped in the management plugin's web assets, it is not on
+          PATH in the alpine broker image, and that image has no interpreter to
+          run it -- and every exec into the broker must be ``-u rabbitmq``,
+          because an Erlang-adjacent tool run as root before the entrypoint
+          finishes creates a root-owned cookie and the broker dies.
+        * From a one-shot container built from the image under test: works, and
+          is the closest thing to a real producer. The image already ships
+          kombu as a hard dependency and has ``python`` on PATH, and its
+          entrypoint is ``tini --`` rather than ``courier``, so an arbitrary
+          command runs. The existing data helper cannot stand in for it: that
+          container is started without ``--network`` and cannot resolve the
+          broker's name.
+
+        The body is published as a **string**, not a dict. Under kombu's
+        default serializer a str is sent as ``text/plain`` and arrives at the
+        consumer as a str, which is what courier's own publish path produces
+        and what the queue-consuming monitors assume; a dict would be tagged
+        ``application/json``, arrive as a dict, and be rejected and dropped by
+        a consumer that calls ``.decode()`` on it. Serialising here rather than
+        in the caller means a caller cannot get that wrong.
+
+        The queue is declared ``durable=True`` -- identical properties to the
+        ones the monitor declares -- because a mismatch is an AMQP 406 that
+        escapes the monitor's retry handling and kills its listener thread.
+
+        Publisher confirms are requested through the connection's transport
+        options, which is the only form that makes ``publish`` actually *wait*
+        for the broker's acknowledgement; calling ``confirm_select`` on the
+        channel puts it in confirm mode but leaves the publish asynchronous, so
+        a rejected message would still be reported here as a success and then
+        be misread later as a pipeline that never delivered.
+
+        Parameters
+        ----------
+        queue : str
+            Fully namespaced queue name to publish into.
+        payload : dict[str, Any]
+            Notification body, serialised to compact JSON.
+        timeout : float, optional
+            Seconds to allow the publisher container.  Default 120.
+        """
+        url = f"amqp://{BROKER_USER}:{BROKER_PASSWORD}@{self.broker}:5672/"
+        snippet = textwrap.dedent(
+            """
+            import os
+
+            import kombu
+
+            target = kombu.Queue(os.environ["QUEUE"], durable=True)
+            connection = kombu.Connection(
+                os.environ["BROKER_URL"],
+                transport_options={"confirm_publish": True},
+            )
+            with connection as conn:
+                conn.ensure_connection(
+                    max_retries=10, interval_start=0.5, interval_step=0.5,
+                )
+                with kombu.Producer(conn) as producer:
+                    producer.publish(
+                        os.environ["BODY"],
+                        routing_key=target.name,
+                        exchange="",
+                        declare=[target],
+                    )
+            print("published")
+            """,
+        )
+        publisher = f"publish-{uuid.uuid4().hex[:8]}"
+        self._containers.append(publisher)
+        result = run(
+            [
+                "docker", "run", "--rm", "--name", publisher,
+                "--network", self.network,
+                "-e", f"BROKER_URL={url}",
+                "-e", f"QUEUE={queue}",
+                "-e", f"BODY={json.dumps(payload, separators=(',', ':'))}",
+                self.image,
+                "python", "-c", snippet,
+            ],
+            timeout=timeout,
+        )
+        assert result.returncode == 0, (
+            f"publishing to {queue!r} failed:\n{result.stdout}\n{result.stderr}"
+        )
 
     def _data_helper(self) -> str:
         """Return a long-lived container with the data volume mounted."""
@@ -430,6 +667,123 @@ class Pipeline:
         assert prepared.returncode == 0, prepared.stderr
         self._helper = name
         return name
+
+    def _metrics_scraper(self) -> str:
+        """Return a long-lived container that can reach the pipeline by name.
+
+        Neither existing container can stand in for this one. The data helper
+        is started without ``--network``, so it sits on the default bridge and
+        cannot resolve a courier container's name at all. Reaching the target's
+        own ``127.0.0.1`` through ``docker exec`` does work, and is what
+        :meth:`scrape_metrics` does, but it answers a different question: a
+        listener bound to the loopback interface serves that scrape happily
+        while being invisible to every Prometheus in the world.
+
+        Returns
+        -------
+        str
+            Container name, created on first use and reused thereafter.
+        """
+        if getattr(self, "_scraper", None):
+            return self._scraper
+        name = f"scrape-{uuid.uuid4().hex[:8]}"
+        result = run(
+            [
+                "docker", "run", "-d", "--name", name,
+                "--network", self.network,
+                self.image, "sleep", "3600",
+            ],
+        )
+        assert result.returncode == 0, result.stderr
+        self._containers.append(name)
+        self._scraper = name
+        return name
+
+    def scrape_over_network(
+        self,
+        container: str,
+        port: int,
+        path: str = "/metrics",
+    ) -> str:
+        """Return *container*'s exposition text, fetched from another container.
+
+        The request crosses a real network boundary and addresses the target by
+        its container DNS name, which is the only way to tell a listener on
+        ``0.0.0.0`` from one on the loopback interface. No host port is
+        published: this tier deliberately publishes none so it cannot collide,
+        and the scrape happens entirely inside the user-defined network.
+
+        An empty return is ambiguous by construction -- a refused connection, a
+        process that never started its server and a genuinely empty body all
+        read the same. Callers must therefore gate on
+        :meth:`await_metrics_endpoint` first and must never assert the ABSENCE
+        of something against a body they have not already proved non-empty.
+
+        Parameters
+        ----------
+        container : str
+            Container name to scrape, resolved by docker's embedded DNS.
+        port : int
+            Port the target's metrics endpoint listens on.
+        path : str, optional
+            Request path.  Default ``"/metrics"``.
+
+        Returns
+        -------
+        str
+            Exposition text, empty when the endpoint could not be read.
+        """
+        # The URL is its own argv element rather than being formatted into the
+        # script: ``run`` executes a fixed argv with no shell, so the snippet
+        # stays constant and nothing in the address can be re-interpreted.
+        result = run(
+            [
+                "docker", "exec", self._metrics_scraper(), "python", "-c",
+                "import sys, urllib.request;"
+                "sys.stdout.write("
+                "urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())",
+                f"http://{container}:{port}{path}",
+            ],
+            timeout=60.0,
+        )
+        return result.stdout if result.returncode == 0 else ""
+
+    def await_metrics_endpoint(
+        self,
+        container: str,
+        port: int,
+        timeout: float = 120.0,
+    ) -> None:
+        """Block until *container* serves at least one courier metric sample.
+
+        The gate is HTTP-observable throughout and never reads a log line. It
+        is deliberately stricter than "the socket answers": ``prometheus_client``
+        always exports its own ``python_*`` and ``process_*`` collectors, so a
+        body-is-non-empty check would pass on a service that registered nothing
+        of its own. Comment lines are excluded for the same reason -- ``# HELP
+        courier_...`` is emitted for every declared metric whether or not a
+        single sample exists.
+
+        Parameters
+        ----------
+        container : str
+            Container name to scrape.
+        port : int
+            Port the target's metrics endpoint listens on.
+        timeout : float, optional
+            Seconds to wait.  Default 120.
+        """
+
+        def answering() -> bool:
+            body = self.scrape_over_network(container, port)
+            return any(
+                line.startswith("courier_") for line in body.splitlines()
+            )
+
+        assert poll_until(answering, timeout=timeout, interval=1.0), (
+            f"no courier metrics were served on {container}:{port} within "
+            f"{timeout}s:\n{container_logs(container)}"
+        )
 
 
 def build_config(
@@ -514,3 +868,90 @@ def build_config(
     )
     indented = textwrap.indent(textwrap.dedent(script).strip(), " " * 12)
     return f"{body}\n{indented}\n"
+
+
+def metric_samples(exposition: str, name: str) -> list[tuple[dict[str, str], float]]:
+    """Return every materialised series of one metric, labels parsed as a dict.
+
+    The tier's only parser of the exposition format; :func:`sample_value` is a
+    lookup over what this returns. Kept separate because "which series exist"
+    and "what does this one series hold" are different questions, and a test
+    asking the first cannot phrase it as a lookup keyed on label values.
+
+    Matching the metric name for equality is what keeps the two label families
+    of the file-found path apart. ``courier_broker_messages_pending`` is
+    labelled with the per-builder QUEUE name while ``courier_broker_messages_
+    sent_total`` on the very next line is labelled with the EXCHANGE name, and
+    ``<ns>-FilesFound`` is a prefix of both: any ``in`` or ``startswith`` test
+    reads the fixed and the pre-fix behaviour identically. Comment lines are
+    skipped for the same reason -- ``# HELP`` and ``# TYPE`` carry the metric
+    name for every declared metric, so a substring search over the raw text
+    finds the name even when nothing has ever been recorded.
+
+    Equality on the name also drops the companion series ``prometheus_client``
+    exports beside a counter or a histogram (``_created``, ``_bucket``,
+    ``_sum``, ``_count``), which would otherwise be counted as extra series.
+
+    Parameters
+    ----------
+    exposition : str
+        Text returned by :meth:`Pipeline.scrape_over_network`.
+    name : str
+        Full metric name, including any ``_total`` suffix.
+
+    Returns
+    -------
+    list[tuple[dict[str, str], float]]
+        One ``(labels, value)`` pair per series, in exposition order.  Empty
+        when the metric has never been recorded.  Label values containing a
+        comma or a quote are not unquoted correctly; no courier label does.
+    """
+    samples: list[tuple[dict[str, str], float]] = []
+    for raw in exposition.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        head, _, value = line.rpartition(" ")
+        series, _, label_text = head.partition("{")
+        if series.strip() != name:
+            continue
+        labels: dict[str, str] = {}
+        for part in label_text.rstrip("}").split(","):
+            key, _, raw_value = part.partition("=")
+            if key.strip():
+                labels[key.strip()] = raw_value.strip().strip('"')
+        samples.append((labels, float(value)))
+    return samples
+
+
+def sample_value(
+    exposition: str,
+    name: str,
+    labels: dict[str, str],
+) -> float | None:
+    """Return the value of one exactly-labelled series, or ``None`` if absent.
+
+    ``None`` rather than ``0.0`` because the difference carries the finding:
+    a labelled series is only materialised on first use, so "this queue was
+    never counted" and "this queue is counted and currently holds nothing" are
+    different answers and a test that conflates them proves neither.
+
+    Parameters
+    ----------
+    exposition : str
+        Text returned by :meth:`Pipeline.scrape_over_network`.
+    name : str
+        Full metric name, including any ``_total`` suffix.
+    labels : dict[str, str]
+        The series' complete label set.  A sample carrying any other label,
+        or missing one of these, does not match.
+
+    Returns
+    -------
+    float or None
+        The sample value, or ``None`` when no such series exists.
+    """
+    for present, value in metric_samples(exposition, name):
+        if present == labels:
+            return value
+    return None
