@@ -658,3 +658,175 @@ def test_version_tuple_matches_version() -> None:
     assert courier.__version_tuple__[: len(expected)] == expected, (
         f"{courier.__version_tuple__} does not match {courier.__version__}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Broker-monitor field maps
+#
+# rabbit_mq_watcher is configured entirely by a field_map from canonical names
+# to the keys a producer actually sends, and the schema can check neither half.
+# The canonical side is merged over _DEFAULT_FIELD_MAP, so a key the config
+# never mentions is silently filled in; the message side names keys in a
+# payload the validator never sees. Both halves shipped a defect of exactly
+# that shape, and each failed in a different silent way.
+# ---------------------------------------------------------------------------
+
+_BROKER_MONITOR = "rabbit_mq_watcher"
+
+#: A timestamp the monitor's parser accepts, used to build a probe message.
+_PROBE_TIMESTAMP = "2026-01-29T09:10:00+00:00"
+
+
+def _broker_monitors(config_path: Path) -> list[tuple[str, dict]]:
+    """Return ``(identifier, plugin config)`` for each broker monitor in a file.
+
+    Parameters
+    ----------
+    config_path : Path
+        Shipped service configuration to read.
+
+    Returns
+    -------
+    list[tuple[str, dict]]
+        One entry per ``rabbit_mq_watcher`` step, in declaration order.
+    """
+    found: list[tuple[str, dict]] = []
+    for entry in load_config(config_path).spec.run:
+        config = entry.spec.config or {}
+        if entry.spec.name == _BROKER_MONITOR and isinstance(config, dict):
+            found.append((entry.identifier, config))
+    return found
+
+
+def _probe_message(field_map: dict[str, str]) -> dict:
+    """Build a message shaped like the producer these configs document.
+
+    Keyed by the **producer's** names -- courier's own ``_DEFAULT_FIELD_MAP``
+    values, which are the ``nrt_file_notif_queue`` schema every shipped config
+    says it matches -- rather than by the config's mapped names. Building it
+    from the config under test instead would make the probe agree with any
+    field_map by construction, including a misspelt one.
+
+    Parameters
+    ----------
+    field_map : dict[str, str]
+        The monitor's merged field map, read only for the nested time-range
+        key names.
+
+    Returns
+    -------
+    dict
+        A representative notification body.
+    """
+    from courier.plugins.data_monitors.rabbit_mq_watcher import _DEFAULT_FIELD_MAP
+
+    return {
+        _DEFAULT_FIELD_MAP["location"]: "courier@host1:/mount",
+        _DEFAULT_FIELD_MAP["dir_path"]: "/mount/goes18/abi",
+        _DEFAULT_FIELD_MAP["file_name"]: "OR_ABI.nc",
+        _DEFAULT_FIELD_MAP["platform"]: "goes18",
+        _DEFAULT_FIELD_MAP["sensor"]: "abi",
+        _DEFAULT_FIELD_MAP["time_range_key"]: {
+            field_map["time_range_lower_key"]: _PROBE_TIMESTAMP,
+            field_map["time_range_start_key"]: _PROBE_TIMESTAMP,
+        },
+    }
+
+
+def _build_broker_monitor(config: dict):
+    """Construct a real monitor from *config*, so the merge under test is real.
+
+    Parameters
+    ----------
+    config : dict
+        The plugin's ``config`` block from the shipped YAML.
+
+    Returns
+    -------
+    RabbitMQWatcher
+        A constructed plugin.  Nothing connects; only pure methods are called.
+    """
+    from courier.plugins.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
+
+    service = mock.MagicMock()
+    service._config.log_level = "DEBUG"
+    service._config.loki_enabled = False
+    service._config.namespace = "drift-guard"
+    service.config = service._config
+    return RabbitMQWatcher(service, config)
+
+
+@pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
+def test_broker_monitor_field_map_names_keys_the_producer_sends(
+    config_path: Path,
+) -> None:
+    """A canonical field must map onto a key the documented schema contains.
+
+    ``tests/cira-data-inventory-example.yaml`` shipped ``dir_path: dir_ath``.
+    The monitor indexes that one rather than ``.get``-ing it, and the merge
+    against ``_DEFAULT_FIELD_MAP`` means the guard protecting the ``file_path``
+    fallback sees a *present* mapping and does not fire -- so every message
+    raised ``KeyError``, was rejected without requeue, and the config silently
+    discarded its entire input stream.
+
+    Only the canonical keys are checked. Extra ``field_map`` entries are
+    free-form metadata collected with ``.get``, where a misspelling loses one
+    metadata value rather than the message.
+    """
+    from courier.plugins.data_monitors.rabbit_mq_watcher import _DEFAULT_FIELD_MAP
+
+    known = set(_DEFAULT_FIELD_MAP.values())
+    problems: list[str] = []
+
+    for identifier, config in _broker_monitors(config_path):
+        for canonical, message_key in (config.get("field_map") or {}).items():
+            if canonical not in _DEFAULT_FIELD_MAP:
+                continue
+            if message_key not in known:
+                problems.append(
+                    f"{identifier}: field_map {canonical}={message_key!r}, "
+                    f"which the documented schema does not contain",
+                )
+
+    assert not problems, (
+        "\n".join(problems) + f"\nschema keys: {sorted(known)}"
+    )
+
+
+@pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
+def test_broker_monitor_resolves_a_real_timestamp(config_path: Path) -> None:
+    """The configured timestamp must actually resolve to a parseable value.
+
+    ``config.yaml``, ``tests/demo.yaml`` and
+    ``tests/cira-data-inventory-example.yaml`` all shipped
+    ``timestamp_field: time_range``, which resolves to the time-range *dict*.
+    ``parse_timestamp`` returns ``None`` for a dict, so every file carried
+    ``timestamp=None`` and any downstream ``time_grouping`` was silently
+    disabled -- indistinguishable, from the outside, from a producer that sends
+    no timestamps.
+
+    Asserted by running the monitor's own extractor rather than by pattern-
+    matching the YAML, so any future ``timestamp_field`` that names a container
+    instead of a value fails here too.
+    """
+    problems: list[str] = []
+
+    for identifier, config in _broker_monitors(config_path):
+        monitor = _build_broker_monitor(config)
+        message = _probe_message(monitor.field_map)
+        resolved = monitor._extract_timestamp(message)  # noqa: SLF001
+        if resolved is None:
+            problems.append(
+                f"{identifier}: timestamp_field="
+                f"{config.get('timestamp_field')!r} resolved to nothing against "
+                f"a representative message; files would carry timestamp=None",
+            )
+
+    assert not problems, "\n".join(problems)
+
+
+def test_shipped_configs_actually_declare_a_broker_monitor() -> None:
+    """Guard the guards: both checks above pass vacuously on an empty set."""
+    total = sum(len(_broker_monitors(path)) for path in _SERVICE_CONFIGS)
+
+    assert total >= 3, f"only {total} {_BROKER_MONITOR} steps found"
