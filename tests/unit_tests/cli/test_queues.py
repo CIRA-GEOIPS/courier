@@ -351,3 +351,33 @@ def test_prune_does_not_suggest_force_for_a_missing_queue(
 
     assert result.exit_code == 1
     assert "(non-empty? rerun with --force)" not in result.output
+
+
+def test_prune_preserves_dead_letter_queues(
+    runner: CliRunner,
+    config_file: Path,
+) -> None:
+    """A parked message is the only copy left, so its queue must survive a prune.
+
+    ``<queue>-DeadLetter`` is not in any config; it is derived from the queues
+    that are. An operator pruning the broker is usually doing it *because*
+    something went wrong, which is the worst possible moment to delete the
+    queue holding the messages that went wrong.
+    """
+    result = runner.invoke(
+        queues_app,
+        [
+            "prune",
+            str(config_file),
+            "--candidate",
+            "ns-FilesFound-builder-DeadLetter,ns-JobReady-runner-a-DeadLetter,"
+            "ns-DispatcherQueue-DeadLetter,ns-FilesFound-ghost-DeadLetter",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "preserve: ns-FilesFound-builder-DeadLetter" in result.output
+    assert "preserve: ns-JobReady-runner-a-DeadLetter" in result.output
+    assert "preserve: ns-DispatcherQueue-DeadLetter" in result.output
+    # Derived from a queue no config names: still an orphan.
+    assert "orphan:   ns-FilesFound-ghost-DeadLetter" in result.output

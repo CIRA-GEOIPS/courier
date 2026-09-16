@@ -38,6 +38,11 @@ JOB_READY_PREFIX = "JobReady"
 #: queue was made durable.
 FILE_FOUND_QUEUE_PREFIX = "FilesFound"
 
+#: Suffix appended to a namespaced queue name to build its dead-letter queue.
+#: Messages a consumer could not get past are parked there rather than being
+#: requeued forever (see :func:`dead_letter_queue_for`).
+DEAD_LETTER_SUFFIX = "DeadLetter"
+
 # RabbitMQ queue-name limit (AMQP 0-9-1 spec).
 MAX_QUEUE_NAME_LENGTH = 255
 
@@ -127,6 +132,53 @@ def file_found_queue_for(builder_identifier: str) -> str:
     """
     validate_dispatcher_identifier(builder_identifier)
     return f"{FILE_FOUND_QUEUE_PREFIX}-{builder_identifier}"
+
+
+def dead_letter_queue_for(queue_name: str) -> str:
+    """Return the dead-letter queue name that parks *queue_name*'s poison.
+
+    Courier dead-letters by publishing, not by setting ``x-dead-letter-exchange``
+    on the source queue: that argument cannot be added to a durable queue an
+    existing deployment already declared without the broker answering 406 on
+    every subsequent declare. A separate queue is a name no deployment has
+    declared yet, so it can be introduced without a migration.
+
+    Parameters
+    ----------
+    queue_name : str
+        A queue name that is *already namespaced*, unlike the base names
+        returned by :func:`job_ready_queue_for` and
+        :func:`file_found_queue_for`. The dead-letter queue shares its
+        source's namespace by construction rather than being namespaced again.
+
+    Returns
+    -------
+    str
+        ``<queue_name>-DeadLetter``.
+
+    Raises
+    ------
+    InvalidIdentifierError
+        If the result exceeds :data:`MAX_QUEUE_NAME_LENGTH`. Raised when the
+        consumer subscribes rather than when a message is parked, so a name
+        that is too long is a startup failure and never a poison message with
+        nowhere to go.
+
+    Notes
+    -----
+    A builder or dispatcher identifier ending in ``-DeadLetter`` would collide
+    with another's dead-letter queue. Identifiers permit ``-``, so this is
+    possible; forbidding it would invalidate configs that are legal today, and
+    the name is unlikely enough to be left as a documented sharp edge.
+    """
+    full = f"{queue_name}-{DEAD_LETTER_SUFFIX}"
+    if len(full) > MAX_QUEUE_NAME_LENGTH:
+        raise InvalidIdentifierError(
+            full,
+            f"dead-letter queue name exceeds {MAX_QUEUE_NAME_LENGTH} "
+            "characters; shorten the namespace or the identifier",
+        )
+    return full
 
 
 def namespaced_queue_name(namespace: str, base_name: str) -> str:

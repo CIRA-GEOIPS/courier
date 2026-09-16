@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from courier.broker.kombu import (
     MessageBrokerManager,
     declare_bound_queue,
+    declare_dead_letter_queue,
     declare_fanout_exchange,
     declare_queue,
     publish,
     publish_fanout,
+    redeliver_or_park,
 )
 from courier.broker.kombu import messages as broker_messages
 from courier.config import ServiceConfig
 from courier.constants import (
     DISPATCHER_QUEUE,
     FILE_FOUND_EXCHANGE,
+    dead_letter_queue_for,
     file_found_queue_for,
     job_ready_queue_for,
     namespaced_queue_name,
@@ -277,10 +281,18 @@ class Service:
 
         Notes
         -----
-        Breaking the generator loop (e.g. ``break`` after yielding a single
-        message) may requeue any message pre-fetched by the broker but not yet
-        yielded.  For one-shot consumption that avoids this side-effect, use a
-        separate thread with a timeout (see ``concurrent.futures``).
+        Consume to the end of the loop.  A message is acknowledged only after
+        the ``for`` body returns, so abandoning the loop while holding one --
+        by ``break``, or by raising -- leaves that message unacknowledged, and
+        an unacknowledged message is indistinguishable from one the caller
+        failed on.  It is therefore counted as a failed attempt and requeued
+        behind the backlog, and is parked on the dead-letter queue if it
+        happens ``broker_max_redeliveries`` times.  Setting *stop_event* first
+        is what marks the difference: that is a shutdown, and the message is
+        returned untouched.  Breaking may also requeue anything the broker
+        pre-fetched but has not yet yielded.  For one-shot consumption that
+        avoids all of this, use a separate thread with a timeout (see
+        ``concurrent.futures``).
 
         Validation happens when ``consume`` is called rather than on the first
         ``next()``, so a missing *subscriber* is reported at the call site.
@@ -332,16 +344,22 @@ class Service:
             # opens, so a queue deleted meanwhile would otherwise stay gone
             # for the life of the process.
             q = declare_bound_queue(conn, exchange, queue_name)
+            dead_letter = declare_dead_letter_queue(
+                conn,
+                dead_letter_queue_for(queue_name),
+            )
             self._logger.info(
                 f"Consuming file-found messages from durable queue "
                 f"{queue_name!r} bound to {exchange_name!r} "
-                f"(prefetch={self._config.broker_prefetch_count})",
+                f"(prefetch={self._config.broker_prefetch_count}, "
+                f"max_redeliveries={self._config.broker_max_redeliveries})",
             )
             if on_subscribed is not None:
                 on_subscribed()
             yield from self._relay(
                 conn,
                 q,
+                dead_letter,
                 stop_event,
                 queue_name,
                 {
@@ -382,11 +400,16 @@ class Service:
         self._logger.debug(f"Consuming from queue: {queue_name}")
         with self._broker_manager.get_connection_context() as conn:
             q = declare_queue(conn, queue_name, durable=True)
+            dead_letter = declare_dead_letter_queue(
+                conn,
+                dead_letter_queue_for(queue_name),
+            )
             if on_subscribed is not None:
                 on_subscribed()
             yield from self._relay(
                 conn,
                 q,
+                dead_letter,
                 stop_event,
                 queue_name,
                 {
@@ -395,10 +418,11 @@ class Service:
                 },
             )
 
-    def _relay(
+    def _relay(  # noqa: PLR0913, PLR0917 -- one consumer's declared topology
         self,
         conn: Any,
         queue: Any,
+        dead_letter: Any,
         stop_event: threading.Event,
         queue_name: str,
         span_attributes: dict[str, str],
@@ -411,6 +435,8 @@ class Service:
             Open broker connection.
         queue : Any
             Declared queue to consume.
+        dead_letter : Any
+            Declared queue that parks messages whose attempts are spent.
         stop_event : threading.Event
             Ends the loop once set.
         queue_name : str
@@ -422,6 +448,33 @@ class Service:
         ------
         tuple[str, Any]
             ``(body, parent_ctx)`` per message.
+
+        Notes
+        -----
+        A message the caller could not get past is not rejected back to the
+        head of the queue. It is republished behind the current backlog with
+        its attempt count incremented, and parked on the dead-letter queue once
+        the count passes ``broker_max_redeliveries`` -- see
+        :func:`courier.broker.kombu.redeliver_or_park`. Rejecting with
+        ``requeue=True``, which is what this did, put the message straight back
+        at the head; with the shipped prefetch of 1 the same message was then
+        handed to the same consumer again immediately, and nothing behind it
+        was ever reached.
+
+        Both failure paths matter, and the one that matters more is the less
+        obvious of the two. An exception raised by the caller *inside the*
+        ``for`` *body* is not thrown into this generator -- Python abandons it,
+        and the close arrives here as ``GeneratorExit`` rather than through the
+        ``except Exception`` clause. So a plugin blowing up on one message, the
+        case this exists for, never reached that clause at all; only a failure
+        between the ``yield`` and the ``ack`` did.
+
+        ``GeneratorExit`` is therefore ambiguous: it means either that the
+        caller gave up on this message or that the consumer is shutting down
+        with the message untried. *stop_event* separates them. During shutdown
+        the message is rejected unchanged and its attempt count left alone,
+        because spending a retry on every rolling restart would eventually park
+        perfectly good messages.
         """
         for body, ack, reject, headers in broker_messages(
             conn,
@@ -444,11 +497,88 @@ class Service:
                     yield body, parent_ctx
                     ack()
             except GeneratorExit:
-                reject()
+                if stop_event.is_set():
+                    reject()
+                else:
+                    self._fail_message(
+                        conn,
+                        queue,
+                        dead_letter,
+                        body,
+                        headers,
+                        ack,
+                        reject,
+                    )
                 raise
-            except Exception:  # Reject message before propagating any error
-                reject()
+            except Exception:
+                self._fail_message(
+                    conn,
+                    queue,
+                    dead_letter,
+                    body,
+                    headers,
+                    ack,
+                    reject,
+                )
                 raise
+
+    def _fail_message(  # noqa: PLR0913, PLR0917 -- one delivery's worth of state
+        self,
+        conn: Any,
+        queue: Any,
+        dead_letter: Any,
+        body: str,
+        headers: dict[str, str],
+        ack: Callable[[], None],
+        reject: Callable[[], None],
+    ) -> None:
+        """Get a message the caller could not handle out of the way of the rest.
+
+        Parameters
+        ----------
+        conn : Any
+            Open broker connection.
+        queue : Any
+            The queue the message came from.
+        dead_letter : Any
+            Where the message goes once its attempts are spent.
+        body : str
+            The message body.
+        headers : dict[str, str]
+            The delivered message's headers, carrying the attempt count.
+        ack : Callable[[], None]
+            Acknowledges the original delivery.
+        reject : Callable[[], None]
+            Returns the original delivery to the queue unchanged.
+
+        Notes
+        -----
+        Acknowledging is safe only once the republish has been confirmed, so
+        the order is republish-then-acknowledge and never the reverse. If the
+        republish fails the delivery is rejected instead, which is the
+        behaviour this replaced: the message is not lost, and the queue is no
+        worse off than it was.
+        """
+        try:
+            redeliver_or_park(
+                conn,
+                queue,
+                dead_letter,
+                body,
+                headers,
+                self._config.broker_max_redeliveries,
+            )
+        except Exception:
+            self._logger.exception(
+                "Could not requeue or park a failed message from %r; "
+                "returning it to the queue unchanged, which leaves it able to "
+                "block the messages behind it until the broker recovers",
+                getattr(queue, "name", queue),
+            )
+            with suppress(Exception):
+                reject()
+            return
+        ack()
 
     def register_plugin(
         self,
