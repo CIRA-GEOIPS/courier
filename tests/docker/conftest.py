@@ -21,8 +21,13 @@ import shutil
 import subprocess
 import uuid
 from collections.abc import Iterator, Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from tests.docker._pipeline import Pipeline
 
 #: Image under test, e.g. ``courier:dev``.  Built by the docker workflow, or
 #: locally with ``docker build -t courier:dev .``.
@@ -184,6 +189,37 @@ def docker_volume() -> Iterator[str]:
         yield name
     finally:
         run(["docker", "volume", "rm", "-f", name])
+
+
+@pytest.fixture
+def pipeline(
+    docker_image: str,
+    docker_network: str,
+    docker_volume: str,
+    tmp_path: Path,
+    broker_image: str,
+) -> Iterator[Pipeline]:
+    """Provide a pipeline helper and tear its containers down.
+
+    Lives here rather than in one test module so every module in the tier can
+    ask for it.  The import is deferred because the helper imports this module
+    for its broker credentials and ``run``.
+
+    Yields
+    ------
+    Pipeline
+        Helper with the broker already running.
+    """
+    from tests.docker._pipeline import Pipeline
+
+    helper = Pipeline(
+        docker_image, docker_network, docker_volume, tmp_path, broker_image,
+    )
+    try:
+        helper.start_broker()
+        yield helper
+    finally:
+        helper.cleanup()
 
 
 def container_logs(container: str) -> str:
