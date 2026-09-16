@@ -36,7 +36,7 @@ spec:
           # Message field mapping — matches the nrt_file_notif_queue schema
           field_map:
             location: location
-            dir_path: dir_ath
+            dir_path: dir_path
             file_name: file_name
             platform: platform_name
             sensor: source_name
@@ -45,5 +45,8 @@ spec:
             time_range_start_key: start
           # Location format: "user@hostname:/mount/path"
           location_format: user_at_host_colon_path
-          # Timestamp for file objects
-          timestamp_field: time_range
+          # No timestamp_field: the three time_range_* keys above are what
+          # resolve the timestamp. timestamp_field names a *flat* key holding
+          # the value itself, so pointing it at the time_range dict resolves to
+          # a dict, which is not a parseable timestamp -- every File would then
+          # silently carry timestamp=None and time_grouping would never bucket.

@@ -36,27 +36,32 @@ copies, and the line it appends carries the three values that have to survive
 the trip: the File's timestamp, its hostname and its reassembled path.
 
 Scope, stated precisely because an earlier draft of this docstring overclaimed
-it: the *topology* under test is the shipped one, the two shipped config
-*files* are not. Both are wrong in ways this module writes around rather than
-reproduces, and pinning either here would mean asserting a bug.
+it: the *topology* under test is the shipped one, and the two shipped config
+files now agree with it. They did not when this module was written, and the
+two defects it was built around are worth recording, because each failed in a
+way nothing reported.
 
-* ``timestamp_field: time_range`` (``config.yaml``, and the example config) is
-  a silent no-op. ``_extract_timestamp`` takes its explicit-field branch, walks
-  to the ``time_range`` dict, and hands the dict to
-  :func:`courier.utils.datetime_utils.parse_timestamp`, which returns ``None``
-  for anything that is not a string, a number or a datetime -- so every File
-  those configs build carries ``timestamp=None``. This module omits the key,
-  which runs the documented ``time_range.lower`` default instead, and then
-  asserts the timestamp that default produced.
-* ``dir_path: dir_ath`` in ``tests/cira-data-inventory-example.yaml`` maps the
-  canonical ``dir_path`` onto a message key no producer sends. The reassembly
-  falls into the ``file_path`` fallback and raises unless the producer happens
-  to send a ``file_path`` too. This module spells the key correctly.
+* ``timestamp_field: time_range`` (``config.yaml``, ``tests/demo.yaml`` and the
+  example config) was a silent no-op. ``_extract_timestamp`` took its
+  explicit-field branch, walked to the ``time_range`` dict, and handed the dict
+  to :func:`courier.utils.datetime_utils.parse_timestamp`, which returns
+  ``None`` for anything that is not a string, a number or a datetime -- so
+  every File those configs built carried ``timestamp=None``, which is also what
+  a message with no timestamp produces. The key is gone from all three configs,
+  the documented ``time_range`` -> ``lower``/``start`` default runs instead, and
+  the monitor now warns once when a configured ``timestamp_field`` resolves to
+  a container rather than a value.
+* ``dir_path: dir_ath`` in ``tests/cira-data-inventory-example.yaml`` mapped the
+  canonical ``dir_path`` onto a message key no producer sends. Note it did
+  *not* fall back to ``file_path``: that branch tests whether the field_map
+  declares ``dir_path``, and the merge against ``_DEFAULT_FIELD_MAP`` means it
+  always does -- so the reassembly indexed a key that was absent and raised
+  ``KeyError`` on every message, which the callback rejected without requeue.
+  That config discarded its entire input stream.
 
-Both are reported as product findings and neither is guarded anywhere today:
-``tests/test_shipped_config_drift.py`` has no ``field_map`` or
-``timestamp_field`` check at all. A drift guard there, not a container test, is
-where they belong -- this note records that the gap is known, not closed.
+Both are now guarded in ``tests/test_shipped_config_drift.py``, which checks
+that a field_map names keys the documented schema contains and that the
+configured timestamp actually resolves against a representative message.
 
 No revert check applies to this module, and that is deliberate rather than an
 omission: this is new coverage for a monitor that had no full-run test at all,

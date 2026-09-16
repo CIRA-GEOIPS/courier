@@ -45,8 +45,11 @@ spec:
             time_range_start_key: start
           # Location format: "user@hostname:/mount/path"
           location_format: user_at_host_colon_path
-          # Timestamp for file objects
-          timestamp_field: time_range
+          # No timestamp_field: the three time_range_* keys above are what
+          # resolve the timestamp. timestamp_field names a *flat* key holding
+          # the value itself, so pointing it at the time_range dict resolves to
+          # a dict, which is not a parseable timestamp -- every File would then
+          # silently carry timestamp=None and time_grouping would never bucket.
     - job-builder:
         kind: job_builder
         name: filter_and_group
