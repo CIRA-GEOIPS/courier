@@ -194,6 +194,79 @@ class TestExtractTimestamp:
         assert isinstance(result, datetime)
         assert result.month == 3
 
+    def test_a_timestamp_field_naming_a_container_warns(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """A path stopping one level short of the value says so, loudly.
+
+        Three shipped configs set ``timestamp_field: time_range``, which
+        resolves to the time-range dict. ``parse_timestamp`` returns ``None``
+        for a dict, and ``None`` is also what a message carrying no timestamp
+        produces -- so the configuration error was indistinguishable from
+        ordinary data and survived in three files at once.
+
+        The plugin logger is spied on rather than captured with ``caplog``:
+        ``get_logger`` sets ``propagate = False`` so the root handler pytest
+        installs never sees these records.
+        """
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(timestamp_field="time_range"),
+        )
+        plugin._logger = MagicMock()
+
+        result = plugin._extract_timestamp(
+            {"time_range": {"lower": "2026-01-01T00:00:00"}},
+        )
+
+        assert result is None
+        plugin._logger.warning.assert_called_once()
+        message = plugin._logger.warning.call_args.args[0]
+        assert "timestamp_field='time_range'" in message
+        assert "dict" in message
+
+    def test_the_container_warning_is_emitted_once(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """The condition holds for every delivery, so the warning must not.
+
+        A per-message warning on a queue under load is how a log store fills
+        up; the misconfiguration is a property of the config, not of any one
+        message.
+        """
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(timestamp_field="time_range"),
+        )
+        plugin._logger = MagicMock()
+        message = {"time_range": {"lower": "2026-01-01T00:00:00"}}
+
+        for _ in range(5):
+            plugin._extract_timestamp(message)
+
+        assert plugin._logger.warning.call_count == 1
+
+    def test_an_absent_timestamp_is_not_a_configuration_warning(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """A producer that omits the field is legitimate and stays quiet.
+
+        The warning has to separate "this config can never work" from "this
+        message happens to carry no timestamp", or it is noise operators learn
+        to ignore.
+        """
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(timestamp_field="created_at"),
+        )
+        plugin._logger = MagicMock()
+
+        assert plugin._extract_timestamp({"other": "value"}) is None
+        plugin._logger.warning.assert_not_called()
+
 
 # ─── is_healthy / stop ──────────────────────────────────────────────────────
 
