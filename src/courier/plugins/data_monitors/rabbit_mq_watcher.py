@@ -373,6 +373,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self.timestamp_field = self.validated.timestamp_field
         self.timestamp_format = self.validated.timestamp_format
         self.rate_limit_per_second = self.validated.rate_limit_per_second
+        # A misconfigured timestamp_field is wrong for every message, so the
+        # warning is emitted once rather than per delivery.
+        self._warned_timestamp_shape = False
 
         self.last_file_processed_timestamp = RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 
@@ -399,6 +402,37 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             )
         return cast("tuple[str, str]", parser(location))
 
+    def _warn_unparseable_timestamp(self, raw: Any) -> None:
+        """Warn that ``timestamp_field`` names a container rather than a value.
+
+        Only ever called for a value whose *type* cannot be a timestamp, which
+        is a configuration mistake rather than a property of one message: a
+        producer that simply omits the field yields ``None``, which is
+        legitimate and stays quiet. Emitted once per process, because the
+        condition holds for every delivery and the alternative is a log line
+        per message forever.
+
+        Parameters
+        ----------
+        raw : Any
+            The value ``timestamp_field`` resolved to.
+        """
+        if self._warned_timestamp_shape:
+            return
+        self._warned_timestamp_shape = True
+        self._logger.warning(
+            f"timestamp_field={self.timestamp_field!r} resolves to a "
+            f"{type(raw).__name__}, which cannot be a timestamp, so every file "
+            f"from this monitor will carry timestamp=None and any downstream "
+            f"time_grouping is silently disabled. timestamp_field names a flat "
+            f"key holding the value itself; to read a nested time range, leave "
+            f"it unset and let the field_map keys "
+            f"{self.field_map['time_range_key']!r}/"
+            f"{self.field_map['time_range_lower_key']!r}/"
+            f"{self.field_map['time_range_start_key']!r} resolve it. "
+            f"Further occurrences are suppressed.",
+        )
+
     def _extract_timestamp(self, message: dict[str, Any]) -> datetime | None:
         """Extract and parse a timestamp from *message* using the plugin config."""
         fm = self.field_map
@@ -408,7 +442,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             raw: Any = message
             for part in parts:
                 if not isinstance(raw, dict):
-                    return None
+                    raw = None
+                    break
                 raw = raw.get(part)
 
             # Handle PostgreSQL-style array string:
@@ -420,6 +455,14 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                         raw = parsed[0]  # take the lower bound
                 except (json.JSONDecodeError, ValueError):
                     pass  # fall through to _parse_timestamp as-is
+
+            # A container here means the configured path stops one level short
+            # of the value. parse_timestamp returns None for it, which is
+            # indistinguishable from "the producer sent no timestamp" -- so the
+            # config error would otherwise never surface anywhere.
+            if isinstance(raw, (dict, list, tuple, set)):
+                self._warn_unparseable_timestamp(raw)
+                return None
 
             return _parse_timestamp(raw, self.timestamp_format)
 
