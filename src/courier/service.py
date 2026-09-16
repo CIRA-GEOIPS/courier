@@ -120,6 +120,7 @@ class Service:
 
         self._dispatcher_identifiers: frozenset[str] = frozenset()
         self._builder_targets: dict[str, tuple[str, ...]] = {}
+        self._falconer_map: dict[str, str] = {}
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
 
@@ -408,6 +409,7 @@ class Service:
         """
         self._auto_discover_routing()
         self._validate_dispatch_targets()
+        self._populate_falconer_map()
         self._propagate_builder_targets()
         self._predeclare_target_queues()
 
@@ -515,6 +517,16 @@ class Service:
             resolved[builder_id] = (sole,)
         self._builder_targets = resolved
         self._logger.info(f"Resolved routing: {resolved}")
+
+    def _populate_falconer_map(self) -> None:
+        from courier.interfaces.dispatchers import Dispatcher
+        from courier.interfaces.falconers import Falconer
+
+        for dispatcher_id, falconer_id in self._falconer_map.items():
+            dispatcher = self._plugin_manager._plugins[dispatcher_id].plugin
+            falconer = self._plugin_manager._plugins[falconer_id].plugin
+            if isinstance(dispatcher, Dispatcher) and isinstance(falconer, Falconer):
+                dispatcher.falconer = falconer
 
     def _predeclare_target_queues(self) -> None:
         """Declare every per-dispatcher queue plus shared queues.

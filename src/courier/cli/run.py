@@ -66,6 +66,8 @@ def get_registered_plugin(plugin_registrations, entry):
         plugin_config: dict[str, Any] = (
             entry.spec.config if entry.spec.config is not None else {}
         )
+
+        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
         
         for kind in NECESSARY_REGISTRIES[kind].nested_values:
             get_registered_plugin(plugin_registrations, MicroserviceModel.model_validate(entry.spec.config[kind]))
@@ -145,9 +147,6 @@ def run_service(
         if only_set is not None and entry.identifier not in only_set:
             continue
         get_registered_plugin(plugin_registrations, entry)
-        # An unrecognised kind used to be skipped silently, which produced a
-        # service that started up, reported healthy, and processed nothing.
-
     service = create_service_with_plugins(
         service_config,
         plugin_registrations,
@@ -157,6 +156,12 @@ def run_service(
         for e in config.spec.run
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
+    }
+    service._falconer_map = {
+        e.identifier: e.spec.config["falconer"]["identifier"]
+        for e in config.spec.run
+        if normalize_kind(e.spec.kind) == "dispatchers"
+        and (only_set is None or e.identifiers in only_set)
     }
     # Union: add any dispatcher targeted by builders in the filtered set
     builder_targets = _collect_builder_targets(config)
