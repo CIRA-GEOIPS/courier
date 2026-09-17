@@ -527,21 +527,20 @@ class Service:
             dispatcher_obj = self._plugin_manager._plugins[dispatcher_id].plugin
             falconer_obj = self._plugin_manager._plugins[falconer_id].plugin
             falcon_obj = self._plugin_manager._plugins[falcon_id].plugin
-
-            if (isinstance(dispatcher_obj, Dispatcher) and 
-                isinstance(falconer_obj, Falconer) and 
+            
+            if not (isinstance(dispatcher_obj, Dispatcher) and
+                isinstance(falconer_obj, Falconer) and
                     isinstance(falcon_obj, Falcon)):
-                try:
-                    falconer_obj.set_falcon(falcon_obj)
-                except Exception:
-                    self._logger.exception("Failed to pair falconer with falcon")
-                    raise
-                try:
-                    dispatcher_obj.set_falconer(falconer_obj)
-                except Exception:
-                    self._logger.exception("Failed to pair dispatcher with falconer")
-                    raise
+                raise ValueError
 
+            # each object is populated with its initial configuration. 
+
+            # dispatcher checks if falconer and falcon are compatible
+            dispatcher_obj.check_compatible_partners(falconer_obj, falcon_obj)
+            # dispatcher configures, marries the falconer and falcon
+            dispatcher_obj.ordain_bird_marriage(falconer_obj, falcon_obj)
+            # yyyyyep
+    
     def _predeclare_target_queues(self) -> None:
         """Declare every per-dispatcher queue plus shared queues.
 

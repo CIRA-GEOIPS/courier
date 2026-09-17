@@ -132,6 +132,17 @@ class Dispatcher(ServicePlugin):
     def set_falconer(self, falconer: Falconer) -> None:
         self.falconer = falconer
 
+    def check_compatible_partners(self, falconer: Falconer, falcon: Falcon) -> bool:
+        # check compatibility of the soon-to-be-married falconer
+        # and falcon pair
+        return True
+
+    def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> None:
+        # configure each of the pair to fit each other's configuration neatly
+        # marry the pair and keep track of the falconer
+        falconer.falcon = falcon
+        self.falconer = falconer
+
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
         self._logger.debug(f"Emitting execution log: {execution_log}")
