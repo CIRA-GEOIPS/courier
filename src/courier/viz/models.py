@@ -30,7 +30,6 @@ class DataMonitorInfo:
     failure_count: float = 0.0
     last_scan_age_seconds: float = 0.0
     scan_duration_p50: float = 0.0
-    scan_duration_p95: float = 0.0
 
 
 @dataclass
@@ -51,10 +50,7 @@ class JobBuilderInfo:
     active_groups: float = 0.0
     jobs_discarded_rate: float = 0.0
     processing_duration_p50: float = 0.0
-    processing_duration_p95: float = 0.0
-    processing_duration_p99: float = 0.0
     files_per_job_p50: float = 0.0
-    files_per_job_p95: float = 0.0
 
 
 @dataclass
@@ -73,11 +69,8 @@ class DispatcherInfo:
     success_ratio: float = 0.0
     active_jobs: float = 0.0
     execution_duration_p50: float = 0.0
-    execution_duration_p95: float = 0.0
-    execution_duration_p99: float = 0.0
     logs_emitted_rate: float = 0.0
     queue_wait_p50: float = 0.0
-    queue_wait_p95: float = 0.0
 
 
 @dataclass
@@ -121,8 +114,6 @@ class RoutingInfo:
     dispatcher_identifier: str = ""
     jobs_consumed_rate: float = 0.0
     dispatch_latency_p50: float = 0.0
-    dispatch_latency_p95: float = 0.0
-    dispatch_latency_p99: float = 0.0
     queue_depth: float = 0.0
 
 

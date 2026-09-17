@@ -21,7 +21,6 @@ from courier.interfaces import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
 
     from courier.interfaces.discovery import (
         ClassPluginRegistry,
@@ -109,13 +108,6 @@ _TYPE_STYLES: dict[str, str] = {
     "dispatchers": "green",
     "job_builders": "yellow",
 }
-
-
-def _discover_plugins() -> Iterator[tuple[str, str]]:
-    """Discover all plugins by querying each interface's registry."""
-    for kind, registry in PLUGIN_REGISTRIES.items():
-        for name in registry.names():
-            yield kind, name
 
 
 def _config_references_plugin(

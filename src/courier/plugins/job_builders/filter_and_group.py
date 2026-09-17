@@ -198,7 +198,6 @@ class FilterAndGroupJobGroup(JobGroup):
         super().__init__(group_name, validated)
         self.validated_config = validated
         self.filters = validated.filters
-        self.number_of_files = validated.files_per_job
         self.time_grouping = validated.time_grouping
         self.job = make_job_class(validated)
 

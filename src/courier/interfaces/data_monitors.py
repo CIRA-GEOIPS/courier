@@ -26,6 +26,7 @@ from courier.tracing import (
     ATTR_FILE_HOSTNAME,
     ATTR_FILE_PATH,
     ATTR_FILE_SOURCE,
+    ATTR_NUM_MATCHERS,
     ATTR_PLUGIN_FAMILY,
     ATTR_PLUGIN_NAME,
     ATTR_PLUGIN_VERSION,
@@ -94,7 +95,7 @@ class DataMonitorBasePlugin(ServicePlugin):
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "data_monitor.add_metadata",
-            attributes={"courier.num_matchers": len(self.metadata_matchers)},
+            attributes={ATTR_NUM_MATCHERS: len(self.metadata_matchers)},
         ):
             return apply_metadata_from_configs(
                 file_obj=file,

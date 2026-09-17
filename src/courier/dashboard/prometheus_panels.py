@@ -97,24 +97,6 @@ YAXIS_SECONDS = "s"
 # Common Thresholds
 # ==========================================================================
 
-THRESHOLD_OK: list[Threshold] = [
-    Threshold("green", 0, 0.0),
-    Threshold("red", 1, 1.0),
-]
-"""Binary green/red threshold for health-style metrics."""
-
-THRESHOLD_WARN: list[Threshold] = [
-    Threshold("green", 0, 0.0),
-    Threshold("yellow", 1, 80.0),
-    Threshold("red", 2, 95.0),
-]
-"""Green/yellow/red escalation for metrics where *higher is worse*.
-
-Not for success rates: the steps escalate as the value rises, so a 99%
-success rate would render red and a 10% one green.  Use
-:data:`THRESHOLD_SUCCESS_RATIO` for those.
-"""
-
 THRESHOLD_SUCCESS_RATIO: list[Threshold] = [
     Threshold("red", 0, 0.0),
     Threshold("yellow", 1, 0.80),
@@ -189,11 +171,6 @@ def _advance(gs: _GenState, height: int) -> int:
     return cur
 
 
-def _peek_y(gs: _GenState) -> int:
-    """Return current y without advancing the cursor."""
-    return gs.y
-
-
 def _next_id(gs: _GenState) -> int:
     """Return next unique panel ID and increment the counter."""
     cur = gs.pid
@@ -237,31 +214,6 @@ def _rate(metric: str, labels: str = "", interval: str = "5m") -> str:
     """
     selector = f"{{{labels}}}" if labels else ""
     return f"rate({metric}{selector}[{interval}])"
-
-
-def _hq(
-    metric: str,
-    quantile: float,
-    labels: str = "",
-    interval: str = "5m",
-) -> str:
-    """Build a ``histogram_quantile`` query for a histogram metric.
-
-    Parameters
-    ----------
-    metric : str
-        Histogram base name (without ``_bucket`` suffix).
-    quantile : float
-        Target quantile (0.0-1.0).
-    labels : str
-        Comma-separated label matchers.
-    interval : str
-        Rate lookback window.
-    """
-    selector = f"{{{labels}}}" if labels else ""
-    return (
-        f"histogram_quantile({quantile}, rate({metric}_bucket{selector}[{interval}]))"
-    )
 
 
 def _avg_rate(
