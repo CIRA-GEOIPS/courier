@@ -198,10 +198,6 @@ class JobGroup:
         # sequence has advanced past zero.
         self._open_job_ids: dict[str, str] = {}
 
-    def ready_jobs(self) -> list[Job]:
-        """Return list of ready jobs."""
-        return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
-
     def adopt_job(self, job_id: str) -> None:
         """Register a job that arrived from outside as its bucket's open job.
 

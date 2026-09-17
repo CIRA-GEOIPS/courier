@@ -169,12 +169,6 @@ class TestEmit:
 
         assert service.emit.call_count == 2
 
-    def test_publishes_with_confirm(self, service: MagicMock) -> None:
-        """Jobs are published with publisher confirms, not fire-and-forget."""
-        builder = _builder(service)
-        builder.emit(Job("n", "job-1", {}), ["dp-a"])
-        assert service.emit.call_args.kwargs["confirm"] is True
-
 
 # ── claim / pop lifecycle ───────────────────────────────────────────────────
 

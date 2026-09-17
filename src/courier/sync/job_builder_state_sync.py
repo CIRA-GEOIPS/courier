@@ -58,9 +58,12 @@ if TYPE_CHECKING:
 #: side when two replicas interleave. Doing the merge inside the script makes
 #: the whole read-decide-write one atomic step.
 #:
-#: The script is deliberately minimal: it merges the ``files`` list, keeps the
-#: larger ``last_modified``, and prefers the existing value for every other
-#: field so an identifier or correlation id cannot flip-flop between writers.
+#: The script is deliberately minimal, and reconciles exactly two fields: it
+#: merges the ``files`` list and keeps the larger ``last_modified``. Every
+#: other field is last-writer-wins, matching ``_merge_job``'s local behaviour.
+#: Nothing downstream depends on those scalars agreeing between replicas --
+#: the job the winner dispatches is its own in-memory ``Job``, not this
+#: payload -- so carrying them over would be code with no reader.
 _UNION_JOB_LUA = """
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if not existing then
@@ -144,7 +147,7 @@ class JobBuilderStateSync:
         self._pubsub: redis.client.PubSub | None = None
         self._script: Any = None
         self._scripting_unavailable = False
-        self._on_merged: Callable[[JobGroup], None] | None = None
+        self._on_merged: Callable[[JobGroup], object] | None = None
         self._pushes = STATE_SYNC_PUSHES
         self._applies = STATE_SYNC_APPLIES
         self._claims = STATE_SYNC_EMIT_CLAIMS
@@ -191,13 +194,15 @@ class JobBuilderStateSync:
             f"State-sync Redis connected: {cfg.host}:{cfg.port} db={cfg.db}",
         )
 
-    def set_merge_callback(self, callback: Callable[[JobGroup], None]) -> None:
+    def set_merge_callback(self, callback: Callable[[JobGroup], object]) -> None:
         """Register what to run after a peer's update is merged in.
 
         Parameters
         ----------
-        callback : Callable[[JobGroup], None]
+        callback : Callable[[JobGroup], object]
             Invoked with the affected group once a merge changed local state.
+            Any return value is ignored; the emit path returns the jobs it
+            published, which no caller here needs.
         """
         self._on_merged = callback
 

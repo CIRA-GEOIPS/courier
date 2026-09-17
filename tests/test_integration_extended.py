@@ -9,7 +9,7 @@ import contextlib
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +39,8 @@ from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from courier.types.job import Job
+
+from tests._helpers import poll_until, stays_false
 
 # ---------------------------------------------------------------------------
 # Helpers (reused pattern from test_integration.py)
@@ -93,44 +95,6 @@ def _shutdown_service(service: Service, thread: threading.Thread) -> None:
             info.plugin._stop_event.set()
     thread.join(timeout=30)
 
-
-
-def _poll_until(
-    predicate: Callable[[], bool],
-    timeout: float = 30.0,
-    interval: float = 0.2,
-) -> bool:
-    """Block until *predicate* is true or *timeout* elapses.
-
-    Returns ``True`` when the condition was met. Prefer this over a fixed
-    sleep: a sleep long enough to be reliable on a loaded CI box is wasted
-    time on every other run, and one short enough to be quick is flaky.
-    """
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if predicate():
-            return True
-        time.sleep(interval)
-    return False
-
-
-def _stays_false(
-    predicate: Callable[[], bool],
-    window: float = 3.0,
-    interval: float = 0.2,
-) -> bool:
-    """Return ``True`` if *predicate* stays false for the whole *window*.
-
-    For asserting a negative — that something does *not* happen — where a
-    settle period genuinely is required. Bails out early on first violation
-    so a real failure is reported immediately rather than after the window.
-    """
-    deadline = time.time() + window
-    while time.time() < deadline:
-        if predicate():
-            return False
-        time.sleep(interval)
-    return True
 
 
 def _make_service_config() -> ServiceConfig:
@@ -494,10 +458,10 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
         def _line_count() -> int:
             return len(processed_log.read_text().splitlines())
 
-        assert _poll_until(lambda: _line_count() > line_count_before), (
+        assert poll_until(lambda: _line_count() > line_count_before), (
             "dispatcher never processed the first job"
         )
-        assert _stays_false(lambda: _line_count() > line_count_before + 1), (
+        assert stays_false(lambda: _line_count() > line_count_before + 1), (
             "duplicate job was processed instead of being skipped"
         )
 
@@ -754,7 +718,7 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
 
         # Service B must never pick it up; watch for a window rather than
         # sleeping and checking once.
-        assert _stays_false(lambda: (output_b / "ns_only.nc").exists()), (
+        assert stays_false(lambda: (output_b / "ns_only.nc").exists()), (
             "Service B should NOT have processed file from Service A's queue"
         )
     finally:
@@ -851,7 +815,7 @@ def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
                 if info.restart_count > 0
             )
 
-        assert _poll_until(_restarted_plugins_left_stopped, timeout=10), (
+        assert poll_until(_restarted_plugins_left_stopped, timeout=10), (
             "restarted plugin stayed STOPPED"
         )
         plugins = service._plugin_manager.get_plugins()

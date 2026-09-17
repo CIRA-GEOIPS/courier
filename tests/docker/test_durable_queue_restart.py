@@ -262,9 +262,9 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
     files can therefore only have come out of the queue.
 
     Reverted check: in ``src/courier/broker/kombu.py``, set ``auto_delete`` to
-    ``True`` in BOTH ``declare_bound_queue`` and
-    ``MessageBrokerManager._file_found_queue_config``, and rebuild the image.
-    The two declarations still agree, so there is no 406 and no 405; the
+    ``True`` in ``MessageBrokerManager._file_found_queue_config`` -- now the
+    only place the file-found queue's properties are written -- and rebuild the
+    image. Every declaration still agrees, so there is no 406 and no 405; the
     builder attaches and the warm-up runs exactly as it does now. The broker
     then deletes the queue when its last consumer disconnects, which is the
     #44 topology itself: the zero-consumer gate below reads ``-1``, and the run

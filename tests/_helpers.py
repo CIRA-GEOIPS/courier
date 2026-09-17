@@ -1,9 +1,8 @@
 """Shared waiting helpers for tests that observe asynchronous behaviour.
 
-These were copied verbatim into three integration modules before the container
-tier needed them a fourth time.  Prefer them over a fixed sleep: a sleep long
-enough to be reliable on a loaded CI box wastes time on every other run, and a
-sleep short enough to be quick is flaky.
+Prefer them over a fixed sleep: a sleep long enough to be reliable on a loaded
+CI box wastes time on every other run, and a sleep short enough to be quick is
+flaky.
 """
 
 from __future__ import annotations

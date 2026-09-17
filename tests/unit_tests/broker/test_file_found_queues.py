@@ -17,6 +17,9 @@ from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
+import kombu
+
+from courier.broker.kombu import declare_fanout_exchange, declare_queue
 from courier.config import ServiceConfig
 from courier.constants import DISPATCHER_QUEUE, FILE_FOUND_EXCHANGE
 from courier.errors import ConfigurationError
@@ -240,31 +243,55 @@ def test_distinct_builders_each_receive_every_file() -> None:
             worker.join(timeout=10)
 
 
-def test_declare_bound_queue_passes_durable_kwargs() -> None:
+def test_the_file_found_queue_is_durable_and_shared() -> None:
     """The AMQP flags are asserted structurally, because memory ignores them.
 
     The in-memory transport drops ``durable``/``exclusive``/``auto_delete`` on
-    the floor, so only a kwargs-level assertion can pin what a real broker
-    would be told -- and this is the tier mutation testing scores.
+    the floor, so only a structural assertion can pin what a real broker would
+    be told -- and this is the tier mutation testing scores. The flags are
+    ``kombu.Queue`` class defaults rather than explicit kwargs, so the
+    assertion is on the resulting object: asserting the call kwargs would pass
+    while proving nothing.
     """
-    from courier.broker import kombu as broker
+    conn = kombu.Connection("memory://")
+    exchange = declare_fanout_exchange(conn, "ns-FilesFoundExchange")
+    queue = declare_queue(conn, "ns-FilesFound-b", exchange=exchange)
 
-    conn = MagicMock()
-    exchange = MagicMock()
-    exchange.name = "ns-FilesFoundExchange"
+    assert queue.durable is True, "a transient queue loses the backlog (#44)"
+    assert queue.exclusive is False, "an exclusive queue dies with its consumer"
+    assert queue.auto_delete is False, "auto-delete is the #44 topology"
+    # Compared by name: kombu rebinds the Exchange to the queue's channel.
+    assert queue.exchange.name == exchange.name
+    assert queue.exchange.type == "fanout"
+    assert queue.routing_key == ""
 
-    with patch.object(broker.kombu, "Queue") as queue_cls:
-        broker.declare_bound_queue(conn, exchange, "ns-FilesFound-b")
 
-    queue_cls.assert_called_once_with(
-        "ns-FilesFound-b",
-        exchange=exchange,
-        routing_key="",
-        durable=True,
-        exclusive=False,
-        auto_delete=False,
-        channel=ANY,
+def test_the_consume_declare_matches_the_registered_config() -> None:
+    """Two descriptions of one durable queue are what answers 406.
+
+    ``get_connection_context`` declares the file-found queue from
+    ``_file_found_queue_config``; the consumer redeclares it on its own
+    connection. A durable queue's properties are compared on redeclaration, so
+    if the two ever disagree the broker refuses the second. They used to be
+    written out separately, in ``declare_bound_queue`` and in that config.
+    """
+    manager = _service()._broker_manager
+    registered = manager._file_found_queue_config()
+
+    conn = kombu.Connection("memory://")
+    exchange = declare_fanout_exchange(
+        conn,
+        manager.get_queue_name(FILE_FOUND_EXCHANGE),
     )
+    consumed = declare_queue(conn, "ns-FilesFound-b", exchange=exchange)
+
+    assert consumed.durable == registered["durable"]
+    assert consumed.exclusive == registered["exclusive"]
+    assert consumed.auto_delete == registered["auto_delete"]
+    assert consumed.routing_key == registered["routing_key"]
+    assert consumed.exchange.name == registered["exchange"].name
+    assert consumed.exchange.type == registered["exchange"].type
+    assert consumed.exchange.durable == registered["exchange"].durable
 
 
 def test_the_exclusive_queue_helper_is_gone() -> None:

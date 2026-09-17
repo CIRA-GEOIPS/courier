@@ -59,29 +59,14 @@ jobs:
           tags: courier:ci
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-      - name: Build the test image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: test
-          platforms: ${{ matrix.platform }}
-          load: true
-          push: false
-          tags: courier:ci-test
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-      - name: Smoke the runtime image
-        run: |
-          set -euo pipefail
-          docker run --rm courier:ci
-          docker run --rm courier:ci courier --version
-          docker run --rm courier:ci /bin/bash -c 'echo bash-ok'
-          docker run --rm -v "$PWD/config.yaml:/cfg/config.yaml:ro" \
-            courier:ci courier validate /cfg/config.yaml
-      - name: Run the repository suite inside the image
-        run: |
-          docker run --rm courier:ci-test python -m pytest -q --no-cov
-          docker run --rm courier:ci-test python -m pytest -m integration -q --no-cov
+      # The repository suite is NOT re-run inside an image here. It ran in
+      # pytest.yaml against three Python versions, and the only image worth
+      # running it in would be runtime + the test extra + the repo tree --
+      # which is not what ships, so a missing runtime dependency would be
+      # masked rather than exposed. test_image_smoke.py checks the shipped
+      # dependency set against the real image instead. The four `docker run`
+      # smoke commands that used to live here are likewise a strict subset of
+      # tests/docker/test_image_smoke.py, which runs below in this same job.
       - name: Set up Python for the container tier
         uses: actions/setup-python@v6
         with:

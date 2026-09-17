@@ -74,37 +74,3 @@ WORKDIR /work
 # src/courier/__main__.py anywhere in the tree.
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["courier", "--help"]
-
-# ---------------------------------------------------------------------------
-# test -- runtime plus the test extra and the repo tree. NEVER published.
-#
-# Declared FROM runtime so the runtime layers underneath are byte-identical to
-# what ships. CI overrides that base with the PUSHED DIGEST, which is what
-# makes "the tested artifact is the published artifact" a fact, not a hope.
-# ---------------------------------------------------------------------------
-FROM builder AS test-builder
-
-RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    pip install --prefix=/install-test ".[test]"
-
-FROM runtime AS test
-
-USER root
-
-COPY --from=test-builder /install-test /usr/local
-COPY . /courier
-
-# The suite writes a pytest cache into the tree it runs from, and the runtime
-# stage already dropped to an unprivileged user.
-RUN chown -R courier:courier /courier
-
-WORKDIR /courier
-USER courier
-
-# ---------------------------------------------------------------------------
-# default -- BuildKit builds the LAST stage when --target is omitted, and a
-# bare `docker build .` must produce the PUBLISHED artifact, not the test
-# image. `test` has to be declared after `runtime` because it derives from it,
-# so this alias restores the right default. It adds no layers.
-# ---------------------------------------------------------------------------
-FROM runtime AS default

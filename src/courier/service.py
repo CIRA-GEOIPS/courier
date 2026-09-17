@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 from courier.broker.kombu import (
     MessageBrokerManager,
-    declare_bound_queue,
-    declare_dead_letter_queue,
     declare_fanout_exchange,
     declare_queue,
     publish,
@@ -24,7 +22,6 @@ from courier.constants import (
     dead_letter_queue_for,
     file_found_queue_for,
     job_ready_queue_for,
-    namespaced_queue_name,
 )
 from courier.errors import ConfigurationError
 from courier.managers.plugin_manager import PluginManager
@@ -147,8 +144,11 @@ class Service:
         return self._config
 
     @log_execution
-    def emit(self, queue: str, message: str, confirm: bool = False) -> None:
+    def emit(self, queue: str, message: str) -> None:
         """Publish a message to a message broker queue.
+
+        Blocks until the broker confirms the message; see
+        :func:`courier.broker.kombu.publish`.
 
         Parameters
         ----------
@@ -156,10 +156,6 @@ class Service:
             Name of the queue to publish to.
         message : str
             Message content to publish.
-        confirm : bool, optional
-            When ``True`` and the broker supports it (AMQP), wait for a
-            publisher confirm before returning. No-op on memory transport.
-            Default ``False``.
 
         Raises
         ------
@@ -189,7 +185,6 @@ class Service:
                         conn,
                         exchange,
                         message,
-                        confirm=confirm,
                         headers=w3c_headers,
                     )
                 # Counted per bound queue, which is what each consumer
@@ -219,7 +214,7 @@ class Service:
                 },
             ):
                 w3c_headers = inject_trace_headers()
-                publish(conn, q, message, confirm=confirm, headers=w3c_headers)
+                publish(conn, q, message, headers=w3c_headers)
             BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
 
     def _file_found_queue_names(self) -> tuple[str, ...]:
@@ -310,21 +305,78 @@ class Service:
                     "the consumer disconnects and loses every file published "
                     "while it is away.",
                 )
-            return self._consume_file_found(subscriber, effective_stop, on_subscribed)
-        return self._consume_direct(queue, effective_stop, on_subscribed)
+            exchange_name = self._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
+            queue_name = self._broker_manager.add_file_found_queue(subscriber)
 
-    def _consume_file_found(
+            def declare_bound(conn: Any) -> Any:
+                # Redeclared on this connection as well: the manager declares a
+                # registered queue only on the first connection it opens, so a
+                # queue deleted meanwhile would stay gone for the life of the
+                # process. durable / non-exclusive / non-auto-delete are
+                # kombu.Queue defaults, so the fanout binding is the only kwarg
+                # needed -- spelling the rest out again is what let this drift
+                # from MessageBrokerManager._file_found_queue_config().
+                return declare_queue(
+                    conn,
+                    queue_name,
+                    action="declaring file-found queue",
+                    exchange=declare_fanout_exchange(conn, exchange_name),
+                )
+
+            return self._consume(
+                declare_bound,
+                queue_name,
+                {
+                    "messaging.system": "amqp",
+                    "messaging.destination": exchange_name,
+                    "messaging.destination_kind": "fanout",
+                    "messaging.rabbitmq.destination.queue": queue_name,
+                },
+                effective_stop,
+                on_subscribed,
+            )
+        direct_name = self._broker_manager.add_queue(
+            queue,
+            durable=True,
+            exclusive=False,
+        )
+        return self._consume(
+            lambda conn: declare_queue(conn, direct_name),
+            direct_name,
+            {
+                "messaging.system": "amqp",
+                "messaging.destination": direct_name,
+            },
+            effective_stop,
+            on_subscribed,
+        )
+
+    def _consume(
         self,
-        subscriber: str,
+        declare: Callable[[Any], Any],
+        queue_name: str,
+        span_attributes: dict[str, str],
         stop_event: threading.Event,
         on_subscribed: Callable[[], None] | None,
     ) -> Generator[tuple[str, Any], None, None]:
-        """Consume one builder's durable queue bound to the fanout exchange.
+        """Open a connection, declare the topology, and relay its messages.
+
+        One generator for both queue families. They differ only in what
+        *declare* does and in the span attributes; everything after -- the
+        dead-letter queue, the subscription signal, the relay loop -- is
+        identical, and was duplicated.
 
         Parameters
         ----------
-        subscriber : str
-            Job builder identifier naming the queue.
+        declare : Callable[[Any], Any]
+            Declares the queue on the open connection and returns it. Runs
+            inside the connection context, so a declaration failure is raised
+            before *on_subscribed* claims the consumer is attached.
+        queue_name : str
+            Namespaced queue name, for logging, metric labels and the
+            dead-letter name.
+        span_attributes : dict[str, str]
+            Attributes for the receive span.
         stop_event : threading.Event
             Ends the loop once set.
         on_subscribed : Callable[[], None] or None
@@ -335,22 +387,15 @@ class Service:
         tuple[str, Any]
             ``(body, parent_ctx)`` per message.
         """
-        exchange_name = self._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
-        queue_name = self._broker_manager.add_file_found_queue(subscriber)
         with self._broker_manager.get_connection_context() as conn:
-            exchange = declare_fanout_exchange(conn, exchange_name)
-            # Redeclared explicitly on this connection as well: the manager
-            # only declares a registered queue on the first connection it
-            # opens, so a queue deleted meanwhile would otherwise stay gone
-            # for the life of the process.
-            q = declare_bound_queue(conn, exchange, queue_name)
-            dead_letter = declare_dead_letter_queue(
+            queue = declare(conn)
+            dead_letter = declare_queue(
                 conn,
                 dead_letter_queue_for(queue_name),
+                action="declaring dead-letter queue",
             )
             self._logger.info(
-                f"Consuming file-found messages from durable queue "
-                f"{queue_name!r} bound to {exchange_name!r} "
+                f"Consuming from {queue_name!r} "
                 f"(prefetch={self._config.broker_prefetch_count}, "
                 f"max_redeliveries={self._config.broker_max_redeliveries})",
             )
@@ -358,64 +403,11 @@ class Service:
                 on_subscribed()
             yield from self._relay(
                 conn,
-                q,
+                queue,
                 dead_letter,
                 stop_event,
                 queue_name,
-                {
-                    "messaging.system": "amqp",
-                    "messaging.destination": exchange_name,
-                    "messaging.destination_kind": "fanout",
-                    "messaging.rabbitmq.destination.queue": queue_name,
-                },
-            )
-
-    def _consume_direct(
-        self,
-        queue: str,
-        stop_event: threading.Event,
-        on_subscribed: Callable[[], None] | None,
-    ) -> Generator[tuple[str, Any], None, None]:
-        """Consume a directly-addressed queue.
-
-        Parameters
-        ----------
-        queue : str
-            Base queue name, namespaced by the broker manager.
-        stop_event : threading.Event
-            Ends the loop once set.
-        on_subscribed : Callable[[], None] or None
-            Called once the queue is declared.
-
-        Yields
-        ------
-        tuple[str, Any]
-            ``(body, parent_ctx)`` per message.
-        """
-        queue_name = self._broker_manager.add_queue(
-            queue,
-            durable=True,
-            exclusive=False,
-        )
-        self._logger.debug(f"Consuming from queue: {queue_name}")
-        with self._broker_manager.get_connection_context() as conn:
-            q = declare_queue(conn, queue_name, durable=True)
-            dead_letter = declare_dead_letter_queue(
-                conn,
-                dead_letter_queue_for(queue_name),
-            )
-            if on_subscribed is not None:
-                on_subscribed()
-            yield from self._relay(
-                conn,
-                q,
-                dead_letter,
-                stop_event,
-                queue_name,
-                {
-                    "messaging.system": "amqp",
-                    "messaging.destination": queue_name,
-                },
+                span_attributes,
             )
 
     def _relay(  # noqa: PLR0913, PLR0917 -- one consumer's declared topology
@@ -659,7 +651,6 @@ class Service:
             If any routing invariant is violated.
         """
         self._auto_discover_routing()
-        self._validate_queue_name_lengths()
         self._validate_dispatch_targets()
         self._propagate_builder_targets()
         self._predeclare_target_queues()
@@ -716,25 +707,6 @@ class Service:
                 existing = getattr(info.plugin, "targets", ())
                 discovered_builders[registry_key] = tuple(existing)
         return discovered_dispatchers, discovered_builders
-
-    def _validate_queue_name_lengths(self) -> None:
-        """Reject identifiers whose namespaced queue names are too long.
-
-        Checked for both queue families, and against the *namespaced* name,
-        because that is what the broker sees. Runs before routing validation
-        so an oversized name is reported as a configuration problem rather
-        than surfacing later as a broker error.
-
-        Raises
-        ------
-        InvalidIdentifierError
-            If any namespaced queue name exceeds the AMQP limit, or an
-            identifier is malformed.
-        """
-        for ident in sorted(self._dispatcher_identifiers):
-            namespaced_queue_name(self.namespace, job_ready_queue_for(ident))
-        for ident in sorted(self._builder_identifiers):
-            namespaced_queue_name(self.namespace, file_found_queue_for(ident))
 
     def _propagate_builder_targets(self) -> None:
         """Push preflight-resolved targets back into each builder plugin instance.

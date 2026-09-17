@@ -24,12 +24,11 @@ from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobGroup,
 )
-from courier.tracing import ATTR_FILE_PATH, ATTR_FILE_SOURCE, get_tracer
 
 if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.file import FrozenFile
-    from courier.types.job import Job, JobGroup
+    from courier.types.job import JobGroup
 
 
 class RouteConfig(BaseModel, frozen=True):
@@ -130,6 +129,8 @@ class MetadataRouterBuilder(JobBuilder):
     interface: ClassVar[str] = "job_builders"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "metadata_router"
+    #: Routing is worth telling apart from plain accumulation in a trace.
+    _file_span_name: ClassVar[str] = "metadata_router.route_file"
     version: ClassVar[str] = "1"
 
     def __init__(
@@ -187,50 +188,7 @@ class MetadataRouterBuilder(JobBuilder):
             return False
         return self._reaper_thread is None or self._reaper_thread.is_alive()
 
-    def handle_incoming_files(self) -> None:
-        """Loop over files, applying first-match routing and unmatched metrics."""
-        import time  # noqa: PLC0415
-
-        from courier.constants import FILE_FOUND_EXCHANGE  # noqa: PLC0415
-
-        tracer = get_tracer(__name__)
-        self._logger.debug("metadata_router starting file consumption")
-        for file_string, parent_ctx in self.parent_service.consume(
-            FILE_FOUND_EXCHANGE,
-            stop_event=self._stop_event,
-            on_subscribed=self._subscribed.set,
-            subscriber=self.identifier,
-        ):
-            # Parsed before the span opens: the span name is only bound inside
-            # the with-block, so a guard placed after it could not skip the
-            # message without referencing an unbound name.
-            file = self._parse_file_message(str(file_string))
-            if file is None:
-                continue
-            start_time = time.time()
-            with tracer.start_as_current_span(
-                "metadata_router.route_file",
-                context=parent_ctx,
-            ) as span:
-                self._files_received.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
-                ).inc()
-                span.set_attribute(ATTR_FILE_PATH, str(file.file) if file.file else "")
-                span.set_attribute(ATTR_FILE_SOURCE, file.source or "")
-                self._route_file(file)
-                self._file_processing_duration.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
-                ).observe(time.time() - start_time)
-                self._active_job_groups.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
-                ).set(
-                    len(self.job_groups),
-                )
-
-    def _route_file(self, file: FrozenFile) -> None:
+    def _dispatch_file(self, file: FrozenFile) -> None:
         """Send *file* to the first route that claims it.
 
         Parameters
@@ -284,27 +242,8 @@ class MetadataRouterBuilder(JobBuilder):
                 self._reap_group(job_group)
 
     def _reap_group(self, job_group: JobGroup) -> None:
-        """Emit and delete ready jobs in *job_group* under its lock."""
-        lock = self._group_locks.get(job_group.name)
-        if lock is None:
-            return
-        with lock:
-            ready_ids = [jid for jid, job in job_group.jobs.items() if job.ready()]
-            emitted: list[Job] = []
-            for jid in ready_ids:
-                emitted.append(job_group.jobs.pop(jid))
-                # Must bump the overflow counter on every removal, exactly as
-                # FilterAndGroupJobBuilder._reap_group does. Skipping it lets a
-                # later file re-derive an ID that is still live in self.jobs,
-                # which JobGroup.add_file would then overwrite.
-                job_group._record_job_emitted(jid)
-        targets = self._targets_for_group(job_group)
-        for job in emitted:
-            self._logger.info(
-                f"Timeout reaper emitting route job {job.identifier} "
-                f"with {len(job.files)} files",
-            )
-            self.emit(job, targets)
+        """Emit ready jobs from *job_group*, counting each as a timeout emit."""
+        for _job in self._emit_ready_jobs(job_group, reason="hit its window"):
             JOB_BUILDER_TIMEOUT_EMISSIONS.labels(
                 job_builder_name=self.name,
                 job_builder_identifier=self.identifier,

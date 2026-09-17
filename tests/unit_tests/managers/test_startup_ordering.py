@@ -1,204 +1,29 @@
-"""Startup-ordering guarantees for the file-found exchange.
+"""``Service.consume`` signals its binding before it reads anything.
 
-Consumers are started before producers so the first files are processed as
-they arrive rather than sitting on the broker, and so a consumer that cannot
-declare its queue is visible before producers add load.
+Plugins used to be started consumers-first, with the manager blocking until
+each reported its subscription, so that no data monitor could publish into a
+fanout exchange with nothing bound to it. That ordering is gone: each builder
+now consumes a durable ``FilesFound-<identifier>`` queue that every container
+declares during preflight, so a file published before its builder attaches
+waits on the broker instead of being discarded.
 
-This ordering used to be what prevented data loss, because each builder bound
-an exclusive queue that existed only while it was connected. It no longer is:
-each builder now consumes a durable ``FilesFound-<identifier>`` queue that
-every container declares during preflight, so a file published before a
-builder attaches waits on the broker instead of being discarded. Survival
-across a builder being down is covered by ``tests/rabbitmq/``, which needs a
-real broker -- the in-memory transport ignores exclusivity entirely and cannot
-express it.
-
-These tests pin the invariant rather than the timing. The natural race window
-is short enough that a wall-clock test passes on an idle machine whether or
-not the guard exists, which would make it worse than no test at all.
+What survives is the signal itself. ``wait_until_subscribed`` and the
+``on_subscribed`` callback are still how the broker-backed tests in
+``tests/rabbitmq/`` synchronise on a consumer being attached, and a callback
+that fired *after* the first message would be useless for that. Survival
+across a builder being down is covered there too, because it needs a real
+broker -- the in-memory transport ignores exclusivity entirely.
 """
 
 from __future__ import annotations
 
 import threading
 import time
-from typing import Any, ClassVar
-
-import pytest
+import uuid
 
 from courier.config import ServiceConfig
-from courier.constants import PluginRunState
-from courier.managers.plugin_manager import PluginManager
-
-
-class _FakePlugin:
-    """Minimal plugin double implementing just what PluginManager touches."""
-
-    version: ClassVar[str] = "0"
-
-    def __init__(self, name: str, interface: str, timeline: list[str]) -> None:
-        self.name = name
-        self.identifier = name
-        self.interface = interface
-        self._timeline = timeline
-        self._subscribed = threading.Event()
-        self.started = threading.Event()
-
-    def start(self) -> None:
-        self._timeline.append(f"start:{self.name}")
-        self.started.set()
-
-    def stop(self) -> None:
-        pass
-
-    def is_healthy(self) -> bool:
-        return True
-
-    def get_metrics(self) -> dict[str, Any]:
-        return {}
-
-
-class _FakeConsumer(_FakePlugin):
-    """A consumer that binds to its queue *after* a delay, like a real one."""
-
-    def __init__(
-        self,
-        name: str,
-        timeline: list[str],
-        bind_delay: float = 0.0,
-    ) -> None:
-        super().__init__(name, "job_builders", timeline)
-        self._bind_delay = bind_delay
-
-    def start(self) -> None:
-        super().start()
-
-        def _bind() -> None:
-            time.sleep(self._bind_delay)
-            self._timeline.append(f"subscribed:{self.name}")
-            self._subscribed.set()
-
-        threading.Thread(target=_bind, daemon=True).start()
-
-    def wait_until_subscribed(self, timeout: float) -> bool:
-        return self._subscribed.wait(timeout=timeout)
-
-
-class _FakeProducer(_FakePlugin):
-    """A data monitor, which publishes as soon as it starts."""
-
-    def __init__(self, name: str, timeline: list[str]) -> None:
-        super().__init__(name, "data_monitors", timeline)
-
-
-@pytest.fixture
-def manager_config() -> ServiceConfig:
-    """Config with a health-check interval long enough to cover binding."""
-    return ServiceConfig(
-        broker_url="memory://",
-        prometheus_port=0,
-        plugin_health_check_interval=3,
-        tracing_enabled=False,
-    )
-
-
-def _make_manager(config: ServiceConfig, plugins: list[_FakePlugin]) -> PluginManager:
-    manager = PluginManager(config, parent_service=None)
-    for plugin in plugins:
-        manager.register_plugin(type(plugin), {}, identifier=plugin.name)
-        # register_plugin instantiates the class; swap in our prepared double.
-        manager._plugins[plugin.name].plugin = plugin  # noqa: SLF001
-    return manager
-
-
-class TestProducerConsumerOrdering:
-    """Producers must not start until every consumer has bound its queue."""
-
-    def test_consumers_subscribe_before_producers_start(
-        self,
-        manager_config: ServiceConfig,
-    ) -> None:
-        """The whole point: no producer runs while the fanout has no binding."""
-        timeline: list[str] = []
-        consumer = _FakeConsumer("builder", timeline, bind_delay=0.25)
-        producer = _FakeProducer("monitor", timeline)
-
-        manager = PluginManager(manager_config, parent_service=None)
-        # Registration order deliberately puts the producer first — that is
-        # how configs are written (monitor, builder, dispatcher) and is what
-        # made the race likely rather than rare.
-        for plugin in (producer, consumer):
-            manager._plugins[plugin.name] = _state_info(plugin)  # noqa: SLF001
-
-        try:
-            manager.start()
-        finally:
-            manager._state = PluginRunState.STOPPED  # noqa: SLF001
-
-        assert "subscribed:builder" in timeline, "consumer never bound"
-        assert timeline.index("subscribed:builder") < timeline.index(
-            "start:monitor",
-        ), f"producer started before consumer bound: {timeline}"
-
-    def test_startup_proceeds_when_a_consumer_never_binds(
-        self,
-        manager_config: ServiceConfig,
-    ) -> None:
-        """A stuck consumer must not block the service from coming up.
-
-        The wait is bounded; the manager logs a warning and starts producers
-        anyway rather than hanging forever.
-        """
-        timeline: list[str] = []
-        stuck = _FakeConsumer("stuck-builder", timeline, bind_delay=999.0)
-        producer = _FakeProducer("monitor", timeline)
-
-        config = ServiceConfig(
-            broker_url="memory://",
-            prometheus_port=0,
-            plugin_health_check_interval=1,
-            tracing_enabled=False,
-        )
-        manager = PluginManager(config, parent_service=None)
-        for plugin in (stuck, producer):
-            manager._plugins[plugin.name] = _state_info(plugin)  # noqa: SLF001
-
-        started = time.time()
-        try:
-            manager.start()
-        finally:
-            manager._state = PluginRunState.STOPPED  # noqa: SLF001
-        elapsed = time.time() - started
-
-        assert producer.started.is_set(), "producer never started"
-        assert elapsed < 30, f"startup blocked on a stuck consumer ({elapsed:.1f}s)"
-
-    def test_partition_by_role_classifies_every_interface(
-        self,
-        manager_config: ServiceConfig,
-    ) -> None:
-        """Only data monitors are producers; everything else consumes."""
-        timeline: list[str] = []
-        plugins = [
-            _FakeProducer("dm", timeline),
-            _FakeConsumer("jb", timeline),
-            _FakePlugin("dp", "dispatchers", timeline),
-        ]
-        manager = PluginManager(manager_config, parent_service=None)
-        for plugin in plugins:
-            manager._plugins[plugin.name] = _state_info(plugin)  # noqa: SLF001
-
-        consumers, producers = manager._partition_by_role()  # noqa: SLF001
-
-        assert [p.plugin.name for p in producers] == ["dm"]
-        assert sorted(c.plugin.name for c in consumers) == ["dp", "jb"]
-
-
-def _state_info(plugin: _FakePlugin):
-    """Build a PluginStateInfo wrapping *plugin* without touching the registry."""
-    from courier.managers.plugin_manager import PluginStateInfo
-
-    return PluginStateInfo(plugin=plugin)  # type: ignore[arg-type]
+from courier.constants import FILE_FOUND_EXCHANGE
+from courier.service import Service
 
 
 class TestConsumeSubscriptionSignal:
@@ -210,11 +35,6 @@ class TestConsumeSubscriptionSignal:
         If it fired after the first message arrived it would be useless as an
         ordering signal: the producer would already have been released.
         """
-        import uuid
-
-        from courier.constants import FILE_FOUND_EXCHANGE
-        from courier.service import Service
-
         service = Service(
             ServiceConfig(
                 broker_url="memory://",

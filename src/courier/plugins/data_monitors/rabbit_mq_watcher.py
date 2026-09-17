@@ -602,7 +602,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
         fm = self.field_map
 
-        def callback(body: Any, message: kombu.Message) -> None:  # noqa: PLR0912
+        def callback(body: Any, message: kombu.Message) -> None:
             """Handle an incoming broker message."""
             self._logger.debug(f"Received message: {body!r}")
             try:
@@ -632,38 +632,17 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 location: str = file_info.get(fm["location"], "")
                 hostname, location_path = self._parse_location(location)
 
-                if fm.get("file_name") is None or fm.get("dir_path") is None:
-                    self._logger.debug(
-                        "Field map missing 'file_name' or 'dir_path'; ",
-                    )
-                    if fm.get("file_path") is not None:
-                        self._logger.debug(
-                            "Received message with file_path but missing "
-                            "dir_path/file_name; "
-                            "attempting to parse file_path into components.",
-                        )
-                        full_path_str = file_info.get(fm["file_path"])
-                        if full_path_str is None:
-                            raise ValueError("file_path key not found in message")  # noqa: TRY301
-                        full_path = Path(full_path_str)
-                        hostname = (
-                            hostname or full_path.parts[0]
-                        )  # maybe the hostname is in the path?
-                        location_path = "/" + "/".join(full_path.parts[1:-1])
-                    else:
-                        raise ValueError(  # noqa: TRY301
-                            f"Message missing required file path components "
-                            f"according to field_map. "
-                            f"Got: {file_info!r}, expected keys: "
-                            f"'dir_path' and 'file_name'",
-                            "or a single 'file_path' key.",
-                        )
-                else:
-                    full_path = Path(
-                        PurePosixPath(location_path)
-                        / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
-                        / file_info[fm["file_name"]],
-                    )
+                # `dir_path` and `file_name` are always present and always
+                # strings: `self.field_map` is built over _DEFAULT_FIELD_MAP,
+                # which supplies both, and an override is typed dict[str, str].
+                # The `file_path` fallback that used to sit here could never
+                # run, so a field_map naming `file_path` was quietly routed
+                # into `metadata` instead of being honoured.
+                full_path = Path(
+                    PurePosixPath(location_path)
+                    / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
+                    / file_info[fm["file_name"]],
+                )
 
                 timestamp = self._extract_timestamp(file_info)
 

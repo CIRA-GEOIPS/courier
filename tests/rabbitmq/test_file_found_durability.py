@@ -14,7 +14,7 @@ import threading
 import kombu
 import pytest
 
-from courier.broker.kombu import declare_bound_queue, declare_fanout_exchange
+from courier.broker.kombu import declare_fanout_exchange, declare_queue
 from courier.config import ServiceConfig
 from courier.constants import FILE_FOUND_EXCHANGE
 from courier.errors import FatalBrokerError
@@ -62,7 +62,8 @@ def test_files_published_while_the_consumer_is_gone_are_delivered_later(
     every file published while it was away was discarded with no error, no
     metric and no log line anywhere.
 
-    Reverted check: change ``declare_bound_queue`` back to ``exclusive=True``.
+    Reverted check: pass ``exclusive=True`` from
+    ``MessageBrokerManager._file_found_queue_config``.
     The queue disappears on disconnect, the three publishes below go nowhere,
     and the depth assertion fails.
     """
@@ -128,7 +129,7 @@ def test_the_queue_survives_its_consumer_and_is_not_exclusive(
 
     # Same properties: idempotent, no precondition failure.
     exchange = declare_fanout_exchange(raw_conn, f"{namespace}-FilesFoundExchange")
-    declare_bound_queue(raw_conn, exchange, queue)
+    declare_queue(raw_conn, queue, exchange=exchange)
 
 
 @pytest.mark.parametrize(
@@ -155,8 +156,8 @@ def test_a_conflicting_redeclare_is_a_fatal_error_naming_the_queue(
     planted before. A transient non-exclusive queue is RabbitMQ's deprecated
     ``transient_nonexcl_queues`` feature, refused by default since 4.x with a
     541 -- so the setup died before courier was ever called and the test
-    asserted nothing. ``declare_bound_queue`` sets
-    ``durable=True, exclusive=False, auto_delete=False`` and no arguments, so
+    asserted nothing. The file-found queue is
+    ``durable=True, exclusive=False, auto_delete=False`` with no arguments, so
     either of the properties below is a genuine mismatch on a broker that still
     permits the declare.
 
