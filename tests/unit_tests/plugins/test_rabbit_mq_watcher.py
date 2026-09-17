@@ -199,17 +199,16 @@ class TestExtractTimestamp:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """A path stopping one level short of the value says so, loudly.
+        """A ``timestamp_field`` that stops at a container warns.
 
         Three shipped configs set ``timestamp_field: time_range``, which
         resolves to the time-range dict. ``parse_timestamp`` returns ``None``
-        for a dict, and ``None`` is also what a message carrying no timestamp
-        produces -- so the configuration error was indistinguishable from
-        ordinary data and survived in three files at once.
+        for a dict, and a message carrying no timestamp yields ``None`` too,
+        so the misconfiguration looked like ordinary data.
 
-        The plugin logger is spied on rather than captured with ``caplog``:
-        ``get_logger`` sets ``propagate = False`` so the root handler pytest
-        installs never sees these records.
+        The plugin logger is spied on instead of captured with ``caplog``:
+        ``get_logger`` sets ``propagate = False``, so pytest's root handler
+        never sees these records.
         """
         plugin = RabbitMQWatcher(
             mock_service,
@@ -231,11 +230,10 @@ class TestExtractTimestamp:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """The condition holds for every delivery, so the warning must not.
+        """The warning is emitted once, however many messages arrive.
 
-        A per-message warning on a queue under load is how a log store fills
-        up; the misconfiguration is a property of the config, not of any one
-        message.
+        The condition holds for every delivery, so a per-message warning
+        repeats for as long as the queue is consumed.
         """
         plugin = RabbitMQWatcher(
             mock_service,
@@ -253,11 +251,10 @@ class TestExtractTimestamp:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """A producer that omits the field is legitimate and stays quiet.
+        """A message that omits the timestamp field does not warn.
 
-        The warning has to separate "this config can never work" from "this
-        message happens to carry no timestamp", or it is noise operators learn
-        to ignore.
+        Producers may legitimately send no timestamp. The warning covers a
+        ``timestamp_field`` that can never resolve.
         """
         plugin = RabbitMQWatcher(
             mock_service,
@@ -378,24 +375,22 @@ class TestRateLimit:
 class TestBrokerErrors:
     """What the listener does when the broker refuses it.
 
-    The watcher consumes a queue somebody else owns -- the shipped
-    ``config.yaml`` points it at ``nrt_file_notif_queue``, "set by the data
-    inventory" -- and hardcodes ``durable=True`` with no knob for the other
-    properties. A mismatch is therefore an ordinary operational event that the
-    operator cannot configure their way out of, and it has to arrive as an
-    error that says so.
+    The watcher consumes a queue somebody else owns; the shipped
+    ``config.yaml`` points it at ``nrt_file_notif_queue``. It declares that
+    queue with a hardcoded ``durable=True`` and exposes no setting for the
+    other properties, so a mismatch is an operational event the operator
+    cannot configure away.
     """
 
     def test_a_fatal_broker_error_stops_the_listener_rather_than_reconnecting(
         self,
         mock_service: MagicMock,
     ) -> None:
-        """``max_retries=-1`` must not mean "retry what can never succeed".
+        """``max_retries=-1`` still stops on a fatal error.
 
-        The shipped config asks to retry forever, which is right for a broker
-        that is down and wrong for a queue that will not match. Reverted check:
-        drop the ``FatalBrokerError`` clause from ``_listen_to_broker`` and this
-        hangs until the test timeout instead of returning.
+        The shipped config asks to retry forever, which suits a broker that is
+        down. A queue whose properties will not match never succeeds, so
+        ``_listen_to_broker`` returns on ``FatalBrokerError``.
         """
         plugin = RabbitMQWatcher(mock_service, _make_config(max_retries=-1))
         boom = FatalBrokerError("fatal failure while declaring queue 'q': 406")
@@ -416,10 +411,9 @@ class TestBrokerErrors:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """The other half: a blip still reconnects, as it always did.
+        """A transient error still reconnects.
 
-        Without this the fix could 'pass' by treating every broker error as
-        fatal, which would turn a restarting broker into a dead monitor.
+        A broker that restarts must leave the monitor running.
         """
         plugin = RabbitMQWatcher(
             mock_service,
@@ -444,7 +438,7 @@ class TestBrokerErrors:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """Retrying is bounded when the operator bounded it."""
+        """A finite ``max_retries`` stops retrying and reports the error."""
         plugin = RabbitMQWatcher(
             mock_service,
             _make_config(max_retries=2, retry_delay_seconds=0.001),
@@ -462,13 +456,11 @@ class TestBrokerErrors:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """The operator sees the reply code and the remedy, not "exited unexpectedly".
+        """``find_file`` re-raises the broker error, reply code and all.
 
-        This is the end of the chain the whole change exists for. The listener
-        thread dying with an empty error queue is what produced
-        ``RuntimeError("RabbitMQ listener thread exited unexpectedly without an
-        error on the queue.")`` -- true, useless, and the only thing the process
-        logged before exiting.
+        Previously the listener thread died leaving the error queue empty, and
+        ``find_file`` raised ``RuntimeError("RabbitMQ listener thread exited
+        unexpectedly without an error on the queue.")``, which named no cause.
         """
         plugin = RabbitMQWatcher(mock_service, _make_config(max_retries=-1))
         boom = FatalBrokerError("declare failed")
@@ -482,8 +474,7 @@ class TestBrokerErrors:
         ):
             list(plugin.find_file())
 
-        # Identity, not substrings: _connect_and_consume is patched out here,
-        # so any message this asserted on would be one the test itself wrote.
-        # The real triage text is covered against a broker in
-        # tests/rabbitmq/test_watcher_broker_errors.py.
+        # _connect_and_consume is patched here, so the message text is the
+        # test's own; this asserts identity. The triage text is covered against
+        # a real broker in tests/rabbitmq/test_watcher_broker_errors.py.
         assert caught.value is boom

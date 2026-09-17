@@ -1,10 +1,10 @@
 """Consumer prefetch reaches the broker.
 
-Without a prefetch count no quality-of-service frame is sent at all, which
-means the broker default of *unlimited*. That was harmless while the
-file-found queue was deleted whenever a consumer disconnected, because it was
-always empty on attach. Against a durable queue holding a backlog it means the
-whole backlog is pushed to the first consumer to attach, unacknowledged.
+Without a prefetch count no quality-of-service frame is sent, so the broker
+default of unlimited applies. That was harmless while the file-found queue was
+deleted whenever a consumer disconnected, since it was empty on attach.
+Against a durable queue holding a backlog, the whole backlog is pushed
+unacknowledged to the first consumer that attaches.
 """
 
 from __future__ import annotations
@@ -45,11 +45,7 @@ def test_prefetch_count_reaches_the_consumer() -> None:
 
 
 def test_omitting_prefetch_sends_no_qos() -> None:
-    """``None`` is passed through, which is the library's "send no QoS" value.
-
-    Documents the default that made an unbounded push possible, so a change
-    to it is deliberate rather than accidental.
-    """
+    """``None`` is passed through, which is the library's "send no QoS" value."""
     consumer_cls = _drain(None)
 
     assert consumer_cls.call_args.kwargs["prefetch_count"] is None
@@ -104,6 +100,6 @@ def test_service_passes_its_prefetch_on_both_consume_paths(
 
 
 def test_a_prefetch_below_one_is_refused() -> None:
-    """Zero means unlimited in AMQP, so it is rejected rather than accepted."""
+    """Zero means unlimited in AMQP, so the config rejects it."""
     with pytest.raises(ConfigurationError, match="broker_prefetch_count"):
         ServiceConfig(broker_url="memory://", broker_prefetch_count=0)

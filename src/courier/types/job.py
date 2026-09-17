@@ -203,13 +203,10 @@ class JobGroup:
 
         A job restored from shared state, or merged from a peer, is in
         ``jobs`` but is not recorded as the bucket's *open* job and has not
-        advanced the sequence counter. The next file for that bucket would
-        therefore mint the bucket id again and overwrite the restored job,
-        silently discarding every file it had already accumulated.
-
-        That is a data-loss bug on a plain single-instance restart, and it is
-        the reason two replicas could mint the same identifier for different
-        halves of one job.
+        advanced the sequence counter. The next file for that bucket then
+        mints the bucket id again and overwrites the restored job, silently
+        discarding the files it had accumulated. A single instance restoring
+        its own state hits this too.
 
         Parameters
         ----------

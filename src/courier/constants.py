@@ -31,11 +31,10 @@ JOB_READY_PREFIX = "JobReady"
 #: ``FilesFound-<builder_identifier>``, namespaced further by
 #: :class:`MessageBrokerManager` to ``<namespace>-FilesFound-<identifier>``.
 #:
-#: Every replica of one builder identifier shares this queue, so they are
-#: competing consumers rather than each receiving a copy. The name deliberately
-#: omits ``Exchange`` so it can never collide with the exclusive
-#: ``<namespace>-FilesFoundExchange-fanout-<uuid>`` queues used before the
-#: queue was made durable.
+#: Every replica of one builder identifier consumes from this one queue, so
+#: replicas compete for messages. The name omits ``Exchange`` so it cannot
+#: collide with the exclusive ``<namespace>-FilesFoundExchange-fanout-<uuid>``
+#: queues used before the queue was made durable.
 FILE_FOUND_QUEUE_PREFIX = "FilesFound"
 
 #: Suffix appended to a namespaced queue name to build its dead-letter queue.
@@ -64,8 +63,7 @@ def validate_dispatcher_identifier(identifier: str) -> None:
     ----------
     identifier : str
         Dispatcher or job-builder identifier from the YAML
-        ``spec.run[*].identifier`` field. Both become queue names, so both
-        are held to the same rules.
+        ``spec.run[*].identifier`` field. Both become queue names.
 
     Raises
     ------
@@ -184,10 +182,10 @@ def dead_letter_queue_for(queue_name: str) -> str:
 def namespaced_queue_name(namespace: str, base_name: str) -> str:
     """Return ``<namespace>-<base_name>``, rejecting oversized results.
 
-    The broker enforces the limit on the *namespaced* name, so checking the
-    base name alone lets an over-long namespace through to a broker error at
-    publish time. Both the runtime and ``courier queues`` build names through
-    this helper so they cannot disagree about what is too long.
+    The broker enforces the limit on the namespaced name, so checking the base
+    name alone lets an over-long namespace reach the broker as a publish-time
+    error. The runtime and ``courier queues`` both build names through this
+    helper.
 
     Parameters
     ----------

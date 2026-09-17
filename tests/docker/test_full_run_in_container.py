@@ -1,12 +1,9 @@
 """Full pipeline runs inside real containers against a real AMQP broker.
 
-Every existing integration test runs on the in-memory transport in a single
-process.  Nothing had ever put a message through a real broker, crossed a
-container boundary, or exercised ``--only`` outside a mocked plugin registry.
+The other integration tiers run on the in-memory transport in a single process.
 
-The container plumbing -- readiness gates, the data volume, the broker probe --
-lives in :mod:`tests.docker._pipeline`, which documents why each gate is shaped
-the way it is.
+The container plumbing lives in :mod:`tests.docker._pipeline`: readiness gates,
+the data volume and the broker probe, with the reasoning for each gate.
 """
 
 from __future__ import annotations
@@ -26,11 +23,7 @@ pytestmark = pytest.mark.timeout(600)
 
 
 def test_single_container_pipeline_over_real_amqp(pipeline: Pipeline) -> None:
-    """A whole pipeline runs in one container against a real broker.
-
-    The first test in this repository to put a message through AMQP rather than
-    the in-memory transport, and the first to run the shipped image.
-    """
+    """A whole pipeline runs in one container against a real broker."""
     config = build_config(pipeline.namespace, pipeline.broker)
     container = pipeline.start_courier("all", config)
 
@@ -45,14 +38,12 @@ def test_single_container_pipeline_over_real_amqp(pipeline: Pipeline) -> None:
 def test_split_containers_share_one_config_over_amqp(pipeline: Pipeline) -> None:
     """Two containers split one config with ``--only`` and still deliver.
 
-    This is the deployment the project documents, and the first test to cross a
-    process *and* a container boundary.
+    This split is the deployment the project documents.
 
-    The consumer is started first here only to keep the test's gates simple.
-    It is no longer *required*: since preflight predeclares every builder's
-    durable queue, a producer that starts alone publishes into a bound queue
-    and nothing is discarded.  ``tests/docker/test_durable_queue_restart.py``
-    asserts that directly by starting the producer first.
+    The consumer starts first to keep the gates simple.  Preflight predeclares
+    every builder's durable queue, so a producer that starts alone publishes
+    into a bound queue and nothing is discarded;
+    ``tests/docker/test_durable_queue_restart.py`` starts the producer first.
     """
     config = build_config(pipeline.namespace, pipeline.broker)
 
@@ -70,16 +61,16 @@ def test_split_containers_share_one_config_over_amqp(pipeline: Pipeline) -> None
 
 
 def test_container_exits_promptly_on_sigterm(pipeline: Pipeline) -> None:
-    """The container stops well inside the grace period and is never killed.
+    """The container stops inside the grace period and is never killed.
 
-    Validates the init process: PID 1 does not reap orphans, and the bash
-    dispatchers fork ``/bin/bash`` children.  Exit code 137 would mean the
-    signal was ignored and docker had to resort to SIGKILL.
+    Covers the init process.  The bash dispatchers fork ``/bin/bash`` children,
+    and PID 1 does not reap orphans.  Exit code 137 means the signal was
+    ignored and docker had to send SIGKILL.
     """
     config = build_config(pipeline.namespace, pipeline.broker)
     container = pipeline.start_courier("sigterm", config)
 
-    # Wait for real output first, so every thread is provably live.
+    # Wait for output first, so every thread is running.
     pipeline.await_queue(f"{pipeline.namespace}-JobReady-process-files")
     assert pipeline.seed_until("live"), (
         f"pipeline never produced output:\n{container_logs(container)}"
@@ -100,11 +91,7 @@ def test_container_exits_promptly_on_sigterm(pipeline: Pipeline) -> None:
 
 
 def test_failed_dispatch_does_not_kill_the_service(pipeline: Pipeline) -> None:
-    """A dispatcher script exiting non-zero leaves the service running.
-
-    No existing integration test asserts a *failing* dispatch; every one
-    asserts the happy path.
-    """
+    """A dispatcher script exiting non-zero leaves the service running."""
     script = (
         "case '{{ files[0].file }}' in *boom*) exit 3;; esac\n"
         "cp {{ files[0].file }} /data/out/\n"

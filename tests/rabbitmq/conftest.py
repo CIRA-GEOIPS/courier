@@ -6,11 +6,10 @@ Set ``COURIER_TEST_AMQP_URL`` to run these, e.g.::
     export COURIER_TEST_AMQP_URL='amqp://admin:admin_test@localhost:5672//'
     python -m pytest -m rabbitmq --no-cov
 
-The marker is applied from :func:`pytest_collection_modifyitems` rather than a
-module-level ``pytestmark`` here: pytest only honours ``pytestmark`` in a test
-module or class body, so one in a conftest is silently ignored -- which would
-leave this whole tier unmarked, selected by the default run, and failing
-against a broker that is not there.
+The marker is applied from :func:`pytest_collection_modifyitems`. pytest honours
+``pytestmark`` only in a test module or class body and ignores it in a conftest
+without warning, which would leave this tier unmarked and selected by the
+default run.
 """
 
 from __future__ import annotations
@@ -88,6 +87,7 @@ def raw_conn(amqp_url: str, namespace: str) -> Iterator[kombu.Connection]:
     try:
         yield conn
     finally:
+        # Teardown is best effort.
         with conn.channel() as channel:
             for suffix in ("FilesFound-jb", "JobReady-dp", "DispatcherQueue"):
                 for name in (
@@ -96,11 +96,11 @@ def raw_conn(amqp_url: str, namespace: str) -> Iterator[kombu.Connection]:
                 ):
                     try:
                         channel.queue_delete(name)
-                    except Exception:  # noqa: BLE001 -- teardown is best effort
+                    except Exception:  # noqa: BLE001
                         pass
             try:
                 channel.exchange_delete(f"{namespace}-FilesFoundExchange")
-            except Exception:  # noqa: BLE001 -- teardown is best effort
+            except Exception:  # noqa: BLE001
                 pass
         conn.release()
 

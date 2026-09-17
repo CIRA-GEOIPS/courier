@@ -1,33 +1,28 @@
-"""The shipped container is scrapable from off the container, unconfigured.
+"""The shipped container is scrapable from another container, unconfigured.
 
-Live metrics are read elsewhere in this repository, so "the exporter serves
-bytes at all" is not what is missing. ``tests/docker/test_scaling_mid_flight``
+Other tiers already read live metrics. ``tests/docker/test_scaling_mid_flight``
 scrapes a running container's endpoint through ``docker exec`` and
-``127.0.0.1`` (:meth:`Pipeline.scrape_metrics`) and hangs real counting
-assertions off the result; the unit tiers read values straight out of the
-in-process ``REGISTRY``. What none of them can see is the **bind address**. A
-listener on ``127.0.0.1`` answers a loopback scrape from inside its own
-container exactly as a listener on ``0.0.0.0`` does, while being invisible to
-every Prometheus in the world -- and ``courier dashboard --live``
+``127.0.0.1`` (:meth:`Pipeline.scrape_metrics`) and hangs counting assertions
+off the result; the unit tiers read values out of the in-process ``REGISTRY``.
+Neither sees the bind address. A listener on ``127.0.0.1`` answers a loopback
+scrape from inside its own container the same way a listener on ``0.0.0.0``
+does, while being unreachable from any Prometheus. ``courier dashboard --live``
 (``src/courier/dashboard/live_detector.py``) fetches ``/metrics`` over the
-network, so it is a real consumer of precisely that property.
+network, so it depends on that bind address.
 
-The scrape here is therefore issued from a THIRD container on the same
-user-defined network, addressing the courier container by its DNS name. No
-host port is published; this tier deliberately publishes none so it cannot
-collide with anything.
+The scrape here is issued from a third container on the same user-defined
+network, addressing the courier container by its DNS name. This tier publishes
+no host ports, so it cannot collide with anything.
 
-The port default is the other half. Every other container test that reads a
-metric sets ``prometheus_port`` in its YAML; this one passes no
-``extra_service_config`` at all, so what answers is the shipped default and
-observability is proved to need no enabling.
+Every other container test that reads a metric sets ``prometheus_port`` in its
+YAML; this one passes no ``extra_service_config``, so what answers is the
+shipped default.
 
-Everything read from the scrape is a traffic-driven counter, taken after a
-file has provably crossed the whole pipeline. ``courier_service_uptime_
-seconds``, ``courier_service_health``, ``courier_broker_connected`` and
-``courier_plugin_state`` are all populated by the heartbeat loop with nothing
-flowing at all, so a test built on those would pass against a pipeline that
-never moved a byte.
+Everything read from the scrape is a traffic-driven counter, taken after a file
+has crossed the whole pipeline. ``courier_service_uptime_seconds``,
+``courier_service_health``, ``courier_broker_connected`` and
+``courier_plugin_state`` are populated by the heartbeat loop whether or not
+anything is flowing, so they do not show that the pipeline moved data.
 """
 
 from __future__ import annotations
@@ -43,22 +38,19 @@ from tests.docker.conftest import container_logs
 if TYPE_CHECKING:
     from tests.docker._pipeline import Pipeline
 
-# pytest-timeout applies this PER TEST rather than to the module, and the gates
-# below legitimately sum past the 300s default on a cold daemon: broker
-# start-up 180s, two queue gates at 120s each, the endpoint gate at 120s,
-# ``seed_until``'s 150s warm-up and a 120s poll for the dispatcher's counter. A
-# budget under that sum reports a bare timeout instead of whichever gate gave
-# up, and the gate's message is the one that says what broke.
+# pytest-timeout applies this budget to each test separately. The gates below
+# sum past the 300s default on a cold daemon: broker start-up 180s, two queue
+# gates at 120s each, the endpoint gate at 120s, ``seed_until``'s 150s warm-up
+# and a 120s poll for the dispatcher's counter. A smaller budget reports a bare
+# timeout instead of the message from whichever gate gave up.
 pytestmark = pytest.mark.timeout(900)
 
-#: The port the shipped image listens on when neither the configuration nor the
-#: environment says anything.  ``ServiceConfig.prometheus_port`` defaults to
-#: ``int(os.environ.get("PROMETHEUS_PORT", "8000"))``, so this constant is only
-#: the effective default while the image sets no ``PROMETHEUS_PORT`` -- it
-#: currently sets none, and adding one would have to be reflected here. It is
-#: mirrored from ``src/courier/config.py`` rather than read back out of
-#: ``ServiceConfig()`` on purpose: reading it from the code under test would
-#: make the test assert only that the default equals itself.
+#: The port the shipped image listens on with nothing configured.
+#: ``ServiceConfig.prometheus_port`` defaults to
+#: ``int(os.environ.get("PROMETHEUS_PORT", "8000"))`` and the image sets no
+#: ``PROMETHEUS_PORT``; adding one there means updating this constant. The
+#: value is mirrored from ``src/courier/config.py``, since read back out of
+#: ``ServiceConfig()`` it would only assert that the default equals itself.
 DEFAULT_PROMETHEUS_PORT = 8000
 
 #: Identifiers declared by :func:`build_config`, and the plugin names behind
@@ -121,45 +113,35 @@ def _jobs_dispatched(exposition: str) -> float | None:
 def test_a_running_container_serves_courier_metrics_to_a_scraper_on_the_network(
     pipeline: Pipeline,
 ) -> None:
-    """The shipped image is scrapable from off the container, unconfigured.
+    """The shipped image is scrapable from another container, unconfigured.
 
-    No ``extra_service_config`` is passed: the point is that observability
-    needs no enabling, so the configuration must not mention the port and the
-    assertion is against the shipped default. Every number read comes from one
-    scrape, taken after a file has provably reached ``/data/out``.
+    The configuration does not mention the port, so the assertion is against
+    the shipped default. Every number read comes from one scrape, taken after a
+    file has reached ``/data/out``.
 
     Reverted check: pass ``addr="127.0.0.1"`` to the
     ``prometheus_client.start_http_server`` call in ``PrometheusManager.start``
-    (``src/courier/managers/prometheus_manager.py``). Nothing else in the
-    repository moves -- the endpoint still answers
-    :meth:`Pipeline.scrape_metrics`, the ``docker exec`` + loopback scrape
-    ``tests/docker/test_scaling_mid_flight`` uses, exactly as before -- and
-    this test fails at ``await_metrics_endpoint``, because its request comes
-    from a different container over the network. That revert is the module's
-    reason to exist.
+    (``src/courier/managers/prometheus_manager.py``). The endpoint still
+    answers the ``docker exec`` loopback scrape of
+    :meth:`Pipeline.scrape_metrics`, and this test fails at
+    ``await_metrics_endpoint``, because its request comes from a different
+    container over the network.
 
-    A blunter revert, deleting that ``start_http_server`` call outright, also
-    fails here, but this test is not what catches it: ``test_scaling_mid_
-    flight`` then scrapes an empty body too, and fails first, at its
-    per-replica receipt assertion ("replica A served no files-received
-    sample").
-
-    The queue name pinned on the received counter is this pipeline's own
-    namespaced per-builder queue, which makes that assertion the issue-44
-    reading as well: a builder consuming from a server-named exclusive queue
-    would record its receipts under that name instead, and the ``await_queue``
-    gate below cannot see the difference, because the durable queue is
-    predeclared during preflight whether or not anything ever binds to it.
+    The received counter is pinned to this pipeline's namespaced per-builder
+    queue, which also reads as the issue-44 check: a builder consuming from a
+    server-named exclusive queue records its receipts under that name. The
+    ``await_queue`` gate below cannot show the difference, because preflight
+    predeclares the durable queue whether or not anything binds to it.
     """
     config = build_config(pipeline.namespace, pipeline.broker)
     container = pipeline.start_courier("metrics", config)
 
     files_found = f"{pipeline.namespace}-FilesFound-{BUILDER_ID}"
 
-    # Broker topology first, and by exact name. A config whose broker block is
-    # wrong falls back to the in-memory transport in silence, and every metric
-    # below would still be exported by that service -- so this gate, which can
-    # only pass over real AMQP, is what makes the scrape mean anything.
+    # Gate on the broker topology first, by name. A config whose broker block
+    # is wrong falls back to the in-memory transport without an error, and the
+    # metrics below are exported either way. This gate passes only over real
+    # AMQP.
     pipeline.await_queue(f"{pipeline.namespace}-JobReady-{DISPATCHER_ID}")
     pipeline.await_queue(files_found)
 
@@ -171,11 +153,9 @@ def test_a_running_container_serves_courier_metrics_to_a_scraper_on_the_network(
     )
 
     # The dispatcher's counter is incremented after its script returns, so the
-    # output file seed_until waited for can exist a moment before the counter
-    # moves. Poll the endpoint rather than sleeping, and KEEP the body that
-    # satisfied the poll: taking a fresh, un-retried scrape here would let one
-    # transient docker-exec failure read as a product defect, and every number
-    # below has to describe the same instant anyway.
+    # output file ``seed_until`` waited for can exist before the counter moves.
+    # Poll the endpoint, and keep the body that satisfied the poll: every
+    # number below has to come from the same scrape.
     proven: list[str] = []
 
     def dispatched() -> bool:
@@ -192,12 +172,11 @@ def test_a_running_container_serves_courier_metrics_to_a_scraper_on_the_network(
     )
     exposition = proven[-1]
 
-    # The dispatcher's own counter is not re-asserted: the poll above already
-    # read it as >= 1 out of this exact body.
+    # The poll above already read the dispatcher's counter as >= 1 from this body.
     seen = _files_seen(exposition)
-    # Presence is the whole assertion. A labelled counter is materialised by
-    # its first .inc(), and this one is only ever touched that way, so a series
-    # that exists cannot hold zero -- a separate ">= 1" would restate this.
+    # Presence is enough. A labelled counter is created by its first .inc(),
+    # and this one is only ever touched that way, so a series that exists holds
+    # at least 1.
     assert seen is not None, (
         "the monitor's file counter is absent from the scrape, so the endpoint "
         f"is not describing this service's work:\n{exposition}"

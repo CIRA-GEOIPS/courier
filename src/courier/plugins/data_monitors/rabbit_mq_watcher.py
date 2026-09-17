@@ -376,7 +376,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         self.timestamp_format = self.validated.timestamp_format
         self.rate_limit_per_second = self.validated.rate_limit_per_second
         # A misconfigured timestamp_field is wrong for every message, so the
-        # warning is emitted once rather than per delivery.
+        # warning is emitted once per process.
         self._warned_timestamp_shape = False
 
         self.last_file_processed_timestamp = RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
@@ -405,14 +405,12 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         return cast("tuple[str, str]", parser(location))
 
     def _warn_unparseable_timestamp(self, raw: Any) -> None:
-        """Warn that ``timestamp_field`` names a container rather than a value.
+        """Warn that ``timestamp_field`` resolved to a container.
 
-        Only ever called for a value whose *type* cannot be a timestamp, which
-        is a configuration mistake rather than a property of one message: a
-        producer that simply omits the field yields ``None``, which is
-        legitimate and stays quiet. Emitted once per process, because the
-        condition holds for every delivery and the alternative is a log line
-        per message forever.
+        Called only for a value whose type cannot be a timestamp, which is a
+        configuration mistake. A producer that omits the field yields ``None``,
+        which is legitimate and stays quiet. Emitted once per process, since
+        the condition holds for every delivery.
 
         Parameters
         ----------
@@ -459,9 +457,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     pass  # fall through to _parse_timestamp as-is
 
             # A container here means the configured path stops one level short
-            # of the value. parse_timestamp returns None for it, which is
-            # indistinguishable from "the producer sent no timestamp" -- so the
-            # config error would otherwise never surface anywhere.
+            # of the value. _parse_timestamp returns None for it, which is
+            # indistinguishable from the producer sending no timestamp, so the
+            # config error would otherwise not surface.
             if isinstance(raw, (dict, list, tuple, set)):
                 self._warn_unparseable_timestamp(raw)
                 return None
@@ -519,16 +517,13 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         """Listen to the broker queue and place files onto *file_queue*.
 
         Reconnects on a transient failure according to the configured retry
-        policy, and stops on a fatal one, placing it on ``self._error_queue``
-        for :meth:`find_file` to re-raise.
+        policy. Stops on a fatal one, placing it on ``self._error_queue`` for
+        :meth:`find_file` to re-raise.
 
-        That split is the whole point of the two clauses. Before them, an AMQP
-        406 or 541 from the declare matched neither ``OperationalError`` nor
-        ``(OSError, ValueError, RuntimeError)`` -- every amqp error is an
-        ``AMQPError``, which is none of those -- so it escaped this loop, killed
-        the thread with ``_error_queue`` empty, and reached the operator as
-        ``find_file``'s generic "listener thread exited unexpectedly" with no
-        queue name, no reply code and no remedy.
+        An AMQP error is an ``AMQPError``, which matches none of the other
+        except clauses here. Before ``broker_error_triage`` converted them, a
+        406 or 541 from the declare escaped this loop and killed the thread
+        with ``_error_queue`` empty.
 
         Intended to be run in a daemon thread.
         """
@@ -544,13 +539,10 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     "Broker consumer stopped unexpectedly; reconnecting...",
                 )
             except FatalBrokerError as exc:
-                # Deliberately not retried, whatever max_retries says. A queue
-                # whose properties do not match is still mismatched on the next
-                # attempt, so `max_retries: -1` would reconnect into the same
-                # error forever -- and the operator has no knob to make the
-                # watcher match a queue someone else declared. Handing it to
-                # find_file is what turns a dead thread into a message naming
-                # the queue, the reply code and the remedy.
+                # Not retried, whatever max_retries says. A queue whose
+                # properties do not match is still mismatched on the next
+                # attempt, so retrying reconnects into the same error.
+                # find_file re-raises it with the queue name and reply code.
                 self._logger.exception(
                     f"Fatal broker error on queue {self.rabbitmq_queue!r}; "
                     f"not retrying",
@@ -588,7 +580,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         connection.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
 
         # Binding allocates the channel, so it belongs inside the block with
-        # the declare it is for -- same shape as broker.kombu.declare_queue.
+        # the declare it covers.
         with broker_error_triage(connection, self.rabbitmq_queue, "declaring queue"):
             queue_obj = kombu.Queue(self.rabbitmq_queue, durable=True)
             queue_obj = queue_obj.bind(connection)
@@ -635,9 +627,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 # `dir_path` and `file_name` are always present and always
                 # strings: `self.field_map` is built over _DEFAULT_FIELD_MAP,
                 # which supplies both, and an override is typed dict[str, str].
-                # The `file_path` fallback that used to sit here could never
-                # run, so a field_map naming `file_path` was quietly routed
-                # into `metadata` instead of being honoured.
+                # The `file_path` fallback that used to sit here could not run;
+                # a field_map naming `file_path` is routed into `metadata`.
                 full_path = Path(
                     PurePosixPath(location_path)
                     / PurePosixPath(file_info[fm["dir_path"]]).relative_to("/")
@@ -681,14 +672,13 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 message.reject(requeue=False)
 
         try:
-            # auto_declare would redeclare the queue on entry -- a second
-            # declare of the same name, and a second place a property mismatch
-            # could surface from. The declare above is the one that counts.
+            # auto_declare is off because the queue is declared above;
+            # redeclaring adds a second place a property mismatch can surface.
             #
-            # The triage block covers the drain loop as well as the consumer,
-            # because ack() and reject() run inside the callback and a broker
-            # failure there unwinds through drain_events: the callback's own
-            # except clause is for message-shape errors, not broker ones.
+            # The triage block covers the drain loop as well as the consumer:
+            # ack() and reject() run inside the callback, and a broker failure
+            # there unwinds through drain_events. The callback's own except
+            # clause handles message-shape errors.
             with (
                 broker_error_triage(connection, self.rabbitmq_queue, "consuming from"),
                 kombu.Consumer(

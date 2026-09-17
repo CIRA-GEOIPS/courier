@@ -1,14 +1,13 @@
 """Shared test fixtures.
 
-The in-memory Kombu transport keeps its queue registries in *class-level*
-dicts (``kombu.transport.memory.Channel.queues`` / ``.events``) and its
-exchange and binding tables on ``kombu.transport.memory.Transport.global_state``.
-Nothing clears any of them when a connection closes, so every test that spins
-up a ``Service`` on ``memory://`` leaks its namespaced queues into the next
-one. The integration suite accumulates enough state that later tests miss
-their 45-second polling deadlines and fail -- but only when several test
-modules run in the same process, which is why they pass individually and fail
-in CI.
+The in-memory Kombu transport keeps its queue registries in class-level dicts
+(``kombu.transport.memory.Channel.queues`` / ``.events``) and its exchange and
+binding tables on ``kombu.transport.memory.Transport.global_state``. Nothing
+clears any of them when a connection closes, so every test that spins up a
+``Service`` on ``memory://`` leaks its namespaced queues into the next one.
+The integration suite accumulates enough state that later tests miss their
+45-second polling deadlines and fail. That only happens when several test
+modules run in the same process, so they pass individually and fail in CI.
 """
 
 from __future__ import annotations
@@ -24,24 +23,17 @@ if TYPE_CHECKING:
 def reset_kombu_memory_transport() -> None:
     """Clear the process-global in-memory broker state.
 
-    Queues, exchanges and bindings all live on class-level or module-level
-    objects that nothing clears when a connection closes, so state leaks from
-    one test into the next.
-
-    This is a plain function rather than only a fixture body because pytest
-    forbids calling a fixture directly, and a test that asserts the reset
-    itself works needs to invoke it.
+    Split out of the fixture below so a test asserting that the reset works
+    can invoke it; pytest forbids calling a fixture directly.
     """
     from kombu.transport import memory, virtual  # noqa: PLC0415
 
     memory.Channel.queues.clear()
     memory.Channel.events.clear()
 
-    # Exchanges and bindings live on ``Transport.global_state``.  The previous
-    # version of this reset read ``Transport.state``, which is only ever set on
-    # an *instance* -- ``getattr(Transport, "state", None)`` is always None, so
-    # neither the clearing loop nor the re-seat below had ever run and fanout
-    # bindings leaked between tests for as long as this file has existed.
+    # Exchanges and bindings live on ``Transport.global_state``. ``state`` is
+    # only ever set on an instance, so an earlier version of this reset read it
+    # off the class, found ``None``, and cleared nothing.
     memory.Transport.global_state = virtual.BrokerState()
 
 

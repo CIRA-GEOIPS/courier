@@ -46,8 +46,8 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     return out
 
 
-#: Exact shape of the identifier ``ServiceConfig`` mints when ``SERVICE_ID``
-#: is unset -- ``watcher-service-`` plus eight hex characters from a uuid4.
+#: Shape of the identifier ``ServiceConfig`` generates when ``SERVICE_ID`` is
+#: unset: ``watcher-service-`` plus eight hex characters from a uuid4.
 _GENERATED_SERVICE_ID = re.compile(r"watcher-service-[0-9a-f]{8}")
 
 
@@ -55,10 +55,8 @@ def _resolve_service_id(config: Any) -> str:
     """Return the identity this process reports in logs and traces.
 
     Precedence is explicit configuration, then the environment, then the
-    config's metadata name. The metadata name used to win unconditionally,
-    which made ``SERVICE_ID`` dead: every replica of one YAML reported the
-    same identity, so logs and traces could not be told apart. That matters
-    more now that running several replicas of one service is routine.
+    config's metadata name. The metadata name once won unconditionally, so
+    every replica of one YAML reported the same identity in logs and traces.
 
     Parameters
     ----------
@@ -71,10 +69,9 @@ def _resolve_service_id(config: Any) -> str:
         The resolved service identifier.
     """
     configured = getattr(config.spec.service_config, "service_id", "") or ""
-    # The dataclass default is a generated placeholder, not a deliberate
-    # choice, so it must not outrank the metadata name. Matched on its exact
-    # shape: a bare prefix test also discarded a real ``watcher-service-prod``
-    # an operator had written in the YAML.
+    # The dataclass default is a generated placeholder, so it does not outrank
+    # the metadata name. The full shape is matched because a prefix test also
+    # discarded a real ``watcher-service-prod`` written in the YAML.
     if configured and not _GENERATED_SERVICE_ID.fullmatch(configured):
         return str(configured)
     from_env = os.environ.get("SERVICE_ID", "")
@@ -106,11 +103,11 @@ def run_service(
 
     Notes
     -----
-    ``--only`` filters which plugins *run*, and which dispatchers and builder
-    targets take part in routing validation. It deliberately does not filter
-    the job-builder identifiers handed to the service: every container
-    predeclares a durable file-found queue for every builder in the YAML, so
-    the order containers start in cannot lose files.
+    ``--only`` filters which plugins run, and which dispatchers and builder
+    targets take part in routing validation. It does not filter the
+    job-builder identifiers handed to the service: every container predeclares
+    a durable file-found queue for every builder in the YAML, so container
+    start order cannot lose files.
     """
     # Use the CLI-provided log level if given so the parameter is actually used
     if log_level is not None:
@@ -186,10 +183,9 @@ def run_service(
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
-    # Every job builder in the YAML, regardless of --only. Each one needs a
-    # durable FilesFound-<builder> queue declared by *this* container, so a
-    # producer never publishes into a fanout exchange with nothing bound to it
-    # (issue #44). Routing validation below still sees only the filtered set.
+    # Every job builder in the YAML, regardless of --only: each needs a durable
+    # FilesFound-<builder> queue declared by this container, so a producer never
+    # publishes into a fanout exchange with nothing bound to it (issue #44).
     all_builder_targets = _collect_builder_targets(config)
     builder_identifiers = frozenset(all_builder_targets)
 

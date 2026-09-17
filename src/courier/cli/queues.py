@@ -1,10 +1,11 @@
 """CLI ``courier queues`` sub-app — list and prune broker queues.
 
 Expected queue names come from the service YAML via the same helpers the
-runtime uses --- :class:`courier.routing.TargetResolver` for the per-dispatcher
-job-ready queues and :func:`courier.constants.file_found_queue_for` for the
-durable per-builder file-found queues --- so there is no drift between "what
-should exist" in production and "what the CLI compares against".
+runtime uses, so there is no drift between "what should exist" in production
+and "what the CLI compares against". :class:`courier.routing.TargetResolver`
+supplies the per-dispatcher job-ready queues and
+:func:`courier.constants.file_found_queue_for` the durable per-builder
+file-found queues.
 
 ``list`` prints the expected names. ``prune`` takes an explicit list of
 candidate names on the command line (or piped via ``--from-file``), diffs
@@ -83,12 +84,12 @@ _FORCE_OPTION = typer.Option(
 def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set[str]]:
     """Return ``(namespace, expected_queue_names)`` from the validated config.
 
-    Three families are expected: ``<ns>-JobReady-<dispatcher>`` per
-    dispatcher, ``<ns>-FilesFound-<builder>`` per job builder, and the shared
-    ``<ns>-DispatcherQueue`` -- each with a ``-DeadLetter`` companion.
+    Expected names are ``<ns>-JobReady-<dispatcher>`` per dispatcher,
+    ``<ns>-FilesFound-<builder>`` per job builder, and the shared
+    ``<ns>-DispatcherQueue``. Each has a ``-DeadLetter`` companion.
 
     Only queues are returned. The fanout exchange ``<ns>-FilesFoundExchange``
-    is excluded because ``prune`` deletes queues, not exchanges.
+    is excluded because ``prune`` deletes queues.
     """
     config = load_config_or_exit(config_file)
     ns = namespace or config.metadata.namespace or "default"
@@ -107,19 +108,16 @@ def _expected_queues(config_file: Path, namespace: str | None) -> tuple[str, set
     for ident in resolver.known_identifiers():
         queues.add(namespaced_queue_name(ns, resolver.resolve(ident)))
     # Each job builder consumes the fanout exchange through a durable named
-    # queue. Those ARE expected and must survive a prune: they hold the
-    # backlog for a builder that is down or not yet deployed. Before the queue
-    # was made durable, builders used exclusive
+    # queue, which must survive a prune: it holds the backlog for a builder
+    # that is down or not yet deployed. Builders previously used exclusive
     # <ns>-FilesFoundExchange-fanout-<uuid> queues that the broker deleted on
-    # disconnect; any name in that older shape is a genuine orphan.
+    # disconnect, so any name in that older shape is an orphan.
     for ident in sorted(builder_ids):
         queues.add(namespaced_queue_name(ns, file_found_queue_for(ident)))
     queues.add(namespaced_queue_name(ns, DISPATCHER_QUEUE))
     # Every consumed queue has a dead-letter queue alongside it, holding the
-    # messages the service gave up on. Those are the only copy of a message
-    # that failed repeatedly, so a prune must preserve them; deleting one
-    # discards exactly the evidence an operator pruned the broker to go and
-    # look at.
+    # messages the service gave up on. They are the only copy of a message that
+    # failed repeatedly, so a prune must preserve them.
     queues |= {dead_letter_queue_for(name) for name in queues}
     return ns, queues
 
@@ -131,10 +129,9 @@ _PRECONDITION_FAILED = 406
 def _delete_hint(exc: Exception, *, force: bool) -> str:
     """Return the follow-up advice for a failed queue deletion.
 
-    The ``--force`` hint is only appended for a precondition failure, which is
-    what a non-empty queue answers. Appending it to a missing-queue or
-    permission error would send an operator round a loop that forcing cannot
-    break.
+    A non-empty queue answers with a precondition failure, and only that case
+    gets the ``--force`` hint: forcing does not help a missing-queue or
+    permission error.
 
     Parameters
     ----------
@@ -225,10 +222,8 @@ def prune_cmd(  # noqa: PLR0913
     candidates = _read_candidates(candidate, from_file)
 
     # Names starting with amq. are server-generated (reply queues, anonymous
-    # consumers created by other tools). Courier never creates them --- its
-    # file-found queues are <ns>-FilesFound-<builder> and appear in the
-    # expected set above --- but refusing them is cheap defence on a shared
-    # vhost.
+    # consumers created by other tools). Courier does not create them, and
+    # refusing them is cheap defence on a shared vhost.
     _server_gen_prefix = "amq."
     unsafe = [q for q in candidates if q.startswith(_server_gen_prefix)]
     if unsafe:

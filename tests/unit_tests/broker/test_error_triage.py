@@ -1,14 +1,14 @@
 """Classification of transport errors into transient and fatal broker errors.
 
-Before this existed, a 406 ``PRECONDITION_FAILED`` -- the answer a broker gives
-when a queue already exists with different properties -- matched none of the
-except clauses in the broker layer. It escaped as a raw amqp exception into the
-plugin's catch-all and took the whole process down with a traceback and no
+A broker answers 406 ``PRECONDITION_FAILED`` when a queue already exists with
+different properties. Before this classification existed that matched none of
+the broker layer's except clauses, so it escaped as a raw amqp exception into
+the plugin's catch-all and took the process down with a traceback and no
 remedy.
 
-These tests deliberately construct the amqp exceptions directly rather than
-provoking them from a live broker, so the classification is pinned in the tier
-mutation testing actually scores.
+The tests construct the amqp exceptions directly instead of provoking them
+from a live broker, which keeps the classification in the tier mutation
+testing scores.
 """
 
 from __future__ import annotations
@@ -55,12 +55,11 @@ def test_irrecoverable_reply_codes_are_fatal_and_carry_a_remedy(
 ) -> None:
     """403, 404, 405, 406 and 541 are fatal, and say what to do about it.
 
-    405 and 541 are the load-bearing cases, for opposite reasons. py-amqp
-    classes ``ResourceLocked`` as *recoverable*, so classifying by tuple
-    membership alone would retry a queue held exclusively by another client
-    forever. ``InternalError`` is an irrecoverable *connection* error rather
-    than a channel error, so before 541 was listed it reached fatal only by
-    accident of class membership, and carried no remedy at all.
+    py-amqp classes ``ResourceLocked`` as recoverable, so classifying by tuple
+    membership alone would retry a queue held exclusively by another client.
+    ``InternalError`` is an irrecoverable connection error, so before 541 was
+    listed it reached fatal only by accident of class membership and carried
+    no remedy.
     """
     mapped = classify_broker_error(amqp_conn, exc, "ns-q", "declaring queue")
 
@@ -95,7 +94,7 @@ def test_irrecoverable_connection_errors_are_fatal(
 
     The connection-error tuple is the base of both the recoverable and the
     irrecoverable families, so treating the whole tuple as transient would
-    quietly retry conditions that can never succeed.
+    retry conditions that can never succeed.
     """
     mapped = classify_broker_error(
         amqp_conn,
@@ -113,9 +112,9 @@ def test_channel_error_on_the_memory_transport_is_fatal(
     """A bare channel error is fatal even where the error tuples are loose.
 
     On the in-memory transport ``recoverable_connection_errors`` falls back to
-    every connection *and* channel error, so checking the transient tuples
-    first would classify a genuine precondition failure as retryable -- on the
-    very transport the unit tier runs against.
+    every connection and channel error. Checking the transient tuples first
+    would therefore classify a precondition failure as retryable on the
+    transport the unit tier runs against.
     """
     mapped = classify_broker_error(
         memory_conn,
@@ -157,15 +156,14 @@ def test_declare_paths_translate_a_precondition_failure(
 def test_a_541_is_fatal_on_the_memory_transport_too(
     memory_conn: kombu.Connection,
 ) -> None:
-    """The unit tier must not disagree with production about this one.
+    """A 541 is fatal on the memory transport as well as on pyamqp.
 
-    ``InternalError`` is an irrecoverable *connection* error. The memory
+    ``InternalError`` is an irrecoverable connection error. The memory
     transport has no ``recoverable_connection_errors`` of its own, so kombu
-    falls back to ``connection_errors + channel_errors`` -- which contains it,
-    and used to classify a 541 as retryable here while pyamqp called it fatal.
-    A test written against ``memory://`` therefore asserted the opposite of
-    what a deployment would see. Listing 541 in ``_FATAL_REPLY_CODES`` settles
-    it before either fallback is consulted.
+    falls back to ``connection_errors + channel_errors``, which contains it;
+    that fallback classified a 541 as retryable here while pyamqp called it
+    fatal. Listing 541 in ``_FATAL_REPLY_CODES`` settles the case before
+    either fallback is consulted.
     """
     mapped = classify_broker_error(
         memory_conn,

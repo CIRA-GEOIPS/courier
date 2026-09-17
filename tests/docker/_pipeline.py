@@ -1,18 +1,12 @@
 """Container-pipeline helper shared by every module in the container tier.
 
-Extracted from the first full-run module once a second one needed it. Keeping
-one helper matters more than it looks: the readiness gates here encode several
-properties of the system that are easy to get wrong and that fail as flakes
-rather than as errors.
-
-* Readiness is gated on **broker topology** -- the namespaced queues actually
-  existing -- not on log text and never on a fixed sleep. That gate doubles as
-  the positive assertion that the pipeline really reached AMQP: a config whose
-  broker block is wrong silently falls back to the in-memory transport, and
-  those queues would then never appear.
+* Readiness is gated on the namespaced queues existing on the broker, not on
+  log text or a fixed sleep. A config with a wrong broker block falls back to
+  the in-memory transport without reporting an error, and those queues then
+  never appear, so the gate also shows that the pipeline reached AMQP.
 * Data lives on a named volume, seeded and read through ``docker exec``. The
-  filesystem monitor is pure inotify with no start-up scan, and inotify over a
-  host bind mount is unreliable on Docker Desktop.
+  filesystem monitor is inotify with no start-up scan, and inotify over a host
+  bind mount is unreliable on Docker Desktop.
 * The containers publish no host ports and reach the broker by container DNS,
   so this tier cannot collide with anything already bound to 5672.
 """
@@ -103,11 +97,10 @@ class Pipeline:
     def _broker_ready(self) -> bool:
         """Return whether the broker answers a diagnostics ping.
 
-        The probe runs as ``rabbitmq``, never as root, and that is load-bearing.
-        An Erlang tool run as root before the entrypoint has finished will
-        CREATE ``/var/lib/rabbitmq/.erlang.cookie`` owned by root; the broker
-        then starts as ``rabbitmq``, cannot read its own cookie, and dies with
-        ``eacces``.  Polling from t=0 as root reproduces that every time.
+        Run as the ``rabbitmq`` user. An Erlang tool run as root before the
+        entrypoint finishes creates a root-owned
+        ``/var/lib/rabbitmq/.erlang.cookie``, and the broker then cannot read
+        its own cookie and exits with ``eacces``.
         """
         probe = run(
             [
@@ -144,7 +137,7 @@ class Pipeline:
             The container name.
         """
         # The watched directory must exist before the monitor starts: it is
-        # pure inotify, and watching a missing path is a fatal plugin error.
+        # inotify-based, and watching a missing path is a fatal plugin error.
         self._data_helper()
 
         config_path = self.tmp_path / f"{name}.yaml"
@@ -188,9 +181,9 @@ class Pipeline:
     def restart_courier(self, container: str) -> None:
         """Start a previously stopped container again.
 
-        Restarting the same container rather than creating a new one keeps the
-        config mount and the container's identity fixed, so a test can attribute
-        a behaviour change to the downtime rather than to a new configuration.
+        Restarting the same container keeps the config mount and the
+        container's identity fixed, so a test can attribute a behaviour change
+        to the downtime.
 
         Parameters
         ----------
@@ -238,16 +231,16 @@ class Pipeline:
     def queue_stats(self) -> dict[str, tuple[int, int]]:
         """Return ``{queue name: (undelivered messages, consumers)}``.
 
-        Both numbers come from one call so they describe the same instant. A
-        queue that exists with zero consumers and a rising message count is the
-        exact shape of the bug this tier exists to prove fixed: before the queue
-        was durable it simply vanished with its consumer, taking the backlog.
+        Both numbers come from one call, so they describe the same instant.
 
-        The count is ``rabbitmqctl``'s ``messages``, which is ready **plus
-        unacknowledged** -- not ready alone. That is the reading every drain
-        gate in this tier depends on: a message handed to a consumer that has
-        not yet acknowledged it still counts here, so "the queue reached zero"
-        means the work is genuinely finished rather than merely dispatched.
+        The count is ``rabbitmqctl``'s ``messages``, which is ready plus
+        unacknowledged. A message handed to a consumer that has not yet
+        acknowledged it still counts, so a queue reaching zero means the work
+        finished.
+
+        A queue with zero consumers and a rising message count is the bug this
+        tier exists to prove fixed: before the queue was durable it vanished
+        with its consumer and took the backlog with it.
 
         Returns
         -------
@@ -315,10 +308,10 @@ class Pipeline:
     ) -> None:
         """Block until *name* reports exactly *count* consumers.
 
-        Scaling tests need this rather than a queue-exists gate: a replica that
-        has started its process but not yet bound is invisible to every other
-        signal, and seeding files before it binds is how a scaling test turns
-        into a flake.
+        Scaling tests gate on this instead of on queue existence: a replica
+        that has started its process but not yet bound to the queue is
+        invisible to every other signal, and files seeded before it binds make
+        the test flaky.
 
         Parameters
         ----------
@@ -361,12 +354,11 @@ class Pipeline:
     ) -> bool:
         """Drop files named ``<prefix>-N.dat`` until one comes out the far end.
 
-        Two properties of the monitor force this shape.  It is edge-triggered
-        inotify with no start-up scan, so anything created before the observer
-        is watching is missed permanently, and there is no broker-side signal
-        for "the watcher is now watching".  And it handles *creation* events
-        only, so rewriting the same path is a modify and would never
-        re-trigger -- each attempt must be a new filename.
+        The monitor is edge-triggered inotify with no start-up scan, so files
+        created before the observer is watching are missed, and nothing on the
+        broker reports when it starts watching. It handles creation events
+        only, so each attempt must use a new filename; rewriting the same path
+        is a modify and never re-triggers.
 
         Parameters
         ----------
@@ -398,15 +390,11 @@ class Pipeline:
     def _read_from_volume(self, command: str, attempts: int = 3) -> list[str]:
         """Run a read-only shell *command* on the volume and return its lines.
 
-        The ``|| true`` is what makes the result trustworthy. Without it, "the
-        file does not exist yet" and "the docker daemon hiccuped" both arrive
-        as a non-zero exit with empty output, and a caller polling for a value
-        cannot tell them apart -- so a single transient exec failure reads as
-        a real observation of an empty directory. Tests built on that were
-        failing with messages accusing the system under test of losing data.
-
-        With the guard, a non-zero return can only mean the exec itself failed,
-        which is retried and then raised rather than silently returned as data.
+        The ``|| true`` separates two cases. Without it, "the file does not
+        exist yet" and "the docker daemon failed" both arrive as a non-zero
+        exit with empty output, so a transient exec failure reads as an
+        observation of an empty directory. With it, a non-zero return means
+        the exec itself failed, and that is retried and then raised.
 
         Parameters
         ----------
@@ -423,7 +411,7 @@ class Pipeline:
         Raises
         ------
         RuntimeError
-            If the command could not be executed at all.
+            If the command could not be executed.
         """
         helper = self._data_helper()
         last = ""
@@ -457,12 +445,11 @@ class Pipeline:
     def read_lines(self, path: str) -> list[str]:
         """Return the non-empty lines of a text file inside the data volume.
 
-        A test that has to tell one dispatch from two cannot look at the output
-        directory: the shipped script copies the input to a fixed destination,
-        so a second dispatch overwrites the first and leaves no trace. A script
-        that *appends* a line per execution does leave one, but the record then
-        lives on the volume rather than in a log, and the volume is only
-        reachable through the helper container.
+        The output directory cannot tell one dispatch from two: the shipped
+        script copies the input to a fixed destination, so a second dispatch
+        overwrites the first. A script that appends a line per execution
+        leaves the record on the volume, which is reachable only through the
+        helper container.
 
         Parameters
         ----------
@@ -477,40 +464,36 @@ class Pipeline:
         Raises
         ------
         RuntimeError
-            If the volume could not be read, so that a daemon hiccup is never
-            mistaken for an empty ledger.
+            If the volume could not be read, so a failed read is never
+            mistaken for an empty file.
         """
         return self._read_from_volume(f"cat {path} 2>/dev/null")
 
     def ledger(self) -> list[str]:
         """Return the dispatch ledger, one entry per dispatcher execution.
 
-        The shipped scripts append a line *before* copying, so a dispatch is
-        recorded even if the copy then fails -- which is what keeps "nothing
-        was dispatched" distinguishable from "the dispatch went wrong". The
-        line format differs per test module; the path does not.
+        The line format differs per test module; the path is fixed. The
+        scripts append before copying, so a dispatch is recorded even when the
+        copy then fails, which keeps "nothing was dispatched" distinguishable
+        from "the dispatch went wrong".
 
         Returns
         -------
         list[str]
             One entry per execution, in execution order. Empty when nothing
-            has been dispatched yet -- a failure to read the volume raises
-            rather than reading as an empty ledger.
+            has been dispatched yet. A failed read of the volume raises.
         """
         return self.read_lines(LEDGER)
 
     def drained(self, queues: tuple[str, ...]) -> bool:
-        """Return whether every named queue holds no messages at all.
+        """Return whether every named queue holds no messages.
 
-        ``messages`` counts ready *plus* unacknowledged, which is what
-        "nothing is still in flight" has to mean: a replica holding an
-        unacknowledged file would requeue it if stopped, and the resulting
-        redelivery is a real duplicate rather than a topology bug. Under a
-        prefetch of one, a message left unacked would wedge the consumer and
-        be redelivered on every reconnect.
+        ``messages`` counts ready plus unacknowledged, so zero means nothing
+        is still in flight. A replica stopped while holding an unacknowledged
+        file requeues it, and the redelivery is a duplicate.
 
-        A queue missing from the stats counts as *not* drained, so an
-        unreadable broker can never be mistaken for a quiet one.
+        A queue missing from the stats counts as not drained, so an unreadable
+        broker is never mistaken for a quiet one.
 
         Parameters
         ----------
@@ -529,9 +512,9 @@ class Pipeline:
         """Create ``<prefix>-1.dat`` .. ``<prefix>-<count>.dat`` and return them.
 
         The counted counterpart of :meth:`seed_until`, which creates an unknown
-        number of files and so can never be the basis of an exactly-once count.
-        Each phase of a test must use its own prefix: the monitor fires on
-        creation only, so a reused name would simply never be seen again.
+        number of files and so cannot support an exactly-once count. Each phase
+        of a test needs its own prefix: the monitor fires on creation only, so
+        a reused name is never seen again.
 
         Parameters
         ----------
@@ -553,11 +536,11 @@ class Pipeline:
     def scrape_metrics(self, container: str, port: int = 9187) -> str:
         """Return a container's Prometheus exposition text.
 
-        The scrape execs the *target* container rather than reaching it over
-        the network: the data helper is started without ``--network`` and this
-        tier publishes no host ports, so 127.0.0.1 inside the container is the
-        only address that exists. One scrape per assertion point, so every
-        number read from it describes the same instant.
+        The scrape runs inside the target container. The data helper is
+        started without ``--network`` and this tier publishes no host ports,
+        so 127.0.0.1 inside the container is the only reachable address. Each
+        call is one scrape, so every number read from it describes the same
+        instant.
 
         Parameters
         ----------
@@ -591,48 +574,36 @@ class Pipeline:
         """Publish one JSON notification into a broker queue, and confirm it.
 
         Used by tests that drive a queue-consuming data monitor, where the
-        input to the pipeline is a broker message rather than a file creation.
+        input to the pipeline is a broker message and not a file creation.
 
-        Why a throwaway container rather than the host or the broker
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        Three routes exist and only one of them works in this tier.
+        The publish runs in a one-shot container built from the image under
+        test. The broker publishes no host ports and is reached only by
+        container DNS on a per-test user-defined network, so the host venv
+        cannot reach it, and the data helper is started without ``--network``
+        and cannot resolve the broker's name. ``rabbitmqadmin`` inside the
+        broker is not an option either: it is a python script in the
+        management plugin's web assets, it is not on PATH in the alpine broker
+        image, and that image has no interpreter to run it. The image under
+        test ships kombu as a hard dependency and has ``python`` on PATH, and
+        its entrypoint is ``tini --``, so an arbitrary command runs.
 
-        * From the host venv with kombu: impossible. The broker publishes no
-          host ports and is reached only by container DNS on a per-test
-          user-defined network, and publishing 5672 would reintroduce exactly
-          the collision this tier was designed to avoid.
-        * With ``rabbitmqadmin`` inside the broker: impossible. It is a python
-          script shipped in the management plugin's web assets, it is not on
-          PATH in the alpine broker image, and that image has no interpreter to
-          run it -- and every exec into the broker must be ``-u rabbitmq``,
-          because an Erlang-adjacent tool run as root before the entrypoint
-          finishes creates a root-owned cookie and the broker dies.
-        * From a one-shot container built from the image under test: works, and
-          is the closest thing to a real producer. The image already ships
-          kombu as a hard dependency and has ``python`` on PATH, and its
-          entrypoint is ``tini --`` rather than ``courier``, so an arbitrary
-          command runs. The existing data helper cannot stand in for it: that
-          container is started without ``--network`` and cannot resolve the
-          broker's name.
+        The body is published as a string. Under kombu's default serializer a
+        str is sent as ``text/plain`` and arrives at the consumer as a str,
+        which is what courier's own publish path produces and what the
+        queue-consuming monitors assume; a dict is tagged
+        ``application/json``, arrives as a dict, and is dropped by a consumer
+        that calls ``.decode()`` on it. Serialising here keeps callers from
+        getting that wrong.
 
-        The body is published as a **string**, not a dict. Under kombu's
-        default serializer a str is sent as ``text/plain`` and arrives at the
-        consumer as a str, which is what courier's own publish path produces
-        and what the queue-consuming monitors assume; a dict would be tagged
-        ``application/json``, arrive as a dict, and be rejected and dropped by
-        a consumer that calls ``.decode()`` on it. Serialising here rather than
-        in the caller means a caller cannot get that wrong.
-
-        The queue is declared ``durable=True`` -- identical properties to the
-        ones the monitor declares -- because a mismatch is an AMQP 406 that
-        escapes the monitor's retry handling and kills its listener thread.
+        The queue is declared ``durable=True``, matching the properties the
+        monitor declares. A mismatch is an AMQP 406 that escapes the monitor's
+        retry handling and kills its listener thread.
 
         Publisher confirms are requested through the connection's transport
-        options, which is the only form that makes ``publish`` actually *wait*
-        for the broker's acknowledgement; calling ``confirm_select`` on the
-        channel puts it in confirm mode but leaves the publish asynchronous, so
-        a rejected message would still be reported here as a success and then
-        be misread later as a pipeline that never delivered.
+        options. That form makes ``publish`` wait for the broker's
+        acknowledgement; ``confirm_select`` on the channel puts it in confirm
+        mode but leaves the publish asynchronous, so a rejected message would
+        still be reported here as a success.
 
         Parameters
         ----------
@@ -702,9 +673,9 @@ class Pipeline:
         assert result.returncode == 0, result.stderr
         self._containers.append(name)
 
-        # A fresh named volume is owned by root, while the courier image runs
-        # unprivileged -- so both the input directory the monitor watches and
-        # the output directory the dispatcher writes to must be handed over.
+        # A fresh named volume is owned by root and the courier image runs
+        # unprivileged, so the input directory the monitor watches and the
+        # output directory the dispatcher writes to are chowned here.
         prepared = run(
             [
                 "docker", "exec", "-u", "root", name, "sh", "-c",
@@ -718,13 +689,12 @@ class Pipeline:
     def _metrics_scraper(self) -> str:
         """Return a long-lived container that can reach the pipeline by name.
 
-        Neither existing container can stand in for this one. The data helper
-        is started without ``--network``, so it sits on the default bridge and
-        cannot resolve a courier container's name at all. Reaching the target's
-        own ``127.0.0.1`` through ``docker exec`` does work, and is what
-        :meth:`scrape_metrics` does, but it answers a different question: a
-        listener bound to the loopback interface serves that scrape happily
-        while being invisible to every Prometheus in the world.
+        The data helper cannot stand in: it is started without ``--network``,
+        sits on the default bridge, and cannot resolve a courier container's
+        name. :meth:`scrape_metrics` reaches the target's own ``127.0.0.1``
+        through ``docker exec``, which a listener bound to the loopback
+        interface answers just as happily, so it cannot tell that listener
+        from one bound to ``0.0.0.0``.
 
         Returns
         -------
@@ -754,17 +724,15 @@ class Pipeline:
     ) -> str:
         """Return *container*'s exposition text, fetched from another container.
 
-        The request crosses a real network boundary and addresses the target by
-        its container DNS name, which is the only way to tell a listener on
-        ``0.0.0.0`` from one on the loopback interface. No host port is
-        published: this tier deliberately publishes none so it cannot collide,
-        and the scrape happens entirely inside the user-defined network.
+        The request addresses the target by its container DNS name, which
+        distinguishes a listener on ``0.0.0.0`` from one on the loopback
+        interface. No host port is published; the scrape stays inside the
+        user-defined network.
 
-        An empty return is ambiguous by construction -- a refused connection, a
-        process that never started its server and a genuinely empty body all
-        read the same. Callers must therefore gate on
-        :meth:`await_metrics_endpoint` first and must never assert the ABSENCE
-        of something against a body they have not already proved non-empty.
+        An empty return is ambiguous: a refused connection, a process that
+        never started its server, and an empty body all read the same. Callers
+        gate on :meth:`await_metrics_endpoint` first, and an assertion that
+        something is absent needs a body already known to be non-empty.
 
         Parameters
         ----------
@@ -780,9 +748,9 @@ class Pipeline:
         str
             Exposition text, empty when the endpoint could not be read.
         """
-        # The URL is its own argv element rather than being formatted into the
-        # script: ``run`` executes a fixed argv with no shell, so the snippet
-        # stays constant and nothing in the address can be re-interpreted.
+        # The URL is passed as its own argv element. ``run`` executes a fixed
+        # argv with no shell, so the snippet stays constant and nothing in the
+        # address is re-interpreted.
         result = run(
             [
                 "docker", "exec", self._metrics_scraper(), "python", "-c",
@@ -803,13 +771,12 @@ class Pipeline:
     ) -> None:
         """Block until *container* serves at least one courier metric sample.
 
-        The gate is HTTP-observable throughout and never reads a log line. It
-        is deliberately stricter than "the socket answers": ``prometheus_client``
-        always exports its own ``python_*`` and ``process_*`` collectors, so a
-        body-is-non-empty check would pass on a service that registered nothing
-        of its own. Comment lines are excluded for the same reason -- ``# HELP
+        The gate is stricter than "the socket answers". ``prometheus_client``
+        exports its own ``python_*`` and ``process_*`` collectors, so a
+        body-is-non-empty check would pass on a service that registered no
+        metrics of its own. Comment lines do not count either: ``# HELP
         courier_...`` is emitted for every declared metric whether or not a
-        single sample exists.
+        sample exists.
 
         Parameters
         ----------
@@ -869,10 +836,10 @@ def build_config(
     settings += textwrap.dedent(extra_service_config).strip().splitlines()
     service_config = "\n".join(line for line in settings if line.strip())
 
-    # A placeholder line rather than a direct interpolation: dedent measures
-    # the common prefix of the *already interpolated* string, so a multi-line
-    # value pasted in at column 4 drags the whole document's indentation to
-    # zero and produces YAML that parses as something else entirely.
+    # A placeholder line, substituted after the dedent. ``textwrap.dedent``
+    # measures the common prefix of the already-interpolated string, so a
+    # multi-line value pasted in at column 4 pulls the whole document's
+    # indentation to zero and changes what the YAML means.
     body = textwrap.dedent(
         f"""
         apiVersion: runcourier.dev/v1alpha1
@@ -922,26 +889,24 @@ def sample_value(
     name: str,
     labels: dict[str, str],
 ) -> float | None:
-    """Return the value of one exactly-labelled series, or ``None`` if absent.
+    """Return the value of one fully-labelled series, or ``None`` if absent.
 
-    ``None`` rather than ``0.0`` because the difference carries the finding:
-    a labelled series is only materialised on first use, so "this queue was
-    never counted" and "this queue is counted and currently holds nothing" are
-    different answers and a test that conflates them proves neither.
+    ``None`` and ``0.0`` say different things. A labelled series is
+    materialised on first use, so "this queue was never counted" and "this
+    queue is counted and currently holds nothing" are different answers.
 
-    Matching the metric name for *equality* is what keeps the two label
-    families of the file-found path apart. ``courier_broker_messages_pending``
-    is labelled with the per-builder QUEUE name while
-    ``courier_broker_messages_sent_total`` on the very next line is labelled
-    with the EXCHANGE name, and ``<ns>-FilesFound`` is a prefix of both: any
-    ``in`` or ``startswith`` test reads the fixed and the pre-fix behaviour
-    identically. Comment lines are skipped for the same reason -- ``# HELP``
-    and ``# TYPE`` carry the name of every declared metric, so a substring
-    search over the raw text finds it even when nothing was ever recorded.
+    The metric name is matched for equality, which keeps the two label families
+    of the file-found path apart. ``courier_broker_messages_pending`` is
+    labelled with the per-builder queue name, ``courier_broker_messages_sent_total``
+    on the next line is labelled with the exchange name, and ``<ns>-FilesFound``
+    is a prefix of both, so an ``in`` or ``startswith`` test reads the fixed and
+    the pre-fix behaviour identically. Equality also drops the companion series
+    ``prometheus_client`` exports beside a counter or a histogram
+    (``_created``, ``_bucket``, ``_sum``, ``_count``).
 
-    Equality on the name also drops the companion series ``prometheus_client``
-    exports beside a counter or a histogram (``_created``, ``_bucket``,
-    ``_sum``, ``_count``).
+    Comment lines are skipped because ``# HELP`` and ``# TYPE`` carry the name
+    of every declared metric, so a substring search over the raw text finds a
+    metric that was never recorded.
 
     Parameters
     ----------
@@ -952,7 +917,8 @@ def sample_value(
     labels : dict[str, str]
         The series' complete label set.  A sample carrying any other label,
         or missing one of these, does not match.  Label values containing a
-        comma or a quote are not unquoted correctly; no courier label does.
+        comma or a quote are not unquoted correctly; no courier label
+        contains one.
 
     Returns
     -------

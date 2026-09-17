@@ -1,10 +1,9 @@
 """Which identity a service reports in its logs, traces and metrics.
 
-The CLI used to overwrite the identifier with the config's metadata name
-unconditionally, so ``SERVICE_ID`` was dead and every replica of one YAML
-document reported the same identity. Telling replicas apart is the whole
-point of the variable, and replicas are routine now that a builder can be
-scaled at runtime.
+The CLI always overwrote the identifier with the config's metadata name, so
+``SERVICE_ID`` was dead and every replica of one YAML document reported the
+same identity. The variable exists to tell replicas apart, which matters now
+that a builder can be scaled at runtime.
 """
 
 from __future__ import annotations
@@ -69,12 +68,12 @@ def test_the_metadata_name_is_the_last_resort(
 def test_the_generated_placeholder_does_not_outrank_the_document(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A generated default is not a deliberate choice.
+    """A generated default yields to the document name.
 
     The service config's own default mints ``watcher-service-<random>`` when
-    the variable is unset, so treating any non-empty value as configured
-    would make the document's name unreachable -- and would give every
-    restart of one replica a different identity.
+    the variable is unset. Treating any non-empty value as configured would
+    make the document's name unreachable and give each restart of a replica a
+    different identity.
     """
     monkeypatch.delenv("SERVICE_ID", raising=False)
 
@@ -89,8 +88,8 @@ def test_the_placeholder_yields_to_the_environment(
     """A variable set after the config was built is still picked up.
 
     The service config's default is evaluated once, at import, so a value
-    exported later never reaches it. Reading the environment here is what
-    makes the variable work in a container that sets it at start-up.
+    exported later never reaches it. Re-reading the environment here makes the
+    variable work in a container that sets it at start-up.
     """
     monkeypatch.setenv("SERVICE_ID", "replica-7")
 
@@ -102,12 +101,12 @@ def test_the_placeholder_yields_to_the_environment(
 def test_an_identifier_that_merely_looks_generated_is_honoured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``watcher-service-prod`` is a deliberate choice, not a placeholder.
+    """An operator-written ``watcher-service-`` identifier is kept.
 
-    The placeholder check used to be a bare prefix test, so any identifier an
-    operator wrote beginning ``watcher-service-`` was silently discarded in
-    favour of the document name. Only the generated shape -- the prefix plus
-    eight hex characters -- may be overridden.
+    The placeholder check used to be a bare prefix test, so any identifier
+    beginning ``watcher-service-`` was silently discarded in favour of the
+    document name. Only the generated shape, the prefix plus eight hex
+    characters, may be overridden.
     """
     monkeypatch.delenv("SERVICE_ID", raising=False)
 
