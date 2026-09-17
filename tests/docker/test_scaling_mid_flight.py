@@ -379,7 +379,7 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
         f"on disagree before the scale-up has even started"
     )
 
-    # -- scale up ---------------------------------------------------------
+    # Scale up.
     replica_b = pipeline.start_courier(
         "builder-b", config, only=BUILDER_ID, env={"SERVICE_ID": "builder-b"},
     )
@@ -434,7 +434,7 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
         f"received the same file\n{exposition}"
     )
 
-    # -- scale back down --------------------------------------------------
+    # Scale back down.
     # Both queues are already empty, so replica B holds nothing unacknowledged
     # and stopping it cannot cause a legitimate redelivery.
     pipeline.stop_courier(replica_b)
@@ -448,7 +448,7 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
         f"{len(remaining)}: {remaining}"
     )
 
-    # -- whole-run invariants ---------------------------------------------
+    # Whole-run invariants.
     assert len(ledger) == len(set(ledger)), (
         f"some file was dispatched twice over the whole run: {ledger}"
     )

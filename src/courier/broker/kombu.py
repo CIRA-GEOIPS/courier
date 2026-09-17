@@ -284,7 +284,7 @@ def broker_error_triage(
     try:
         yield
     except Exception as exc:
-        # Deliberately unnarrowed. Which classes a transport raises is the
+        # Deliberately not narrowed. Which classes a transport raises is the
         # transport's business, and ``classify_broker_error`` already asks the
         # live connection -- a fixed tuple here could only disagree with it.
         # It did: ``redis.exceptions.ConnectionError`` inherits ``RedisError``,

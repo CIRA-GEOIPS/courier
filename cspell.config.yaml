@@ -166,6 +166,23 @@ words:
   - envvar
   - AMQP
   - TTL
+  # Lua standard library, from the server-side union script in
+  # courier.sync.job_builder_state_sync
+  - cjson
+  - ipairs
+  - pcall
+  - tonumber
+  # Broker and store vocabulary
+  - pyamqp
+  - keyspace
+  - unioning
+  - unemitted
+  # Inflections of words already listed above
+  - predeclared
+  - predeclares
+  - recognise
+  # British spellings, matching the house style already in this list
+  - defence
 ignoreWords:
   - traceparent
   - includehidden

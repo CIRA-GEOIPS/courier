@@ -22,6 +22,10 @@ from courier.service import Service
 from tests._helpers import poll_until
 from tests.rabbitmq.conftest import queue_depth
 
+#: Messages published in one burst to build a backlog the consumer
+#: must then drain.
+BURST_SIZE = 5
+
 
 def _drain(service: Service, subscriber: str, received: list[str]) -> threading.Thread:
     """Start a consumer thread, and return it so the caller can stop it."""
@@ -215,15 +219,14 @@ def test_prefetch_bounds_unacknowledged_deliveries(
     )
     service.preflight_check()
 
-    total = 5
-    for index in range(total):
+    for index in range(BURST_SIZE):
         service.emit(
             FILE_FOUND_EXCHANGE,
             f'{{"file": "/data/burst-{index}.nc", "hostname": "h"}}',
         )
 
     queue = f"{namespace}-FilesFound-jb"
-    assert poll_until(lambda: queue_depth(raw_conn, queue) == total, timeout=30)
+    assert poll_until(lambda: queue_depth(raw_conn, queue) == BURST_SIZE, timeout=30)
 
     release = threading.Event()
     stop = threading.Event()
@@ -247,10 +250,10 @@ def test_prefetch_bounds_unacknowledged_deliveries(
         # One message is in flight and unacknowledged; with no prefetch the
         # broker would have handed over all five and left none ready.
         assert poll_until(
-            lambda: queue_depth(raw_conn, queue) == total - 1,
+            lambda: queue_depth(raw_conn, queue) == BURST_SIZE - 1,
             timeout=30,
         ), (
-            f"expected {total - 1} still ready with prefetch=1, "
+            f"expected {BURST_SIZE - 1} still ready with prefetch=1, "
             f"found {queue_depth(raw_conn, queue)}"
         )
     finally:
