@@ -20,9 +20,7 @@
 # courier` at runtime with no build-time error.
 ARG PYTHON_IMAGE=python:3.13-alpine
 
-# ---------------------------------------------------------------------------
 # builder -- install courier and its dependencies into a relocatable prefix
-# ---------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS builder
 
 ARG COURIER_EXTRAS=""
@@ -46,9 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
       pip install --prefix=/install .; \
     fi
 
-# ---------------------------------------------------------------------------
 # runtime -- THE PUBLISHED ARTIFACT, and the default build target
-# ---------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS runtime
 
 # bash is load-bearing, not the convenience the old comment claimed:

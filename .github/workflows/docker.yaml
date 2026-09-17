@@ -23,11 +23,9 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 jobs:
-  # ---------------------------------------------------------------------------
   # Build and test on each architecture natively. Emulated cross-building would
   # emulate a from-source dependency build, and `--load` does not work for a
   # multi-platform build, so an emulated image could not be tested at all.
-  # ---------------------------------------------------------------------------
   build-and-test:
     name: Build and test image (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -79,10 +77,8 @@ jobs:
           COURIER_TEST_DOCKER_REQUIRED: '1'
         timeout-minutes: 20
         run: python3 -m pytest -m docker --no-cov
-  # ---------------------------------------------------------------------------
   # Push each architecture by digest, untagged, then test the pushed digest.
   # Nothing is tagged until every architecture has been tested.
-  # ---------------------------------------------------------------------------
   publish:
     name: Publish image (${{ matrix.arch }})
     if: github.event_name == 'push' || github.event_name == 'release'
@@ -153,7 +149,6 @@ jobs:
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
-  # ---------------------------------------------------------------------------
   # Join the tested digests into one tagged manifest.
   #
   # `latest` and `main` are applied EXPLICITLY. Every release this project has
@@ -161,7 +156,6 @@ jobs:
   # a pre-release, so without these the requirement in issue #31 would silently
   # never happen. Tags derive from the git ref, never from pyproject, because
   # the newest tag's committed version is two releases behind.
-  # ---------------------------------------------------------------------------
   tag:
     name: Tag the tested image
     if: github.event_name == 'push' || github.event_name == 'release'

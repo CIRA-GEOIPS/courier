@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 #: script at a time, so the appends cannot interleave.
 LEDGER = "/data/ledger.txt"
 
+#: Fields rabbitmqctl prints per queue: name, messages, consumers.
+QUEUE_STATS_FIELDS = 3
+
 
 class Pipeline:
     """Helper owning the containers one test needs.
@@ -76,8 +79,6 @@ class Pipeline:
         self.namespace = f"ct{uuid.uuid4().hex[:8]}"
         self.broker = f"rabbit-{uuid.uuid4().hex[:8]}"
         self._containers: list[str] = []
-
-    # -- lifecycle ---------------------------------------------------------
 
     def start_broker(self) -> None:
         """Start RabbitMQ and block until it answers a ping."""
@@ -221,8 +222,6 @@ class Pipeline:
             run(["docker", "rm", "-f", container])
         self._containers.clear()
 
-    # -- observation -------------------------------------------------------
-
     def queue_names(self) -> set[str]:
         """Return the queue names currently declared on the broker."""
         result = run(
@@ -268,8 +267,7 @@ class Pipeline:
         stats: dict[str, tuple[int, int]] = {}
         for line in result.stdout.splitlines():
             fields = line.split()
-            expected = 3
-            if len(fields) != expected:
+            if len(fields) != QUEUE_STATS_FIELDS:
                 continue
             name, messages, consumers = fields
             if not messages.isdigit() or not consumers.isdigit():

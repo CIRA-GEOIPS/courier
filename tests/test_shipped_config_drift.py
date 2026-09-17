@@ -660,16 +660,13 @@ def test_version_tuple_matches_version() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Broker-monitor field maps
+# Broker-monitor field maps.
 #
-# rabbit_mq_watcher is configured entirely by a field_map from canonical names
-# to the keys a producer actually sends, and the schema can check neither half.
-# The canonical side is merged over _DEFAULT_FIELD_MAP, so a key the config
-# never mentions is silently filled in; the message side names keys in a
-# payload the validator never sees. Both halves shipped a defect of exactly
-# that shape, and each failed in a different silent way.
-# ---------------------------------------------------------------------------
+# rabbit_mq_watcher maps canonical field names to the keys a producer sends.
+# The schema checks neither side: the canonical side is merged over
+# _DEFAULT_FIELD_MAP, so a key the config omits is filled in silently, and the
+# message side names keys the validator never sees. Both sides shipped a
+# defect.
 
 _BROKER_MONITOR = "rabbit_mq_watcher"
 
