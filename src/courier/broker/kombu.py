@@ -61,7 +61,15 @@ _PARKED_BODY_PREVIEW = 512
 _CONSUMER_COUNT_FIELD = 2
 
 #: AMQP reply codes that retrying the same operation can never fix.
-_FATAL_REPLY_CODES: frozenset[int] = frozenset({403, 404, 405, 406})
+#:
+#: Membership here is what makes the classification transport-independent, and
+#: that is the point of listing a code rather than relying on its exception
+#: class. 405 is a *Recoverable*ChannelError in amqp and 541 an
+#: IrrecoverableConnectionError, so the class-based fallbacks disagree about
+#: both -- 541 classified as transient on the memory transport and fatal on
+#: pyamqp, which meant the unit tier asserted the opposite of production. This
+#: set is checked first, so it settles the question the same way everywhere.
+_FATAL_REPLY_CODES: frozenset[int] = frozenset({403, 404, 405, 406, 541})
 
 #: Operator-actionable remedy per fatal reply code.
 _FATAL_HINTS: dict[int, str] = {
@@ -72,6 +80,11 @@ _FATAL_HINTS: dict[int, str] = {
         "a queue with this name already exists with different "
         "durable/exclusive/auto_delete/arguments; drain and delete it "
         "(courier queues prune CONFIG --candidate <name> --apply), then restart"
+    ),
+    541: (
+        "the broker refused the operation outright; on RabbitMQ 4.x this is "
+        "usually a deprecated feature that is no longer permitted (see the "
+        "reply text), which no retry and no courier setting can work around"
     ),
 }
 
@@ -684,7 +697,6 @@ def messages(
     ``GeneratorExit`` and routes a genuine failure through
     :func:`redeliver_or_park` instead.
 
-
     Prefetch bounds broker-side memory and how many messages are redelivered
     if a consumer dies mid-drain.  It does not make a drain faster: the caller
     acknowledges one message at a time, so processing stays serial.  A larger
@@ -831,7 +843,6 @@ def declare_bound_queue(
     drained and deleted. Poison messages are therefore bounded from the
     consumer side instead, by :func:`redeliver_or_park`, which needs no
     argument on this queue and so needs no migration.
-
 
     Parameters
     ----------
