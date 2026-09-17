@@ -96,15 +96,13 @@ def test_oversized_queue_name_rejected() -> None:
         svc.preflight_check()
 
 
-# ---------------------------------------------------------------------------
-# Durable per-builder file-found queues (issue #44)
-# ---------------------------------------------------------------------------
+# Durable per-builder file-found queues (issue #44).
 
 
 def test_oversized_file_found_queue_name_rejected() -> None:
     """A namespace that overflows the AMQP limit fails preflight.
 
-    Checked against the *namespaced* name, which is what the broker sees.
+    The check runs against the namespaced name, which is what the broker sees.
     Validating the base name alone let an over-long namespace through to a
     broker error at publish time.
     """
@@ -133,8 +131,8 @@ def test_malformed_builder_identifier_rejected_at_preflight() -> None:
 def test_builder_identifiers_backfilled_from_builder_targets() -> None:
     """Harnesses that only pass builder targets still get their queues.
 
-    Every test and embedded harness that skips ``configure_routing``'s new
-    argument produces this shape, so the backfill is what keeps them working.
+    Tests and embedded harnesses that omit ``configure_routing``'s new
+    ``builder_identifiers`` argument depend on this backfill.
     """
     svc = _service()
     svc.configure_routing(

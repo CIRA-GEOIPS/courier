@@ -209,9 +209,7 @@ def test_prune_from_file(
     assert "preserve: ns-JobReady-runner-a" in result.output
 
 
-# ---------------------------------------------------------------------------
-# Durable per-builder file-found queues (issue #44)
-# ---------------------------------------------------------------------------
+# Durable per-builder file-found queues (issue #44).
 
 
 def test_list_includes_a_file_found_queue_per_builder(
@@ -250,9 +248,8 @@ def test_prune_preserves_builder_queues_and_flags_legacy_names(
 
     Before the queue was made durable, builders consumed
     ``<ns>-FilesFoundExchange-fanout-<uuid>`` queues that the broker deleted on
-    disconnect. Anything still carrying that shape is genuinely abandoned,
-    while the new name holds the backlog for a builder that is merely down --
-    deleting it is exactly the data loss this change exists to prevent.
+    disconnect, so one still present is abandoned. The durable name holds the
+    backlog for a builder that is down, and deleting it loses those messages.
     """
     result = runner.invoke(
         queues_app,
@@ -302,12 +299,12 @@ def test_prune_reports_a_non_empty_queue_instead_of_crashing(
     runner: CliRunner,
     config_file: Path,
 ) -> None:
-    """A 406 is reported with the ``--force`` hint rather than a traceback.
+    """A 406 is reported with the ``--force`` hint.
 
     RabbitMQ answers an ``if_empty`` delete of a non-empty queue with a
-    precondition failure, which is a channel error rather than an operational
-    one -- so the existing hint was unreachable dead code and the command
-    aborted with a raw traceback instead.
+    precondition failure, raised as a ``ChannelError``. The prune loop used to
+    catch only ``OperationalError``, so the hint never ran and the command
+    aborted with a traceback.
     """
     failure = ChannelError("Queue.delete: (406) PRECONDITION_FAILED - not empty")
     failure.reply_code = 406
@@ -357,12 +354,11 @@ def test_prune_preserves_dead_letter_queues(
     runner: CliRunner,
     config_file: Path,
 ) -> None:
-    """A parked message is the only copy left, so its queue must survive a prune.
+    """A prune preserves dead-letter queues.
 
-    ``<queue>-DeadLetter`` is not in any config; it is derived from the queues
-    that are. An operator pruning the broker is usually doing it *because*
-    something went wrong, which is the worst possible moment to delete the
-    queue holding the messages that went wrong.
+    ``<queue>-DeadLetter`` names appear in no config; they are derived from the
+    queues that do appear. Deleting one discards the only copy of the messages
+    the service gave up on.
     """
     result = runner.invoke(
         queues_app,

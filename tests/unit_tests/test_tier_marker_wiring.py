@@ -1,17 +1,13 @@
-"""The three environment-dependent test tiers stay out of the default run.
+"""The environment-dependent test tiers stay out of the default run.
 
-Each tier -- containers, a real broker, a real Redis -- needs something the
-default run does not have, so each is marked and deselected. The marking is
-done from a ``pytest_collection_modifyitems`` hook rather than a module-level
-``pytestmark``, because pytest honours ``pytestmark`` only in a test module or
-class body and **silently ignores it in a conftest**. Written the obvious way,
-the tier would be unmarked: the default run would execute it against a broker
-that is not there, and the CI step selecting the marker would collect nothing
-and fail on an empty collection.
+Each tier (containers, a real broker, a real Redis) needs something the default
+run does not have, so each is marked and deselected. The marking is done from a
+``pytest_collection_modifyitems`` hook: pytest honours ``pytestmark`` only in a
+test module or class body and silently ignores it in a conftest.
 
-Both halves are asserted here, because either one alone fails open. A marker
-that is applied but not deselected runs the tier by default; a marker that is
-deselected but never applied is a no-op.
+Both the marking and the deselection are asserted, because either one alone
+fails open. A marker that is applied but not deselected runs the tier by
+default; a marker that is deselected but never applied is a no-op.
 """
 
 from __future__ import annotations
@@ -80,9 +76,7 @@ def test_the_collection_hook_marks_its_own_tier(
     """The hook applies the marker to a test file inside its package.
 
     Reverted check: replace the hook with a module-level ``pytestmark`` in the
-    conftest. Nothing is applied and this fails -- where a collection-count
-    assertion would still pass, because the unmarked tier is simply collected
-    into the default run instead.
+    conftest. Nothing is applied and this fails.
     """
     module = importlib.import_module(module_name)
     tier_dir = Path(module.__file__ or "").parent
@@ -98,11 +92,11 @@ def test_the_collection_hook_leaves_other_tests_alone(
     marker: str,
     module_name: str,
 ) -> None:
-    """A conftest hook sees every collected item, not only its neighbours.
+    """The hook leaves items outside its own tier directory unmarked.
 
-    The hooks filter by path for that reason. Without the filter each tier
-    would mark the entire suite, and a default run would select nothing at
-    all.
+    A conftest hook sees every collected item, so each hook filters by path.
+    Without the filter a tier marks the whole suite and a default run selects
+    nothing.
     """
     module = importlib.import_module(module_name)
     item = _FakeItem(_REPO_ROOT / "tests" / "unit_tests" / "test_elsewhere.py")

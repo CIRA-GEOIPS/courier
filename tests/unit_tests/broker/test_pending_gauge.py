@@ -1,10 +1,9 @@
 """The pending-messages gauge counts the same series up and down.
 
-A fanout publish was counted once, labelled with the *exchange*; every
-consumer decremented labelled with the *queue* it read from. The two halves
-were therefore different time series -- the exchange one climbing forever and
-the queue one going negative as a backlog drained -- so the gauge could not
-answer the question it exists for: how much is waiting for this builder.
+A fanout publish was counted once, labelled with the exchange; every consumer
+decremented labelled with the queue it read from. The two halves were
+different time series, so the exchange series climbed forever and each queue
+series went negative as its backlog drained.
 """
 
 from __future__ import annotations
@@ -63,14 +62,9 @@ def test_a_fanout_publish_is_counted_against_every_bound_queue() -> None:
 def test_consuming_returns_the_gauge_to_zero() -> None:
     """The decrement lands on the series the increment raised.
 
-    This is the property that was broken: the publisher and the consumer
-    labelled their halves differently, so draining a queue drove its series
-    negative while the exchange's series never came back down.
-
-    The consumer runs to acknowledgement rather than ``break``-ing on the
-    first message, because a message still in hand when the loop is abandoned
-    now counts as a failed attempt and is requeued -- correctly raising the
-    gauge again. Acknowledging is the path this test is about.
+    The consumer runs to acknowledgement instead of ``break``-ing on the first
+    message. A message still in hand when the loop is abandoned counts as a
+    failed attempt and is requeued, which raises the gauge again.
     """
     namespace = f"pg-{uuid.uuid4().hex[:8]}"
     service = _service(namespace, frozenset({"solo"}))

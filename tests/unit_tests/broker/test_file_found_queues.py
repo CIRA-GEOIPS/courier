@@ -1,11 +1,10 @@
 """Durable per-builder file-found queues (issue #44).
 
-The in-memory transport can only demonstrate half of the bug. It ignores
-``exclusive`` entirely and never deletes a queue when a connection closes, so
-"a builder was down and its queue vanished" is not expressible here -- that
-half lives in ``tests/rabbitmq/``. What *is* expressible, and is the half that
-bit split deployments on their first deploy, is that a fanout exchange with
-nothing bound to it silently discards everything published to it.
+The in-memory transport covers half of the bug. It ignores ``exclusive`` and
+never deletes a queue when a connection closes, so the "builder was down and
+its queue vanished" half lives in ``tests/rabbitmq/``. The half covered here is
+that a fanout exchange with nothing bound to it discards everything published
+to it, with no error.
 """
 
 from __future__ import annotations
@@ -73,20 +72,19 @@ def _consume_once(
 def test_cold_start_publish_before_any_consumer_is_retained() -> None:
     """A file published before any builder exists is still delivered.
 
-    This is the split-deployment failure from issue #44: a container running
-    only a data monitor has no job builders of its own, so before this change
-    nothing was ever bound to the fanout exchange and every file it published
-    was discarded until a builder container had started at least once.
+    The split-deployment failure from issue #44: a container running only a
+    data monitor has no job builders of its own, so nothing was bound to the
+    fanout exchange and every file it published was discarded until a builder
+    container had started once.
 
     Reverted check: keep the ``builder_identifiers`` plumbing and remove the
     predeclaration loop in ``Service._predeclare_target_queues``. The publish
-    then reaches an exchange with no bindings, the message evaporates, and the
-    consumer below times out.
+    then reaches an exchange with no bindings and the consumer below times out.
     """
     namespace = f"cold-{uuid.uuid4().hex[:8]}"
     producer = _service(namespace)
-    # Exactly the shape `courier run --only <monitor>` produces: no
-    # dispatchers, no builder targets, but every builder identifier known.
+    # The shape `courier run --only <monitor>` produces: no dispatchers, no
+    # builder targets, all builder identifiers known.
     producer.configure_routing(
         dispatcher_identifiers=set(),
         builder_targets={},
@@ -137,9 +135,8 @@ def test_preflight_declares_a_bound_durable_queue_for_every_builder() -> None:
 def test_preflight_declares_the_dispatcher_queue() -> None:
     """The shared dispatcher queue is declared during preflight.
 
-    It used to be registered *after* the connection context closed, so it was
-    registered but never actually declared until something else opened a
-    connection.
+    It used to be registered after the connection context closed, so it stayed
+    undeclared until something else opened a connection.
     """
     svc = _service("t")
     svc.configure_routing(dispatcher_identifiers=["only"], builder_targets={})
@@ -151,9 +148,9 @@ def test_preflight_declares_the_dispatcher_queue() -> None:
 def test_consume_requires_a_subscriber_on_the_fanout_path() -> None:
     """Consuming the file-found exchange without a subscriber is refused.
 
-    Raised when ``consume`` is *called*, not on the first ``next()``, so the
-    error points at the call site. There is deliberately no anonymous
-    fallback: that was the per-connection queue whose deletion lost files.
+    The error is raised when ``consume`` is called, before the first
+    ``next()``, so it points at the call site. There is no anonymous fallback:
+    that was the per-connection queue whose deletion lost files.
     """
     svc = _service()
     with pytest.raises(ConfigurationError, match="subscriber"):
@@ -207,9 +204,8 @@ def test_subscriber_is_ignored_on_direct_queues() -> None:
 def test_distinct_builders_each_receive_every_file() -> None:
     """Two different builder identifiers each get their own copy.
 
-    A semantics pin rather than a regression guard: it protects the fan-out
-    that multi-builder configurations depend on, which a single shared queue
-    for all builders would silently break.
+    Multi-builder configurations depend on this fan-out. A single shared queue
+    for all builders would break it with no error.
     """
     namespace = f"fan-{uuid.uuid4().hex[:8]}"
     consumers = [_service(namespace) for _ in range(2)]
@@ -246,12 +242,10 @@ def test_distinct_builders_each_receive_every_file() -> None:
 def test_the_file_found_queue_is_durable_and_shared() -> None:
     """The AMQP flags are asserted structurally, because memory ignores them.
 
-    The in-memory transport drops ``durable``/``exclusive``/``auto_delete`` on
-    the floor, so only a structural assertion can pin what a real broker would
-    be told -- and this is the tier mutation testing scores. The flags are
-    ``kombu.Queue`` class defaults rather than explicit kwargs, so the
-    assertion is on the resulting object: asserting the call kwargs would pass
-    while proving nothing.
+    The in-memory transport discards ``durable``, ``exclusive`` and
+    ``auto_delete``, so the assertions are on the resulting ``kombu.Queue``
+    object. The flags come from that class's defaults, so asserting on the
+    call kwargs would prove nothing.
     """
     conn = kombu.Connection("memory://")
     exchange = declare_fanout_exchange(conn, "ns-FilesFoundExchange")
@@ -267,13 +261,14 @@ def test_the_file_found_queue_is_durable_and_shared() -> None:
 
 
 def test_the_consume_declare_matches_the_registered_config() -> None:
-    """Two descriptions of one durable queue are what answers 406.
+    """The consumer's declare and the registered config describe one queue.
 
     ``get_connection_context`` declares the file-found queue from
     ``_file_found_queue_config``; the consumer redeclares it on its own
-    connection. A durable queue's properties are compared on redeclaration, so
-    if the two ever disagree the broker refuses the second. They used to be
-    written out separately, in ``declare_bound_queue`` and in that config.
+    connection. A broker compares a durable queue's properties on
+    redeclaration and answers 406 if they disagree. The two descriptions used
+    to be written out separately, in ``declare_bound_queue`` and in that
+    config.
     """
     manager = _service()._broker_manager
     registered = manager._file_found_queue_config()
@@ -295,11 +290,10 @@ def test_the_consume_declare_matches_the_registered_config() -> None:
 
 
 def test_the_exclusive_queue_helper_is_gone() -> None:
-    """The anonymous exclusive-queue helper must not come back.
+    """The anonymous exclusive-queue helper is gone.
 
-    Structural rather than behavioural on purpose: reintroducing it would
-    restore a silent fallback that loses files, and the in-memory transport
-    could not tell the difference.
+    It provided a fallback that loses files. The in-memory transport cannot
+    show that behaviourally, so the check here is structural.
     """
     from courier.broker import kombu as broker
 

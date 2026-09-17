@@ -110,10 +110,9 @@ class UnsafeReplicationError(ConfigurationError):
     """Raised when replicating a job builder would split its jobs.
 
     Replicas of one builder identifier are competing consumers of a single
-    queue, so each sees a different subset of the files that belong to a job.
-    A builder that gathers files into a job therefore needs shared state to
-    reassemble them; without it every job is emitted short, which is
-    indistinguishable from losing files.
+    queue, so each sees a different subset of the files belonging to a job.
+    A builder that gathers files into a job needs shared state to reassemble
+    them. Without it every job is emitted short.
 
     Attributes
     ----------

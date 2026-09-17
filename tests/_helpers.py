@@ -1,8 +1,7 @@
 """Shared waiting helpers for tests that observe asynchronous behaviour.
 
-Prefer them over a fixed sleep: a sleep long enough to be reliable on a loaded
-CI box wastes time on every other run, and a sleep short enough to be quick is
-flaky.
+Prefer them to a fixed sleep. A sleep long enough to be reliable on a loaded CI
+box wastes time on every run, and a shorter one is flaky.
 """
 
 from __future__ import annotations
@@ -49,9 +48,9 @@ def stays_false(
 ) -> bool:
     """Return ``True`` if *predicate* stays false for the whole *window*.
 
-    For asserting a negative -- that something does *not* happen -- where a
-    settle period genuinely is required.  Bails out on the first violation so
-    a real failure is reported immediately rather than after the full window.
+    For asserting that something does not happen, where a settle period is
+    required.  Returns as soon as *predicate* becomes true, so a failure is
+    reported without waiting out the window.
 
     Parameters
     ----------

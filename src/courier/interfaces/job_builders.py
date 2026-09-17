@@ -89,8 +89,7 @@ class JobBuilder(ServicePlugin):
 
     interface: ClassVar[str] = "job_builders"
     family: ClassVar[str] = "standard"
-    #: Name of the per-file span. Overridden by a builder whose work is worth
-    #: naming differently in a trace.
+    #: Name of the per-file span. Subclasses may override it.
     _file_span_name: ClassVar[str] = "job_builder.build_job"
     name: ClassVar[str] = "JobBuilder"
 
@@ -111,9 +110,8 @@ class JobBuilder(ServicePlugin):
         self._stop_event = threading.Event()
         # Set once this builder's durable queue is declared and bound to the
         # file-found exchange. PluginManager waits on it before starting
-        # producers so the first files move promptly; since the queue is
-        # durable and predeclared during preflight, nothing is lost if the
-        # wait times out.
+        # producers so the first files move promptly. The queue is durable and
+        # predeclared during preflight, so a wait that times out loses nothing.
         self._subscribed = threading.Event()
         self.job_groups: list[JobGroup] = []
         # Thread-safe: _group_locks protects job_group.jobs dicts when
@@ -142,12 +140,10 @@ class JobBuilder(ServicePlugin):
         """Start main thread, connecting to Redis first if sync is enabled."""
         if self._state == PluginRunState.RUNNING:
             return
-        # Locks are populated unconditionally. They used to appear only when
-        # state sync was configured, so without it every group mutation ran
-        # unprotected even though the timeout reaper mutates the same groups
-        # from its own thread. Subclasses that build their own dict in
-        # __init__ keep it: replacing it here handed the reaper a different
-        # lock object than the one it had already captured.
+        # Locks are populated whether or not state sync is configured: the
+        # timeout reaper mutates the same groups from its own thread either
+        # way. setdefault keeps a dict a subclass built in __init__, whose
+        # lock objects the reaper may already hold.
         for group in self.job_groups:
             self._group_locks.setdefault(group.name, threading.Lock())
         self._check_replication_safety()
@@ -155,12 +151,11 @@ class JobBuilder(ServicePlugin):
             self._sync.connect()  # raises StateSyncConnectionError if unreachable
             self._sync.set_merge_callback(self._emit_ready_jobs)
             self._sync.start(self.job_groups, self._group_locks)
-            # Hydration merges the shared hash into the local groups but fires
-            # no merge callback, so a job already complete when this replica
-            # starts would sit untouched until an unrelated file arrived for
-            # its group -- and with no window_timeout_seconds, until
-            # job.timeout discarded it. It gets there whenever a peer died
-            # between push_job_update and push_job_deletion.
+            # Hydration merges the shared hash into the local groups without
+            # firing the merge callback. A job already complete when this
+            # replica starts would otherwise wait for an unrelated file in its
+            # group, or for job.timeout to discard it. That state is reached
+            # when a peer died between push_job_update and push_job_deletion.
             for group in self.job_groups:
                 self._emit_ready_jobs(group, reason="was complete in shared state")
         self._stop_event.clear()
@@ -192,10 +187,10 @@ class JobBuilder(ServicePlugin):
     def accumulates(self) -> bool:
         """Whether any group gathers more than one file into a job.
 
-        Derived from the configured group capacity rather than declared, so it
-        cannot drift from what the builder actually does. A builder that emits
-        one job per file is safe to replicate with no shared state; one that
-        gathers files is not, because replicas see different files.
+        Read from the configured group capacity, so it tracks what the builder
+        does. A builder that emits one job per file is safe to replicate
+        without shared state. A builder that gathers files is not, because
+        replicas see different files.
         """
         return any(
             int(getattr(group.config, "files_per_job", 1) or 1) != 1
@@ -205,15 +200,13 @@ class JobBuilder(ServicePlugin):
     def _check_replication_safety(self) -> None:
         """Refuse to start if replicating this builder would split its jobs.
 
-        Replicas of one builder identifier are competing consumers of a single
-        durable queue, so each receives a different subset of the files
-        belonging to a job. A builder that accumulates files therefore needs
-        shared state to reassemble them; without it every job is emitted short,
-        which looks exactly like message loss.
+        See :class:`~courier.errors.UnsafeReplicationError` for why an
+        accumulating builder cannot be replicated without shared state.
 
-        A peer is only ever a snapshot -- one that has started but not yet
-        bound is invisible -- so an unobservable peer warns rather than
-        refusing, which would break the ordinary single-replica deployment.
+        The peer count is a snapshot. A replica that has started but not yet
+        bound its queue is invisible, so a builder with no observable peer
+        warns and starts; refusing would block ordinary single-replica
+        deployments.
 
         Raises
         ------
@@ -286,11 +279,11 @@ class JobBuilder(ServicePlugin):
         Returns
         -------
         bool
-            ``False`` only when *every* target was skipped because a peer
-            already holds its claim, which means this job reached no broker at
-            all.  The caller has already removed it from its group, so a
-            ``False`` it ignores is the job's files silently discarded --
-            see :meth:`_return_files_to_group`.
+            ``False`` when every target was skipped because a peer already
+            holds its claim, so the job reached no broker.  The caller has
+            already removed the job from its group; a ``False`` it ignores
+            discards the job's files silently.  See
+            :meth:`_return_files_to_group`.
 
         Notes
         -----
@@ -328,9 +321,9 @@ class JobBuilder(ServicePlugin):
                 },
             )
         elif claimed == len(target_list):
-            # Every target was a peer's. Logged at WARNING, not INFO: the
-            # caller has to act on this, and at INFO it was indistinguishable
-            # from a correct dedup while the job's files went in the bin.
+            # Every target was a peer's. WARNING because the caller has to act
+            # on it; at INFO it read like an ordinary dedup while the job's
+            # files were dropped.
             self._logger.warning(
                 f"Job {job.identifier} was claimed by a peer for every target "
                 f"{list(target_list)}; returning its {len(job.files)} file(s) "
@@ -362,8 +355,7 @@ class JobBuilder(ServicePlugin):
         -------
         bool
             ``True`` when a peer already holds the claim and nothing was
-            published.  The caller counts these: a job every target skipped
-            has been removed from its group and published nowhere.
+            published.  The caller counts these to spot a job no target took.
         """
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -480,17 +472,14 @@ class JobBuilder(ServicePlugin):
             start_time = time.time()
             file = self._parse_file_message(str(file_string))
             if file is None:
-                # Acknowledged and dropped: returning to the consume loop is
-                # what acknowledges it.
+                # Dropped: returning to the consume loop acknowledges it.
                 continue
             with tracer.start_as_current_span(
                 self._file_span_name,
                 context=parent_ctx,
                 attributes={
                     ATTR_FILE_PATH: str(file.file) if file.file else "",
-                    # Set for every builder, not just the router, which used
-                    # to be the only one carrying it on its own copy of this
-                    # loop. Dashboards group router spans by it.
+                    # Dashboards group router spans by this attribute.
                     ATTR_FILE_SOURCE: file.source or "",
                 },
             ):
@@ -518,9 +507,8 @@ class JobBuilder(ServicePlugin):
     def _dispatch_file(self, file: FrozenFile) -> None:
         """Hand *file* to every job group.
 
-        The hook a routing builder overrides instead of reimplementing
-        :meth:`handle_incoming_files`, which it previously duplicated in full
-        to change these two lines and the span name.
+        Routing builders override this hook instead of
+        :meth:`handle_incoming_files`.
 
         Parameters
         ----------
@@ -536,15 +524,12 @@ class JobBuilder(ServicePlugin):
     def _parse_file_message(self, body: str) -> FrozenFile | None:
         """Decode one file-found body, or log and count a malformed one.
 
-        A catch-all is deliberate, not lazy. ``FrozenFile.from_string`` is
+        The catch-all is needed. ``FrozenFile.from_string`` is
         ``from_dict(json.loads(...))`` and the field extraction calls ``.get``
         on the result, so a body of ``[]``, ``null`` or a bare number raises
-        ``AttributeError`` -- which an enumerated ``(ValueError, KeyError)``
-        guard would miss, and which used to reach the process-exit handler.
-
-        That mattered little when the queue was deleted on disconnect. On a
-        durable queue a message that kills the consumer is redelivered
-        forever, so one malformed body would wedge every replica in turn.
+        ``AttributeError``, which a ``(ValueError, KeyError)`` guard misses.
+        On a durable queue a message that kills the consumer is redelivered,
+        so one malformed body can wedge every replica in turn.
 
         Parameters
         ----------
@@ -734,17 +719,14 @@ class JobBuilder(ServicePlugin):
     ) -> list[Job]:
         """Emit any job in *job_group* that is now complete.
 
-        This is the *only* path that removes a ready job from a group, and
-        every caller goes through it -- the file path, a peer's merge,
-        hydration at startup, and both timeout reapers. The reapers used to
-        hand-roll their own copy and omit :meth:`_push_deletions`, so with
-        state sync a reaped job's Redis field outlived it by ``job.timeout``
-        (24h by default) and was re-adopted as the bucket's open job on the
-        next restart.
+        Every caller removes ready jobs through this method: the file path, a
+        peer's merge, hydration at startup, and both timeout reapers. It also
+        pushes the deletions. A Redis field that outlives its job survives for
+        ``job.timeout`` (24h by default) and is re-adopted as the bucket's
+        open job on the next restart.
 
-        Emission stays exclusive the same way it does on the file path: jobs
-        are removed under the group lock before being published, and the
-        shared claim decides which replica actually dispatches.
+        Jobs are removed under the group lock before being published, and the
+        shared claim decides which replica dispatches.
 
         Parameters
         ----------
@@ -756,8 +738,8 @@ class JobBuilder(ServicePlugin):
         Returns
         -------
         list[Job]
-            The jobs that actually reached a broker. A job every replica
-            skipped is absent, because its files went back into the group.
+            The jobs that reached a broker. A job every replica skipped is
+            absent, because its files went back into the group.
         """
         lock = self._group_locks.get(job_group.name)
         with lock if lock is not None else contextlib.nullcontext():
@@ -778,11 +760,10 @@ class JobBuilder(ServicePlugin):
     def _return_files_to_group(self, job_group: JobGroup, job: Job) -> None:
         """Put back the files of a job every target had already claimed.
 
-        The job was popped under the group lock and its bucket closed by
-        ``_record_job_emitted``, so the returning files land in a *fresh*
-        job with a new identifier and therefore a new claim key -- they are
-        not simply re-offered to the claim that just rejected them, and the
-        dispatcher's dedupe LRU does not see a repeated identifier either.
+        ``_record_job_emitted`` closed the bucket when the job was popped, so
+        these files land in a fresh job with a new identifier and a new claim
+        key. The claim that just rejected them is not retried, and the
+        dispatcher's dedupe LRU sees no repeated identifier.
 
         Parameters
         ----------
@@ -881,11 +862,10 @@ class JobBuilder(ServicePlugin):
         return JobBuilderStateSync(
             config=sync_config,
             namespace=service.config.namespace,
-            # Keyed by the run-step identifier, not the plugin class name.
-            # Two builders of the same class in one config shared a keyspace
-            # and could claim each other's emissions, while replicas of one
-            # run step -- which genuinely must share -- are keyed the same
-            # because they run the same identifier.
+            # Keyed by the run-step identifier. Under the class name, two
+            # builders of the same class in one config shared a keyspace and
+            # could claim each other's emissions. Replicas of one run step
+            # still share a keyspace, since they share an identifier.
             builder_name=self.identifier,
         )
 

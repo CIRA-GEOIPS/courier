@@ -1,43 +1,40 @@
 """A job builder's subscription outlives the container that consumes it.
 
 Issue #44: a job builder subscribed to the FilesFound fanout exchange by
-declaring an exclusive -- therefore auto-delete -- queue under a
-server-generated name. The broker deleted that queue the moment the builder
-disconnected, so every file announced while no builder was attached was
-discarded with no error, no metric and no log line; no other container could
-predeclare the subscription on the builder's behalf; and a split deployment
+declaring an exclusive queue under a server-generated name. An exclusive
+queue is auto-delete, so the broker removed it the moment the builder
+disconnected, and every file announced while no builder was attached was
+discarded with no error, metric or log line. No other container could
+predeclare the subscription on the builder's behalf, so a split deployment
 lost everything published before the builder container's first start.
 
-What this module adds over the rabbitmq tier is the container boundary, not a
-broker-observable distinction: a dropped connection and a stopped container
-both read as zero consumers and RabbitMQ cannot tell them apart.
-:mod:`tests.rabbitmq.test_file_found_durability` already proves that a backlog
-survives a disconnect inside one living process, and proves the queue's
-*properties* with a passive redeclare -- which nothing here can do, so nothing
-here tries. What is new is that the producer is a separate container running
-real inotify, that the consumer is a process killed by docker rather than a
-thread asked to stop, and that the backlog is watched leaving the queue and
-arriving as real dispatcher output on a shared volume.
+:mod:`tests.rabbitmq.test_file_found_durability` already covers a backlog
+surviving a disconnect inside one living process, and checks the queue's
+*properties* with a passive redeclare, which nothing here can do. What this
+module adds is the container boundary: the producer is a separate container
+running real inotify, the consumer is a process killed by docker, and the
+backlog is watched leaving the queue and arriving as dispatcher output on a
+shared volume. To the broker, a dropped connection and a stopped container
+both read as zero consumers.
 
 Two of the assertions below exist nowhere else in this tier. A producer-only
 container declares ``<namespace>-FilesFound-<builder>`` before any builder
 container has ever run, which is the half of #44 that made a first deployment
-lose files (:meth:`courier.service.Service._predeclare_target_queues`); and
-the backlog is required both to accumulate with nothing attached and to reach
-zero once a consumer returns.
+lose files (:meth:`courier.service.Service._predeclare_target_queues`). The
+backlog is also required both to accumulate with nothing attached and to
+reach zero once a consumer returns.
 
 The class of bug this catches is any change that makes the subscription
 co-terminous with the process consuming it: exclusivity, auto-delete, a
 server-generated name, or a builder that declares its queue only at the
-moment it is ready to consume. None of those are observable on the in-memory
-transport, which never deletes a queue, and every one of them loses files in
-the split deployment the project documents.
+moment it is ready to consume. The in-memory transport never deletes a queue,
+so none of those are observable there.
 
 Every number this module asserts on is read from ``rabbitmqctl`` inside the
-broker container, never from log text. That is deliberate twice over: a
-configuration whose broker block is wrong falls back silently to the in-memory
-transport, in which case no namespaced queue ever appears and the readiness
-gates fail, so the gates are also the assertion that AMQP was really used.
+broker container rather than from log text. A configuration whose broker block
+is wrong falls back to the in-memory transport with no error, in which case no
+namespaced queue ever appears and the readiness gates fail. Those gates are
+therefore also the check that AMQP was used.
 """
 
 from __future__ import annotations
@@ -53,10 +50,9 @@ from tests.docker.conftest import container_logs
 if TYPE_CHECKING:
     from tests.docker._pipeline import Pipeline
 
-#: A backstop, not a budget. The waits below permit roughly 1450 seconds in
-#: total, and every one of them fails with its own message and the container
-#: logs; a module timeout below that sum would replace the diagnosis of a slow
-#: failure with "timed out", which is the one outcome this module cannot use.
+#: Backstop above the roughly 1450 seconds the waits below permit in total.
+#: Each of those waits fails with its own message and the container logs; a
+#: module timeout under that sum would replace the diagnosis with "timed out".
 pytestmark = pytest.mark.timeout(1800)
 
 #: Files announced while no builder exists. Large enough that an exact count
@@ -76,18 +72,18 @@ STATS_ATTEMPTS = 3
 def _stats(pipeline: Pipeline, queue: str) -> tuple[int, int]:
     """Return ``(messages, consumers)`` for *queue*, retrying a failed query.
 
-    :meth:`Pipeline.queue_stats` returns an empty mapping for ANY non-zero
+    :meth:`Pipeline.queue_stats` returns an empty mapping for any non-zero
     return from ``rabbitmqctl``, so "no such queue" and "the query did not
-    run" arrive identically -- and this module reads the first as ``-1``, the
-    value it accuses the system of. A single transient ``docker exec`` failure
-    inside the hold below would otherwise fail the run with "the backlog moved
-    while no consumer was attached", and two inside :func:`_settled_depth`
-    would agree on ``-1`` and make it the baseline.
+    run" arrive the same way. This module reads a missing queue as ``-1``,
+    which is the failure it tests for, so a transient ``docker exec`` failure
+    read that way would be reported as a lost backlog, and two such failures
+    inside :func:`_settled_depth` would agree on ``-1`` and make it the
+    baseline.
 
-    An empty mapping is never a real observation here. Every call happens after
+    An empty mapping is not a real observation here. Every call happens after
     a queue has been proved to exist, and preflight's queues are not deleted
     while a container is up, so the broker always has something to list.
-    Retrying and then raising keeps "the query failed" out of the answers.
+    Retrying and then raising keeps a failed query out of the answers.
 
     Parameters
     ----------
@@ -105,7 +101,7 @@ def _stats(pipeline: Pipeline, queue: str) -> tuple[int, int]:
     Raises
     ------
     RuntimeError
-        If the broker could not be queried at all.
+        If the broker could not be queried.
     """
     for _ in range(STATS_ATTEMPTS):
         stats = pipeline.queue_stats()
@@ -154,22 +150,19 @@ def _consumers(pipeline: Pipeline, queue: str) -> int:
     -------
     int
         Consumers attached, or ``-1`` when the queue is not declared. The
-        sentinel matters: "zero consumers" and "no such queue" are the two
-        outcomes this module has to tell apart.
+        tests below have to tell that apart from zero consumers.
     """
     return _stats(pipeline, queue)[1]
 
 
 def _await_one_consumer(pipeline: Pipeline, queue: str, container: str) -> None:
-    """Block until *queue* reports exactly one consumer, or fail loudly.
+    """Block until *queue* reports one consumer, or fail with the logs.
 
-    :meth:`Pipeline.await_consumers` does the same waiting, but its failure
-    message cannot reach the container. A builder that cannot attach to its
-    queue raises a fatal broker error and takes its container down with it, so
-    "no consumer yet" and "the process died two minutes ago" look identical
-    from the broker side; without the logs a dead container reads as a slow
-    one. This is also exactly where a regression on the queue's exclusivity
-    lands, so it is the message most worth being good.
+    :meth:`Pipeline.await_consumers` waits the same way, but its failure
+    message cannot reach the container logs. A builder that cannot attach to
+    its queue raises a fatal broker error and takes its container down with
+    it, so from the broker side a dead container reads the same as one that
+    has not attached yet.
 
     Parameters
     ----------
@@ -203,7 +196,7 @@ def _settled_depth(
     Warm-up traffic can still be settling when the consumer container is
     stopped: the monitor announces every file it saw, not only the one whose
     output was observed, and the last of those publishes may land after the
-    container is already gone. Requeues are *not* what this absorbs --
+    container is gone. Requeues are not what this absorbs.
     ``rabbitmqctl list_queues messages`` counts ready plus unacknowledged, so a
     delivery the dying builder never acknowledged moves between those two
     columns without changing the number read here.
@@ -227,8 +220,7 @@ def _settled_depth(
     Raises
     ------
     AssertionError
-        If the depth never held still, since a baseline taken from a moving
-        count would make every number derived from it meaningless.
+        If the depth never held still, leaving no usable baseline.
     """
     for _ in range(attempts):
         first = _depth(pipeline, queue)
@@ -250,72 +242,66 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
 ) -> None:
     """A builder container can die, and its files wait on the broker for it.
 
-    Walks the whole property in one run, because the interesting assertions
-    are transitions rather than states: a producer-only container declares the
-    queue before any builder has ever existed, a builder attaches to it, the
-    container stops, the same queue is still declared with zero consumers,
-    files announced during the outage pile up in it, nothing drains them, and
-    the returning container turns every last one into output *and* leaves the
-    queue empty. The producer is never stopped or restarted, and the monitor
-    is create-only inotify with no start-up scan, so each backlog file is
-    announced exactly once -- while nothing was listening. Output for those
-    files can therefore only have come out of the queue.
+    Walks the whole property in one run, because the assertions are
+    transitions: a producer-only container declares the queue before any
+    builder has existed, a builder attaches to it, the container stops, the
+    same queue is still declared with zero consumers, files announced during
+    the outage pile up in it, nothing drains them, and the returning container
+    turns every one of them into output and leaves the queue empty. The
+    producer is never stopped or restarted, and the monitor is create-only
+    inotify with no start-up scan, so each backlog file is announced once,
+    while nothing was listening. Output for those files can therefore only
+    have come out of the queue.
 
-    Reverted check: in ``src/courier/broker/kombu.py``, set ``auto_delete`` to
-    ``True`` in ``MessageBrokerManager._file_found_queue_config`` -- now the
-    only place the file-found queue's properties are written -- and rebuild the
-    image. Every declaration still agrees, so there is no 406 and no 405; the
-    builder attaches and the warm-up runs exactly as it does now. The broker
-    then deletes the queue when its last consumer disconnects, which is the
-    #44 topology itself: the zero-consumer gate below reads ``-1``, and the run
-    fails on that gate with ``declared:`` listing every queue except this one.
-    Verified. Both literals have to move together: they are two independent
-    declarations of one queue, and leaving them disagreeing exercises the
-    broker's property-mismatch handling at start-up instead of anything about
-    a queue outliving its consumer.
+    Checked by reverting the fix: set ``auto_delete`` to ``True`` in
+    ``MessageBrokerManager._file_found_queue_config``
+    (``src/courier/broker/kombu.py``), the only place the file-found queue's
+    properties are written, and rebuild the image. Every declaration still
+    agrees, so there is no 406 and no 405; the builder attaches and the warm-up
+    runs as it does now. The broker then deletes the queue when its last
+    consumer disconnects, which is the #44 topology: the zero-consumer gate
+    below reads ``-1`` and the run fails there, with ``declared:`` listing
+    every queue except this one.
 
     The drain gate at the end needs its own revert, since nothing above it can
-    fail for a backlog that is delivered but never released: delete the
+    fail for a backlog that is delivered but never released. Deleting the
     ``ack()`` that follows ``yield body, parent_ctx`` in ``Service._relay``
-    (``src/courier/service.py``) and start the consumer with
-    ``env={"BROKER_PREFETCH_COUNT": "10"}``. Every gate above stays green --
-    all five files are dispatched and all five appear in ``/data/out`` -- and
-    the run fails here alone, reporting the queue still holding every delivery
-    (``stats: (6, 1)`` when checked: six messages, one attached consumer).
-    Verified, and it is the false green this gate was added for, because the
-    output directory cannot show it: the shipped script copies to a fixed path.
+    (``src/courier/service.py``) and starting the consumer with
+    ``env={"BROKER_PREFETCH_COUNT": "10"}`` leaves every gate above green: all
+    five files are dispatched and all five appear in ``/data/out``. The run
+    fails here alone, reporting the queue still holding every delivery
+    (``stats: (6, 1)`` when checked: six messages, one attached consumer). The
+    output directory cannot show that, because the shipped script copies to a
+    fixed path.
 
-    The prefetch half of that revert is not decoration. At the shipped
+    The wider prefetch window is part of that revert. At the shipped
     ``broker_prefetch_count`` of 1, a consumer that never acknowledges stalls
     on the first delivery and the run fails earlier, at the output gate with
-    all five files missing -- as does replacing ``ack()`` with ``reject()``,
-    whose requeue lands the same message back at the head of the queue and
-    blocks everything behind it. Both were run. Only with a prefetch window
-    wider than the backlog does the failure reach the assertion that is
-    actually about draining.
+    all five files missing. Replacing ``ack()`` with ``reject()`` fails the
+    same way, since the requeued message lands back at the head of the queue
+    and blocks everything behind it. Both were run.
     """
     config = build_config(pipeline.namespace, pipeline.broker)
     files_found = f"{pipeline.namespace}-FilesFound-create-jobs"
 
-    # The producer half first, and that ordering is the assertion: nothing
+    # The producer starts first, and that ordering is the assertion: nothing
     # that consumes this queue has run yet, so the queue appearing below can
     # only be `Service._predeclare_target_queues` declaring it on the absent
-    # builder's behalf. Before #44 a producer could not do that, and a split
-    # deployment lost every file published before its builder's first start.
+    # builder's behalf.
     pipeline.start_courier("producer", config, only="watch-files")
-    # The exact name, never a fragment: the subscription an operator can name
-    # in advance is the whole of the fix, and a fragment match would also be
-    # satisfied by the pre-fix `<ns>-FilesFoundExchange-fanout-<uuid>` queues.
+    # Matched on the full name, because a fragment would also be satisfied by
+    # the pre-fix `<ns>-FilesFoundExchange-fanout-<uuid>` queues.
     pipeline.await_queue(files_found)
 
     consumer = pipeline.start_courier(
         "consumer", config, only="create-jobs,process-files",
     )
-    # A process that has started but not yet bound is invisible to every other
-    # signal, and one consumer -- not one per replica -- is the shape that
-    # makes replicas competing consumers. It also subsumes a queue-exists gate
-    # on the job-ready queue: preflight declares that one before any plugin
-    # thread starts, so nothing can be attached here until it exists.
+    # No other signal shows a process that has started but not yet bound. A
+    # count of one means the replicas share one queue; one count per replica
+    # would mean each receives its own copy. Waiting here also covers the
+    # job-ready queue:
+    # preflight declares that one before any plugin thread starts, so nothing
+    # can be attached here until it exists.
     _await_one_consumer(pipeline, files_found, consumer)
 
     assert pipeline.seed_until("warmup"), (
@@ -325,16 +311,15 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
     )
 
     # stop_courier blocks on `docker stop` and asserts its exit status, and no
-    # restart policy is set, so the container is provably down here. The gate
-    # that matters is the broker's view of it, asserted next: a process can be
-    # gone while the broker has not yet noticed the connection drop.
+    # restart policy is set, so the container is down here. A process can be
+    # gone while the broker has not yet noticed the connection drop, which is
+    # what the next gate waits for.
     pipeline.stop_courier(consumer)
 
-    # The headline of issue #44, in one poll rather than two statements: a
-    # queue the broker does not list reads as -1 here, so "exactly zero
-    # consumers" says in one reading that the queue is still declared and that
-    # nothing whatsoever is attached to it. The pre-fix topology cannot produce
-    # that reading, because the queue left with its consumer.
+    # A queue the broker does not list reads as -1 here, so a reading of zero
+    # consumers says in one number that the queue is still declared and that
+    # nothing is attached to it. The pre-fix topology cannot produce that
+    # reading, because the queue left with its consumer.
     assert poll_until(
         lambda: _consumers(pipeline, files_found) == 0,
         timeout=120.0,
@@ -351,16 +336,17 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
     baseline = _settled_depth(pipeline, files_found)
     expected = baseline + BACKLOG_SIZE
 
-    # Names never used before in this run. The dispatcher drops a repeated job
-    # identifier -- which is the file path -- through an LRU, so a reused name
-    # could either vanish or satisfy the output assertion from the warm-up.
+    # Names not used earlier in this run. The dispatcher drops a repeated job
+    # identifier through an LRU, and the identifier is the file path, so a
+    # reused name could vanish or satisfy the output assertion from the
+    # warm-up.
     backlog = {f"backlog-{index}.dat" for index in range(BACKLOG_SIZE)}
     for name in sorted(backlog):
         pipeline.seed(f"/data/in/{name}")
 
-    # Gated on `>=` rather than equality, because a count on its way up would
-    # otherwise be caught in passing at exactly the expected value and read as
-    # the settled answer. The reading is pinned after it has stopped moving.
+    # Gated on `>=`: polling for equality can catch a count on its way up at
+    # the expected value and read it as the settled answer. The reading below
+    # is pinned after the count has stopped moving.
     assert poll_until(
         lambda: _depth(pipeline, files_found) >= expected,
         timeout=180.0,
@@ -372,8 +358,8 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
         f"{pipeline.queue_stats().get(files_found)}"
     )
     held = _depth(pipeline, files_found)
-    # Not a blip, and nothing is quietly eating the backlog: with no consumer
-    # attached, no reading may move.
+    # With no consumer attached, no reading may move. A count that drops here
+    # means something is draining the backlog.
     assert stays_false(
         lambda: _depth(pipeline, files_found) != held,
         window=6.0,
@@ -401,13 +387,13 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
         f"{sorted(backlog - set(pipeline.listdir('/data/out')))}; consumer "
         f"logs:\n{container_logs(consumer)}"
     )
-    # Output is not release. The shipped script copies each input to a fixed
-    # destination, so a builder that keeps every delivery unacknowledged, or is
-    # handed the same messages again and again, writes byte-identical output
-    # and satisfies the gate above -- and the dispatcher's job-id dedupe drops
-    # the repeats before the script ever runs, so nothing downstream notices
-    # either. Only the queue emptying separates handled from held, and holding
-    # cannot fake it: `messages` counts unacknowledged deliveries too.
+    # Output does not prove release. The shipped script copies each input to a
+    # fixed destination, so a builder that keeps every delivery unacknowledged,
+    # or is handed the same messages again and again, writes byte-identical
+    # output and satisfies the gate above; the dispatcher's job-id dedupe drops
+    # the repeats before the script ever runs. Only the queue emptying
+    # separates handled from held, and `messages` counts unacknowledged
+    # deliveries too.
     assert poll_until(
         lambda: _depth(pipeline, files_found) == 0,
         timeout=180.0,

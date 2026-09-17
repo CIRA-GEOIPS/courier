@@ -1,10 +1,9 @@
 """Two replicas of one job builder converge on a complete job.
 
-This is the property that makes scaling a builder up and down at runtime safe.
+Convergence is the property that makes runtime scaling of a builder safe.
 Replicas of one identifier share a queue, so each receives a different subset
-of the files belonging to the same job. If their views of that job cannot be
-reconciled, the pipeline silently emits short jobs -- which looks exactly like
-the message loss this whole change set exists to remove.
+of the files belonging to one job. If their views of that job cannot be
+reconciled, the pipeline emits short jobs and reports no error.
 """
 
 from __future__ import annotations
@@ -66,16 +65,16 @@ def _file(name: str) -> FrozenFile:
 
 
 def test_two_replicas_converge_on_one_complete_job(redis_config, namespace) -> None:
-    """Files delivered to different replicas end up in one job, not two halves.
+    """Files delivered to different replicas end up in one job.
 
     Reverted check: make the write a plain overwrite instead of a server-side
     union. The second replica's write then erases the first replica's file
     from the stored record and the assertion below fails.
 
-    Note it must be the *stored* record that is asserted on. Reverting only
-    the client-side merge leaves this passing, because a replica rebuilds the
-    full set locally from its peer's notification -- while the shared record,
-    which is all that survives a restart, is already missing half the job.
+    The assertion is on the stored record. A replica rebuilds the full set
+    locally from its peer's notification, so a check of local state passes
+    even when the shared record, which is all that survives a restart, holds
+    half the job.
     """
     group_a, group_b = _Group(), _Group()
     sync_a = _sync(redis_config, namespace)
@@ -100,12 +99,7 @@ def test_two_replicas_converge_on_one_complete_job(redis_config, namespace) -> N
         for job_id, job in group_b.jobs.items():
             sync_b.push_job_update(group_b.name, job_id, job)
 
-        # The assertion is on the SHARED record, not on one replica's local
-        # view. A replica can reconstruct both files locally from a peer
-        # notification even when the stored record holds only one of them, so
-        # checking local state alone passes whether or not the write is a
-        # union -- and the moment either replica restarts, the half that was
-        # never stored is gone.
+        # Read the shared record, not one replica's local view.
         def shared_record_has_both() -> bool:
             client = sync_a._require_client()  # noqa: SLF001
             stored = client.hgetall(sync_a._hash_key(group_a.name))  # noqa: SLF001
@@ -130,10 +124,10 @@ def test_two_replicas_converge_on_one_complete_job(redis_config, namespace) -> N
 
 
 def test_only_one_replica_may_emit_a_job(redis_config, namespace) -> None:
-    """The shared claim still admits exactly one emitter.
+    """The shared claim admits one emitter.
 
-    Convergence means both replicas can see the same finished job, so the
-    guard against dispatching it twice matters more than it used to.
+    Convergence lets both replicas see the same finished job, so only this
+    claim keeps the job from being dispatched twice.
     """
     sync_a = _sync(redis_config, namespace)
     sync_b = _sync(redis_config, namespace)
@@ -158,12 +152,11 @@ def test_restored_state_is_not_overwritten_by_the_next_file(
 
     Restored jobs were placed in the group but never registered as their
     bucket's open job, so the next file for that bucket minted the same
-    identifier again and replaced the restored job outright -- discarding
-    every file it carried. That is a data-loss bug on a plain restart, before
-    any question of scaling.
+    identifier again and replaced the restored job, discarding every file it
+    carried. This loses data on a plain restart, with no scaling involved.
 
     Reverted check: remove the ``adopt_job`` call from the merge path. The
-    restored file is dropped and the job ends up holding one file, not two.
+    restored file is dropped and the job ends up holding one file.
     """
     group = _Group()
     sync = _sync(redis_config, namespace)

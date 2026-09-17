@@ -383,12 +383,10 @@ class TestLifecycle:
 
 
 class TestPoisonMessages:
-    """A body that will not parse is dropped, not allowed to kill the process.
+    """A body that will not parse is dropped.
 
-    This mattered little while the file-found queue was deleted whenever the
-    consumer disconnected: the offending message died with it and the container
-    came back clean. On a durable queue the same message is redelivered
-    forever, so one malformed body would wedge every replica in turn.
+    The file-found queue is durable, so a message no consumer can parse is
+    redelivered until something drops it.
     """
 
     def test_malformed_bodies_are_counted_logged_and_skipped(
@@ -408,8 +406,8 @@ class TestPoisonMessages:
         service.consume.return_value = iter(
             [
                 ("not json at all", None),
-                # A JSON array parses, then fails on attribute access -- the
-                # case an enumerated (ValueError, KeyError) guard would miss.
+                # A JSON array parses, then fails on attribute access, which an
+                # enumerated (ValueError, KeyError) guard misses.
                 ("[]", None),
                 ("42", None),
                 (str(_file("good")), None),

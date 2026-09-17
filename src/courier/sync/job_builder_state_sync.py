@@ -53,17 +53,15 @@ if TYPE_CHECKING:
 #: Server-side union of one job into a hash field.
 #:
 #: Replicas of one builder identifier are competing consumers, so each holds a
-#: different subset of a job's files. A blind write means whoever wrote last
-#: erases the other's files, and a client-side read-merge-write still loses one
-#: side when two replicas interleave. Doing the merge inside the script makes
-#: the whole read-decide-write one atomic step.
+#: different subset of a job's files. A blind write lets the last writer erase
+#: the other's files, and a client-side read-merge-write loses one side when
+#: two replicas interleave. Merging inside the script makes the whole
+#: read-decide-write one atomic step.
 #:
-#: The script is deliberately minimal, and reconciles exactly two fields: it
-#: merges the ``files`` list and keeps the larger ``last_modified``. Every
-#: other field is last-writer-wins, matching ``_merge_job``'s local behaviour.
-#: Nothing downstream depends on those scalars agreeing between replicas --
-#: the job the winner dispatches is its own in-memory ``Job``, not this
-#: payload -- so carrying them over would be code with no reader.
+#: The script reconciles two fields: it unions the ``files`` list and keeps the
+#: larger ``last_modified``. Every other field is last-writer-wins, matching
+#: ``_merge_job``. The winner dispatches its own in-memory ``Job``, so nothing
+#: downstream reads those scalars from this payload.
 _UNION_JOB_LUA = """
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if not existing then
@@ -132,8 +130,8 @@ class JobBuilderStateSync:
             Validated Redis connection settings.
         namespace : str
             Service namespace for Redis key namespacing.
-        builder_identifier : str
-            Job builder name for Redis key namespacing.
+        builder_name : str
+            Run-step identifier of the job builder, for Redis key namespacing.
         """
         self._config = config
         self._namespace = namespace
@@ -201,8 +199,7 @@ class JobBuilderStateSync:
         ----------
         callback : Callable[[JobGroup], object]
             Invoked with the affected group once a merge changed local state.
-            Any return value is ignored; the emit path returns the jobs it
-            published, which no caller here needs.
+            Its return value is ignored.
         """
         self._on_merged = callback
 
@@ -261,11 +258,8 @@ class JobBuilderStateSync:
     def push_job_update(self, group_name: str, job_id: str, job: Job) -> None:
         """Merge a job into the Redis hash and notify peers.
 
-        The write is a server-side union rather than a blind overwrite. Under
-        competing consumers two replicas hold different halves of the same
-        job, and whichever wrote last used to erase the other's files
-        entirely. Unioning on the server also removes the read-modify-write
-        race that a client-side merge would still have.
+        The write is a server-side union, so a replica holding half of a job
+        does not erase the half another replica wrote. See ``_UNION_JOB_LUA``.
 
         Safe to call while the group lock is held; the Redis round-trip is
         fast relative to lock-hold time.
@@ -328,9 +322,9 @@ class JobBuilderStateSync:
             try:
                 script(keys=[self._hash_key(group_name)], args=[job_id, str(job)])
             except redis.RedisError:
-                # Scripting can fail at execution as well as registration --
-                # disabled on the server, or an in-process fake without a Lua
-                # runtime. Fall back once and stay fallen back.
+                # Scripting can fail at execution as well as at registration:
+                # disabled on the server, or an in-process fake with no Lua
+                # runtime. The fallback lasts for the life of this instance.
                 self._scripting_unavailable = True
                 self._script = None
                 self._logger.warning(
@@ -551,11 +545,10 @@ class JobBuilderStateSync:
     ) -> None:
         """Union a remote job into local state.
 
-        A last-write-wins *replacement* is wrong once replicas share a queue:
-        each holds a different subset of the job's files, so replacing drops
-        whichever subset lost the race. Files are a set of value-comparable
-        objects, so unioning them is both safe and idempotent -- a file seen
-        twice collapses.
+        Replicas share a queue, so each holds a different subset of the job's
+        files. Replacing the local job drops whichever subset lost the race.
+        Files are a set of value-comparable objects, so the union is
+        idempotent.
 
         Parameters
         ----------
@@ -651,15 +644,14 @@ class JobBuilderStateSync:
             elif event == "job_deleted":
                 job_group.jobs.pop(job_id, None)
         if event == "job_updated" and self._on_merged is not None:
-            # Outside the lock: the callback emits, which publishes, and
-            # holding a group lock across a broker round-trip would stall
-            # every other file for that group.
+            # Called outside the lock: the callback publishes, and holding a
+            # group lock across a broker round-trip stalls every other file
+            # in that group.
             #
-            # Merging is the only moment a replica learns that a job it holds
-            # only part of is now complete. Without this a job assembled from
-            # files that arrived on different replicas would sit unemitted
-            # until another file happened to arrive, or a timeout reaper
-            # noticed it.
+            # A merge is the only moment a replica learns that a job it holds
+            # part of is complete. Without this call, a job assembled from
+            # files that arrived on different replicas waits for another file
+            # or for a timeout reaper.
             self._on_merged(job_group)
 
     def _fetch_and_merge(self, job_group: JobGroup, job_id: str) -> None:

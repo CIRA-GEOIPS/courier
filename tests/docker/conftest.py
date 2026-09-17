@@ -1,15 +1,13 @@
 """Fixtures for the container tier.
 
 Every test here drives a real container built from the repository Dockerfile.
-The tier is skipped, with an actionable reason, when docker is unavailable or
-no image was supplied -- except in CI, where ``COURIER_TEST_DOCKER_REQUIRED``
-turns each skip into a failure so the job cannot go green by collecting
-nothing.
+The tier skips, with an actionable reason, when docker is unavailable or no
+image was supplied.  Setting ``COURIER_TEST_DOCKER_REQUIRED`` turns each skip
+into a failure, so a CI job cannot go green by collecting nothing.
 
-The marker is applied from :func:`pytest_collection_modifyitems` rather than a
-module-level ``pytestmark`` here, because pytest only honours ``pytestmark`` in
-a *test module* or class body -- a ``pytestmark`` in a conftest is silently
-ignored, which would leave the whole tier unmarked and therefore selected by
+:func:`pytest_collection_modifyitems` applies the ``docker`` marker.  pytest
+honours ``pytestmark`` only in a test module or class body and ignores it in a
+conftest without complaint, which would leave the tier unmarked and selected by
 the default run.
 """
 
@@ -131,9 +129,9 @@ def docker_image() -> str:
 def broker_image(docker_image: str) -> str:
     """Pull the broker image once, before any test needs it.
 
-    Pulling inside a test races its own readiness deadline: the first pull of a
-    few hundred megabytes can outlast the wait, and the failure then looks like
-    a broker that never started rather than an image that was never there.
+    Pulling inside a test races its own readiness deadline: a first pull of a
+    few hundred megabytes can outlast the wait, and the failure then reads as a
+    broker that never started.
 
     Returns
     -------
@@ -173,8 +171,8 @@ def docker_network() -> Iterator[str]:
 def docker_volume() -> Iterator[str]:
     """Create a named volume for pipeline data and remove it afterwards.
 
-    A named volume rather than a host bind mount: inotify over a bind mount is
-    unreliable on Docker Desktop, and the filesystem monitor is pure inotify.
+    The volume is named because inotify over a host bind mount is unreliable on
+    Docker Desktop, and the filesystem monitor is inotify only.
 
     Yields
     ------
@@ -201,9 +199,8 @@ def pipeline(
 ) -> Iterator[Pipeline]:
     """Provide a pipeline helper and tear its containers down.
 
-    Lives here rather than in one test module so every module in the tier can
-    ask for it.  The import is deferred because the helper imports this module
-    for its broker credentials and ``run``.
+    The import is deferred: ``tests.docker._pipeline`` imports this module for
+    the broker credentials and ``run``.
 
     Yields
     ------

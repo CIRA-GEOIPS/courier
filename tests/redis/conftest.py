@@ -6,9 +6,9 @@ Set ``COURIER_TEST_REDIS_URL`` to run these, e.g.::
     export COURIER_TEST_REDIS_URL=redis://localhost:6379/0
     python -m pytest -m redis --no-cov
 
-As in the broker tier, the marker is applied from a collection hook rather than
-a ``pytestmark`` here: pytest ignores ``pytestmark`` in a conftest, which would
-leave the tier unmarked and selected by the default run.
+The marker is applied from a collection hook, as in the broker tier. pytest
+ignores ``pytestmark`` in a conftest, which would leave the tier unmarked and
+selected by the default run.
 """
 
 from __future__ import annotations

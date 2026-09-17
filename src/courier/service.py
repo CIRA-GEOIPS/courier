@@ -187,10 +187,9 @@ class Service:
                         message,
                         headers=w3c_headers,
                     )
-                # Counted per bound queue, which is what each consumer
-                # decrements. A single exchange-labelled increment made the
-                # two halves different series: one climbing forever, the
-                # other going negative as a backlog drained.
+                # Counted per bound queue, matching the label each consumer
+                # decrements. Labelling the increment with the exchange put the
+                # two halves on different series.
                 for bound in self._file_found_queue_names():
                     BROKER_MESSAGES_PENDING.labels(queue_name=bound).inc()
                 BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
@@ -255,9 +254,9 @@ class Service:
         on_subscribed : Callable[[], None] or None, optional
             Invoked once the queue is declared and bound, before the first
             message is read.  :class:`PluginManager` uses it to start consumers
-            ahead of producers.  Since the file-found queue became durable and
-            is predeclared during preflight, this is an ordering nicety that
-            keeps the first files moving promptly -- not a guard against loss.
+            ahead of producers.  The durable file-found queue is predeclared
+            during preflight, so this only affects how promptly the first files
+            move.
         subscriber : str or None, optional
             Identifier of the job builder consuming the file-found exchange.
             **Required** on that path: it names the durable queue
@@ -276,21 +275,18 @@ class Service:
 
         Notes
         -----
-        Consume to the end of the loop.  A message is acknowledged only after
-        the ``for`` body returns, so abandoning the loop while holding one --
-        by ``break``, or by raising -- leaves that message unacknowledged, and
-        an unacknowledged message is indistinguishable from one the caller
-        failed on.  It is therefore counted as a failed attempt and requeued
-        behind the backlog, and is parked on the dead-letter queue if it
-        happens ``broker_max_redeliveries`` times.  Setting *stop_event* first
-        is what marks the difference: that is a shutdown, and the message is
-        returned untouched.  Breaking may also requeue anything the broker
-        pre-fetched but has not yet yielded.  For one-shot consumption that
-        avoids all of this, use a separate thread with a timeout (see
-        ``concurrent.futures``).
+        A message is acknowledged only after the ``for`` body returns.
+        Abandoning the loop while holding one, by ``break`` or by raising,
+        leaves it unacknowledged, which counts as a failed attempt: the message
+        is requeued behind the backlog, and parked on the dead-letter queue
+        after ``broker_max_redeliveries`` attempts.  Setting *stop_event* first
+        marks the exit as a shutdown, and the message is returned untouched.
+        Breaking may also requeue anything the broker pre-fetched but has not
+        yet yielded.  For one-shot consumption, use a separate thread with a
+        timeout (see ``concurrent.futures``).
 
-        Validation happens when ``consume`` is called rather than on the first
-        ``next()``, so a missing *subscriber* is reported at the call site.
+        A missing *subscriber* is reported when ``consume`` is called, not on
+        the first ``next()``.
         """
         effective_stop = (
             stop_event if stop_event is not None else self._signal_handler.stop_event
@@ -309,13 +305,12 @@ class Service:
             queue_name = self._broker_manager.add_file_found_queue(subscriber)
 
             def declare_bound(conn: Any) -> Any:
-                # Redeclared on this connection as well: the manager declares a
+                # Redeclared on this connection too. The manager declares a
                 # registered queue only on the first connection it opens, so a
-                # queue deleted meanwhile would stay gone for the life of the
-                # process. durable / non-exclusive / non-auto-delete are
-                # kombu.Queue defaults, so the fanout binding is the only kwarg
-                # needed -- spelling the rest out again is what let this drift
-                # from MessageBrokerManager._file_found_queue_config().
+                # queue deleted after that is never redeclared. durable,
+                # non-exclusive and non-auto-delete are kombu.Queue defaults;
+                # respelling them here once let this drift from
+                # MessageBrokerManager._file_found_queue_config().
                 return declare_queue(
                     conn,
                     queue_name,
@@ -362,9 +357,7 @@ class Service:
         """Open a connection, declare the topology, and relay its messages.
 
         One generator for both queue families. They differ only in what
-        *declare* does and in the span attributes; everything after -- the
-        dead-letter queue, the subscription signal, the relay loop -- is
-        identical, and was duplicated.
+        *declare* does and in the span attributes.
 
         Parameters
         ----------
@@ -410,7 +403,7 @@ class Service:
                 span_attributes,
             )
 
-    def _relay(  # noqa: PLR0913, PLR0917 -- one consumer's declared topology
+    def _relay(  # noqa: PLR0913, PLR0917 (one consumer's declared topology)
         self,
         conn: Any,
         queue: Any,
@@ -443,30 +436,25 @@ class Service:
 
         Notes
         -----
-        A message the caller could not get past is not rejected back to the
-        head of the queue. It is republished behind the current backlog with
-        its attempt count incremented, and parked on the dead-letter queue once
-        the count passes ``broker_max_redeliveries`` -- see
-        :func:`courier.broker.kombu.redeliver_or_park`. Rejecting with
-        ``requeue=True``, which is what this did, put the message straight back
-        at the head; with the shipped prefetch of 1 the same message was then
-        handed to the same consumer again immediately, and nothing behind it
-        was ever reached.
+        A message the caller could not get past is republished behind the
+        current backlog with its attempt count incremented, and parked on the
+        dead-letter queue once the count passes ``broker_max_redeliveries``;
+        see :func:`courier.broker.kombu.redeliver_or_park`. Rejecting with
+        ``requeue=True`` put the message back at the head, and with the shipped
+        prefetch of 1 the same message was handed to the same consumer again
+        immediately.
 
-        Both failure paths matter, and the one that matters more is the less
-        obvious of the two. An exception raised by the caller *inside the*
-        ``for`` *body* is not thrown into this generator -- Python abandons it,
-        and the close arrives here as ``GeneratorExit`` rather than through the
-        ``except Exception`` clause. So a plugin blowing up on one message, the
-        case this exists for, never reached that clause at all; only a failure
-        between the ``yield`` and the ``ack`` did.
+        An exception raised by the caller inside the ``for`` body is not thrown
+        into this generator. Python closes the generator, so the failure
+        arrives here as ``GeneratorExit`` and never reaches the
+        ``except Exception`` clause; that clause covers only a failure between
+        the ``yield`` and the ``ack``.
 
-        ``GeneratorExit`` is therefore ambiguous: it means either that the
-        caller gave up on this message or that the consumer is shutting down
-        with the message untried. *stop_event* separates them. During shutdown
-        the message is rejected unchanged and its attempt count left alone,
-        because spending a retry on every rolling restart would eventually park
-        perfectly good messages.
+        ``GeneratorExit`` is therefore ambiguous: the caller gave up on this
+        message, or the consumer is shutting down with the message untried.
+        *stop_event* separates them. During shutdown the message is rejected
+        unchanged and its attempt count left alone, so a rolling restart does
+        not spend a retry on every in-flight message.
         """
         for body, ack, reject, headers in broker_messages(
             conn,
@@ -514,7 +502,7 @@ class Service:
                 )
                 raise
 
-    def _fail_message(  # noqa: PLR0913, PLR0917 -- one delivery's worth of state
+    def _fail_message(  # noqa: PLR0913, PLR0917 (one delivery's worth of state)
         self,
         conn: Any,
         queue: Any,
@@ -545,11 +533,9 @@ class Service:
 
         Notes
         -----
-        Acknowledging is safe only once the republish has been confirmed, so
-        the order is republish-then-acknowledge and never the reverse. If the
-        republish fails the delivery is rejected instead, which is the
-        behaviour this replaced: the message is not lost, and the queue is no
-        worse off than it was.
+        Acknowledging is safe only once the republish is confirmed, so the
+        republish happens first. If the republish fails the delivery is
+        rejected instead, leaving the message on the queue.
         """
         try:
             redeliver_or_park(
@@ -616,9 +602,8 @@ class Service:
         builder_targets : dict[str, tuple[str, ...]] or None, optional
             Map from builder identifier → declared targets.  Used by
             :meth:`preflight_check` to enforce unknown-target /
-            duplicate-target / implicit-wire rules.  Filtered by ``--only``,
-            because it drives routing validation for the builders this process
-            actually runs.
+            duplicate-target / implicit-wire rules.  Filtered by ``--only``:
+            it drives routing validation for the builders this process runs.
         allow_implicit_target : bool, optional
             Mirror of ``ServiceSpecModel.allow_implicit_target``.
         builder_identifiers : Iterable[str] or None, optional
@@ -626,8 +611,8 @@ class Service:
             YAML, **regardless of ``--only``**.  Each one gets a durable
             ``FilesFound-<identifier>`` queue predeclared during preflight, so
             a producer in another container never publishes into a fanout with
-            nothing bound to it -- which is what made the first deploy of a
-            split deployment lose every file.
+            nothing bound to it.  Without that, the first deploy of a split
+            deployment lost every file.
         """
         self._dispatcher_identifiers = frozenset(dispatcher_identifiers)
         self._builder_targets = builder_targets or {}
@@ -680,8 +665,8 @@ class Service:
             self._builder_targets = discovered_builders
         if not self._builder_identifiers:
             self._builder_identifiers = frozenset(discovered_builders)
-        # A builder named only in the targets map still needs its queue: that
-        # is the shape every harness that skips configure_routing produces.
+        # A builder named only in the targets map still needs its queue; that
+        # is the shape a harness skipping configure_routing produces.
         self._builder_identifiers |= frozenset(self._builder_targets)
 
     def _discover_plugin_routing(
@@ -778,22 +763,21 @@ class Service:
     def _predeclare_target_queues(self) -> None:
         """Declare every queue this service or its peers will consume from.
 
-        Runs producer-side, before any plugin thread starts, and declares
-        three families:
+        Runs producer-side, before any plugin thread starts, and declares:
 
         * one job-ready queue per dispatcher, so a builder can emit before its
           dispatcher exists;
         * the shared dispatcher queue;
         * one durable ``FilesFound-<builder>`` queue per job builder in the
-          YAML -- **including builders that run in other containers**. A fanout
+          YAML, including builders that run in other containers. A fanout
           exchange discards anything published while nothing is bound to it, so
           without this a monitor-only container drops every file until a
           builder container has started at least once (issue #44).
 
-        Every registration happens *before* the connection context opens,
-        because that context is what actually declares the registered queues.
-        The dispatcher queue used to be registered after it, and so was never
-        declared during preflight at all.
+        Every registration happens before the connection context opens, because
+        that context is what declares the registered queues. The dispatcher
+        queue was once registered after it, and so went undeclared during
+        preflight.
         """
         for ident in sorted(self._dispatcher_identifiers):
             self._broker_manager.add_queue(

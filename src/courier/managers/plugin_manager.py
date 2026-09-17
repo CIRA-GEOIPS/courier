@@ -515,11 +515,9 @@ class PluginManager(ServiceManager):
 
         # Phase 1: Start every plugin.
         #
-        # Consumers used to be started first and waited for, so that no data
-        # monitor could publish into a fanout exchange with nothing bound to
-        # it. Durable file-found queues are declared during preflight now, so
-        # a file published before its builder attaches waits on the broker
-        # instead of being discarded, and the ordering guarded nothing.
+        # Start order does not matter here. File-found queues are durable and
+        # are declared during preflight, so a file published before its builder
+        # attaches waits on the broker.
         with self._lock:
             for plugin_info in self._plugins.values():
                 self._start_plugin(plugin_info)
