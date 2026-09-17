@@ -12,6 +12,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from kombu.exceptions import OperationalError
 from prometheus_client import REGISTRY
 
 from courier.interfaces.dispatchers import Dispatcher
@@ -38,7 +39,13 @@ def _wire_broker(
     message_count: int = 0,
     channel_error: Exception | None = None,
 ) -> MagicMock:
-    """Point the service's broker manager at a stub channel."""
+    """Point the service's broker manager at a stub channel.
+
+    The probe takes a connection of its own from
+    ``open_private_connection`` rather than borrowing the service's shared
+    ``_connection``, so that is what is stubbed here.  A broker that cannot
+    be reached raises from there, which is the ``connected=False`` case.
+    """
     channel = MagicMock()
     if channel_error is not None:
         channel.queue_declare.side_effect = channel_error
@@ -47,11 +54,16 @@ def _wire_broker(
         channel.queue_declare.return_value = ("q", message_count, 0)
 
     connection = MagicMock()
-    connection.connected = connected
+    connection.connected = True
     connection.channel.return_value.__enter__.return_value = channel
 
     broker = mock_service._broker_manager
-    broker._connection = connection if connected else None
+    broker.reset_mock()
+    if connected:
+        broker.open_private_connection.side_effect = None
+        broker.open_private_connection.return_value = connection
+    else:
+        broker.open_private_connection.side_effect = OperationalError("no broker")
     broker.get_queue_name.side_effect = lambda base: f"test-ns-{base}"
     return channel
 
@@ -74,7 +86,7 @@ class TestEmitQueueDepth:
         self,
         mock_service: MagicMock,
     ) -> None:
-        """Memory transport and pre-connect startup both land here."""
+        """A broker that cannot be reached zeroes the gauge, it does not raise."""
         _wire_broker(mock_service, connected=False)
         dispatcher = _dispatcher(mock_service, "depth-disconnected")
 
@@ -114,15 +126,56 @@ class TestEmitQueueDepth:
         )
 
     def test_depth_updates_on_each_call(self, mock_service: MagicMock) -> None:
-        """The gauge tracks the current value, it does not accumulate."""
-        _wire_broker(mock_service, connected=True, message_count=10)
+        """The gauge tracks the current value, it does not accumulate.
+
+        The broker's answer is changed on the channel already in use rather
+        than by rewiring a second connection: the dispatcher keeps one
+        connection for its whole life, so a replacement stub would never be
+        reached and the second assertion would pass on a stale reading.
+        """
+        channel = _wire_broker(mock_service, connected=True, message_count=10)
         dispatcher = _dispatcher(mock_service, "depth-updating")
         dispatcher._emit_queue_depth()
         assert _depth("depth-updating") == 10
 
-        _wire_broker(mock_service, connected=True, message_count=3)
+        channel.queue_declare.return_value = ("q", 3, 0)
         dispatcher._emit_queue_depth()
         assert _depth("depth-updating") == 3
+
+    def test_a_failed_probe_does_not_poison_every_later_one(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """After a broker error the next probe reports a real depth again.
+
+        A connection whose reply never arrived may be left part-way through a
+        frame, and reusing it would make every subsequent probe fail too --
+        the gauge would read 0 for the rest of the process while the queue
+        filled up. The failed connection is therefore dropped and the next
+        probe opens a fresh one.
+        """
+        broken = MagicMock()
+        broken.connected = True
+        broken.channel.side_effect = OSError("timed out reading reply")
+
+        recovered_depth = 12
+        healthy_channel = MagicMock()
+        healthy_channel.queue_declare.return_value = ("q", recovered_depth, 0)
+        healthy = MagicMock()
+        healthy.connected = True
+        healthy.channel.return_value.__enter__.return_value = healthy_channel
+
+        broker = mock_service._broker_manager
+        broker.reset_mock()
+        broker.open_private_connection.side_effect = [broken, healthy]
+        broker.get_queue_name.side_effect = lambda base: f"test-ns-{base}"
+
+        dispatcher = _dispatcher(mock_service, "depth-recovers")
+        dispatcher._emit_queue_depth()
+        assert _depth("depth-recovers") == 0
+
+        dispatcher._emit_queue_depth()
+        assert _depth("depth-recovers") == recovered_depth
 
     @pytest.mark.parametrize("count", [0, 1, 1000])
     def test_reports_the_exact_count(

@@ -319,6 +319,7 @@ def _normalize_headers(raw_headers: dict | None) -> dict[str, str]:
 def _open_connection(
     url: str,
     max_retries: int = 5,
+    read_timeout: float | None = None,
 ) -> kombu.Connection:
     """Open and return a connected ``kombu.Connection``.
 
@@ -332,6 +333,15 @@ def _open_connection(
     max_retries : int, default=5
         Maximum connection retry attempts passed to Kombu's
         ``ensure_connection``.  Set to -1 to retry forever.
+    read_timeout : float or None, optional
+        Seconds a socket read on this connection may block before raising.
+        ``None``, the default, blocks indefinitely, which is what a consumer
+        wants.  A caller that only issues short synchronous RPCs should set
+        it: without a timeout a reply that never arrives parks the calling
+        thread forever, and a thread parked inside a broker call is invisible
+        to every health check courier has.  Accepted by the amqp, redis and
+        memory transports alike; transports with no socket to time out
+        ignore it.
 
     Returns
     -------
@@ -343,7 +353,8 @@ def _open_connection(
     OperationalError
         If the broker is unreachable.
     """
-    conn = kombu.Connection(url)
+    options = {"read_timeout": read_timeout} if read_timeout is not None else None
+    conn = kombu.Connection(url, transport_options=options)
     conn.ensure_connection(
         max_retries=max_retries,
         interval_start=1,
@@ -1043,6 +1054,56 @@ class MessageBrokerManager(ServiceManager):
                     declare_queue(conn, queue_name, **cfg)
                     self._created_queues.add(queue_name)
             yield conn
+
+    def open_private_connection(
+        self,
+        read_timeout: float | None = None,
+    ) -> "kombu.Connection":
+        """Open a connection for the exclusive use of one thread.
+
+        ``self._connection`` is the service's single shared connection, and
+        kombu/py-amqp connections are not thread-safe: two threads issuing a
+        synchronous RPC on one connection each wait on the same socket, and
+        whichever reads first consumes the other's reply frame.  Both then
+        block in ``read_frame`` for a frame that has already been taken, with
+        no timeout and no exception — so no ``except`` clause anywhere sees
+        it, every health check keeps reporting healthy, and any message the
+        parked thread was handling stays unacknowledged.  With
+        ``broker_prefetch_count`` at its default of 1 that one unacknowledged
+        message is enough to stop the broker delivering to that consumer ever
+        again.
+
+        A caller that needs to talk to the broker from its own thread takes a
+        connection of its own from here and closes it when that thread ends,
+        rather than borrowing the shared one.  Unlike
+        :meth:`get_connection_context` this does not close the connection for
+        you and declares nothing on it: it is for a caller that reuses one
+        connection across many short calls, where a fresh connect per call
+        would put a TCP and AMQP handshake on a hot path.
+
+        Parameters
+        ----------
+        read_timeout : float or None, optional
+            Seconds a socket read may block before raising.  Pass a value
+            whenever the connection is used only for short synchronous
+            RPCs, so a stalled broker surfaces as an error the caller can
+            handle instead of parking the thread.
+
+        Returns
+        -------
+        kombu.Connection
+            An open connection the caller owns and must close.
+
+        Raises
+        ------
+        OperationalError
+            If the broker is unreachable.
+        """
+        return _open_connection(
+            self._config.broker_url,
+            max_retries=self._config.broker_max_retries,
+            read_timeout=read_timeout,
+        )
 
     def get_queue_name(self, base_name: str) -> str:
         """Generate a full queue name with the service namespace prefix.
