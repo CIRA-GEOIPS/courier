@@ -59,7 +59,7 @@ def test_a_job_complete_in_the_hash_is_emitted_on_start(
     sync = MagicMock()
     sync.try_claim_emit.return_value = True
 
-    def _hydrate(job_groups: list[JobGroup], locks: dict) -> None:
+    def _hydrate(job_groups: list[JobGroup], _locks: dict) -> None:
         """Stand in for load_remote_state: fills the group, fires nothing."""
         stranded = _AlwaysReadyJob("n", "stranded", {})
         stranded.add_file(FrozenFile(file=Path("/data/a.nc"), hostname="h"))

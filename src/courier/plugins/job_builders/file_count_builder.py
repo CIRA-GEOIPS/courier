@@ -112,7 +112,6 @@ class FileCountJobGroup(JobGroup):
             config.job_name_template,
         )
         self.job = _build_job_class(config)
-        self._fallback_logger_warned = False
 
     def file_is_relevant(self, file: File | FrozenFile) -> bool:
         """Return ``True`` if the file passes configured filters."""

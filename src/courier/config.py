@@ -23,9 +23,6 @@ class ServiceConfig:
     namespace : str, optional
         Namespace for service isolation. Defaults to environment variable
         SERVICE_NAMESPACE or 'default'.
-    database_url : str, optional
-        PostgreSQL database connection URL. Defaults to environment variable
-        DATABASE_URL or localhost connection.
     prometheus_port : int, optional
         Port number for Prometheus metrics HTTP server. Defaults to environment
         variable PROMETHEUS_PORT or 8000.
@@ -106,12 +103,6 @@ class ServiceConfig:
         default_factory=lambda: os.environ.get(
             "SERVICE_NAMESPACE",
             "default",
-        ),
-    )
-    database_url: str = field(
-        default_factory=lambda: os.environ.get(
-            "DATABASE_URL",
-            "postgresql://admin:admin@localhost:5432/courier",
         ),
     )
     prometheus_port: int = field(

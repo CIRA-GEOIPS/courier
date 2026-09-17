@@ -348,7 +348,6 @@ class TestBuildServiceConfig:
         return PluginSelection(
             plugin_class=plugin_class,
             plugin_name=plugin_name,
-            interface_kind="data_monitors",
             yaml_kind=yaml_kind,
             display_label="Data Monitor",
             config_model=None,
@@ -386,7 +385,6 @@ class TestBuildServiceConfig:
         sel = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -422,7 +420,6 @@ class TestBuildServiceConfig:
         sel_dm = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -431,7 +428,6 @@ class TestBuildServiceConfig:
         sel_jb = PluginSelection(
             plugin_class=DummyJobBuilder,
             plugin_name="DummyJobBuilder",
-            interface_kind="job_builders",
             yaml_kind="job_builder",
             display_label="Job Builder",
             config_model=DummyJobBuilderConfig,
@@ -440,7 +436,6 @@ class TestBuildServiceConfig:
         sel_dp = PluginSelection(
             plugin_class=SerialBashDispatcher,
             plugin_name="serial_bash",
-            interface_kind="dispatchers",
             yaml_kind="dispatcher",
             display_label="Dispatcher",
             config_model=SerialBashConfig,
@@ -463,7 +458,6 @@ class TestValidateConfig:
         sel = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -506,7 +500,6 @@ class TestWriteYaml:
         sel = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -557,7 +550,6 @@ class TestWriteYaml:
                 PluginSelection(
                     plugin_class=FileSystemPoller,
                     plugin_name="file_system_poller_watchdog",
-                    interface_kind="data_monitors",
                     yaml_kind="data_monitor",
                     display_label="Data Monitor",
                     config_model=FileSystemPollerConfig,

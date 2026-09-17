@@ -18,10 +18,6 @@ class InvalidPluginConfigError(ConfigurationError):
     """Raised when a plugin's configuration fails validation."""
 
 
-class MissingEnvironmentVariableError(ConfigurationError):
-    """Raised when a required environment variable is not set."""
-
-
 # ---------------------------------------------------------------------------
 # Pipeline errors
 # ---------------------------------------------------------------------------
@@ -84,10 +80,6 @@ class NoMatchError(PipelineError):
         )
 
 
-class JobTimeoutError(PipelineError):
-    """Raised when a job exceeds its configured timeout."""
-
-
 # ---------------------------------------------------------------------------
 # Broker errors
 # ---------------------------------------------------------------------------
@@ -95,22 +87,6 @@ class JobTimeoutError(PipelineError):
 
 class BrokerError(PipelineError):
     """Base class for broker-related errors."""
-
-
-class BrokerConnectionError(BrokerError):
-    """Raised when a broker connection cannot be established."""
-
-
-class BrokerPublishError(BrokerError):
-    """Raised when publishing a message to the broker fails."""
-
-
-class BrokerConsumeError(BrokerError):
-    """Raised when consuming a message from the broker fails."""
-
-
-class BrokerCapabilityError(BrokerError):
-    """Raised when an operation requires a broker capability that is unavailable."""
 
 
 class TransientBrokerError(BrokerError):
@@ -263,10 +239,6 @@ class PluginNotFoundError(DiscoveryError):
     """Raised when a requested plugin cannot be found in any registry."""
 
 
-class UnknownInterfaceError(DiscoveryError):
-    """Raised when a plugin specifies an interface name that is not registered."""
-
-
 class PluginValidationError(DiscoveryError):
     """Raised when a plugin fails schema or structural validation."""
 
@@ -277,18 +249,6 @@ class PluginError(PipelineError):
 
 class PluginStartupError(PluginError):
     """Raised when a plugin fails to start."""
-
-
-class PluginHealthCheckError(PluginError):
-    """Raised when a plugin's health check reports unhealthy status."""
-
-
-class PluginMaxRestartsExceededError(PluginError):
-    """Raised when a plugin exceeds its maximum restart attempts."""
-
-
-class InvalidTransitionError(PluginError):
-    """Raised when an invalid plugin state transition is attempted."""
 
 
 # ---------------------------------------------------------------------------
