@@ -18,10 +18,6 @@ class InvalidPluginConfigError(ConfigurationError):
     """Raised when a plugin's configuration fails validation."""
 
 
-class MissingEnvironmentVariableError(ConfigurationError):
-    """Raised when a required environment variable is not set."""
-
-
 # ---------------------------------------------------------------------------
 # Pipeline errors
 # ---------------------------------------------------------------------------
@@ -84,10 +80,6 @@ class NoMatchError(PipelineError):
         )
 
 
-class JobTimeoutError(PipelineError):
-    """Raised when a job exceeds its configured timeout."""
-
-
 # ---------------------------------------------------------------------------
 # Broker errors
 # ---------------------------------------------------------------------------
@@ -95,22 +87,6 @@ class JobTimeoutError(PipelineError):
 
 class BrokerError(PipelineError):
     """Base class for broker-related errors."""
-
-
-class BrokerConnectionError(BrokerError):
-    """Raised when a broker connection cannot be established."""
-
-
-class BrokerPublishError(BrokerError):
-    """Raised when publishing a message to the broker fails."""
-
-
-class BrokerConsumeError(BrokerError):
-    """Raised when consuming a message from the broker fails."""
-
-
-class BrokerCapabilityError(BrokerError):
-    """Raised when an operation requires a broker capability that is unavailable."""
 
 
 class TransientBrokerError(BrokerError):
@@ -128,6 +104,39 @@ class FatalBrokerError(BrokerError):
 
 class RoutingError(ConfigurationError):
     """Base class for dispatcher-routing configuration errors."""
+
+
+class UnsafeReplicationError(ConfigurationError):
+    """Raised when replicating a job builder would split its jobs.
+
+    Replicas of one builder identifier are competing consumers of a single
+    queue, so each sees a different subset of the files belonging to a job.
+    A builder that gathers files into a job needs shared state to reassemble
+    them. Without it every job is emitted short.
+
+    Attributes
+    ----------
+    identifier : str
+        The job builder's run-step identifier.
+    peers : int
+        Consumers already attached to its queue.
+    """
+
+    def __init__(self, identifier: str, peers: int) -> None:
+        self.identifier = identifier
+        self.peers = peers
+        super().__init__(
+            f"Job builder {identifier!r} groups files into jobs and already has "
+            f"{peers} other consumer(s) on its queue, but has no shared state "
+            f"to reassemble a job from. Every job would be split across "
+            f"replicas and emitted short.\n"
+            f"Either run a single replica of this identifier, give each "
+            f"replica its own identifier, or add a state_sync block to its "
+            f"config:\n"
+            f"    config:\n"
+            f"      state_sync:\n"
+            f"        host: <redis host>",
+        )
 
 
 class InvalidIdentifierError(RoutingError):
@@ -229,10 +238,6 @@ class PluginNotFoundError(DiscoveryError):
     """Raised when a requested plugin cannot be found in any registry."""
 
 
-class UnknownInterfaceError(DiscoveryError):
-    """Raised when a plugin specifies an interface name that is not registered."""
-
-
 class PluginValidationError(DiscoveryError):
     """Raised when a plugin fails schema or structural validation."""
 
@@ -243,18 +248,6 @@ class PluginError(PipelineError):
 
 class PluginStartupError(PluginError):
     """Raised when a plugin fails to start."""
-
-
-class PluginHealthCheckError(PluginError):
-    """Raised when a plugin's health check reports unhealthy status."""
-
-
-class PluginMaxRestartsExceededError(PluginError):
-    """Raised when a plugin exceeds its maximum restart attempts."""
-
-
-class InvalidTransitionError(PluginError):
-    """Raised when an invalid plugin state transition is attempted."""
 
 
 # ---------------------------------------------------------------------------

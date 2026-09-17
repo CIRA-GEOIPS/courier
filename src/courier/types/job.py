@@ -198,9 +198,34 @@ class JobGroup:
         # sequence has advanced past zero.
         self._open_job_ids: dict[str, str] = {}
 
-    def ready_jobs(self) -> list[Job]:
-        """Return list of ready jobs."""
-        return [self.jobs[jid] for jid in self.jobs if self.jobs[jid].ready()]
+    def adopt_job(self, job_id: str) -> None:
+        """Register a job that arrived from outside as its bucket's open job.
+
+        A job restored from shared state, or merged from a peer, is in
+        ``jobs`` but is not recorded as the bucket's *open* job and has not
+        advanced the sequence counter. The next file for that bucket then
+        mints the bucket id again and overwrites the restored job, silently
+        discarding the files it had accumulated. A single instance restoring
+        its own state hits this too.
+
+        Parameters
+        ----------
+        job_id : str
+            Identifier of a job already present in :attr:`jobs`.
+        """
+        base_id = self._base_id(job_id)
+        self._open_job_ids[base_id] = job_id
+        # Keep the counter ahead of any sequence already in use, so a later
+        # job for this bucket cannot collide with one that exists.
+        if _OVERFLOW_SEPARATOR in job_id:
+            suffix = job_id.rsplit(_OVERFLOW_SEPARATOR, 1)[1]
+            sequence = int(suffix) if suffix.isdigit() else 0
+        else:
+            sequence = 0
+        self._job_sequence[base_id] = max(
+            self._job_sequence.get(base_id, 0),
+            sequence + 1,
+        )
 
     @staticmethod
     def _base_id(job_id: str) -> str:

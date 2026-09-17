@@ -23,9 +23,6 @@ class ServiceConfig:
     namespace : str, optional
         Namespace for service isolation. Defaults to environment variable
         SERVICE_NAMESPACE or 'default'.
-    database_url : str, optional
-        PostgreSQL database connection URL. Defaults to environment variable
-        DATABASE_URL or localhost connection.
     prometheus_port : int, optional
         Port number for Prometheus metrics HTTP server. Defaults to environment
         variable PROMETHEUS_PORT or 8000.
@@ -35,6 +32,20 @@ class ServiceConfig:
     broker_max_retries : int, optional
         Maximum retry attempts for broker operations. Defaults to environment
         variable BROKER_MAX_RETRIES or 5.
+    broker_prefetch_count : int, optional
+        Maximum unacknowledged messages the broker may push to one courier
+        consumer (AMQP ``basic.qos``). Applies to both the file-found and the
+        job-ready consumers. Defaults to environment variable
+        BROKER_PREFETCH_COUNT or 1, and must be at least 1 because 0 means
+        unlimited in AMQP. Raising it speeds up draining a backlog, at the cost
+        of more redeliveries if a replica dies mid-drain.
+    broker_max_redeliveries : int, optional
+        How many further attempts a message gets after the consumer raises on
+        it, before it is parked on ``<queue>-DeadLetter``. Defaults to
+        environment variable BROKER_MAX_REDELIVERIES or 3, and must not be
+        negative; 0 parks on the first failure. There is no unlimited setting:
+        retrying one message forever is what made a single unprocessable
+        message block every message behind it.
     heartbeat_interval : int, optional
         Interval in seconds between heartbeat metric updates. Default is 30.
     plugin_restart_delay : int, optional
@@ -94,12 +105,6 @@ class ServiceConfig:
             "default",
         ),
     )
-    database_url: str = field(
-        default_factory=lambda: os.environ.get(
-            "DATABASE_URL",
-            "postgresql://admin:admin@localhost:5432/courier",
-        ),
-    )
     prometheus_port: int = field(
         default_factory=lambda: int(os.environ.get("PROMETHEUS_PORT", "8000")),
     )
@@ -111,6 +116,12 @@ class ServiceConfig:
     )
     broker_max_retries: int = field(
         default_factory=lambda: int(os.environ.get("BROKER_MAX_RETRIES", "5")),
+    )
+    broker_prefetch_count: int = field(
+        default_factory=lambda: int(os.environ.get("BROKER_PREFETCH_COUNT", "1")),
+    )
+    broker_max_redeliveries: int = field(
+        default_factory=lambda: int(os.environ.get("BROKER_MAX_REDELIVERIES", "3")),
     )
     heartbeat_interval: int = 30
     plugin_restart_delay: int = field(
@@ -162,9 +173,21 @@ class ServiceConfig:
     )
 
     def __post_init__(self) -> None:
-        """Validate tracing_sample_rate range."""
+        """Validate the sample rate, the prefetch, and the redelivery bound."""
         if not (0.0 <= self.tracing_sample_rate <= 1.0):
             raise ConfigurationError(
                 "tracing_sample_rate must be between 0.0 and 1.0, "
                 f"got {self.tracing_sample_rate}",
+            )
+        if self.broker_prefetch_count < 1:
+            raise ConfigurationError(
+                "broker_prefetch_count must be at least 1 "
+                f"(0 means unlimited in AMQP and is refused), "
+                f"got {self.broker_prefetch_count}",
+            )
+        if self.broker_max_redeliveries < 0:
+            raise ConfigurationError(
+                "broker_max_redeliveries must not be negative "
+                "(0 parks a failing message on the first attempt), "
+                f"got {self.broker_max_redeliveries}",
             )

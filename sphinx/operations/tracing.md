@@ -206,7 +206,7 @@ Span events represent discrete moments within a span's lifetime. They are additi
 | `plugin.restarting`          | `PluginManager._handle_failed_plugin()`       | Failed plugin is within restart budget; restart is being attempted  |
 | `file.found`                 | `DataMonitorBasePlugin.find_and_emit_files()` | File passed metadata enrichment successfully, before emit           |
 | `file.emitted`               | `DataMonitorBasePlugin.find_and_emit_files()` | File message published to the fanout exchange                       |
-| `job.ready`                  | `JobBuilder._process_job_group()`             | `JobGroup.ready_jobs()` returned this job as ready for dispatch     |
+| `job.ready`                  | `JobBuilder._process_job_group()`             | `JobBuilder._claim_ready_jobs()` returned this job as ready for dispatch |
 | `job.emitted`                | `JobBuilder._process_job_group()`             | Job published to all target dispatcher queues                       |
 | `job.executed`               | `Dispatcher.handle_incoming_jobs()`           | `get_execution_log()` returned execution results                    |
 

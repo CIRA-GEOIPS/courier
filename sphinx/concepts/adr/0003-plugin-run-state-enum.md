@@ -27,8 +27,9 @@ rather than `self._running: bool`.
 - **Keep boolean**: Simpler, but loses diagnostic granularity and forces callers to
   infer restart state from thread liveness rather than an explicit enum value.
 - **State machine class**: A `StateMachine` with transition guards (as described in
-  `plugin-design.md`). More correct but significantly more code. Deferred until
-  `InvalidTransitionError` is needed in practice.
+  `plugin-design.md`). More correct but significantly more code. Deferred until an
+  invalid transition is actually observed in practice; no error type is declared for
+  one until then.
 
 ## Trade-offs Accepted
 

@@ -44,8 +44,56 @@ from courier.metrics import (
 from courier.utils.logging import get_logger
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from courier.schema.v1alpha1.sync_config import RedisStateSyncConfig
     from courier.types.job import Job, JobGroup
+
+
+#: Server-side union of one job into a hash field.
+#:
+#: Replicas of one builder identifier are competing consumers, so each holds a
+#: different subset of a job's files. A blind write lets the last writer erase
+#: the other's files, and a client-side read-merge-write loses one side when
+#: two replicas interleave. Merging inside the script makes the whole
+#: read-decide-write one atomic step.
+#:
+#: The script reconciles two fields: it unions the ``files`` list and keeps the
+#: larger ``last_modified``. Every other field is last-writer-wins, matching
+#: ``_merge_job``. The winner dispatches its own in-memory ``Job``, so nothing
+#: downstream reads those scalars from this payload.
+_UNION_JOB_LUA = """
+local existing = redis.call('HGET', KEYS[1], ARGV[1])
+if not existing then
+  redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+  return 1
+end
+local ok_old, old = pcall(cjson.decode, existing)
+local ok_new, new = pcall(cjson.decode, ARGV[2])
+if not ok_old or not ok_new then
+  redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+  return 1
+end
+local seen = {}
+local merged = {}
+for _, source in ipairs({old.files, new.files}) do
+  if source then
+    for _, item in ipairs(source) do
+      if not seen[item] then
+        seen[item] = true
+        merged[#merged + 1] = item
+      end
+    end
+  end
+end
+new.files = merged
+if old.last_modified and new.last_modified and
+   tonumber(old.last_modified) > tonumber(new.last_modified) then
+  new.last_modified = old.last_modified
+end
+redis.call('HSET', KEYS[1], ARGV[1], cjson.encode(new))
+return 1
+"""
 
 
 def _as_str(value: bytes | str) -> str:
@@ -83,7 +131,7 @@ class JobBuilderStateSync:
         namespace : str
             Service namespace for Redis key namespacing.
         builder_name : str
-            Job builder name for Redis key namespacing.
+            Run-step identifier of the job builder, for Redis key namespacing.
         """
         self._config = config
         self._namespace = namespace
@@ -95,6 +143,9 @@ class JobBuilderStateSync:
         self._group_locks: dict[str, threading.Lock] = {}
         self._client: redis.Redis | None = None
         self._pubsub: redis.client.PubSub | None = None
+        self._script: Any = None
+        self._scripting_unavailable = False
+        self._on_merged: Callable[[JobGroup], object] | None = None
         self._pushes = STATE_SYNC_PUSHES
         self._applies = STATE_SYNC_APPLIES
         self._claims = STATE_SYNC_EMIT_CLAIMS
@@ -140,6 +191,17 @@ class JobBuilderStateSync:
         self._logger.info(
             f"State-sync Redis connected: {cfg.host}:{cfg.port} db={cfg.db}",
         )
+
+    def set_merge_callback(self, callback: Callable[[JobGroup], object]) -> None:
+        """Register what to run after a peer's update is merged in.
+
+        Parameters
+        ----------
+        callback : Callable[[JobGroup], object]
+            Invoked with the affected group once a merge changed local state.
+            Its return value is ignored.
+        """
+        self._on_merged = callback
 
     def start(
         self,
@@ -194,14 +256,26 @@ class JobBuilderStateSync:
     # ------------------------------------------------------------------
 
     def push_job_update(self, group_name: str, job_id: str, job: Job) -> None:
-        """Write a job to the Redis hash and notify peers.
+        """Merge a job into the Redis hash and notify peers.
 
-        Safe to call while the group lock is held; the Redis round-trip
-        is fast relative to lock-hold time.
+        The write is a server-side union, so a replica holding half of a job
+        does not erase the half another replica wrote. See ``_UNION_JOB_LUA``.
+
+        Safe to call while the group lock is held; the Redis round-trip is
+        fast relative to lock-hold time.
+
+        Parameters
+        ----------
+        group_name : str
+            Job group the job belongs to.
+        job_id : str
+            Identifier of the job being written.
+        job : Job
+            The local view of the job, whose files are merged in.
         """
         client = self._require_client()
         try:
-            client.hset(self._hash_key(group_name), job_id, str(job))
+            self._merge_into_redis(client, group_name, job_id, job)
             client.publish(
                 self._channel,
                 json.dumps(
@@ -222,6 +296,77 @@ class JobBuilderStateSync:
                 operation="push_update",
             ).inc()
             self._logger.warning(f"Failed to push job update for {job_id!r}: {exc}")
+
+    def _merge_into_redis(
+        self,
+        client: redis.Redis,
+        group_name: str,
+        job_id: str,
+        job: Job,
+    ) -> None:
+        """Union *job* into whatever the hash already holds for *job_id*.
+
+        Parameters
+        ----------
+        client : redis.Redis
+            Connected client.
+        group_name : str
+            Job group the job belongs to.
+        job_id : str
+            Identifier of the job being written.
+        job : Job
+            The local view of the job.
+        """
+        script = self._union_script(client)
+        if script is not None:
+            try:
+                script(keys=[self._hash_key(group_name)], args=[job_id, str(job)])
+            except redis.RedisError:
+                # Scripting can fail at execution as well as at registration:
+                # disabled on the server, or an in-process fake with no Lua
+                # runtime. The fallback lasts for the life of this instance.
+                self._scripting_unavailable = True
+                self._script = None
+                self._logger.warning(
+                    "Redis scripting failed; job updates fall back to a plain "
+                    "write. Two replicas of one builder identifier can then "
+                    "lose files belonging to the same job.",
+                )
+            else:
+                return
+        # A plain write still beats dropping the update, and a single replica
+        # has no second writer to race with.
+        client.hset(self._hash_key(group_name), job_id, str(job))
+
+    def _union_script(self, client: redis.Redis) -> Any:
+        """Return the registered union script, or ``None`` if unsupported.
+
+        Parameters
+        ----------
+        client : redis.Redis
+            Connected client.
+
+        Returns
+        -------
+        Any
+            A callable registered script, or ``None`` when the server does not
+            support scripting.
+        """
+        if self._script is not None:
+            return self._script
+        if self._scripting_unavailable:
+            return None
+        try:
+            self._script = client.register_script(_UNION_JOB_LUA)
+        except Exception:  # any failure to register means fall back
+            self._scripting_unavailable = True
+            self._logger.warning(
+                "Redis scripting is unavailable; job updates fall back to a "
+                "plain write. Two replicas of one builder identifier can then "
+                "lose files for the same job.",
+            )
+            return None
+        return self._script
 
     def push_job_deletion(self, group_name: str, job_id: str) -> None:
         """Remove a job from the Redis hash and notify peers."""
@@ -398,7 +543,22 @@ class JobBuilderStateSync:
         job_id: str,
         job_json: str,
     ) -> None:
-        """Apply a remote job to local state using last-write-wins."""
+        """Union a remote job into local state.
+
+        Replicas share a queue, so each holds a different subset of the job's
+        files. Replacing the local job drops whichever subset lost the race.
+        Files are a set of value-comparable objects, so the union is
+        idempotent.
+
+        Parameters
+        ----------
+        job_group : JobGroup
+            Group the job belongs to.
+        job_id : str
+            Identifier of the remote job.
+        job_json : str
+            Serialized remote job.
+        """
         try:
             remote_job = job_group.job.from_string(job_json)
         except (KeyError, ValueError, json.JSONDecodeError) as exc:
@@ -407,12 +567,19 @@ class JobBuilderStateSync:
             )
             return
         local = job_group.jobs.get(job_id)
-        if local is None or remote_job.last_modified > local.last_modified:
+        if local is None:
             job_group.jobs[job_id] = remote_job
-            self._applies.labels(builder_name=self._builder_name).inc()
-            self._logger.debug(
-                f"Merged remote job {job_id!r} into group {job_group.name!r}",
-            )
+        else:
+            before = len(local.files)
+            local.files |= remote_job.files
+            local.last_modified = max(local.last_modified, remote_job.last_modified)
+            if len(local.files) == before:
+                return
+        job_group.adopt_job(job_id)
+        self._applies.labels(builder_name=self._builder_name).inc()
+        self._logger.debug(
+            f"Merged remote job {job_id!r} into group {job_group.name!r}",
+        )
 
     def _subscriber_loop(self) -> None:
         """Background thread: receive pub/sub messages and apply changes."""
@@ -459,13 +626,33 @@ class JobBuilderStateSync:
         event: str,
         job_id: str,
     ) -> None:
-        """Apply a ``job_updated`` or ``job_deleted`` event under the group lock."""
+        """Apply a ``job_updated`` or ``job_deleted`` event under the group lock.
+
+        Parameters
+        ----------
+        job_group : JobGroup
+            Group the event refers to.
+        event : str
+            Either ``job_updated`` or ``job_deleted``.
+        job_id : str
+            Identifier the event refers to.
+        """
         lock = self._group_locks.get(job_group.name)
         with lock if lock is not None else contextlib.nullcontext():
             if event == "job_updated":
                 self._fetch_and_merge(job_group, job_id)
             elif event == "job_deleted":
                 job_group.jobs.pop(job_id, None)
+        if event == "job_updated" and self._on_merged is not None:
+            # Called outside the lock: the callback publishes, and holding a
+            # group lock across a broker round-trip stalls every other file
+            # in that group.
+            #
+            # A merge is the only moment a replica learns that a job it holds
+            # part of is complete. Without this call, a job assembled from
+            # files that arrived on different replicas waits for another file
+            # or for a timeout reaper.
+            self._on_merged(job_group)
 
     def _fetch_and_merge(self, job_group: JobGroup, job_id: str) -> None:
         """Fetch a job from the Redis hash and merge it into the local group."""

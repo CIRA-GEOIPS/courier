@@ -1,9 +1,9 @@
 """Bounded deduplication utilities for plugins with a bounded seen-set.
 
-Several data monitor plugins (``cron_glob``, ``s3_poller``, ``sftp_poller``)
-need to track which identifiers have already been emitted so that repeated
-scans do not re-emit them. ``BoundedSeenSet`` provides a thread-unsafe
-bounded LRU-style set backed by an ``OrderedDict``.
+Polling data monitor plugins (``cron_glob``, ``s3_poller``) need to track
+which identifiers have already been emitted so that repeated scans do not
+re-emit them. ``BoundedSeenSet`` provides a thread-unsafe bounded LRU-style
+set backed by an ``OrderedDict``.
 
 Not thread-safe. Each plugin owns its seen-set exclusively from its own
 thread; no lock is required. Callers that need cross-thread sharing must
@@ -22,8 +22,7 @@ class BoundedSeenSet(Generic[K]):  # noqa: UP046
 
     Implementations
     ---------------
-    Used by ``cron_glob`` (``Path`` keys), ``s3_poller`` (``str`` S3 URIs),
-    and ``sftp_poller`` (``str`` SFTP URIs).
+    Used by ``cron_glob`` (``Path`` keys) and ``s3_poller`` (``str`` S3 URIs).
 
     Parameters
     ----------

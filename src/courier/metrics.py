@@ -140,6 +140,13 @@ JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
     ["job_builder_name", "job_builder_identifier", "target", "reason"],
 )
 
+JOB_BUILDER_MALFORMED_MESSAGES: Counter = Counter(
+    "courier_job_builder_malformed_messages_total",
+    "File-found messages acknowledged and dropped because the body would "
+    "not parse as a File",
+    ["job_builder_name", "job_builder_identifier"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher metrics
@@ -324,6 +331,23 @@ BROKER_MESSAGES_PENDING: Gauge = Gauge(
     "courier_broker_messages_pending",
     "Best-effort count of messages published but not yet consumed. "
     "Resets to 0 on restart; may drift due to requeues.",
+    ["queue_name"],
+)
+
+BROKER_MESSAGES_REDELIVERED: Counter = Counter(
+    "courier_broker_messages_redelivered_total",
+    "Messages sent back to their queue for another attempt after the "
+    "consumer raised. A rate here with no matching rate of "
+    "courier_broker_messages_received_total progress means the pipeline is "
+    "retrying rather than advancing.",
+    ["queue_name"],
+)
+
+BROKER_MESSAGES_DEAD_LETTERED: Counter = Counter(
+    "courier_broker_messages_dead_lettered_total",
+    "Messages parked on <queue>-DeadLetter after exhausting "
+    "broker_max_redeliveries attempts. Any increase is a message the service "
+    "gave up on and an operator must triage; alert on it.",
     ["queue_name"],
 )
 

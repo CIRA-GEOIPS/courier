@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
+import re
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
@@ -44,6 +46,40 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     return out
 
 
+#: Shape of the identifier ``ServiceConfig`` generates when ``SERVICE_ID`` is
+#: unset: ``watcher-service-`` plus eight hex characters from a uuid4.
+_GENERATED_SERVICE_ID = re.compile(r"watcher-service-[0-9a-f]{8}")
+
+
+def _resolve_service_id(config: Any) -> str:
+    """Return the identity this process reports in logs and traces.
+
+    Precedence is explicit configuration, then the environment, then the
+    config's metadata name. The metadata name once won unconditionally, so
+    every replica of one YAML reported the same identity in logs and traces.
+
+    Parameters
+    ----------
+    config : Any
+        Validated service configuration model.
+
+    Returns
+    -------
+    str
+        The resolved service identifier.
+    """
+    configured = getattr(config.spec.service_config, "service_id", "") or ""
+    # The dataclass default is a generated placeholder, so it does not outrank
+    # the metadata name. The full shape is matched because a prefix test also
+    # discarded a real ``watcher-service-prod`` written in the YAML.
+    if configured and not _GENERATED_SERVICE_ID.fullmatch(configured):
+        return str(configured)
+    from_env = os.environ.get("SERVICE_ID", "")
+    if from_env:
+        return from_env
+    return str(config.metadata.name)
+
+
 def run_service(
     config: Any,
     log_level: str | None = None,
@@ -64,6 +100,14 @@ def run_service(
     only_set : set[str] or None, optional
         If set, only run plugins whose identifiers are in this set.
         Keyword-only; passed from the ``--only`` CLI flag.
+
+    Notes
+    -----
+    ``--only`` filters which plugins run, and which dispatchers and builder
+    targets take part in routing validation. It does not filter the
+    job-builder identifiers handed to the service: every container predeclares
+    a durable file-found queue for every builder in the YAML, so container
+    start order cannot lose files.
     """
     # Use the CLI-provided log level if given so the parameter is actually used
     if log_level is not None:
@@ -82,7 +126,7 @@ def run_service(
         config.spec.service_config,
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
-        service_id=config.metadata.name,
+        service_id=_resolve_service_id(config),
     )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
@@ -139,8 +183,14 @@ def run_service(
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
+    # Every job builder in the YAML, regardless of --only: each needs a durable
+    # FilesFound-<builder> queue declared by this container, so a producer never
+    # publishes into a fanout exchange with nothing bound to it (issue #44).
+    all_builder_targets = _collect_builder_targets(config)
+    builder_identifiers = frozenset(all_builder_targets)
+
     # Union: add any dispatcher targeted by builders in the filtered set
-    builder_targets = _collect_builder_targets(config)
+    builder_targets = all_builder_targets
     if only_set is not None:
         # Filter builder_targets to only builders in only_set
         builder_targets = {
@@ -158,6 +208,7 @@ def run_service(
             "allow_implicit_target",
             True,
         ),
+        builder_identifiers=builder_identifiers,
     )
     service.start()
 

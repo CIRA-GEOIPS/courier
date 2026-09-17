@@ -133,7 +133,7 @@ class TestResolvePluginChoice:
         return _FakeRegistry(
             "file_system_poller_watchdog",
             "s3_poller",
-            "sftp_poller",
+            "slurm_dispatcher",
         ).get_plugins()
 
     @pytest.mark.parametrize(
@@ -141,7 +141,7 @@ class TestResolvePluginChoice:
         [
             ("1", "file_system_poller_watchdog"),
             ("2", "s3_poller"),
-            ("3", "sftp_poller"),
+            ("3", "slurm_dispatcher"),
             ("  2  ", "s3_poller"),
         ],
     )
@@ -188,7 +188,7 @@ class TestResolvePluginChoice:
 
         assert matched is None
         assert "s3_poller" in problem
-        assert "sftp_poller" in problem
+        assert "slurm_dispatcher" in problem
 
     def test_an_exact_name_beats_a_prefix_of_another(self) -> None:
         plugins = _FakeRegistry("poller", "poller_extended").get_plugins()
@@ -348,7 +348,6 @@ class TestBuildServiceConfig:
         return PluginSelection(
             plugin_class=plugin_class,
             plugin_name=plugin_name,
-            interface_kind="data_monitors",
             yaml_kind=yaml_kind,
             display_label="Data Monitor",
             config_model=None,
@@ -386,7 +385,6 @@ class TestBuildServiceConfig:
         sel = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -422,7 +420,6 @@ class TestBuildServiceConfig:
         sel_dm = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -431,7 +428,6 @@ class TestBuildServiceConfig:
         sel_jb = PluginSelection(
             plugin_class=DummyJobBuilder,
             plugin_name="DummyJobBuilder",
-            interface_kind="job_builders",
             yaml_kind="job_builder",
             display_label="Job Builder",
             config_model=DummyJobBuilderConfig,
@@ -440,7 +436,6 @@ class TestBuildServiceConfig:
         sel_dp = PluginSelection(
             plugin_class=SerialBashDispatcher,
             plugin_name="serial_bash",
-            interface_kind="dispatchers",
             yaml_kind="dispatcher",
             display_label="Dispatcher",
             config_model=SerialBashConfig,
@@ -463,7 +458,6 @@ class TestValidateConfig:
         sel = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -506,7 +500,6 @@ class TestWriteYaml:
         sel = PluginSelection(
             plugin_class=FileSystemPoller,
             plugin_name="file_system_poller_watchdog",
-            interface_kind="data_monitors",
             yaml_kind="data_monitor",
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
@@ -557,7 +550,6 @@ class TestWriteYaml:
                 PluginSelection(
                     plugin_class=FileSystemPoller,
                     plugin_name="file_system_poller_watchdog",
-                    interface_kind="data_monitors",
                     yaml_kind="data_monitor",
                     display_label="Data Monitor",
                     config_model=FileSystemPollerConfig,

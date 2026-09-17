@@ -9,6 +9,25 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
+    services:
+      # Administrator credentials are required, not cosmetic: RabbitMQ
+      # restricts the default guest user to loopback, and a service container
+      # is reached over the docker bridge, so guest is refused.
+      rabbitmq:
+        image: rabbitmq:4.1-management-alpine
+        ports:
+          - 5672:5672
+        env:
+          RABBITMQ_DEFAULT_USER: admin
+          RABBITMQ_DEFAULT_PASS: admin_test
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 10s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 12
     steps:
       - name: Check out the repository code
         uses: actions/checkout@v6
@@ -25,10 +44,26 @@ jobs:
         timeout-minutes: 10
         run: |
           python3 -m pytest
-
       - name: Run integration tests
         # Deselected from the default run for local speed, so CI has to ask
         # for them explicitly or they would never execute anywhere.
         timeout-minutes: 20
         run: |
-          python3 -m pytest -m integration --no-cov
+          python3 -m pytest -m "integration and not docker" --no-cov
+      - name: Run RabbitMQ-backed tests
+        # The in-memory transport ignores exclusivity and never deletes a
+        # queue, so the half of issue #44 about a builder's queue vanishing
+        # can only be tested against a real broker.
+        timeout-minutes: 10
+        env:
+          COURIER_TEST_AMQP_URL: amqp://admin:admin_test@localhost:5672//
+        run: |
+          python3 -m pytest -m rabbitmq --no-cov
+      - name: Run Redis-backed tests
+        # The in-process fake has no Lua runtime, so the server-side union
+        # that lets two replicas of one builder share a job only runs here.
+        timeout-minutes: 10
+        env:
+          COURIER_TEST_REDIS_URL: redis://localhost:6379/0
+        run: |
+          python3 -m pytest -m redis --no-cov

@@ -308,7 +308,6 @@ class MetricsFetcher:
                     failure_count=failure,
                     last_scan_age_seconds=last_scan_age,
                     scan_duration_p50=avg_scan,
-                    scan_duration_p95=avg_scan,
                 ),
             )
 
@@ -402,10 +401,7 @@ class MetricsFetcher:
                     active_groups=active_groups,
                     jobs_discarded_rate=discarded,
                     processing_duration_p50=proc_avg,
-                    processing_duration_p95=proc_avg,
-                    processing_duration_p99=proc_avg,
                     files_per_job_p50=fpj_avg,
-                    files_per_job_p95=fpj_avg,
                 ),
             )
 
@@ -477,11 +473,8 @@ class MetricsFetcher:
                     success_ratio=success_ratio,
                     active_jobs=active_jobs,
                     execution_duration_p50=exec_avg,
-                    execution_duration_p95=exec_avg,
-                    execution_duration_p99=exec_avg,
                     logs_emitted_rate=logs_emitted,
                     queue_wait_p50=queue_avg,
-                    queue_wait_p95=queue_avg,
                 ),
             )
 
@@ -582,8 +575,6 @@ class MetricsFetcher:
                     dispatcher_identifier=identifier,
                     jobs_consumed_rate=jobs_consumed,
                     dispatch_latency_p50=latency_avg,
-                    dispatch_latency_p95=latency_avg,
-                    dispatch_latency_p99=latency_avg,
                     queue_depth=queue_depth,
                 ),
             )

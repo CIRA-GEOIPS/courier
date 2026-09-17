@@ -202,12 +202,6 @@ def test_hypothesis_round_trip(
 # ─── JobGroup ─────────────────────────────────────────────────────────────────
 
 
-def test_job_group_ready_jobs_empty() -> None:
-    """New JobGroup has no ready jobs."""
-    group = JobGroup(job_name="g", config=None)
-    assert group.ready_jobs() == []
-
-
 def test_job_group_file_not_relevant_by_default() -> None:
     """Base JobGroup raises NotImplementedError for file_is_relevant."""
     group = JobGroup(job_name="g", config=None)

@@ -45,7 +45,6 @@ grafanalib = { version = ">=0.7.0", optional = true }
 # Optional plugin dependencies (see [tool.poetry.extras])
 boto3 = { version = ">=1.26", optional = true }
 botocore = { version = ">=1.29", optional = true }
-paramiko = { version = ">=3.0", optional = true }
 kafka-python = { version = ">=2.0", optional = true }
 croniter = { version = "*", optional = true }
 httpx = { version = ">=0.24", optional = true }
@@ -63,6 +62,7 @@ pinkrst = { version = "*", optional = true }
 doc8 = { version = "*", optional = true }
 prettier = { version = "*", optional = true }
 ruff = { version = "*", optional = true }
+vulture = { version = "*", optional = true }
 mypy = { version = "*", optional = true }
 pytest = { version = "*", optional = true }
 pytest-cov = { version = "*", optional = true }
@@ -74,6 +74,11 @@ types-dateparser = { version = "*", optional = true }
 fakeredis = { version = "*", optional = true }
 hypothesis = { version = "*", optional = true }
 mutmut = { version = "*", optional = true }
+# Named in the extras below. Without a declaration here the build backend
+# drops them silently: neither appeared in any built wheel, and a drift
+# guard imports packaging directly.
+packaging = { version = "*", optional = true }
+pre-commit = { version = "*", optional = true }
 
 [tool.poetry.group.dev.dependencies]
 # Development dependencies that are always installed for development
@@ -99,6 +104,7 @@ lint = [
     "doc8",                      # for rst linting
     "prettier",                  # YAML, JSON linting
     "ruff",                      # Python linting
+    "vulture",                   # Dead-code detection ruff cannot do cross-module
     "mypy",                      # Type checking
     "types-pyyaml",              # Type hints for pyyaml
     "types-dateparser",          # Type hints for dateparser
@@ -115,7 +121,6 @@ test = [
     "hypothesis",                # property-based testing for round-trip tests
     "boto3",                     # required by s3_poller tests
     "botocore",                  # required by s3_poller tests
-    "paramiko",                  # required by sftp_poller tests
     "kafka-python",              # required by kafka_consumer tests
     "croniter",                  # required by cron_glob tests
     "httpx",                     # required by http_dispatcher tests
@@ -134,7 +139,6 @@ grafana = [
 
 # Optional extras for individual plugins (installed only when used)
 s3 = ["boto3", "botocore"]       # Required for the s3_poller data monitor
-sftp = ["paramiko"]              # Required for the sftp_poller data monitor
 kafka = ["kafka-python"]         # Required for the kafka_consumer data monitor
 cron = ["croniter"]              # Required for the cron_glob data monitor
 http = ["httpx"]                 # Required for the http_dispatcher
@@ -142,7 +146,7 @@ viz = [
     "textual",
     "httpx",
 ]
-all-monitors = ["boto3", "botocore", "paramiko", "kafka-python", "croniter"]
+all-monitors = ["boto3", "botocore", "kafka-python", "croniter"]
 all-dispatchers = ["httpx"]
 
 [tool.poetry.scripts]
@@ -175,7 +179,6 @@ file_system_poller_watchdog = "courier.plugins.data_monitors.file_system_poller_
 kafka_consumer = "courier.plugins.data_monitors.kafka_consumer:KafkaConsumer"
 rabbit_mq_watcher = "courier.plugins.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
 s3_poller = "courier.plugins.data_monitors.s3_poller:S3Poller"
-sftp_poller = "courier.plugins.data_monitors.sftp_poller:SftpPoller"
 
 [tool.poetry.plugins."courier.job_builders"]
 DummyJobBuilder = "courier.plugins.job_builders.dummy_job_builder:DummyJobBuilder"
@@ -225,10 +228,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "paramiko.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -287,7 +286,7 @@ norecursedirs = ["xarray_utils"]
 # scheduling, so leaving them in the default run means developers stop running
 # tests locally at all. Opt in with `-m integration`, or run everything with
 # `-m ""`. CI runs both (see .github/workflows/pytest.yaml).
-addopts = "-v -rf --ff --cov=src --cov-report=term-missing --cov-report=xml --timeout=300 -m \"not limited_test_dataset_availability and not integration\""
+addopts = "-v -rf --ff --cov=src --cov-report=term-missing --cov-report=xml --timeout=300 -m \"not limited_test_dataset_availability and not integration and not docker and not rabbitmq and not redis\""
 # A hung consumer thread used to wedge the whole run (and the nightly badge
 # job) until the CI job timed out hours later. Fail the test instead.
 timeout = 300
@@ -299,6 +298,9 @@ markers = [
     "base: OPTIONAL INDEPENDENT - integration tests that complete very quickly and require only a minimal installation for testing basic functionality within the current repository",
     "full: REQUIRED INDEPENDENT - integration tests that require a 'full' installation for testing all functionality within the current repository. 'full' marker includes all tests for the current repo except for tests included in the optional 'base' marker.",
     "contract: property-based serialization round-trip tests between pipeline stages.",
+    "docker: drives real containers built from the Dockerfile. Needs a docker daemon and COURIER_TEST_IMAGE; deselected by default, select with '-m docker'.",
+    "rabbitmq: needs a live RabbitMQ reachable via COURIER_TEST_AMQP_URL; deselected by default, select with '-m rabbitmq'.",
+    "redis: needs a live Redis reachable via COURIER_TEST_REDIS_URL; deselected by default, select with '-m redis'.",
 ]
 
 [tool.coverage.run]
@@ -345,6 +347,105 @@ also_copy = ["config.yaml"]
 [tool.bandit]
 exclude_dirs = ["tests", "docs"]
 skips = ["B101"]  # Skip assert warnings
+
+# ---------------------------------------------------------------------------
+# Vulture -- dead code that ruff cannot see.
+#
+# Ruff's F401/F841 are single-file: they catch an unused import or local, not a
+# function nothing in the project calls. Vulture answers that by collecting
+# every defined name and every referenced name across the whole tree.
+#
+# `tests` is scanned ALONGSIDE `src`, not instead of it. Scanning src alone
+# reports every plugin class as dead, because the only references to them are
+# entry-point strings in this file, which vulture cannot read; scanning both
+# means a reference from a test counts, and what is left is code referenced
+# from nowhere at all. The cost is that something kept alive only by its own
+# test is not reported -- an acceptable trade against ~50 standing false
+# positives, which would make the check noise and get it ignored.
+#
+# Vulture cannot see a name reached by a framework rather than by a caller, so
+# those are ignored below. Keep both lists SPECIFIC: a broad pattern here is
+# indistinguishable from deleting the check.
+[tool.vulture]
+paths = ["src", "tests"]
+min_confidence = 60
+sort_by_size = true
+
+# A decorator is what hands these to a framework; nothing calls them by name.
+ignore_decorators = [
+    "@*.command",            # typer sub-commands
+    "@app.callback",         # typer root callback
+    "@field_serializer",     # pydantic
+    "@field_validator",      # pydantic
+    "@model_validator",      # pydantic
+    "@pytest.fixture",       # pytest injects by name
+    "@_register_location_parser",  # rabbit_mq_watcher's parser registry
+    "@work",                 # textual background workers
+]
+
+ignore_names = [
+    # -- pydantic / dataclass machinery -----------------------------------
+    "model_config",
+    # Schema fields validated from the service YAML and never read in Python.
+    # They are the file format -- see apiVersion/docstring/annotations in
+    # config.yaml -- so "never read" is what a declarative field looks like.
+    # Deliberately listed one by one: the fields in courier.viz.models are the
+    # same shape and are NOT the file format, and those findings are real.
+    "annotations",
+    "apiVersion",
+    "docstring",
+    # -- pytest -----------------------------------------------------------
+    "pytestmark",
+    # A fixture requested purely for its side effect is used by being
+    # requested; there is nothing to reference in the body.
+    "fake_dist",
+    # -- assigning to a third-party attribute IS the use ------------------
+    "side_effect",   # unittest.mock
+    "global_state",  # kombu's in-memory transport, re-seated per test
+    "level_tag",     # python-logging-loki's LokiEmitter, configured at setup
+    "_TRACER_PROVIDER_SET_ONCE",  # opentelemetry, reset between tracing tests
+    # A class declared inside pytest.raises so that decorating it raises: never
+    # instantiated, because the decoration IS the assertion.
+    "BadPlugin",
+    "my_generator",
+    # -- textual (courier.viz): dispatched by the framework, never called.
+    #    Ignored by NAME rather than by excluding viz/app.py, because
+    #    excluding a file also stops its references counting -- which made
+    #    every constant in design.py and every field in models.py look dead.
+    #    Note "compose" also masks courier.utils.functional.compose; its
+    #    neighbours pipe/maybe still report, which is what surfaces that
+    #    module.
+    "BINDINGS",
+    "CSS",
+    "action_*",
+    "compose",
+    "on_mount",
+    "on_unmount",
+    "sub_title",
+    "watch_*",
+    # -- watchdog ---------------------------------------------------------
+    "on_created",
+    # -- stdlib hooks overridden on purpose -------------------------------
+    "handleError",
+    "raiseExceptions",
+    # -- dunders reached by the interpreter, not by a caller ---------------
+    "__enter__",
+    "__exit__",
+    "__new__",
+    "__wrapped__",
+    # -- entry-point data: named only in this file's plugin tables ---------
+    "CONFIG",
+    # -- reserved tracing attributes ---------------------------------------
+    # Declared vocabulary, documented as "(reserved -- not yet emitted)" in
+    # sphinx/operations/tracing.md and mapped by dashboard/config_parser.py.
+    # Deleting them would contradict both. Listed individually so a constant
+    # that is merely forgotten still reports.
+    "ATTR_DISPATCH_LATENCY",
+    "ATTR_EXECUTION_HOSTNAME",
+    "ATTR_FILE_INSTRUMENT",
+    "ATTR_JOB_FILE_COUNT",
+    "ATTR_JOB_TARGETS",
+]
 
 [tool.ruff]
 # Target Python version
@@ -441,7 +542,6 @@ file_system_poller_watchdog = "courier.plugins.data_monitors.file_system_poller_
 kafka_consumer = "courier.plugins.data_monitors.kafka_consumer:KafkaConsumer"
 rabbit_mq_watcher = "courier.plugins.data_monitors.rabbit_mq_watcher:RabbitMQWatcher"
 s3_poller = "courier.plugins.data_monitors.s3_poller:S3Poller"
-sftp_poller = "courier.plugins.data_monitors.sftp_poller:SftpPoller"
 
 [project.entry-points."courier.job_builders"]
 DummyJobBuilder = "courier.plugins.job_builders.dummy_job_builder:DummyJobBuilder"

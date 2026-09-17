@@ -10,11 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from courier.constants import (
-    MAX_QUEUE_NAME_LENGTH,
-    job_ready_queue_for,
-    validate_dispatcher_identifier,
-)
+from courier.constants import job_ready_queue_for, validate_dispatcher_identifier
 from courier.errors import InvalidIdentifierError
 
 if TYPE_CHECKING:
@@ -70,21 +66,16 @@ class IdentityTargetResolver:
         Raises
         ------
         InvalidIdentifierError
-            If any identifier is malformed or produces an oversized
-            queue name once namespace-prefixed with the worst-case
-            ``<namespace>-<queue>`` envelope.
+            If any identifier is malformed. Length is not checked here:
+            ``validate_dispatcher_identifier`` caps an identifier at 63
+            characters, so ``JobReady-<identifier>`` is at most 72 and the
+            255-byte AMQP limit can only be reached through the namespace --
+            which ``MessageBrokerManager.get_queue_name`` enforces, on the
+            namespaced name the broker actually sees.
         """
         seen: set[str] = set()
         for ident in identifiers:
             validate_dispatcher_identifier(ident)
-            queue = job_ready_queue_for(ident)
-            # Allow 64 chars of namespace padding ("<ns>-") for preflight.
-            # Service performs the exact namespace-aware check separately.
-            if len(queue) > MAX_QUEUE_NAME_LENGTH:
-                raise InvalidIdentifierError(
-                    ident,
-                    f"queue name {queue!r} exceeds {MAX_QUEUE_NAME_LENGTH} chars",
-                )
             seen.add(ident)
         self._identifiers: frozenset[str] = frozenset(seen)
 
