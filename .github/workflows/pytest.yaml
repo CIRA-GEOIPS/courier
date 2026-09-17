@@ -14,7 +14,7 @@ jobs:
       # restricts the default guest user to loopback, and a service container
       # is reached over the docker bridge, so guest is refused.
       rabbitmq:
-        image: rabbitmq:3-management-alpine
+        image: rabbitmq:4.1-management-alpine
         ports:
           - 5672:5672
         env:

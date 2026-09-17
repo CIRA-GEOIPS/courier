@@ -36,7 +36,7 @@ IMAGE_ENV = "COURIER_TEST_IMAGE"
 REQUIRED_ENV = "COURIER_TEST_DOCKER_REQUIRED"
 
 #: Broker image the pipeline tests run against.
-RABBITMQ_IMAGE = "rabbitmq:3-management-alpine"
+RABBITMQ_IMAGE = "rabbitmq:4.1-management-alpine"
 BROKER_USER = "admin"
 BROKER_PASSWORD = "admin_test"  # noqa: S105 -- test broker, not a secret
 

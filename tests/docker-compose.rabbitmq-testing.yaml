@@ -1,5 +1,10 @@
 # RabbitMQ for the tests that need a real broker.
 #
+# The tag is pinned, and deliberately matches the one CI and the container
+# tier use. It used to float on `rabbitmq:management`, which quietly moved
+# this tier onto a different major version than CI ran -- so a deprecated
+# feature removed in 4.x failed here and passed there.
+#
 # Outside the devcontainer, which creates the shared network itself:
 #
 #     docker network create courier_testing 2>/dev/null || true
@@ -11,7 +16,7 @@
 # another container, which is why these tests authenticate as admin.
 services:
   rabbitmq:
-    image: rabbitmq:management
+    image: rabbitmq:4.1-management-alpine
     container_name: rabbitmq
     hostname: rabbitmqhost
     ports:
