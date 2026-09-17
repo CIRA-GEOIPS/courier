@@ -16,6 +16,8 @@ import kombu
 from kombu.exceptions import OperationalError
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from courier.broker.kombu import broker_error_triage
+from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
 from courier.types.file import File
@@ -516,9 +518,17 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     ) -> None:
         """Listen to the broker queue and place files onto *file_queue*.
 
-        Reconnects automatically on connection errors according to the
-        configured retry policy.  Any fatal error is placed onto
-        ``self._error_queue``.
+        Reconnects on a transient failure according to the configured retry
+        policy, and stops on a fatal one, placing it on ``self._error_queue``
+        for :meth:`find_file` to re-raise.
+
+        That split is the whole point of the two clauses. Before them, an AMQP
+        406 or 541 from the declare matched neither ``OperationalError`` nor
+        ``(OSError, ValueError, RuntimeError)`` -- every amqp error is an
+        ``AMQPError``, which is none of those -- so it escaped this loop, killed
+        the thread with ``_error_queue`` empty, and reached the operator as
+        ``find_file``'s generic "listener thread exited unexpectedly" with no
+        queue name, no reply code and no remedy.
 
         Intended to be run in a daemon thread.
         """
@@ -533,7 +543,21 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 self._logger.warning(
                     "Broker consumer stopped unexpectedly; reconnecting...",
                 )
-            except OperationalError as exc:
+            except FatalBrokerError as exc:
+                # Deliberately not retried, whatever max_retries says. A queue
+                # whose properties do not match is still mismatched on the next
+                # attempt, so `max_retries: -1` would reconnect into the same
+                # error forever -- and the operator has no knob to make the
+                # watcher match a queue someone else declared. Handing it to
+                # find_file is what turns a dead thread into a message naming
+                # the queue, the reply code and the remedy.
+                self._logger.exception(
+                    f"Fatal broker error on queue {self.rabbitmq_queue!r}; "
+                    f"not retrying",
+                )
+                self._error_queue.put(exc)
+                return
+            except (OperationalError, TransientBrokerError) as exc:
                 attempt += 1
                 if self.max_retries != -1 and attempt > self.max_retries:
                     self._logger.error(  # noqa: TRY400
@@ -543,7 +567,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                     self._error_queue.put(exc)
                     return
                 self._logger.warning(
-                    f"Connection error (attempt {attempt}): {exc}. "
+                    f"Broker error (attempt {attempt}): {exc}. "
                     f"Retrying in {delay:.1f}s...",
                 )
                 time.sleep(delay)
@@ -563,9 +587,12 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
         connection = kombu.Connection(url)
         connection.ensure_connection(max_retries=1, interval_start=0, interval_step=0)
 
-        queue_obj = kombu.Queue(self.rabbitmq_queue, durable=True)
-        queue_obj = queue_obj.bind(connection)
-        queue_obj.declare()
+        # Binding allocates the channel, so it belongs inside the block with
+        # the declare it is for -- same shape as broker.kombu.declare_queue.
+        with broker_error_triage(connection, self.rabbitmq_queue, "declaring queue"):
+            queue_obj = kombu.Queue(self.rabbitmq_queue, durable=True)
+            queue_obj = queue_obj.bind(connection)
+            queue_obj.declare()
 
         self._logger.debug(
             f"Connected to broker at {self.rabbitmq_host}:{self.rabbitmq_port}"
@@ -674,22 +701,37 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 )
                 message.reject(requeue=False)
 
-        with kombu.Consumer(
-            connection,
-            queues=[queue_obj],
-            callbacks=[callback],
-            prefetch_count=self.rabbitmq_prefetch_count,
-        ):
-            while not self._stop_event.is_set():
-                with suppress(TimeoutError):
-                    connection.drain_events(timeout=1.0)
-
-        connection.close()
+        try:
+            # auto_declare would redeclare the queue on entry -- a second
+            # declare of the same name, and a second place a property mismatch
+            # could surface from. The declare above is the one that counts.
+            #
+            # The triage block covers the drain loop as well as the consumer,
+            # because ack() and reject() run inside the callback and a broker
+            # failure there unwinds through drain_events: the callback's own
+            # except clause is for message-shape errors, not broker ones.
+            with (
+                broker_error_triage(connection, self.rabbitmq_queue, "consuming from"),
+                kombu.Consumer(
+                    connection,
+                    queues=[queue_obj],
+                    callbacks=[callback],
+                    prefetch_count=self.rabbitmq_prefetch_count,
+                    auto_declare=False,
+                ),
+            ):
+                while not self._stop_event.is_set():
+                    with suppress(TimeoutError):
+                        connection.drain_events(timeout=1.0)
+        finally:
+            # Reached on the error paths too; without this every failed
+            # reconnect leaked a socket.
+            connection.close()
 
     def find_file(self) -> Generator[File, None, None]:
         """Watch the configured RabbitMQ queue and yield :class:`File` objects.
 
-        Starts :meth:`_listen_to_rabbit_mq` in a background daemon thread.
+        Starts :meth:`_listen_to_broker` in a background daemon thread.
         Thread errors are surfaced here and re-raised so callers are not
         silently blocked forever.  Sets :attr:`health` to ``True`` while
         running and resets it to ``False`` on exit.

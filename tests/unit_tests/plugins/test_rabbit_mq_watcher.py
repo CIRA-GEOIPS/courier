@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.plugins.data_monitors.rabbit_mq_watcher import (
     RabbitMQWatcher,
     _parse_hostname_only,
@@ -369,3 +370,123 @@ class TestRateLimit:
         ):
             assert list(plugin.find_file()) == []
         assert plugin.health is False
+
+
+# ─── Broker Errors ──────────────────────────────────────────────────────────
+
+
+class TestBrokerErrors:
+    """What the listener does when the broker refuses it.
+
+    The watcher consumes a queue somebody else owns -- the shipped
+    ``config.yaml`` points it at ``nrt_file_notif_queue``, "set by the data
+    inventory" -- and hardcodes ``durable=True`` with no knob for the other
+    properties. A mismatch is therefore an ordinary operational event that the
+    operator cannot configure their way out of, and it has to arrive as an
+    error that says so.
+    """
+
+    def test_a_fatal_broker_error_stops_the_listener_rather_than_reconnecting(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """``max_retries=-1`` must not mean "retry what can never succeed".
+
+        The shipped config asks to retry forever, which is right for a broker
+        that is down and wrong for a queue that will not match. Reverted check:
+        drop the ``FatalBrokerError`` clause from ``_listen_to_broker`` and this
+        hangs until the test timeout instead of returning.
+        """
+        plugin = RabbitMQWatcher(mock_service, _make_config(max_retries=-1))
+        boom = FatalBrokerError("fatal failure while declaring queue 'q': 406")
+        attempts = 0
+
+        def _always_fatal(_file_queue: object) -> None:
+            nonlocal attempts
+            attempts += 1
+            raise boom
+
+        with patch.object(plugin, "_connect_and_consume", _always_fatal):
+            plugin._listen_to_broker(queue.Queue())
+
+        assert attempts == 1, f"reconnected after a fatal error ({attempts} attempts)"
+        assert plugin._error_queue.get_nowait() is boom
+
+    def test_a_transient_broker_error_is_retried(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """The other half: a blip still reconnects, as it always did.
+
+        Without this the fix could 'pass' by treating every broker error as
+        fatal, which would turn a restarting broker into a dead monitor.
+        """
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(max_retries=3, retry_delay_seconds=0.001),
+        )
+        attempts = 0
+
+        def _transient_then_stop(_file_queue: object) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts >= 3:
+                plugin._stop_event.set()
+            raise TransientBrokerError("connection reset")
+
+        with patch.object(plugin, "_connect_and_consume", _transient_then_stop):
+            plugin._listen_to_broker(queue.Queue())
+
+        assert attempts == 3, f"gave up after {attempts} attempt(s)"
+        assert plugin._error_queue.empty(), "a retried error was reported as fatal"
+
+    def test_a_transient_error_past_max_retries_is_reported(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """Retrying is bounded when the operator bounded it."""
+        plugin = RabbitMQWatcher(
+            mock_service,
+            _make_config(max_retries=2, retry_delay_seconds=0.001),
+        )
+
+        def _always_transient(_file_queue: object) -> None:
+            raise TransientBrokerError("connection reset")
+
+        with patch.object(plugin, "_connect_and_consume", _always_transient):
+            plugin._listen_to_broker(queue.Queue())
+
+        assert isinstance(plugin._error_queue.get_nowait(), TransientBrokerError)
+
+    def test_find_file_raises_the_broker_error_not_a_generic_one(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """The operator sees the reply code and the remedy, not "exited unexpectedly".
+
+        This is the end of the chain the whole change exists for. The listener
+        thread dying with an empty error queue is what produced
+        ``RuntimeError("RabbitMQ listener thread exited unexpectedly without an
+        error on the queue.")`` -- true, useless, and the only thing the process
+        logged before exiting.
+        """
+        plugin = RabbitMQWatcher(mock_service, _make_config(max_retries=-1))
+        boom = FatalBrokerError(
+            "fatal failure while declaring queue 'nrt_file_notif_queue': "
+            "Queue.declare: (406) PRECONDITION_FAILED; "
+            "courier queues prune CONFIG --candidate <name> --apply",
+        )
+
+        def _always_fatal(_file_queue: object) -> None:
+            raise boom
+
+        with (
+            patch.object(plugin, "_connect_and_consume", _always_fatal),
+            pytest.raises(FatalBrokerError) as caught,
+        ):
+            list(plugin.find_file())
+
+        message = str(caught.value)
+        assert "nrt_file_notif_queue" in message
+        assert "406" in message
+        assert "prune" in message
