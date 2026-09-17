@@ -23,6 +23,7 @@ from courier.interfaces.discovery import (
     ClassPluginRegistry
 )
 from courier.interfaces.falconers import FalconerConfig, Falconer
+from courier.interfaces.falcons import Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
@@ -128,6 +129,9 @@ class Dispatcher(ServicePlugin):
                 ),
             ]
 
+    def set_falconer(self, falconer: Falconer) -> None:
+        self.falconer = falconer
+
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
         self._logger.debug(f"Emitting execution log: {execution_log}")
@@ -147,10 +151,6 @@ class Dispatcher(ServicePlugin):
         """
         self._logger.debug(f"Emitting file: {file}")
         self.parent_service.emit(queue=FILE_FOUND_EXCHANGE, message=str(file))
-
-    def _build_falconer_from_registry(self, falconer_config: dict):
-        pass
-        # return PLUGIN_REGISTRIES["falconers"].get_plugin(falconer_config.name)
 
     def _recently_seen(self, job_identifier: str) -> bool:
         """Return True if *job_identifier* is in the bounded LRU.
@@ -401,5 +401,5 @@ dispatchers = ClassPluginRegistry(
     name="dispatchers",
     group="",
     expected_base=Dispatcher,
-    nested_values=["falconer"]
+    nested_values=["falconer", "falcon"]
 )

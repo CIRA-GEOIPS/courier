@@ -458,6 +458,9 @@ slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher
 [project.entry-points."courier.falconers"]
 dummy_falconer = "courier.plugins.falconers.dummy_falconer:DummyFalconer"
 
+[project.entry-points."courier.falcons"]
+dummy_falcon = "courier.plugins.falcons.dummy_falcon:DummyFalcon"
+
 [project.entry-points."courier.data_monitor_configs"]
 gk2a_ami = "courier.plugins.data_monitor_configs.gk2a_ami:CONFIG"
 goes16_abi = "courier.plugins.data_monitor_configs.goes16_abi:CONFIG"

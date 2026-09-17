@@ -157,12 +157,13 @@ def run_service(
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
-    service._falconer_map = {
-        e.identifier: e.spec.config["falconer"]["identifier"]
+    service._falconer_map = [(
+        e.identifier, 
+        e.spec.config["falconer"]["identifier"], 
+        e.spec.config["falcon"]["identifier"])
         for e in config.spec.run
         if normalize_kind(e.spec.kind) == "dispatchers"
-        and (only_set is None or e.identifiers in only_set)
-    }
+        and (only_set is None or e.identifiers in only_set)]
     # Union: add any dispatcher targeted by builders in the filtered set
     builder_targets = _collect_builder_targets(config)
     if only_set is not None:

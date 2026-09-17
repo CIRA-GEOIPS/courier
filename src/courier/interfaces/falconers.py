@@ -2,6 +2,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel
 
+from courier.interfaces.falcons import Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.interfaces.discovery import (
         ClassPluginRegistry,
@@ -33,6 +34,11 @@ class Falconer(ServicePlugin):
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
         self.config = config or {}
+
+        self.falcon = Falcon
+
+    def set_falcon(self, falcon: Falcon):
+        self.falcon = falcon
 
     def send_for_payload(self, job: Job) -> list[ExecutionLog]:
         return [ExecutionLog()]

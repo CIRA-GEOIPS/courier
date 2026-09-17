@@ -120,7 +120,7 @@ class Service:
 
         self._dispatcher_identifiers: frozenset[str] = frozenset()
         self._builder_targets: dict[str, tuple[str, ...]] = {}
-        self._falconer_map: dict[str, str] = {}
+        self._falconer_map: list[tuple[str, str, str]]
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
 
@@ -521,12 +521,26 @@ class Service:
     def _populate_falconer_map(self) -> None:
         from courier.interfaces.dispatchers import Dispatcher
         from courier.interfaces.falconers import Falconer
+        from courier.interfaces.falcons import Falcon
+        
+        for dispatcher_id, falconer_id, falcon_id in self._falconer_map:
+            dispatcher_obj = self._plugin_manager._plugins[dispatcher_id].plugin
+            falconer_obj = self._plugin_manager._plugins[falconer_id].plugin
+            falcon_obj = self._plugin_manager._plugins[falcon_id].plugin
 
-        for dispatcher_id, falconer_id in self._falconer_map.items():
-            dispatcher = self._plugin_manager._plugins[dispatcher_id].plugin
-            falconer = self._plugin_manager._plugins[falconer_id].plugin
-            if isinstance(dispatcher, Dispatcher) and isinstance(falconer, Falconer):
-                dispatcher.falconer = falconer
+            if (isinstance(dispatcher_obj, Dispatcher) and 
+                isinstance(falconer_obj, Falconer) and 
+                    isinstance(falcon_obj, Falcon)):
+                try:
+                    falconer_obj.set_falcon(falcon_obj)
+                except Exception:
+                    self._logger.exception("Failed to pair falconer with falcon")
+                    raise
+                try:
+                    dispatcher_obj.set_falconer(falconer_obj)
+                except Exception:
+                    self._logger.exception("Failed to pair dispatcher with falconer")
+                    raise
 
     def _predeclare_target_queues(self) -> None:
         """Declare every per-dispatcher queue plus shared queues.
