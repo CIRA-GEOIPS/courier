@@ -10,14 +10,16 @@ from urllib.parse import urlsplit, urlunsplit
 import kombu
 import kombu.exceptions
 from kombu.exceptions import (
-    ChannelError,
     KombuError,
     OperationalError,
 )
-from kombu.exceptions import ConnectionError as KombuConnectionError
 
 from courier.config import ServiceConfig
-from courier.constants import FILE_FOUND_EXCHANGE, file_found_queue_for
+from courier.constants import (
+    FILE_FOUND_EXCHANGE,
+    file_found_queue_for,
+    namespaced_queue_name,
+)
 from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.managers.base import ServiceManager
 from courier.metrics import (
@@ -30,19 +32,11 @@ from courier.metrics import (
 from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
 
-# Memory transport does not implement broker-level publisher confirms;
-# passing ``confirm=True`` to it is a silent no-op.
-_MEMORY_TRANSPORT_SCHEMES: frozenset[str] = frozenset({"memory"})
-
-#: Everything a transport can raise while declaring or publishing. Kombu
-#: re-exports amqp's ``ChannelError`` and ``ConnectionError``, so classifying
-#: a channel error needs no direct dependency on the lower-level library.
-_BROKER_ERRORS: tuple[type[BaseException], ...] = (
-    KombuError,
-    ChannelError,
-    KombuConnectionError,
-    OSError,
-)
+#: Seconds a publisher confirm may block before the publish raises. Without a
+#: bound, a broker that accepts a message and then never answers parks the
+#: publishing thread forever, and a thread parked inside a broker call is
+#: invisible to every health check courier has.
+_CONFIRM_TIMEOUT = 30.0
 
 #: Header carrying how many times courier has handed one message to a consumer.
 #: It travels with the message rather than living in the consumer's memory
@@ -55,10 +49,6 @@ DELIVERY_ATTEMPT_HEADER = "x-courier-delivery-attempt"
 #: Bytes of a retried or parked body written to the log. Enough to identify the
 #: message without shipping a whole payload on every retry.
 _PARKED_BODY_PREVIEW = 512
-
-#: Position of the consumer count in an AMQP queue.declare-ok reply,
-#: which is (queue name, message count, consumer count).
-_CONSUMER_COUNT_FIELD = 2
 
 #: AMQP reply codes that retrying the same operation can never fix.
 #:
@@ -293,7 +283,16 @@ def broker_error_triage(
     """
     try:
         yield
-    except _BROKER_ERRORS as exc:
+    except Exception as exc:
+        # Deliberately unnarrowed. Which classes a transport raises is the
+        # transport's business, and ``classify_broker_error`` already asks the
+        # live connection -- a fixed tuple here could only disagree with it.
+        # It did: ``redis.exceptions.ConnectionError`` inherits ``RedisError``,
+        # so a dropped redis connection never reached the classifier, nothing
+        # mapped it to ``TransientBrokerError``, and the watcher's reconnect
+        # arm never fired. Anything the classifier does not recognise is
+        # re-raised untouched, so widening the catch changes no behaviour for
+        # a class that was already handled.
         mapped = classify_broker_error(conn, exc, target_name, action)
         if mapped is None:
             raise
@@ -365,8 +364,23 @@ def _open_connection(
     ------
     OperationalError
         If the broker is unreachable.
+
+    Notes
+    -----
+    ``confirm_publish`` is set on the *connection*, which is the only place
+    py-amqp honours it: ``Channel.__init__`` rebinds ``basic_publish`` to the
+    waiting ``basic_publish_confirm`` if and only if
+    ``self.connection.confirm_publish`` is true.  Calling ``confirm_select()``
+    on the channel instead puts the *broker* into confirm mode but leaves the
+    client not waiting, so the returning Ack/Nack frames dispatch into an
+    empty handler set and are dropped -- which is what courier did, while
+    :func:`redeliver_or_park` acknowledged the original on the strength of a
+    confirm that had never been waited for.  Transports without publisher
+    confirms ignore the option.
     """
-    options = {"read_timeout": read_timeout} if read_timeout is not None else None
+    options: dict[str, object] = {"confirm_publish": True}
+    if read_timeout is not None:
+        options["read_timeout"] = read_timeout
     conn = kombu.Connection(url, transport_options=options)
     conn.ensure_connection(
         max_retries=max_retries,
@@ -406,6 +420,7 @@ def broker_connection(
 def declare_queue(
     conn: "kombu.Connection",
     name: str,
+    action: str = "declaring queue",
     **kwargs: Any,
 ) -> "kombu.Queue":
     """Declare a queue on *conn* and return the bound Queue object.
@@ -416,6 +431,9 @@ def declare_queue(
         An open broker connection.
     name : str
         Queue name.
+    action : str, optional
+        Present participle naming what is being declared, used only in the
+        error message a failure raises.
     **kwargs : Any
         Extra keyword arguments forwarded to ``kombu.Queue`` (e.g.
         ``durable=True``, ``exclusive=False``). Passing ``exchange=`` and
@@ -435,8 +453,44 @@ def declare_queue(
     FatalBrokerError
         On a failure retrying cannot fix, such as a 406 from redeclaring an
         existing queue with different properties.
+
+    Notes
+    -----
+    ``durable=True``, ``exclusive=False`` and ``auto_delete=False`` are
+    ``kombu.Queue`` class defaults, so the two queue families courier declares
+    need no kwargs of their own beyond the file-found queue's ``exchange``.
+    Both used to have a hand-written wrapper spelling those defaults out; the
+    file-found one was a second copy of what
+    :meth:`MessageBrokerManager._file_found_queue_config` already returns and
+    ``get_connection_context`` already declares, which is exactly the drift
+    that answers 406.
+
+    **No queue arguments are set on the file-found queue, and none may be
+    added.** A durable queue's arguments are part of what the broker compares
+    on redeclaration, so introducing one -- ``x-dead-letter-exchange`` being
+    the obvious candidate -- would answer 406 on every deployment that has
+    already declared it, and courier would refuse to start until each was
+    drained and deleted. Poison messages are bounded from the consumer side
+    instead, by :func:`redeliver_or_park`, which needs no argument on the
+    queue and so needs no migration.
+
+    The queue is durable, non-exclusive and non-auto-delete so that it and its
+    binding outlive the consumer's connection. That is the whole point: with
+    the previous exclusive queue the broker deleted the subscription the
+    moment a job builder disconnected, and every file published while it was
+    down was discarded with no error anywhere (issue #44). Every replica of one
+    builder identifier shares the queue, so replicas are competing consumers
+    rather than each receiving a copy.
+
+    The dead-letter queue is bound to nothing and reachable only through the
+    default exchange, so the only thing that ever writes to it is
+    :func:`redeliver_or_park`. It is declared when a consumer subscribes rather
+    than when the first message is parked: a name that is too long, or a broker
+    user without ``configure`` permission, is then a startup failure instead of
+    a failure at exactly the moment there is a poison message with nowhere to
+    put it.
     """
-    with broker_error_triage(conn, name, "declaring queue"):
+    with broker_error_triage(conn, name, action):
         q: kombu.Queue = kombu.Queue(name, channel=conn.channel(), **kwargs)
         q.declare()
     return q
@@ -446,10 +500,15 @@ def publish(
     conn: "kombu.Connection",
     queue: "kombu.Queue",
     body: str,
-    confirm: bool = False,
     headers: dict | None = None,
 ) -> None:
-    """Publish *body* to *queue* using *conn*.
+    """Publish *body* to *queue* using *conn*, waiting for the broker's ack.
+
+    Every publish is confirmed. There is no per-call opt-out because every
+    caller that mattered already asked for one, and a publish courier does not
+    wait on is a publish it cannot safely acknowledge the original of -- see
+    :func:`_open_connection` for why the confirm has to be armed on the
+    connection rather than the channel.
 
     Parameters
     ----------
@@ -459,85 +518,33 @@ def publish(
         Target queue (already declared).
     body : str
         Message body string.
-    confirm : bool, optional
-        When ``True`` and the transport supports publisher confirms (AMQP),
-        block until the broker acknowledges the message. Silently ignored on
-        transports that lack the concept (e.g. memory). Default ``False``.
     headers : dict or None, optional
         Message headers to attach (used for trace context propagation).
 
     Raises
     ------
     TransientBrokerError
-        On retryable failures (connection drops, channel errors, timeouts).
+        On retryable failures (connection drops, channel errors, timeouts),
+        including a confirm that does not arrive within
+        :data:`_CONFIRM_TIMEOUT`.
     FatalBrokerError
         On non-retryable failures (access refused, message too large,
         permission denied).
     """
-    scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
-    use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
-    with broker_error_triage(conn, queue.name, "publishing to"):
-        producer_cls = kombu.Producer
-        with producer_cls(conn) as producer:
-            if use_confirm:
-                channel = producer.channel
-                confirm_select = getattr(channel, "confirm_select", None)
-                if confirm_select is not None:
-                    confirm_select()
-            producer.publish(
-                body,
-                routing_key=queue.name,
-                exchange="",
-                declare=[queue],
-                headers=headers or {},
-            )
-            # Best-effort tracking: may drift on requeue or restart.
-            BROKER_MESSAGES_PENDING.labels(queue_name=queue.name).inc()
-
-
-def declare_dead_letter_queue(
-    conn: "kombu.Connection",
-    name: str,
-) -> "kombu.Queue":
-    """Declare the durable queue that parks messages a consumer gave up on.
-
-    Bound to nothing and reachable only through the default exchange, so the
-    only thing that ever writes to it is :func:`redeliver_or_park`. It is
-    declared when a consumer subscribes rather than when the first message is
-    parked: a name that is too long, or a broker user without ``configure``
-    permission, is then a startup failure instead of a failure at exactly the
-    moment there is a poison message with nowhere to put it.
-
-    Parameters
-    ----------
-    conn : kombu.Connection
-        An open broker connection.
-    name : str
-        Dead-letter queue name, from
-        :func:`courier.constants.dead_letter_queue_for`.
-
-    Returns
-    -------
-    kombu.Queue
-        The declared queue.
-
-    Raises
-    ------
-    TransientBrokerError
-        On a retryable declaration failure.
-    FatalBrokerError
-        On a failure retrying cannot fix.
-    """
-    with broker_error_triage(conn, name, "declaring dead-letter queue"):
-        q = kombu.Queue(
-            name,
-            durable=True,
-            exclusive=False,
-            auto_delete=False,
-            channel=conn.channel(),
+    with (
+        broker_error_triage(conn, queue.name, "publishing to"),
+        kombu.Producer(conn) as producer,
+    ):
+        producer.publish(
+            body,
+            routing_key=queue.name,
+            exchange="",
+            declare=[queue],
+            headers=headers or {},
+            confirm_timeout=_CONFIRM_TIMEOUT,
         )
-        q.declare()
-    return q
+        # Best-effort tracking: may drift on requeue or restart.
+        BROKER_MESSAGES_PENDING.labels(queue_name=queue.name).inc()
 
 
 def delivery_attempt(headers: dict[str, str]) -> int:
@@ -620,7 +627,7 @@ def redeliver_or_park(  # noqa: PLR0913, PLR0917 -- one delivery's worth of stat
     """
     attempt = delivery_attempt(headers)
     if attempt > max_redeliveries:
-        publish(conn, dead_letter, body, confirm=True, headers=dict(headers))
+        publish(conn, dead_letter, body, headers=dict(headers))
         BROKER_MESSAGES_DEAD_LETTERED.labels(queue_name=queue.name).inc()
         _logger.error(
             "Parked a message on %r after %d attempt(s) on %r: it is no longer "
@@ -635,7 +642,7 @@ def redeliver_or_park(  # noqa: PLR0913, PLR0917 -- one delivery's worth of stat
         return True
 
     retry_headers = {**headers, DELIVERY_ATTEMPT_HEADER: str(attempt + 1)}
-    publish(conn, queue, body, confirm=True, headers=retry_headers)
+    publish(conn, queue, body, headers=retry_headers)
     BROKER_MESSAGES_REDELIVERED.labels(queue_name=queue.name).inc()
     _logger.warning(
         "Requeued a message on %r for attempt %d of %d after the consumer "
@@ -772,12 +779,11 @@ def publish_fanout(
     conn: "kombu.Connection",
     exchange: "kombu.Exchange",
     body: str,
-    confirm: bool = False,
     headers: dict | None = None,
 ) -> None:
     """Publish *body* to a fanout *exchange* using *conn*.
 
-    Same error-handling strategy as :func:`publish`.
+    Same confirm and error-handling strategy as :func:`publish`.
 
     Parameters
     ----------
@@ -787,8 +793,6 @@ def publish_fanout(
         Fanout exchange to publish to.
     body : str
         Message body.
-    confirm : bool, optional
-        Wait for a publisher confirm where the transport supports it.
     headers : dict or None, optional
         Message headers to attach (used for trace context propagation).
 
@@ -800,91 +804,18 @@ def publish_fanout(
     the two halves as different series -- one only ever rising, the other only
     ever falling. The caller, which knows the bound queues, does the counting.
     """
-    scheme = (conn.transport_cls or "").split("+", 1)[0].lower()
-    use_confirm = confirm and scheme not in _MEMORY_TRANSPORT_SCHEMES
-    with broker_error_triage(conn, exchange.name, "publishing to"):
-        producer_cls = kombu.Producer
-        with producer_cls(conn) as producer:
-            if use_confirm:
-                channel = producer.channel
-                confirm_select = getattr(channel, "confirm_select", None)
-                if confirm_select is not None:
-                    confirm_select()
-            producer.publish(
-                body,
-                exchange=exchange,
-                routing_key="",
-                declare=[exchange],
-                headers=headers or {},
-            )
-
-
-def declare_bound_queue(
-    conn: "kombu.Connection",
-    exchange: "kombu.Exchange",
-    name: str,
-) -> "kombu.Queue":
-    """Declare durable queue *name* and bind it to fanout *exchange*.
-
-    Declared ``durable``, non-exclusive and non-auto-delete, so the queue and
-    its binding outlive the consumer's connection. That is the whole point:
-    with the previous exclusive queue the broker deleted the subscription the
-    moment a job builder disconnected, and every file published while it was
-    down was discarded with no error anywhere (issue #44).
-
-    Every replica of one builder identifier shares this queue, so replicas are
-    competing consumers rather than each receiving a copy.
-
-    No queue arguments are set, and none may be added. A durable queue's
-    arguments are part of what the broker compares on redeclaration, so
-    introducing one -- ``x-dead-letter-exchange`` being the obvious
-    candidate -- would answer 406 on every deployment that has already
-    declared this queue, and courier would refuse to start until each was
-    drained and deleted. Poison messages are therefore bounded from the
-    consumer side instead, by :func:`redeliver_or_park`, which needs no
-    argument on this queue and so needs no migration.
-
-    Parameters
-    ----------
-    conn : kombu.Connection
-        An open broker connection.
-    exchange : kombu.Exchange
-        The fanout exchange to bind to.
-    name : str
-        Namespaced queue name, from
-        :func:`courier.constants.file_found_queue_for`. It never starts with
-        ``amq.``, which RabbitMQ reserves.
-
-    Returns
-    -------
-    kombu.Queue
-        The declared, bound queue.
-
-    Raises
-    ------
-    TransientBrokerError
-        On a retryable declaration failure.
-    FatalBrokerError
-        On a failure retrying cannot fix, such as a 406 from an existing queue
-        with different properties.
-    """
-    with broker_error_triage(conn, name, "declaring file-found queue"):
-        q = kombu.Queue(
-            name,
+    with (
+        broker_error_triage(conn, exchange.name, "publishing to"),
+        kombu.Producer(conn) as producer,
+    ):
+        producer.publish(
+            body,
             exchange=exchange,
             routing_key="",
-            durable=True,
-            exclusive=False,
-            auto_delete=False,
-            channel=conn.channel(),
+            declare=[exchange],
+            headers=headers or {},
+            confirm_timeout=_CONFIRM_TIMEOUT,
         )
-        q.declare()
-    return q
-
-
-# ---------------------------------------------------------------------------
-# MessageBrokerManager
-# ---------------------------------------------------------------------------
 
 
 class MessageBrokerManager(ServiceManager):
@@ -1135,8 +1066,16 @@ class MessageBrokerManager(ServiceManager):
         >>> manager = MessageBrokerManager(config)
         >>> manager.get_queue_name("my_queue")
         'default-my_queue'
+
+        Raises
+        ------
+        InvalidIdentifierError
+            If the namespaced name exceeds the AMQP limit. Enforced here
+            because this is the one place a namespaced name is built, so a
+            long ``--namespace`` or ``SERVICE_NAMESPACE`` cannot slip past on
+            a path that skipped a separate preflight check.
         """
-        return f"{self._namespace}-{base_name}"
+        return namespaced_queue_name(self._namespace, base_name)
 
     def add_queue(self, queue_name: str, **queue_config: Any) -> str:
         """Register a queue for automatic declaration on connections.
@@ -1193,18 +1132,10 @@ class MessageBrokerManager(ServiceManager):
                 )
         except Exception:  # unknown queue, or a transport that cannot answer
             return 0
-        count = getattr(result, "consumer_count", None)
-        if count is None and isinstance(result, (tuple, list)):
-            # queue.declare-ok is (name, message_count, consumer_count).
-            count = (
-                result[_CONSUMER_COUNT_FIELD]
-                if len(
-                    result,
-                )
-                > _CONSUMER_COUNT_FIELD
-                else 0
-            )
-        return int(count or 0)
+        # Every queue_declare kombu ships -- amqp, virtual and qpid -- returns
+        # a queue_declare_ok_t, so the attribute is always there. A transport
+        # that answers with something else is caught by the except above.
+        return int(getattr(result, "consumer_count", 0) or 0)
 
     def _file_found_queue_config(self) -> dict[str, Any]:
         """Return the kwargs that make a queue durable and fanout-bound.

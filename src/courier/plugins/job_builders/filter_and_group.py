@@ -313,22 +313,8 @@ class FilterAndGroupJobBuilder(JobBuilder):
                 self._reap_group(job_group)
 
     def _reap_group(self, job_group: JobGroup) -> None:
-        """Emit ready jobs from *job_group* and delete them under its lock."""
-        lock = self._group_locks.get(job_group.name)
-        if lock is None:
-            return
-        with lock:
-            ready_ids = [jid for jid, job in job_group.jobs.items() if job.ready()]
-            emitted: list[Job] = []
-            for jid in ready_ids:
-                emitted.append(job_group.jobs.pop(jid))
-                job_group._record_job_emitted(jid)
-        for job in emitted:
-            self._logger.info(
-                f"Timeout reaper emitting job {job.identifier} "
-                f"with {len(job.files)} files",
-            )
-            self.emit(job, self.targets)
+        """Emit ready jobs from *job_group*, counting each as a timeout emit."""
+        for _job in self._emit_ready_jobs(job_group, reason="hit its window"):
             JOB_BUILDER_TIMEOUT_EMISSIONS.labels(
                 job_builder_name=self.name,
                 job_builder_identifier=self.identifier,

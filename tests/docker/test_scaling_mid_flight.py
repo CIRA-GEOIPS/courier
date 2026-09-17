@@ -39,7 +39,7 @@ Three observations are needed, and none of them is sufficient alone.
 ``files_per_job`` is 1 throughout, and that is load-bearing rather than
 incidental: a builder that emits one job per file does not accumulate, so
 replicating it needs no shared state and the scenario stays free of Redis
-(see :mod:`courier.sync.guards`).
+(see :meth:`courier.interfaces.job_builders.JobBuilder._check_replication_safety`).
 
 Scope limit on the second half: only a DRAINED scale-down is covered. Both
 queues are empty before replica B is stopped, so B holds nothing
@@ -67,10 +67,6 @@ if TYPE_CHECKING:
 # their own, much smaller, budget.
 pytestmark = pytest.mark.timeout(900)
 
-#: One line per dispatcher execution, outside the watched tree.  Appending
-#: first means a dispatch is recorded even if the copy then fails, and the
-#: serial dispatcher runs one script at a time so the appends cannot interleave.
-LEDGER = "/data/ledger.txt"
 LEDGER_SCRIPT = (
     "printf '%s\\n' '{{ files[0].file }}' >> /data/ledger.txt\n"
     "cp {{ files[0].file }} /data/out/\n"
@@ -93,46 +89,6 @@ DISPATCHER_ID = "process-files"
 #: answer with a different series than the one being asked about.
 BUILDER_ID = "create-jobs"
 BUILDER_NAME = "filter_and_group"
-
-
-def _ledger(pipeline: Pipeline) -> list[str]:
-    """Return the dispatch ledger as a list of input paths.
-
-    Parameters
-    ----------
-    pipeline : Pipeline
-        Running pipeline.
-
-    Returns
-    -------
-    list[str]
-        One entry per dispatcher execution, in execution order.
-    """
-    return pipeline.read_lines(LEDGER)
-
-
-def _drained(pipeline: Pipeline, queues: tuple[str, ...]) -> bool:
-    """Return whether every named queue holds no messages at all.
-
-    ``messages`` counts ready plus unacknowledged, which is what "nothing is
-    still in flight" has to mean here: a replica holding an unacknowledged
-    file would requeue it if stopped, and the resulting redelivery is a real
-    duplicate rather than a topology bug.
-
-    Parameters
-    ----------
-    pipeline : Pipeline
-        Running pipeline.
-    queues : tuple[str, ...]
-        Fully namespaced queue names.
-
-    Returns
-    -------
-    bool
-        ``True`` when all of them report zero messages.
-    """
-    stats = pipeline.queue_stats()
-    return all(stats.get(name, (1, 0))[0] == 0 for name in queues)
 
 
 def _files_received(pipeline: Pipeline, replica: str) -> float | None:
@@ -241,18 +197,18 @@ def _settle(
 
     def still(snapshot: list[str]) -> bool:
         return stays_false(
-            lambda: _ledger(pipeline) != snapshot or not _drained(pipeline, queues),
+            lambda: pipeline.ledger() != snapshot or not pipeline.drained(queues),
             window=window,
             interval=1.0,
         )
 
     for _ in range(attempts):
-        settled = _ledger(pipeline)
+        settled = pipeline.ledger()
         if still(settled):
             return settled
     raise AssertionError(
         f"the ledger never held still for {window}s in {attempts} attempts, so "
-        f"no count taken from it describes a finished batch: {_ledger(pipeline)}",
+        f"no count taken from it describes a finished batch: {pipeline.ledger()}",
     )
 
 
@@ -282,11 +238,11 @@ def _await_dispatched(
     """
 
     def complete() -> bool:
-        return expected <= set(_ledger(pipeline)) and _drained(pipeline, queues)
+        return expected <= set(pipeline.ledger()) and pipeline.drained(queues)
 
     assert poll_until(complete, timeout=240.0, interval=1.0), (
         f"not every seeded file was dispatched; missing "
-        f"{sorted(expected - set(_ledger(pipeline)))}, "
+        f"{sorted(expected - set(pipeline.ledger()))}, "
         f"queues {pipeline.queue_stats()}\n"
         + "\n".join(
             f"--- {role} ({name}) ---\n{container_logs(name)}"
@@ -326,11 +282,11 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
 
     Two src-side reverts are worth naming but were *reasoned about, not run*,
     so they are recorded as predictions rather than observations. Setting
-    ``exclusive=True`` in ``declare_bound_queue`` (src/courier/broker/kombu.py)
-    does not reproduce the old topology: preflight has already declared the
-    queue non-exclusively through ``_file_found_queue_config``, which that edit
-    does not touch, so the builder's own declaration should draw a 405
-    RESOURCE_LOCKED and the test should fail at the first gate. Reproducing
+    ``exclusive=True`` in ``_file_found_queue_config``
+    (src/courier/broker/kombu.py) does not reproduce the old topology by
+    itself, because the queue is shared rather than per-connection, so the
+    second builder's declaration should draw a 405 RESOURCE_LOCKED and the
+    test should fail at the first gate. Reproducing
     pre-#44 behaviour faithfully needs the per-connection queue NAME too, and
     should also fail at the first gate, because the shared queue that gate
     names keeps its preflight declaration and never gains a consumer.
@@ -401,7 +357,7 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
         )
     )
     assert poll_until(
-        lambda: _drained(pipeline, queues), timeout=120.0, interval=1.0,
+        lambda: pipeline.drained(queues), timeout=120.0, interval=1.0,
     ), f"the warm-up files never cleared the queues: {pipeline.queue_stats()}"
     baseline = len(_settle(pipeline, queues))
     assert baseline > 0, "warm-up produced output but recorded no dispatch"

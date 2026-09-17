@@ -471,11 +471,7 @@ class TestBrokerErrors:
         logged before exiting.
         """
         plugin = RabbitMQWatcher(mock_service, _make_config(max_retries=-1))
-        boom = FatalBrokerError(
-            "fatal failure while declaring queue 'nrt_file_notif_queue': "
-            "Queue.declare: (406) PRECONDITION_FAILED; "
-            "courier queues prune CONFIG --candidate <name> --apply",
-        )
+        boom = FatalBrokerError("declare failed")
 
         def _always_fatal(_file_queue: object) -> None:
             raise boom
@@ -486,7 +482,8 @@ class TestBrokerErrors:
         ):
             list(plugin.find_file())
 
-        message = str(caught.value)
-        assert "nrt_file_notif_queue" in message
-        assert "406" in message
-        assert "prune" in message
+        # Identity, not substrings: _connect_and_consume is patched out here,
+        # so any message this asserted on would be one the test itself wrote.
+        # The real triage text is covered against a broker in
+        # tests/rabbitmq/test_watcher_broker_errors.py.
+        assert caught.value is boom

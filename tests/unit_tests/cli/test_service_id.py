@@ -97,3 +97,23 @@ def test_the_placeholder_yields_to_the_environment(
     resolved = _resolve_service_id(_config("watcher-service-0a1b2c3d"))
 
     assert resolved == "replica-7"
+
+
+def test_an_identifier_that_merely_looks_generated_is_honoured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``watcher-service-prod`` is a deliberate choice, not a placeholder.
+
+    The placeholder check used to be a bare prefix test, so any identifier an
+    operator wrote beginning ``watcher-service-`` was silently discarded in
+    favour of the document name. Only the generated shape -- the prefix plus
+    eight hex characters -- may be overridden.
+    """
+    monkeypatch.delenv("SERVICE_ID", raising=False)
+
+    assert _resolve_service_id(_config("watcher-service-prod")) == (
+        "watcher-service-prod"
+    )
+    assert _resolve_service_id(_config("watcher-service-eu-west-1")) == (
+        "watcher-service-eu-west-1"
+    )

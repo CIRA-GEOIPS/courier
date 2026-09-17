@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import re
 from pathlib import (
     Path,  # noqa: TC003 — needed at runtime for Typer annotation introspection
 )
@@ -45,6 +46,11 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     return out
 
 
+#: Exact shape of the identifier ``ServiceConfig`` mints when ``SERVICE_ID``
+#: is unset -- ``watcher-service-`` plus eight hex characters from a uuid4.
+_GENERATED_SERVICE_ID = re.compile(r"watcher-service-[0-9a-f]{8}")
+
+
 def _resolve_service_id(config: Any) -> str:
     """Return the identity this process reports in logs and traces.
 
@@ -66,8 +72,10 @@ def _resolve_service_id(config: Any) -> str:
     """
     configured = getattr(config.spec.service_config, "service_id", "") or ""
     # The dataclass default is a generated placeholder, not a deliberate
-    # choice, so it must not outrank the metadata name.
-    if configured and not configured.startswith("watcher-service-"):
+    # choice, so it must not outrank the metadata name. Matched on its exact
+    # shape: a bare prefix test also discarded a real ``watcher-service-prod``
+    # an operator had written in the YAML.
+    if configured and not _GENERATED_SERVICE_ID.fullmatch(configured):
         return str(configured)
     from_env = os.environ.get("SERVICE_ID", "")
     if from_env:

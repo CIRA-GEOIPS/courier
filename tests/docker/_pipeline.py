@@ -36,6 +36,12 @@ from tests.docker.conftest import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+#: One line per dispatcher execution, written inside the data volume and
+#: outside the watched tree. The shipped scripts append before copying, so a
+#: dispatch is recorded even if the copy fails; the serial dispatcher runs one
+#: script at a time, so the appends cannot interleave.
+LEDGER = "/data/ledger.txt"
+
 
 class Pipeline:
     """Helper owning the containers one test needs.
@@ -478,6 +484,49 @@ class Pipeline:
         """
         return self._read_from_volume(f"cat {path} 2>/dev/null")
 
+    def ledger(self) -> list[str]:
+        """Return the dispatch ledger, one entry per dispatcher execution.
+
+        The shipped scripts append a line *before* copying, so a dispatch is
+        recorded even if the copy then fails -- which is what keeps "nothing
+        was dispatched" distinguishable from "the dispatch went wrong". The
+        line format differs per test module; the path does not.
+
+        Returns
+        -------
+        list[str]
+            One entry per execution, in execution order. Empty when nothing
+            has been dispatched yet -- a failure to read the volume raises
+            rather than reading as an empty ledger.
+        """
+        return self.read_lines(LEDGER)
+
+    def drained(self, queues: tuple[str, ...]) -> bool:
+        """Return whether every named queue holds no messages at all.
+
+        ``messages`` counts ready *plus* unacknowledged, which is what
+        "nothing is still in flight" has to mean: a replica holding an
+        unacknowledged file would requeue it if stopped, and the resulting
+        redelivery is a real duplicate rather than a topology bug. Under a
+        prefetch of one, a message left unacked would wedge the consumer and
+        be redelivered on every reconnect.
+
+        A queue missing from the stats counts as *not* drained, so an
+        unreadable broker can never be mistaken for a quiet one.
+
+        Parameters
+        ----------
+        queues : tuple[str, ...]
+            Fully namespaced queue names.
+
+        Returns
+        -------
+        bool
+            ``True`` when every queue reports zero messages.
+        """
+        stats = self.queue_stats()
+        return all(stats.get(name, (1, 0))[0] == 0 for name in queues)
+
     def seed_many(self, prefix: str, count: int) -> list[str]:
         """Create ``<prefix>-1.dat`` .. ``<prefix>-<count>.dat`` and return them.
 
@@ -870,60 +919,6 @@ def build_config(
     return f"{body}\n{indented}\n"
 
 
-def metric_samples(exposition: str, name: str) -> list[tuple[dict[str, str], float]]:
-    """Return every materialised series of one metric, labels parsed as a dict.
-
-    The tier's only parser of the exposition format; :func:`sample_value` is a
-    lookup over what this returns. Kept separate because "which series exist"
-    and "what does this one series hold" are different questions, and a test
-    asking the first cannot phrase it as a lookup keyed on label values.
-
-    Matching the metric name for equality is what keeps the two label families
-    of the file-found path apart. ``courier_broker_messages_pending`` is
-    labelled with the per-builder QUEUE name while ``courier_broker_messages_
-    sent_total`` on the very next line is labelled with the EXCHANGE name, and
-    ``<ns>-FilesFound`` is a prefix of both: any ``in`` or ``startswith`` test
-    reads the fixed and the pre-fix behaviour identically. Comment lines are
-    skipped for the same reason -- ``# HELP`` and ``# TYPE`` carry the metric
-    name for every declared metric, so a substring search over the raw text
-    finds the name even when nothing has ever been recorded.
-
-    Equality on the name also drops the companion series ``prometheus_client``
-    exports beside a counter or a histogram (``_created``, ``_bucket``,
-    ``_sum``, ``_count``), which would otherwise be counted as extra series.
-
-    Parameters
-    ----------
-    exposition : str
-        Text returned by :meth:`Pipeline.scrape_over_network`.
-    name : str
-        Full metric name, including any ``_total`` suffix.
-
-    Returns
-    -------
-    list[tuple[dict[str, str], float]]
-        One ``(labels, value)`` pair per series, in exposition order.  Empty
-        when the metric has never been recorded.  Label values containing a
-        comma or a quote are not unquoted correctly; no courier label does.
-    """
-    samples: list[tuple[dict[str, str], float]] = []
-    for raw in exposition.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        head, _, value = line.rpartition(" ")
-        series, _, label_text = head.partition("{")
-        if series.strip() != name:
-            continue
-        labels: dict[str, str] = {}
-        for part in label_text.rstrip("}").split(","):
-            key, _, raw_value = part.partition("=")
-            if key.strip():
-                labels[key.strip()] = raw_value.strip().strip('"')
-        samples.append((labels, float(value)))
-    return samples
-
-
 def sample_value(
     exposition: str,
     name: str,
@@ -936,6 +931,20 @@ def sample_value(
     never counted" and "this queue is counted and currently holds nothing" are
     different answers and a test that conflates them proves neither.
 
+    Matching the metric name for *equality* is what keeps the two label
+    families of the file-found path apart. ``courier_broker_messages_pending``
+    is labelled with the per-builder QUEUE name while
+    ``courier_broker_messages_sent_total`` on the very next line is labelled
+    with the EXCHANGE name, and ``<ns>-FilesFound`` is a prefix of both: any
+    ``in`` or ``startswith`` test reads the fixed and the pre-fix behaviour
+    identically. Comment lines are skipped for the same reason -- ``# HELP``
+    and ``# TYPE`` carry the name of every declared metric, so a substring
+    search over the raw text finds it even when nothing was ever recorded.
+
+    Equality on the name also drops the companion series ``prometheus_client``
+    exports beside a counter or a histogram (``_created``, ``_bucket``,
+    ``_sum``, ``_count``).
+
     Parameters
     ----------
     exposition : str
@@ -944,14 +953,27 @@ def sample_value(
         Full metric name, including any ``_total`` suffix.
     labels : dict[str, str]
         The series' complete label set.  A sample carrying any other label,
-        or missing one of these, does not match.
+        or missing one of these, does not match.  Label values containing a
+        comma or a quote are not unquoted correctly; no courier label does.
 
     Returns
     -------
     float or None
         The sample value, or ``None`` when no such series exists.
     """
-    for present, value in metric_samples(exposition, name):
+    for raw in exposition.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        head, _, value = line.rpartition(" ")
+        series, _, label_text = head.partition("{")
+        if series.strip() != name:
+            continue
+        present: dict[str, str] = {}
+        for part in label_text.rstrip("}").split(","):
+            key, _, raw_value = part.partition("=")
+            if key.strip():
+                present[key.strip()] = raw_value.strip().strip('"')
         if present == labels:
-            return value
+            return float(value)
     return None

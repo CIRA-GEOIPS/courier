@@ -498,62 +498,6 @@ class PluginManager(ServiceManager):
             time.sleep(self._config.plugin_restart_delay)
             self._start_plugin(plugin_info)
 
-    #: Interface name of plugins that publish into the pipeline rather than
-    #: consuming from it. Everything else is treated as a consumer.
-    _PRODUCER_INTERFACE = "data_monitors"
-
-    def _partition_by_role(
-        self,
-    ) -> tuple[list[PluginStateInfo], list[PluginStateInfo]]:
-        """Split registered plugins into ``(consumers, producers)``.
-
-        Caller must hold ``self._lock``.
-        """
-        consumers: list[PluginStateInfo] = []
-        producers: list[PluginStateInfo] = []
-        for info in self._plugins.values():
-            interface = getattr(info.plugin, "interface", None)
-            if interface == self._PRODUCER_INTERFACE:
-                producers.append(info)
-            else:
-                consumers.append(info)
-        return consumers, producers
-
-    def _await_subscriptions(self, consumers: list[PluginStateInfo]) -> None:
-        """Block until every consumer is attached to its broker queue.
-
-        Bounded by ``plugin_health_check_interval``: a consumer that cannot
-        attach must not stop the service from coming up, so a timeout is
-        logged and startup continues.
-
-        Since file-found queues became durable and are declared during
-        preflight, this ordering is a latency and visibility nicety rather
-        than a guard against loss: the first files are processed as soon as
-        they arrive instead of waiting on the broker, and a consumer that
-        cannot declare its queue is visible before producers add load.
-
-        Note this runs once during :meth:`start` and is **not** re-run when
-        the monitor restarts a failed plugin.
-        """
-        if not consumers:
-            return
-        deadline = time.time() + self._config.plugin_health_check_interval
-        for info in consumers:
-            waiter = getattr(info.plugin, "wait_until_subscribed", None)
-            if waiter is None:
-                continue
-            remaining = max(0.0, deadline - time.time())
-            if not waiter(remaining):
-                self._logger.warning(
-                    "Plugin %s did not report its broker subscription within "
-                    "%.1fs; starting producers anyway. Its queue is declared "
-                    "during preflight so nothing is dropped, but messages wait "
-                    "on the broker until it attaches. If this repeats, look for "
-                    "a FatalBrokerError from that plugin.",
-                    info.plugin.name,
-                    self._config.plugin_health_check_interval,
-                )
-
     @log_execution
     def start(self) -> None:
         """Start the plugin manager and all registered plugins."""
@@ -569,22 +513,15 @@ class PluginManager(ServiceManager):
         )
         self._monitor_thread.start()
 
-        # Phase 1: Start consumers, and only then producers.
+        # Phase 1: Start every plugin.
         #
-        # Consumers first, then producers. Durable file-found queues are
-        # declared during preflight, so this is no longer what prevents loss;
-        # it keeps the first files moving promptly instead of sitting on the
-        # broker, and surfaces a consumer that cannot declare its queue before
-        # producers start adding load.
+        # Consumers used to be started first and waited for, so that no data
+        # monitor could publish into a fanout exchange with nothing bound to
+        # it. Durable file-found queues are declared during preflight now, so
+        # a file published before its builder attaches waits on the broker
+        # instead of being discarded, and the ordering guarded nothing.
         with self._lock:
-            consumers, producers = self._partition_by_role()
-            for plugin_info in consumers:
-                self._start_plugin(plugin_info)
-
-        self._await_subscriptions(consumers)
-
-        with self._lock:
-            for plugin_info in producers:
+            for plugin_info in self._plugins.values():
                 self._start_plugin(plugin_info)
 
         # Phase 2: Wait for all plugins to signal readiness outside lock.

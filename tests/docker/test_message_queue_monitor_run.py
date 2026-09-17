@@ -101,6 +101,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tests._helpers import poll_until, stays_false
+from tests.docker._pipeline import LEDGER
 from tests.docker.conftest import BROKER_PASSWORD, BROKER_USER, container_logs
 
 if TYPE_CHECKING:
@@ -161,11 +162,6 @@ TIME_RANGE_LOWER = "2026-01-29T09:10:00"
 TIME_RANGE_UPPER = "2026-01-29T09:18:00"
 EXPECTED_TIMESTAMP = "2026-01-29T09:10:00+00:00"
 
-#: One line per dispatcher execution, outside both the input and the output
-#: directory so no monitor can see it.  Appending before the copy means a
-#: dispatch is recorded even if the copy then fails, which is what keeps
-#: "nothing was dispatched" distinguishable from "the dispatch went wrong".
-LEDGER = "/data/ledger.txt"
 
 
 def _queue_driven_config(
@@ -315,51 +311,6 @@ def _notification(
     }
 
 
-def _ledger(pipeline: Pipeline) -> list[str]:
-    """Return the dispatch ledger, one entry per dispatcher execution.
-
-    Parameters
-    ----------
-    pipeline : Pipeline
-        The running pipeline.
-
-    Returns
-    -------
-    list[str]
-        ``"<timestamp> <hostname> <path>"`` per execution, in execution order.
-        Empty when nothing has been dispatched yet -- a failure to read the
-        volume raises rather than reading as an empty ledger.
-    """
-    return pipeline.read_lines(LEDGER)
-
-
-def _drained(pipeline: Pipeline, queues: tuple[str, ...]) -> bool:
-    """Return whether every named queue holds no messages at all.
-
-    ``messages`` is ready plus unacknowledged, so this is the assertion that
-    each notification was consumed AND acknowledged all the way down the
-    chain.  Left unacked under a prefetch of one the monitor would wedge, and
-    the message would be redelivered on every reconnect.
-
-    A queue missing from the stats counts as *not* drained, so an unreadable
-    broker can never be mistaken for a quiet one.
-
-    Parameters
-    ----------
-    pipeline : Pipeline
-        The running pipeline.
-    queues : tuple[str, ...]
-        Fully namespaced queue names.
-
-    Returns
-    -------
-    bool
-        ``True`` when every queue reports zero messages.
-    """
-    stats = pipeline.queue_stats()
-    return all(stats.get(name, (1, 0))[0] == 0 for name in queues)
-
-
 def _diagnosis(pipeline: Pipeline, container: str) -> str:
     """Return everything needed to attribute a failure, in one string.
 
@@ -386,7 +337,7 @@ def _diagnosis(pipeline: Pipeline, container: str) -> str:
         f"running={pipeline.is_running(container)}\n"
         f"queues={pipeline.queue_stats()}\n"
         f"in={pipeline.listdir(RESOLVED_DIR)} out={pipeline.listdir('/data/out')}\n"
-        f"ledger={_ledger(pipeline)}\n"
+        f"ledger={pipeline.ledger()}\n"
         f"logs:\n{container_logs(container)}"
     )
 
@@ -482,13 +433,13 @@ def test_one_broker_notification_produces_exactly_one_dispatch(
     queues = (inbound_queue, builder_queue, dispatcher_queue)
 
     assert poll_until(
-        lambda: bool(_ledger(pipeline)),
+        lambda: bool(pipeline.ledger()),
         timeout=120.0,
         interval=1.0,
     ), f"the notification produced no dispatch:\n{_diagnosis(pipeline, container)}"
 
     assert poll_until(
-        lambda: _drained(pipeline, queues),
+        lambda: pipeline.drained(queues),
         timeout=60.0,
         interval=1.0,
     ), (
@@ -497,7 +448,7 @@ def test_one_broker_notification_produces_exactly_one_dispatch(
         f"{_diagnosis(pipeline, container)}"
     )
 
-    ledger = _ledger(pipeline)
+    ledger = pipeline.ledger()
     assert ledger == [expected_line], (
         f"expected exactly one dispatch of {expected_line!r}; the ledger holds "
         f"{ledger}. More than one line is a duplicate dispatch; a different "
@@ -507,7 +458,7 @@ def test_one_broker_notification_produces_exactly_one_dispatch(
     # Drained queues say nothing is in flight *now*; this says nothing arrives
     # late either, which is the shape a redelivery after a reconnect takes.
     assert stays_false(
-        lambda: _ledger(pipeline) != ledger,
+        lambda: pipeline.ledger() != ledger,
         window=10.0,
         interval=1.0,
     ), (
