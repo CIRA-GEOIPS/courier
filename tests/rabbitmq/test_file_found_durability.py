@@ -131,20 +131,44 @@ def test_the_queue_survives_its_consumer_and_is_not_exclusive(
     declare_bound_queue(raw_conn, exchange, queue)
 
 
+@pytest.mark.parametrize(
+    ("label", "conflict"),
+    [
+        ("auto_delete", {"auto_delete": True}),
+        ("arguments", {"queue_arguments": {"x-message-ttl": 60000}}),
+    ],
+)
 def test_a_conflicting_redeclare_is_a_fatal_error_naming_the_queue(
     amqp_config: ServiceConfig,
     namespace: str,
     raw_conn: kombu.Connection,
+    label: str,
+    conflict: dict,
 ) -> None:
     """A property mismatch fails loudly with a remedy, not a raw traceback.
 
     A 406 used to match none of the broker layer's except clauses, escape as a
     raw amqp exception, and take the process down through the plugin's
     catch-all.
+
+    The conflict is deliberately *not* on ``durable``, which is what this
+    planted before. A transient non-exclusive queue is RabbitMQ's deprecated
+    ``transient_nonexcl_queues`` feature, refused by default since 4.x with a
+    541 -- so the setup died before courier was ever called and the test
+    asserted nothing. ``declare_bound_queue`` sets
+    ``durable=True, exclusive=False, auto_delete=False`` and no arguments, so
+    either of the properties below is a genuine mismatch on a broker that still
+    permits the declare.
+
+    The ``arguments`` case is the one ADR-0010 leans on: its whole argument for
+    dead-lettering from the consumer side rather than with an
+    ``x-dead-letter-exchange`` is that adding an argument to a durable queue an
+    existing deployment already declared is a 406. That is pinned here.
     """
+    del label  # names the case in test output
     queue = f"{namespace}-FilesFound-jb"
     with raw_conn.channel() as channel:
-        kombu.Queue(queue, durable=False, channel=channel).declare()
+        kombu.Queue(queue, durable=True, channel=channel, **conflict).declare()
 
     service = Service(amqp_config)
     service.configure_routing(

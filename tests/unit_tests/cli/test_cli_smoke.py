@@ -28,8 +28,8 @@ runner = CliRunner()
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
-#: Not service configs: broker fixtures and compose files live alongside them.
-_NOT_SERVICE_CONFIGS = {"rabbitmq.conf", "docker-compose.rabbitmq-testing.yaml"}
+#: Not a service config: the broker compose file sits alongside them.
+_NOT_SERVICE_CONFIGS = {"docker-compose.rabbitmq-testing.yaml"}
 
 _SHIPPED_CONFIGS = sorted(
     path

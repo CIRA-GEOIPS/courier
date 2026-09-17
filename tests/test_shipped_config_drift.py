@@ -34,8 +34,8 @@ _SHIPPED_CONFIGS = sorted(
     [_REPO_ROOT / "config.yaml", *(_REPO_ROOT / "tests").glob("*.yaml")],
 )
 
-# Not service configs: broker fixtures and compose files live here too.
-_NOT_SERVICE_CONFIGS = {"rabbitmq.conf", "docker-compose.rabbitmq-testing.yaml"}
+# Not a service config: the broker compose file is globbed up with them.
+_NOT_SERVICE_CONFIGS = {"docker-compose.rabbitmq-testing.yaml"}
 
 _SERVICE_CONFIGS = [
     path for path in _SHIPPED_CONFIGS if path.name not in _NOT_SERVICE_CONFIGS
