@@ -45,6 +45,7 @@ def memory_conn() -> kombu.Connection:
         (amqp.exceptions.NotFound("gone"), "no longer exists"),
         (amqp.exceptions.ResourceLocked("locked"), "exclusively"),
         (amqp.exceptions.PreconditionFailed("mismatch"), "already exists"),
+        (amqp.exceptions.InternalError("deprecated feature"), "refused"),
     ],
 )
 def test_irrecoverable_reply_codes_are_fatal_and_carry_a_remedy(
@@ -52,11 +53,14 @@ def test_irrecoverable_reply_codes_are_fatal_and_carry_a_remedy(
     exc: Exception,
     fragment: str,
 ) -> None:
-    """403, 404, 405 and 406 are fatal, and say what to do about it.
+    """403, 404, 405, 406 and 541 are fatal, and say what to do about it.
 
-    405 is the load-bearing case: py-amqp classes ``ResourceLocked`` as
-    *recoverable*, so classifying by tuple membership alone would retry a
-    queue held exclusively by another client forever.
+    405 and 541 are the load-bearing cases, for opposite reasons. py-amqp
+    classes ``ResourceLocked`` as *recoverable*, so classifying by tuple
+    membership alone would retry a queue held exclusively by another client
+    forever. ``InternalError`` is an irrecoverable *connection* error rather
+    than a channel error, so before 541 was listed it reached fatal only by
+    accident of class membership, and carried no remedy at all.
     """
     mapped = classify_broker_error(amqp_conn, exc, "ns-q", "declaring queue")
 
@@ -148,3 +152,28 @@ def test_declare_paths_translate_a_precondition_failure(
     monkeypatch.setattr(kombu.Exchange, "declare", _raise)
     with pytest.raises(FatalBrokerError, match="ns-ex"):
         declare_fanout_exchange(memory_conn, "ns-ex")
+
+
+def test_a_541_is_fatal_on_the_memory_transport_too(
+    memory_conn: kombu.Connection,
+) -> None:
+    """The unit tier must not disagree with production about this one.
+
+    ``InternalError`` is an irrecoverable *connection* error. The memory
+    transport has no ``recoverable_connection_errors`` of its own, so kombu
+    falls back to ``connection_errors + channel_errors`` -- which contains it,
+    and used to classify a 541 as retryable here while pyamqp called it fatal.
+    A test written against ``memory://`` therefore asserted the opposite of
+    what a deployment would see. Listing 541 in ``_FATAL_REPLY_CODES`` settles
+    it before either fallback is consulted.
+    """
+    mapped = classify_broker_error(
+        memory_conn,
+        amqp.exceptions.InternalError("deprecated feature"),
+        "ns-q",
+        "declaring queue",
+    )
+
+    assert isinstance(mapped, FatalBrokerError)
+    assert "ns-q" in str(mapped)
+    assert "refused" in str(mapped)
