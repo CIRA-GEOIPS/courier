@@ -1,17 +1,53 @@
-from typing import ClassVar
-from pydantic import BaseModel
+import os
+from typing import Any, ClassVar, Self
+import jinja2
+from pydantic import BaseModel, model_validator, Field
 from courier.interfaces.discovery import ENTRY_POINT_PREFIX, ClassPluginRegistry
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.service import Service
+from courier.types.execution_log import ExecutionLog
+from courier.types.job import Job
 from courier.utils.logging import get_logger
 
+from dataclasses import dataclass
+
+from pathlib import Path
+
+class DispatcherGroupConfig(BaseModel, frozen=True):
+    """Validated configuration for the entire dispatcher group."""
+    timeout_seconds: float = Field(default=3600.0, gt=0)
+    log_to_logger: bool = Field(default=False)
+    log_to_file: bool = Field(default=False)
+    log_dir: str = Field(default="")
+    log_only_errors: bool = Field(default=False)
+    scan_stderr: bool = Field(default=False)
+
+    @model_validator(mode="after")
+    def _validate_logging_config(self) -> Self:
+        if self.log_to_file and not self.log_dir:
+            raise ValueError("log_dir is required when log_to_file=True")
+        if self.log_to_file:
+            log_dir_path = Path(self.log_dir)
+            if not log_dir_path.is_dir():
+                log_dir_path.mkdir(parents=True, exist_ok=True)
+            elif not os.access(self.log_dir, os.W_OK):
+                raise ValueError(f"log_dir is not writable: {self.log_dir}")
+        return self
+
+# The transient nature of falcons does not allow for modifications to the base config.
+@dataclass(frozen=True)
 class FalconConfig(BaseModel):
-    foo: str
+    file: Path
+    prefix_args: list[str] = []
+    suffix_args: list[str] = []
+    binary: str | None = None
 
 class Falcon(ServicePlugin):
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "falcon"
+
+    base_config: DispatcherGroupConfig
 
     def __init__(
         self,
@@ -25,8 +61,52 @@ class Falcon(ServicePlugin):
             )
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
-        self.config = config or {}
+        self._default_binary = None
+        config = dict(config or {})
+        config.setdefault("binary", self._default_binary)
+        self.config = FalconConfig.model_validate(config)
 
+    @classmethod
+    def get_representation_hierarchy(cls) -> list[type["Falcon"]]:
+        return [
+            parent
+            for parent in reversed(cls.__mro__)
+            if issubclass(parent, Falcon) and parent is not Falcon
+        ]
+    @classmethod
+    def from_falcon(cls, falcon: "Falcon") -> "Falcon":
+        return cls(
+            falcon.parent_service,
+            falcon.config.model_dump(),
+            falcon.name
+        )
+    def render_script(self, job: Job, script: str) -> str:
+        """Render the Jinja2 bash template with job and config context."""
+        context = {
+            "files": [
+                f.to_dict() for f in sorted(job.files, key=lambda f: str(f.file))
+            ],
+            "job": {
+                "name": job.name,
+                "identifier": job.identifier,
+                "config": job.config,
+                "last_modified": job.last_modified,
+                "timeout": job.timeout,
+                "correlation_id": job.correlation_id,
+                "emit_time": job.emit_time,
+            },
+            "config": job.config,
+        }
+        return jinja2.Environment(
+            undefined=jinja2.DebugUndefined,
+            autoescape=False,
+        ).from_string(script).render(**context)
+    def get_payload_from_job(self, job: Job) -> list[ExecutionLog]:
+        return [
+            ExecutionLog()
+        ]
+    def get_metrics(self) -> dict[str, Any]:
+        return {}
     def start(self) -> None:
         return
     def stop(self) -> None:

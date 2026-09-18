@@ -23,7 +23,7 @@ from courier.interfaces.discovery import (
     ClassPluginRegistry
 )
 from courier.interfaces.falconers import FalconerConfig, Falconer
-from courier.interfaces.falcons import Falcon
+from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
@@ -50,7 +50,8 @@ from courier.types.job import Job
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from pathlib import Path
 
 _DEDUPE_LRU_SIZE = 1024
 
@@ -92,7 +93,7 @@ class Dispatcher(ServicePlugin):
         self._stop_event = threading.Event()
         # Set once bound to the per-identifier job queue; see JobBuilder.
         self._subscribed = threading.Event()
-        self.config = config or {}
+        self.config = DispatcherGroupConfig.model_validate(config or {})
 
         self._jobs_processed = DISPATCHER_JOBS_PROCESSED
         self._job_execution_duration = DISPATCHER_JOB_EXECUTION_DURATION
@@ -132,16 +133,28 @@ class Dispatcher(ServicePlugin):
     def set_falconer(self, falconer: Falconer) -> None:
         self.falconer = falconer
 
-    def check_compatible_partners(self, falconer: Falconer, falcon: Falcon) -> bool:
-        # check compatibility of the soon-to-be-married falconer
-        # and falcon pair
-        return True
+    def _get_compatible_partners(self, falconer: Falconer, falcon: Falcon) -> list[type[Falcon]]:
+        # check compatibility, return compatible partners list of the soon-to-be-married falconer
+        # and falcon pair, keeping original form
+        return [x for x in falcon.get_representation_hierarchy() if x in falconer.representations]
 
-    def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> None:
+    def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> Falcon:
+        compatible_partners = self._get_compatible_partners(falconer, falcon)
+        if not compatible_partners:
+            raise ValueError(
+            f"The falcon and falconer do not pair."
+            )
+        best_match = compatible_partners[-1].from_falcon(falcon)
         # configure each of the pair to fit each other's configuration neatly
         # marry the pair and keep track of the falconer
-        falconer.falcon = falcon
+        best_match.base_config = self.config
+        falconer.base_config = self.config
+
+        falconer.falcon = best_match
         self.falconer = falconer
+        
+        # be free
+        return best_match
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
@@ -282,7 +295,7 @@ class Dispatcher(ServicePlugin):
                     ).observe(start_time - job.last_modified)
 
                     try:
-                        execution_logs = self.falconer.send_for_payload(job)
+                        execution_logs = self.get_execution_log(job)
                         get_current_span().add_event(
                             "job.executed",
                             attributes={

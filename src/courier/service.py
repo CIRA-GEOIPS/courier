@@ -536,10 +536,12 @@ class Service:
             # each object is populated with its initial configuration. 
 
             # dispatcher checks if falconer and falcon are compatible
-            dispatcher_obj.check_compatible_partners(falconer_obj, falcon_obj)
             # dispatcher configures, marries the falconer and falcon
-            dispatcher_obj.ordain_bird_marriage(falconer_obj, falcon_obj)
-            # yyyyyep
+            mutated_falcon = dispatcher_obj.ordain_bird_marriage(falconer_obj, falcon_obj)
+
+            # if something goes wrong, check here first: I'm not sure if this will
+            # mess up the pipeline
+            self._plugin_manager._plugins[falcon_id].plugin = mutated_falcon
     
     def _predeclare_target_queues(self) -> None:
         """Declare every per-dispatcher queue plus shared queues.

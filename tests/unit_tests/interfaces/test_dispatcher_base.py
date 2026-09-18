@@ -17,13 +17,19 @@ from prometheus_client import REGISTRY
 
 from courier.constants import PluginRunState, job_ready_queue_for
 from courier.errors import CourierError, PipelineError
+from courier.interfaces import dispatchers
 from courier.interfaces.dispatchers import (
     _DEDUPE_LRU_SIZE,
     Dispatcher,
 )
+from courier.interfaces.falconers import Falconer
+from courier.interfaces.falcons import FalconConfig
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from courier.types.job import Job
+
+from courier.plugins.falconers.local_falconer import LocalFalconer
+from courier.plugins.falcons.shell_falcon import ShellFalcon
 
 
 class _RecordingDispatcher(Dispatcher):
@@ -57,7 +63,9 @@ def service() -> MagicMock:
 
 
 def _dispatcher(service: MagicMock, identifier: str) -> _RecordingDispatcher:
-    return _RecordingDispatcher(service, {}, identifier=identifier)
+    dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
+    dispatcher.falconer = MagicMock(spec=Falconer)
+    return dispatcher
 
 
 def _feed(dispatcher: _RecordingDispatcher, service: MagicMock, *jobs: Job) -> None:
@@ -253,3 +261,41 @@ class TestLifecycle:
         assert service.emit.call_args.kwargs["queue"] == FILE_FOUND_EXCHANGE
         emitted = File.from_string(service.emit.call_args.kwargs["message"])
         assert str(emitted.file) == "/out/product.nc"
+
+
+
+# ── falcon, falconer compatibility ───────────────────────────────────────────────────────────────
+class TestDispatcherCelebrant:
+    def test_get_common_registration_valid(self, service: MagicMock) -> None:
+        dispatcher = _dispatcher(service, "celebrant")
+        falconer = LocalFalconer(service, {"hello": ""}, "dummy")
+        falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+
+        assert compatible_partners == [ShellFalcon]
+    def test_get_common_registration_invalid(self, service: MagicMock) -> None:
+        dispatcher = _dispatcher(service, "celebrant")
+        class DumbFalconer(Falconer):
+            representations = []
+        falconer = DumbFalconer(service, {"hello": ""}, "dummy")
+        falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+        assert compatible_partners == []
+    def test_get_most_specific_registration(self, service):
+        dispatcher = _dispatcher(service, "celebrant")
+        class ChildFalcon(ShellFalcon):
+            pass
+        class GrandchildFalcon(ChildFalcon):
+            pass
+        class GreatGrandchildFalcon(GrandchildFalcon):
+            pass
+        falcon = GreatGrandchildFalcon(service, {"file": ""}, "dummyfalcon")
+        falconer = LocalFalconer(service, {"hello": ""}, "dummy")
+        falconer.representations.append(GrandchildFalcon)
+
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+        assert compatible_partners[-1] == GrandchildFalcon
+
+        falconer.representations.append(GreatGrandchildFalcon)
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+        assert compatible_partners[-1] == GreatGrandchildFalcon
