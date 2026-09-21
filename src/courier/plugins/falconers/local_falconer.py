@@ -6,6 +6,8 @@ from courier.errors import CourierError
 from courier.interfaces.falconers import Falconer, FalconerPayload
 from courier.interfaces.falcons import Falcon
 
+from courier.plugins.falcons.bash_falcon import BashFalcon
+from courier.plugins.falcons.python_falcon import PythonFalcon
 from courier.plugins.falcons.shell_falcon import ShellFalcon
 from courier.service import Service
 from courier.types.job import Job
@@ -17,6 +19,8 @@ class LocalFalconer(Falconer):
     name: ClassVar[str] = "local_falconer"
     version: ClassVar[str] = "-1"
 
+    representations: list[type[Falcon]] = [ShellFalcon, BashFalcon, PythonFalcon]
+
     def __init__(
         self,
         service: Service,
@@ -26,23 +30,6 @@ class LocalFalconer(Falconer):
         super().__init__(service, config, identifier=identifier)
     def is_healthy(self) -> bool:
         return True
-    def _validate_toolchain(self):
-        for value in self.falcon.config.toolchain:
-            command = [self.falcon._default_binary, "-c", f"command -v {value}"]
-            payload = self.falcon.get_payload_from_job(command)
-            if len(payload) > 0:
-                if payload[0].return_code != 0:
-                    self._state = PluginRunState.FAILED
-                    raise CourierError(
-                    f"Toolchain validation failed for value {value} on falconer {self.identifier}",
-                    payload[0].stderr
-                    )
-                else:
-                    self._logger.info(f"Toolchain validation succeeded for value {value}")
-            else:
-                raise CourierError(
-                f"Toolchain validation failed with no warning."
-                )
     def cast_off_falcon(self, job: Job):
         self._state = PluginRunState.RUNNING
         try:
@@ -60,13 +47,13 @@ class LocalFalconer(Falconer):
             self._state = PluginRunState.FAILED
             self._logger.error(f"Exception occured while running job {job.identifier}")
         return payload
-    def initialize_environment(self, job) -> FalconerPayload:
+    def initialize_environment(self, job) -> FalconerPayload: 
         clean_path = self._render_script_file(job)
-        command = [str(self.falcon._default_binary)]
-        if self.falcon.config.binary:
-            command.append("-c")
+        
+        call = self.falcon.generate_calling_method()
+        command = self._generate_execution_command(job, clean_path)
 
-        command = self._generate_execution_command(command, job, clean_path)
+        command = call + command
  
         log_prefix = (
             f"[job: {job.identifier}]" if self.base_config.log_to_logger else ""

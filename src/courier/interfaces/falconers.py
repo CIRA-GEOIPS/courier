@@ -1,7 +1,9 @@
 from dataclasses import field
+from shutil import copy
 from typing import Any, ClassVar
 import jinja2
 import tempfile
+import copy
 
 from courier.constants import PluginRunState
 from courier.errors import CourierError
@@ -32,7 +34,7 @@ class Falconer(ServicePlugin):
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "falconer"
 
-    representations: list[type[Falcon]] = [ShellFalcon]
+    representations: list[type[Falcon]] = []
     falcon: Falcon
     base_config: DispatcherGroupConfig
 
@@ -48,7 +50,6 @@ class Falconer(ServicePlugin):
             )
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
-        self.config = config or {}
         self._state = PluginRunState.STOPPED
         self.identifier = identifier
 
@@ -81,19 +82,22 @@ class Falconer(ServicePlugin):
 
             with tempfile.NamedTemporaryFile(
                 mode="w",
-                suffix=self.falcon._file_suffix,
+                suffix=falcon_config.file.suffix,
                 delete=False,
             ) as script_file:
                 script_file.write(rendered_script)
                 rendered_script_path = script_file.name
-            return Path(rendered_script_path)
+            res = Path(rendered_script_path)
+            res.chmod(0o755)
+            return res
         except Exception as e:
             raise CourierError(
             f"Failed to render script file for {self.identifier}",
             e
             )
-    def _generate_execution_command(self, command_arr: list[str], job: Job, path: Path | None = None) -> list[str]:
+    def _generate_execution_command(self, job: Job, path: Path | None = None) -> list[str]:
         raw_command = self.falcon.declare_command(path)
+        command_arr = []
         try:
             for command in raw_command:
                 command_arr.append(self.render_script(job, command))
@@ -123,7 +127,21 @@ class Falconer(ServicePlugin):
             finalize=lambda value: "" if value is None or value == [] else value,
         ).from_string(script).render(**context)
     def _validate_toolchain(self):
-        return
+        for value in self.falcon.config.toolchain:
+            payload = self.falcon.validate_toolchain_arg(value)
+            if len(payload) > 0:
+                if payload[0].return_code != 0:
+                    self._state = PluginRunState.FAILED
+                    raise CourierError(
+                    f"Toolchain validation failed for value {value} on falconer {self.identifier}",
+                    payload[0].stderr
+                    )
+                else:
+                    self._logger.info(f"Toolchain validation succeeded for value {value}")
+            else:
+                raise CourierError(
+                f"Toolchain validation failed with no warning."
+                )
     def start(self) -> None:
         self._validate_toolchain()
         self._state = PluginRunState.STOPPED

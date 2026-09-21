@@ -29,6 +29,15 @@ class ShellFalcon(Falcon):
 
     def is_healthy(self) -> bool:
         return True 
+    def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
+        command = ["command", "-v", value]
+        return self.get_payload_from_job(command)
+    def generate_calling_method(self) -> list[str]:
+        command_arr = [self._default_binary]
+        if self.config.binary:
+            command_arr.append("-c")
+
+        return command_arr
     def declare_command(self, path: Path | None = None) -> list[str]:
         command_arr = []
 

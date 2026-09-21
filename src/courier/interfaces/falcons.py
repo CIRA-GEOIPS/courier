@@ -1,3 +1,4 @@
+import dataclasses
 import os
 from typing import Any, ClassVar, Self
 import jinja2
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 
 from pathlib import Path
 
-class DispatcherGroupConfig(BaseModel, frozen=True):
+class DispatcherGroupConfig(BaseModel):
     """Validated configuration for the entire dispatcher group."""
     timeout_seconds: float = Field(default=3600.0, gt=0)
     log_to_logger: bool = Field(default=False)
@@ -87,6 +88,8 @@ class Falcon(ServicePlugin):
             falcon.config.model_dump(),
             falcon.name
         )
+    def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
+        return []
     def get_payload_from_job(self, command: list[str],
                              log_prefix: str = "",
                              log_file_path: Path | None = None) -> list[ExecutionLog]:         
@@ -94,6 +97,8 @@ class Falcon(ServicePlugin):
             ExecutionLog()
         ]
     def declare_command(self, path: Path | None = None) -> list[str]:
+        return []
+    def generate_calling_method(self) -> list[str]:
         return []
     def get_metrics(self) -> dict[str, Any]:
         return {}

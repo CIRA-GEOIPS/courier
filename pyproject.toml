@@ -457,6 +457,7 @@ slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher
 
 [project.entry-points."courier.falconers"]
 local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
+slurm_falconer = "courier.plugins.falconers.slurm_falconer:SlurmFalconer"
 
 
 [project.entry-points."courier.falcons"]
