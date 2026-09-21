@@ -4,9 +4,11 @@ import jinja2
 import tempfile
 
 from courier.constants import PluginRunState
+from courier.errors import CourierError
 from courier.plugins.falcons.shell_falcon import ShellFalcon
 from pydantic import BaseModel
 from pathlib import Path
+from dataclasses import dataclass
 
 from courier.interfaces.falcons import DispatcherGroupConfig, Falcon, FalconConfig
 from courier.interfaces.plugin_protocol import ServicePlugin
@@ -19,6 +21,7 @@ from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.logging import get_logger
 
+@dataclass
 class FalconerPayload:
     command: list[str]
     log_prefix: str = ""
@@ -50,11 +53,18 @@ class Falconer(ServicePlugin):
         self.identifier = identifier
 
     def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
-        p = self.initialize_environment(job)
-        return self.falcon.get_payload_from_job(job,
-                                                p.command)
+        self._state = PluginRunState.RUNNING
+        try:
+            p = self.initialize_environment(job)
+        except Exception as e:
+            self._state = PluginRunState.FAILED
+            raise CourierError(
+            f"Failed to initialize environment for {self.identifier}",
+            e
+            )
+        return self.falcon.get_payload_from_job(p.command)
     def initialize_environment(self, job) -> FalconerPayload:
-        return FalconerPayload()
+        return FalconerPayload(command=[])
     def get_metrics(self) -> dict[str, Any]:
         return {}
     def set_falcon(self, falcon: Falcon):
@@ -62,37 +72,32 @@ class Falconer(ServicePlugin):
     def send_for_payload(self, job: Job) -> list[ExecutionLog]:
         return [ExecutionLog()]
     def _render_script_file(self, job: Job) -> Path:
-        falcon_config = self.falcon.config
-        rendered_script_path: str | None = None
-
-        script = falcon_config.file.read_text()
-        rendered_script = self.render_script(job, script)
-
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=self.falcon._file_suffix,
-            delete=False,
-        ) as script_file:
-            script_file.write(rendered_script)
-            rendered_script_path = script_file.name
-        return Path(rendered_script_path)
-    def _generate_execution_command(self, job: Job, path: Path | None = None) -> str:
-        falcon_config = self.falcon.config
-        if not path:
-            path = falcon_config.file
-        prefix = " ".join(falcon_config.prefix_args)
-        suffix = " ".join(falcon_config.suffix_args)
-        parts = [
-            falcon_config.binary or self.falcon._default_binary,
-            prefix,
-            str(path),
-            suffix,
-        ]
-
-        raw_command = " ".join(part for part in parts if part)
         try:
-            command = self.render_script(job, raw_command)
-            return command
+            falcon_config = self.falcon.config
+            rendered_script_path: str | None = None
+
+            script = falcon_config.file.read_text()
+            rendered_script = self.render_script(job, script)
+
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=self.falcon._file_suffix,
+                delete=False,
+            ) as script_file:
+                script_file.write(rendered_script)
+                rendered_script_path = script_file.name
+            return Path(rendered_script_path)
+        except Exception as e:
+            raise CourierError(
+            f"Failed to render script file for {self.identifier}",
+            e
+            )
+    def _generate_execution_command(self, command_arr: list[str], job: Job, path: Path | None = None) -> list[str]:
+        raw_command = self.falcon.declare_command(path)
+        try:
+            for command in raw_command:
+                command_arr.append(self.render_script(job, command))
+            return command_arr
         except Exception:
             raise
     def render_script(self, job: Job, script: str) -> str:
@@ -117,11 +122,11 @@ class Falconer(ServicePlugin):
             autoescape=False,
             finalize=lambda value: "" if value is None or value == [] else value,
         ).from_string(script).render(**context)
+    def _validate_toolchain(self):
+        return
     def start(self) -> None:
-        # eager loading by default
-        if self._state == PluginRunState.RUNNING:
-            return
-        self._state = PluginRunState.RUNNING
+        self._validate_toolchain()
+        self._state = PluginRunState.STOPPED
         return
     def stop(self) -> None:
         return

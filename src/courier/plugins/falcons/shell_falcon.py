@@ -29,9 +29,25 @@ class ShellFalcon(Falcon):
 
     def is_healthy(self) -> bool:
         return True 
-        return Path(rendered_script_path)
-    def get_payload_from_job(self, job: Job,
-                             command: list[str],
+    def declare_command(self, path: Path | None = None) -> list[str]:
+        command_arr = []
+
+        if self.config.binary:
+            parts = [
+                self.config.binary,
+                " ".join(self.config.prefix_args),
+                str(path) if path else str(self.config.file),
+                " ".join(self.config.suffix_args)
+            ]
+            command_arr.append(" ".join(part for part in parts if part))
+        else:
+            for prefix in self.config.prefix_args:
+                command_arr.append(prefix)
+            command_arr.append(str(path) if path else str(self.config.file))
+            for suffix in self.config.suffix_args:
+                command_arr.append(suffix)
+        return command_arr
+    def get_payload_from_job(self, command: list[str],
                              log_prefix: str = "",
                              log_file_path: Path | None = None) -> list[ExecutionLog]:         
         result = execute_shell_script(

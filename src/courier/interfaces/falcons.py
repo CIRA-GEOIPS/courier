@@ -38,6 +38,7 @@ class DispatcherGroupConfig(BaseModel, frozen=True):
 @dataclass(frozen=True)
 class FalconConfig(BaseModel):
     file: Path
+    toolchain: list[str] = []
     prefix_args: list[str] = []
     suffix_args: list[str] = []
     binary: str | None = None
@@ -86,13 +87,14 @@ class Falcon(ServicePlugin):
             falcon.config.model_dump(),
             falcon.name
         )
-    def get_payload_from_job(self, job: Job,
-                             command: list[str],
+    def get_payload_from_job(self, command: list[str],
                              log_prefix: str = "",
                              log_file_path: Path | None = None) -> list[ExecutionLog]:         
         return [
             ExecutionLog()
         ]
+    def declare_command(self, path: Path | None = None) -> list[str]:
+        return []
     def get_metrics(self) -> dict[str, Any]:
         return {}
     def start(self) -> None:

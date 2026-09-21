@@ -295,7 +295,7 @@ class Dispatcher(ServicePlugin):
                     ).observe(start_time - job.last_modified)
 
                     try:
-                        execution_logs = self.get_execution_log(job)
+                        execution_logs = self.falconer.cast_off_falcon(job)
                         get_current_span().add_event(
                             "job.executed",
                             attributes={

@@ -6,6 +6,7 @@ from courier.plugins.falcons.shell_falcon import ShellFalcon
 from courier.plugins.falconers.local_falconer import LocalFalconer
 from courier.types.file import File
 from courier.types.job import Job
+from courier.errors import CourierError
 
 from unittest.mock import MagicMock
 
@@ -34,9 +35,9 @@ class TestCommandRendering:
         falconer.falcon = falcon
         falconer.base_config = DispatcherGroupConfig()
 
-        generated_command = falconer._generate_execution_command(job)
+        generated_command = falconer._generate_execution_command([], job)
 
-        assert generated_command == "sh assets/shell_falcon_demo.sh"
+        assert generated_command == ["assets/shell_falcon_demo.sh"]
     def test_falconer_generate_command_with_prefix(self, service, falcon_config) -> None:
         job = _job()
 
@@ -47,9 +48,9 @@ class TestCommandRendering:
         falconer.falcon = falcon
         falconer.base_config = DispatcherGroupConfig()
 
-        generated_command = falconer._generate_execution_command(job)
+        generated_command = falconer._generate_execution_command([], job)
 
-        assert generated_command == "sh -v -f filename assets/shell_falcon_demo.sh"
+        assert generated_command == "-v -f filename assets/shell_falcon_demo.sh".split(" ")
     def test_falcon_generate_command_with_binary(self, service, falcon_config) -> None:
         job = _job()
         falcon_config["binary"] = "/bin/dash"
@@ -58,9 +59,9 @@ class TestCommandRendering:
         falconer = LocalFalconer(service, {}, "dummyfalconer")
         falconer.falcon = falcon
         falconer.base_config = DispatcherGroupConfig()
-        generated_command = falconer._generate_execution_command(job)
+        generated_command = falconer._generate_execution_command([], job)
 
-        assert generated_command == "/bin/dash assets/shell_falcon_demo.sh"
+        assert generated_command == ["/bin/dash assets/shell_falcon_demo.sh"]
     def test_falcon_generate_command_with_suffix(self, service, falcon_config) -> None:
         job = _job()
         falcon_config["suffix_args"] = ["-v", "-f", "filename"]
@@ -69,9 +70,9 @@ class TestCommandRendering:
         falconer = LocalFalconer(service, {}, "dummyfalconer")
         falconer.falcon = falcon
         falconer.base_config = DispatcherGroupConfig()
-        generated_command = falconer._generate_execution_command(job)
+        generated_command = falconer._generate_execution_command([], job)
 
-        assert generated_command == "sh assets/shell_falcon_demo.sh -v -f filename"
+        assert generated_command == "assets/shell_falcon_demo.sh -v -f filename".split(" ")
     def test_falcon_jinja2_rendering_suffix(self, service, falcon_config) -> None:
         job = _job()
 
@@ -81,9 +82,9 @@ class TestCommandRendering:
         falconer = LocalFalconer(service, {}, "dummyfalconer")
         falconer.falcon = falcon
         falconer.base_config = DispatcherGroupConfig()
-        generated_command = falconer._generate_execution_command(job)
+        generated_command = falconer._generate_execution_command([], job)
 
-        assert generated_command == "sh assets/shell_falcon_demo.sh -v -f /d/a.nc"
+        assert generated_command == "assets/shell_falcon_demo.sh -v -f /d/a.nc".split(" ")
     def test_falcon_script_rendering(self, service, falcon_config) -> None:
         job = _job()
 
@@ -97,6 +98,25 @@ class TestCommandRendering:
         assert output_file_txt == "#!/bin/sh\n\necho \"hello world! file: /d/a.nc\""
 
 class TestFalconerWorkflow:
+    def test_validate_toolchain_valid(self, service, falcon_config) -> None:
+        falcon_config["toolchain"] = ["python3", "bash", "command"]
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falcon.base_config = DispatcherGroupConfig()
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+
+        falconer._validate_toolchain()
+    def test_validate_toolchain_invalid(self, service, falcon_config) -> None:
+        falcon_config["toolchain"] = ["invalid_toolchain", "python3"]
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falcon.base_config = DispatcherGroupConfig()
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        
+        with pytest.raises(CourierError):
+            falconer._validate_toolchain()
     def test_run_script(self, service, falcon_config) -> None:
         job = _job()
 

@@ -461,6 +461,8 @@ local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
 
 [project.entry-points."courier.falcons"]
 shell_falcon = "courier.plugins.falcons.shell_falcon:ShellFalcon"
+bash_falcon = "courier.plugins.falcons.bash_falcon:BashFalcon"
+python_falcon = "courier.plugins.falcons.python_falcon:PythonFalcon"
 
 [project.entry-points."courier.data_monitor_configs"]
 gk2a_ami = "courier.plugins.data_monitor_configs.gk2a_ami:CONFIG"
