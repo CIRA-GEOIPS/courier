@@ -22,7 +22,7 @@ from courier.errors import CourierError
 from courier.interfaces.discovery import (
     ClassPluginRegistry
 )
-from courier.interfaces.falconers import FalconerConfig, Falconer
+from courier.interfaces.falconers import Falconer
 from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (

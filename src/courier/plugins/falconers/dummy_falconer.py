@@ -1,5 +1,5 @@
 from typing import ClassVar, TYPE_CHECKING
-from courier.interfaces.falconers import Falconer, FalconerConfig
+from courier.interfaces.falconers import Falconer
 
 from courier.service import Service
 

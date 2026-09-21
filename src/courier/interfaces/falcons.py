@@ -1,7 +1,7 @@
 import os
 from typing import Any, ClassVar, Self
 import jinja2
-from pydantic import BaseModel, model_validator, Field
+from pydantic import BaseModel, field_validator, model_validator, Field
 from courier.interfaces.discovery import ENTRY_POINT_PREFIX, ClassPluginRegistry
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.service import Service
@@ -42,6 +42,13 @@ class FalconConfig(BaseModel):
     suffix_args: list[str] = []
     binary: str | None = None
 
+    @field_validator("file")
+    @classmethod
+    def validate_file(cls, value: Path) -> Path:
+        if not value.exists():
+            raise ValueError(f"File does not exist {value}")
+        return value
+
 class Falcon(ServicePlugin):
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
@@ -62,8 +69,7 @@ class Falcon(ServicePlugin):
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
         self._default_binary = None
-        config = dict(config or {})
-        config.setdefault("binary", self._default_binary)
+        self._file_suffix = ".sh"
         self.config = FalconConfig.model_validate(config)
 
     @classmethod
@@ -80,28 +86,10 @@ class Falcon(ServicePlugin):
             falcon.config.model_dump(),
             falcon.name
         )
-    def render_script(self, job: Job, script: str) -> str:
-        """Render the Jinja2 bash template with job and config context."""
-        context = {
-            "files": [
-                f.to_dict() for f in sorted(job.files, key=lambda f: str(f.file))
-            ],
-            "job": {
-                "name": job.name,
-                "identifier": job.identifier,
-                "config": job.config,
-                "last_modified": job.last_modified,
-                "timeout": job.timeout,
-                "correlation_id": job.correlation_id,
-                "emit_time": job.emit_time,
-            },
-            "config": job.config,
-        }
-        return jinja2.Environment(
-            undefined=jinja2.DebugUndefined,
-            autoescape=False,
-        ).from_string(script).render(**context)
-    def get_payload_from_job(self, job: Job) -> list[ExecutionLog]:
+    def get_payload_from_job(self, job: Job,
+                             command: list[str],
+                             log_prefix: str = "",
+                             log_file_path: Path | None = None) -> list[ExecutionLog]:         
         return [
             ExecutionLog()
         ]

@@ -1,3 +1,3 @@
 #!/bin/sh
 
-echo "hello world!"
+echo "hello world! file: {{ files[0].file }}"

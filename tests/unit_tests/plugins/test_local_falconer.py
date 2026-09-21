@@ -1,6 +1,9 @@
 import pytest
 from pathlib import Path
 
+from courier.interfaces.falcons import DispatcherGroupConfig
+from courier.plugins.falcons.shell_falcon import ShellFalcon
+from courier.plugins.falconers.local_falconer import LocalFalconer
 from courier.types.file import File
 from courier.types.job import Job
 
@@ -16,3 +19,95 @@ def service() -> MagicMock:
     svc._broker_manager._connection = None
     return svc
 
+@pytest.fixture
+def falcon_config() -> dict:
+    return {
+        "file": "./assets/shell_falcon_demo.sh"
+    }
+
+class TestCommandRendering:
+    def test_falconer_generate_command(self, service, falcon_config) -> None:
+        job = _job()
+
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == "sh assets/shell_falcon_demo.sh"
+    def test_falconer_generate_command_with_prefix(self, service, falcon_config) -> None:
+        job = _job()
+
+
+        falcon_config["prefix_args"] = ["-v", "-f", "filename"]
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == "sh -v -f filename assets/shell_falcon_demo.sh"
+    def test_falcon_generate_command_with_binary(self, service, falcon_config) -> None:
+        job = _job()
+        falcon_config["binary"] = "/bin/dash"
+
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == "/bin/dash assets/shell_falcon_demo.sh"
+    def test_falcon_generate_command_with_suffix(self, service, falcon_config) -> None:
+        job = _job()
+        falcon_config["suffix_args"] = ["-v", "-f", "filename"]
+
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == "sh assets/shell_falcon_demo.sh -v -f filename"
+    def test_falcon_jinja2_rendering_suffix(self, service, falcon_config) -> None:
+        job = _job()
+
+        falcon_config["suffix_args"] = ["-v", "-f", "{{ files[0].file }}"]
+
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == "sh assets/shell_falcon_demo.sh -v -f /d/a.nc"
+    def test_falcon_script_rendering(self, service, falcon_config) -> None:
+        job = _job()
+
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        output_file = falconer._render_script_file(job)
+        output_file_txt = output_file.read_text()
+
+        assert output_file_txt == "#!/bin/sh\n\necho \"hello world! file: /d/a.nc\""
+
+class TestFalconerWorkflow:
+    def test_run_script(self, service, falcon_config) -> None:
+        job = _job()
+
+        falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
+        falcon.base_config = DispatcherGroupConfig()
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+
+        result = falconer.cast_off_falcon(job)
+
+        assert len(result) > 0
+        assert result[0].return_code == 0
+        assert result[0].stdout == "hello world! file: /d/a.nc\n"
