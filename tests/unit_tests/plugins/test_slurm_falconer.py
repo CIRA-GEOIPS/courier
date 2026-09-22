@@ -25,9 +25,11 @@ def service() -> MagicMock:
     return svc
 
 @pytest.fixture
-def falcon_config() -> dict:
+def falcon_config(tmp_path) -> dict:
+    file = tmp_path / "demo.sh"
+    file.write_text("#!/bin/sh\n\necho \"hello world! file: {{ files[0].file }}\"")
     return {
-        "file": "./assets/shell_falcon_demo.sh"
+        "file": file
     }
 
 @pytest.fixture

@@ -23,9 +23,11 @@ def service() -> MagicMock:
     return svc
 
 @pytest.fixture
-def falcon_config() -> dict:
+def falcon_config(tmp_path) -> dict:
+    file = tmp_path / "demo.sh"
+    file.write_text("#!/bin/sh\n\necho \"hello world! file: {{ files[0].file }}\"")
     return {
-        "file": "./assets/shell_falcon_demo.sh"
+        "file": file
     }
 
 class TestCommandRendering:
@@ -39,7 +41,7 @@ class TestCommandRendering:
 
         generated_command = falconer._generate_execution_command(job)
 
-        assert generated_command == ["assets/shell_falcon_demo.sh"]
+        assert generated_command == [str(falcon.config.file)]
     def test_falconer_generate_command_with_prefix(self, service, falcon_config) -> None:
         job = _job()
 
@@ -52,7 +54,7 @@ class TestCommandRendering:
 
         generated_command = falconer._generate_execution_command(job)
 
-        assert generated_command == "-v -f filename assets/shell_falcon_demo.sh".split(" ")
+        assert generated_command == f"-v -f filename {falcon.config.file}".split(" ")
     def test_falcon_generate_command_with_binary(self, service, falcon_config) -> None:
         job = _job()
         falcon_config["binary"] = "/bin/dash"
@@ -63,7 +65,7 @@ class TestCommandRendering:
         falconer.base_config = DispatcherGroupConfig()
         generated_command = falconer._generate_execution_command(job)
 
-        assert generated_command == ["/bin/dash assets/shell_falcon_demo.sh"]
+        assert generated_command == [f"/bin/dash {falcon.config.file}"]
     def test_falcon_generate_command_with_suffix(self, service, falcon_config) -> None:
         job = _job()
         falcon_config["suffix_args"] = ["-v", "-f", "filename"]
@@ -74,7 +76,7 @@ class TestCommandRendering:
         falconer.base_config = DispatcherGroupConfig()
         generated_command = falconer._generate_execution_command(job)
 
-        assert generated_command == "assets/shell_falcon_demo.sh -v -f filename".split(" ")
+        assert generated_command == f"{falcon.config.file} -v -f filename".split(" ")
     def test_falcon_jinja2_rendering_suffix(self, service, falcon_config) -> None:
         job = _job()
 
@@ -86,7 +88,7 @@ class TestCommandRendering:
         falconer.base_config = DispatcherGroupConfig()
         generated_command = falconer._generate_execution_command(job)
 
-        assert generated_command == "assets/shell_falcon_demo.sh -v -f /d/a.nc".split(" ")
+        assert generated_command == f"{falcon.config.file} -v -f /d/a.nc".split(" ")
     def test_falcon_script_rendering(self, service, falcon_config) -> None:
         job = _job()
 

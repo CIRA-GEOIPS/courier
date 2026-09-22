@@ -16,9 +16,11 @@ def service() -> MagicMock:
     return svc
 
 @pytest.fixture
-def config() -> dict:
+def config(tmp_path) -> dict:
+    file = tmp_path / "demo.sh"
+    file.write_text("#!/bin/sh\n\necho \"hello world! file: {{ files[0].file }}\"")
     return {
-        "file": "./assets/shell_falcon_demo.sh"
+        "file": file
     }
 
 def _job(identifier: str = "job-1") -> Job:
@@ -44,7 +46,7 @@ class TestFalconWorkflow:
         config["prefix_args"] = ["-b"]
         falcon = BashFalcon(service, config, "dummyfalcon")
         falcon.base_config = _base_config()
-        result = falcon.get_payload_from_job(["bash", "-c", "file -b assets/shell_falcon_demo.sh"])
+        result = falcon.get_payload_from_job(["bash", "-c", f"file -b {falcon.config.file}"])
 
         assert len(result) > 0
         assert result[0].return_code == 0
