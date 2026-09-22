@@ -70,6 +70,7 @@ PLUGIN_REGISTRIES: dict[str, ClassPluginRegistry | ConfigPluginRegistry] = {
     "falcons": falcons
 }
 
+# plugins that are necessary to run other plugins - not configurable past its base class
 NECESSARY_REGISTRIES: dict[str, ClassPluginRegistry] = {
     "dispatchers": dispatchers
 }

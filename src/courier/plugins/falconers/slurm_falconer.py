@@ -2,6 +2,7 @@ from pathlib import Path
 import shutil
 import re
 import subprocess
+import threading
 import time
 from typing import ClassVar
 
@@ -36,7 +37,8 @@ _TERMINAL_STATES: frozenset[str] = frozenset(
 )
 
 class SlurmFalconerConfig(BaseModel):
-    sbatch_template: str
+    """Validated configuration for the Slurm Falconer"""
+
     slurm_output_dir: str
     poll_interval_seconds: float = Field(default=30.0, gt=0)
     max_concurrent_jobs: int = Field(default=10, ge=1)
@@ -70,15 +72,42 @@ class SlurmFalconer(Falconer):
         self._toolchain_reqs = ["sbatch"]
         if self.config.wait_for_completion:
             self._toolchain_reqs.append("sacct")
+        self._slot_semaphore = threading.Semaphore(self.config.max_concurrent_jobs)
         self._output_dir = Path(self.config.slurm_output_dir)
         self._last_submit_error: str | None = None
-    def start(self) -> None:
-        for req in self._toolchain_reqs:
-            self.falcon.config.toolchain.append(req)
 
+    def start(self) -> None:
+        """Add necessary items to the toolchain and validate.
+
+        Raises
+        ------
+        CourierError
+            If toolchain validation fails.
+        OSError
+            If the configured output directory cannot be created.
+        """
+
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        for req in self._toolchain_reqs:
+            if req not in self.falcon.config.toolchain:
+                self.falcon.config.toolchain.append(req)
+        super().start()
     def is_healthy(self) -> bool:
         return True
     def _build_sbatch_args(self, job: Job) -> list[str]:
+        """Build an argument array for sbatch.
+
+        Parameters
+        ----------
+        job : Job
+            Job whose Slurm submission arguments should be generated.
+
+        Returns
+        -------
+        list[str]
+            Complete ``sbatch`` command arguments excluding the job command or
+            batch script.
+        """
         args: list[str] = ["sbatch", "--parsable"]
         cfg = self.config
         out_base = Path(cfg.slurm_output_dir) / slugify_for_filename(job.identifier)
@@ -104,7 +133,24 @@ class SlurmFalconer(Falconer):
         args.extend(cfg.sbatch_extra_args)
         return args
     def initialize_environment(self, job) -> FalconerPayload:
-        clean_path = self._render_script_file(job, self.config.slurm_output_dir)
+        """Initialize the Falcon to execute in a slurm environment
+
+        Parameters
+        ----------
+        job : Job
+            Job whose script and Slurm submission command should be prepared.
+
+        Returns
+        -------
+        FalconerPayload
+            ``sbatch`` command and arguments required to submit the job.
+
+        Raises
+        ------
+        CourierError
+            If the Falcon script cannot be rendered.
+        """
+        clean_path = self._render_script_file(job, self._output_dir)
 
         command = self._build_sbatch_args(job)
   
@@ -125,6 +171,19 @@ class SlurmFalconer(Falconer):
             command=command
         )
     def _get_slurm_job_id(self, result: ExecutionLog) -> str | None:
+        """Use regex to get the job ID of the newly created slurm job.
+
+        Parameters
+        ----------
+        result : ExecutionLog
+            Execution result returned by the ``sbatch`` command.
+
+        Returns
+        -------
+        str | None
+            Parsed Slurm job ID, or ``None`` if the output could not be
+            interpreted.
+        """
         slurm_job_id: str | None = None
         stdout: str | None = None
         if result.stdout:
@@ -141,7 +200,19 @@ class SlurmFalconer(Falconer):
         return slurm_job_id
 
     def _parse_sacct_output(self, stdout: str) -> tuple[str, int]:
-        """Parse the first data row from ``sacct --parsable2`` output."""
+        """Parse the first data row from ``sacct --parsable2`` output.
+
+        Parameters
+        ----------
+        stdout : str
+            Output from ``sacct --parsable2``.
+
+        Returns
+        -------
+        tuple[str, int]
+            Parsed Slurm job state and process exit code. An empty state is
+            returned when no valid accounting row is found.
+        """
         for line in stdout.splitlines():
             parts = line.strip().split("|")
             if len(parts) < _SACCT_MIN_PARTS or not parts[0]:
@@ -158,6 +229,22 @@ class SlurmFalconer(Falconer):
         return "", 0
 
     def _poll_status(self, slurm_job_id: str) -> tuple[str, int]:
+        """Poll the status of the slurm job created using its ID.
+
+        Parameters
+        ----------
+        slurm_job_id : str
+            Identifier of the submitted Slurm job.
+
+        Returns
+        -------
+        tuple[str, int]
+            Final Slurm state and reported exit code.
+
+        Notes
+        -----
+        If the polling timeout expires, ``("TIMEOUT", -1)`` is returned.
+        """
         deadline = time.time() + self.config.polling_timeout_seconds
         last_state = "PENDING"
         while time.time() < deadline:
@@ -194,7 +281,19 @@ class SlurmFalconer(Falconer):
         return "TIMEOUT", -1
 
     def _read_output(self, job: Job) -> tuple[str, str]:
-        """Read and return the ``.out`` and ``.err`` files for *job*."""
+        """Read and return the ``.out`` and ``.err`` files for *job*.
+
+        Parameters
+        ----------
+        job : Job
+            Job whose output files should be read.
+
+        Returns
+        -------
+        tuple[str, str]
+            Contents of the job's stdout and stderr files. Missing files are
+            represented by empty strings.
+        """
         safe_id = slugify_for_filename(job.identifier)
         out_path = self._output_dir / f"{safe_id}.out"
         err_path = self._output_dir / f"{safe_id}.err"
@@ -203,37 +302,58 @@ class SlurmFalconer(Falconer):
         return stdout, stderr
 
     def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
-        payload = super().cast_off_falcon(job)
+        """Execute the falcon in a slurm environment.
 
-        slurm_job_id = self._get_slurm_job_id(payload[0])
-        if slurm_job_id is None:
-            return [
-                ExecutionLog(
+        Parameters
+        ----------
+        job : Job
+            Job to submit through Slurm.
+
+        Returns
+        -------
+        list[ExecutionLog]
+            Execution result describing either the submitted job or its final
+            Slurm execution state.
+        """
+        with self._slot_semaphore:
+            payload = super().cast_off_falcon(job)
+
+            if not payload:
+                return [ExecutionLog(
                     return_code=-1,
                     stdout="",
-                    stderr=(
-                        self._last_submit_error or "sbatch submission failed"
+                    stderr="sbatch produced no execution result."
+                )]
+
+            slurm_job_id = self._get_slurm_job_id(payload[0])
+            if slurm_job_id is None:
+                return [
+                    ExecutionLog(
+                        return_code=-1,
+                        stdout="",
+                        stderr=(
+                            self._last_submit_error or "sbatch submission failed"
+                        ),
                     ),
-                ),
-            ]
-        
-        if not self.config.wait_for_completion:
+                ]
+            
+            if not self.config.wait_for_completion:
+                return [
+                    ExecutionLog(
+                        return_code=0,
+                        stdout=f"SLURM job {slurm_job_id} submitted",
+                        stderr=None,
+                    ),
+                ]
+            state, exit_code = self._poll_status(slurm_job_id)
+            stdout, stderr = self._read_output(job)
+            return_code = 0 if state == "COMPLETED" else (exit_code or -1)
             return [
                 ExecutionLog(
-                    return_code=0,
-                    stdout=f"SLURM job {slurm_job_id} submitted",
-                    stderr=None,
+                    return_code=return_code,
+                    stdout=stdout,
+                    stderr=stderr
+                    or f"SLURM job {slurm_job_id} ended with state {state}",
                 ),
             ]
-        state, exit_code = self._poll_status(slurm_job_id)
-        stdout, stderr = self._read_output(job)
-        return_code = 0 if state == "COMPLETED" else (exit_code or -1)
-        return [
-            ExecutionLog(
-                return_code=return_code,
-                stdout=stdout,
-                stderr=stderr
-                or f"SLURM job {slurm_job_id} ended with state {state}",
-            ),
-        ]
 

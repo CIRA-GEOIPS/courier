@@ -13,6 +13,7 @@ import typer
 from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import NECESSARY_REGISTRIES, PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
 from courier.config import ServiceConfig
+from courier.errors import InvalidPluginConfigError
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.service import create_service_with_plugins
 
@@ -157,13 +158,36 @@ def run_service(
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
-    service._falconer_map = [(
-        e.identifier, 
-        e.spec.config["falconer"]["identifier"], 
-        e.spec.config["falcon"]["identifier"])
-        for e in config.spec.run
-        if normalize_kind(e.spec.kind) == "dispatchers"
-        and (only_set is None or e.identifiers in only_set)]
+
+    # list[tuple[str, str, str]] of the dispatcher, its falconer, and its falcon.
+    service._falconer_map = []
+    for e in config.spec.run:
+        if normalize_kind(e.spec.kind) != "dispatchers":
+            continue
+
+        if only_set is not None and e.identifier not in only_set:
+            continue
+
+        missing = [
+            key
+            for key in ("falconer", "falcon")
+            if key not in e.spec.config
+        ]
+
+        if missing:
+            raise InvalidPluginConfigError(
+                f"Dispatcher {e.identifier!r} is missing required config "
+                f"section(s): {', '.join(missing)}"
+            )
+        falconer_id = MicroserviceModel.model_validate(e.spec.config["falconer"]).identifier
+        falcon_id = MicroserviceModel.model_validate(e.spec.config["falcon"]).identifier
+
+        service._falconer_map.append((
+            e.identifier,
+            falconer_id,
+            falcon_id
+        ))
+
     # Union: add any dispatcher targeted by builders in the filtered set
     builder_targets = _collect_builder_targets(config)
     if only_set is not None:

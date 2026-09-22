@@ -134,11 +134,45 @@ class Dispatcher(ServicePlugin):
         self.falconer = falconer
 
     def _get_compatible_partners(self, falconer: Falconer, falcon: Falcon) -> list[type[Falcon]]:
-        # check compatibility, return compatible partners list of the soon-to-be-married falconer
-        # and falcon pair, keeping original form
+        """Return the most specific intersection between falconer and falcon represntations, keeping original form.
+
+        Parameters
+        ----------
+        falconer : Falconer
+            The falconer whose supported representations are considered.
+        falcon : Falcon
+            The falcon whose representation hierarchy is inspected.
+
+        Returns
+        -------
+        list[type[Falcon]]
+            Falcon representation classes supported by the falconer, preserving
+            the order of the falcon's representation hierarchy.
+        """
         return [x for x in falcon.get_representation_hierarchy() if x in falconer.representations]
 
     def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> Falcon:
+        """Ordain the marriage between the falconer and the falcon. Then, keep track of the falconer.
+
+        Parameters
+        ----------
+        falconer : Falconer
+            The falconer to pair with the falcon.
+        falcon : Falcon
+            The falcon whose compatible representation should be selected.
+
+        Returns
+        -------
+        Falcon
+            The selected Falcon representation configured for the dispatcher and
+            paired with the falconer.
+
+        Raises
+        ------
+        ValueError
+            If the falcon and falconer have no compatible representations.
+
+        """
         compatible_partners = self._get_compatible_partners(falconer, falcon)
         if not compatible_partners:
             raise ValueError(
@@ -417,6 +451,7 @@ class Dispatcher(ServicePlugin):
             ),
         }
 
+# the dispatcher cannot be configurable past its base class.
 class DispatcherRegistryWrapper(ClassPluginRegistry):
     def get_plugin(self, name: str) -> type[ServicePlugin]:
         return self.expected_base

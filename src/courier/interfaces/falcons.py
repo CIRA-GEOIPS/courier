@@ -38,11 +38,12 @@ class DispatcherGroupConfig(BaseModel):
 # The transient nature of falcons does not allow for modifications to the base config.
 @dataclass(frozen=True)
 class FalconConfig(BaseModel):
+    """Validated configuration for a Falcon."""
     file: Path
-    toolchain: list[str] = []
-    toolchain_prepend: list[str] = []
-    prefix_args: list[str] = []
-    suffix_args: list[str] = []
+    toolchain: list[str] = Field(default_factory=list)
+    toolchain_prepend: list[str] = Field(default_factory=list)
+    prefix_args: list[str] = Field(default_factory=list)
+    suffix_args: list[str] = Field(default_factory=list)
     binary: str | None = None
     default_binary: str | None = None
 
@@ -54,6 +55,7 @@ class FalconConfig(BaseModel):
         return value
 
 class Falcon(ServicePlugin):
+    """Base class for Falcons."""
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "falcon"
@@ -70,6 +72,7 @@ class Falcon(ServicePlugin):
             raise ValueError(
                 f"Falcon {type(self).__name__} requires an identifier"
             )
+        self.identifier = identifier
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
         self._default_binary = None
@@ -78,6 +81,13 @@ class Falcon(ServicePlugin):
 
     @classmethod
     def get_representation_hierarchy(cls) -> list[type["Falcon"]]:
+        """Generate the Falcon representation hierarchy.
+
+        Returns
+        -------
+        list[type[Falcon]]
+            Falcon subclasses in base-to-most-specific inheritance order.
+        """
         return [
             parent
             for parent in reversed(cls.__mro__)
@@ -85,22 +95,81 @@ class Falcon(ServicePlugin):
         ]
     @classmethod
     def from_falcon(cls, falcon: "Falcon") -> "Falcon":
+        """Generate a Falcon represntation from another Falcon.
+
+        Parameters
+        ----------
+        falcon : Falcon
+            Falcon whose service and configuration should be reused.
+
+        Returns
+        -------
+        Falcon
+            A new instance of this Falcon representation.
+        """
         return cls(
             falcon.parent_service,
             falcon.config.model_dump(),
-            falcon.name
+            falcon.identifier,
         )
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
+        """Validate a toolchain argument through a self-defined method
+
+        Parameters
+        ----------
+        value : str
+            Tool or executable name to validate.
+
+        Returns
+        -------
+        list[ExecutionLog]
+            Execution logs describing the result of validation.
+        """
         return []
     def get_payload_from_job(self, command: list[str],
                              log_prefix: str = "",
                              log_file_path: Path | None = None) -> list[ExecutionLog]:         
+        """Get an execution log from execution a command.
+
+        Parameters
+        ----------
+        command : list[str]
+            Command and arguments to execute.
+        log_prefix : str, optional
+            Prefix to apply to generated log output.
+        log_file_path : Path | None, optional
+            Optional path for persisted execution logs.
+
+        Returns
+        -------
+        list[ExecutionLog]
+            Execution logs produced by the command.
+        """
         return [
             ExecutionLog()
         ]
     def declare_command(self, path: Path | None = None) -> list[str]:
+        """Declare the syntax to call a command.
+
+        Parameters
+        ----------
+        path : Path | None, optional
+            Path to the rendered script or executable.
+
+        Returns
+        -------
+        list[str]
+            Command arguments required to execute the Falcon.
+        """
         return []
     def generate_calling_method(self) -> list[str]:
+        """Declare the first part of a command, e.g. `python3 -c` or `bash -c`
+
+        Returns
+        -------
+        list[str]
+            Command arguments used to invoke this Falcon representation.
+        """
         return []
     def get_metrics(self) -> dict[str, Any]:
         return {}
