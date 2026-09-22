@@ -4,6 +4,7 @@ version = "1.0.0-alpha.29"
 description = "A plugin-based, event-driven orchestration framework for building data processing pipelines"
 authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Evan Rose <none@email.com>"]
 repository = "https://github.com/biosafetylvl5/courier"
+license = "Apache-2.0"
 
 packages = [{include = "courier", from = "src"}]
 
