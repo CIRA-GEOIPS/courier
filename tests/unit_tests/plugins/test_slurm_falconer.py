@@ -71,7 +71,7 @@ class TestCommandRendering:
         payload = falconer.initialize_environment(job)
         wrap_arg = payload.command[-1]
         assert re.fullmatch(
-            r"""--wrap="sh -c 'file -b /[^']+/tmp[^']+\.sh'\"""",
+            r""""sh -c 'file -b /[^']+/tmp[^']+\.sh'\"""",
             wrap_arg,
         )
 
@@ -89,7 +89,7 @@ class TestCommandRendering:
         payload = falconer.initialize_environment(job)
         wrap_arg = payload.command[-1]
         assert re.fullmatch(
-            r"""--wrap="bash -c 'file -b /[^']+/tmp[^']+\.sh'\"""",
+            r""""bash -c 'file -b /[^']+/tmp[^']+\.sh'\"""",
             wrap_arg,
         )
 
@@ -107,7 +107,38 @@ class TestCommandRendering:
 
         payload = falconer.initialize_environment(job)
         wrap_arg = payload.command[-1]
+
         assert re.fullmatch(
-        r"""--wrap="python -c 'import subprocess; subprocess\.run\(\['file', '-b', '[^']+\.sh'\]\)'\"""",
-        wrap_arg,
+            r"""python -c 'import subprocess; subprocess\.run\(\['[^']+\.sh'\]\)'""",
+            wrap_arg,
         )
+    def test_falconer_generate_inline_python_file(self, service, falcon_config, falconer_config) -> None:
+        job = _job()
+
+        falcon = PythonFalcon(service, falcon_config, "dummyfalcon")
+        falconer = SlurmFalconer(service, falconer_config, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+
+        payload = falconer.initialize_environment(job)
+        wrap_arg = payload.command[-1]
+
+        assert re.fullmatch(
+            r"""python -c 'import subprocess; subprocess\.run\(\['[^']+\.sh'\]\)'""",
+            wrap_arg,
+        )
+
+
+class TestFalconerWorkflow:
+    def test_execute_job(self, service, falcon_config, falconer_config) -> None:
+        job = _job()
+
+        falcon = PythonFalcon(service, falcon_config, "dummyfalcon")
+        falcon.base_config = DispatcherGroupConfig()
+        falconer = SlurmFalconer(service, falconer_config, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        
+        payload = falconer.cast_off_falcon(job)
+        assert len(payload) > 0
+        assert payload[0].return_code == 0

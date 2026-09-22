@@ -72,7 +72,7 @@ class Falconer(ServicePlugin):
         self.falcon = falcon
     def send_for_payload(self, job: Job) -> list[ExecutionLog]:
         return [ExecutionLog()]
-    def _render_script_file(self, job: Job) -> Path:
+    def _render_script_file(self, job: Job, path: Path | None = None) -> Path:
         try:
             falcon_config = self.falcon.config
             rendered_script_path: str | None = None
@@ -83,6 +83,7 @@ class Falconer(ServicePlugin):
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 suffix=falcon_config.file.suffix,
+                dir=path,
                 delete=False,
             ) as script_file:
                 script_file.write(rendered_script)

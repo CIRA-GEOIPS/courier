@@ -40,9 +40,11 @@ class DispatcherGroupConfig(BaseModel):
 class FalconConfig(BaseModel):
     file: Path
     toolchain: list[str] = []
+    toolchain_prepend: list[str] = []
     prefix_args: list[str] = []
     suffix_args: list[str] = []
     binary: str | None = None
+    default_binary: str | None = None
 
     @field_validator("file")
     @classmethod

@@ -18,12 +18,13 @@ class PythonFalcon(BashFalcon):
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        self._default_binary = "python"
+        self._default_binary = self.config.default_binary if self.config.default_binary else "python"
         self._file_suffix = ".py"
     def is_healthy(self) -> bool:
         return True
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
-        command = ["python", "-c", f"import shutil; shutil.which(\"value\")"]
+        command = self.config.toolchain_prepend
+        command.extend([self._default_binary, "-c", f"import shutil; print(shutil.which('{value}'))"])
         return self.get_payload_from_job(command)
     def generate_calling_method(self) -> list[str]:
         command_arr = [self._default_binary]

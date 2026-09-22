@@ -24,13 +24,13 @@ class ShellFalcon(Falcon):
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        self._default_binary = "sh"
+        self._default_binary = self.config.default_binary if self.config.default_binary else "sh"
         self._file_suffix = ".sh"
 
     def is_healthy(self) -> bool:
         return True 
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
-        command = ["command", "-v", value]
+        command = ["sh", "-c", f"command -v {value}"]
         return self.get_payload_from_job(command)
     def generate_calling_method(self) -> list[str]:
         command_arr = [self._default_binary]

@@ -16,7 +16,7 @@ class BashFalcon(ShellFalcon):
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        self._default_binary = "bash"
+        self._default_binary = self.config.default_binary if self.config.default_binary else "bash"
         self._file_suffix = ".sh"
     def is_healthy(self) -> bool:
         return True
