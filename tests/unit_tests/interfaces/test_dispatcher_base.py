@@ -9,9 +9,11 @@ has seen before.
 
 from __future__ import annotations
 
+from dataclasses import field
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from courier.service import Service
 import pytest
 from prometheus_client import REGISTRY
 
@@ -49,6 +51,23 @@ class _RecordingDispatcher(Dispatcher):
         self.executed.append(job)
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
+class _RecordingFalconer(Falconer):
+    """Falconer that records the jobs passed to it."""
+
+    name = "recording_falconer"
+    version = "test"
+
+    def __init__(self, service: Service, config: dict | None = None, identifier: str | None = None) -> None:
+        super().__init__(service, config, identifier)
+        self.executed: list[Job] = []
+        self.raise_on_execute: Exception | None = None
+
+    def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
+        if self.raise_on_execute is not None:
+            raise self.raise_on_execute
+        self.executed.append(job)
+        return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
+
 
 def _job(identifier: str = "job-1") -> Job:
     return Job("n", identifier, {}, files=[File(file=Path("/d/a.nc")).freeze()])
@@ -64,8 +83,16 @@ def service() -> MagicMock:
 
 def _dispatcher(service: MagicMock, identifier: str) -> _RecordingDispatcher:
     dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
-    dispatcher.falconer = MagicMock(spec=Falconer)
+    falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
+    dispatcher.falconer = falconer
     return dispatcher
+
+def _dispatcher_and_falconer(service: MagicMock, identifier: str) -> tuple[_RecordingDispatcher, _RecordingFalconer]:
+    dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
+    falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
+    dispatcher.falconer = falconer
+    return dispatcher, falconer
+
 
 
 def _feed(dispatcher: _RecordingDispatcher, service: MagicMock, *jobs: Job) -> None:
@@ -104,19 +131,19 @@ class TestConstruction:
 
 class TestJobExecution:
     def test_consumed_job_is_executed(self, service: MagicMock) -> None:
-        dispatcher = _dispatcher(service, "exec-basic")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-basic")
         _feed(dispatcher, service, _job("job-1"))
 
-        assert [j.identifier for j in dispatcher.executed] == ["job-1"]
+        assert [j.identifier for j in falconer.executed] == ["job-1"]
 
     def test_job_files_survive_the_broker_round_trip(
         self,
         service: MagicMock,
     ) -> None:
-        dispatcher = _dispatcher(service, "exec-files")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-files")
         _feed(dispatcher, service, _job("job-1"))
 
-        (executed,) = dispatcher.executed
+        (executed,) = falconer.executed
         assert {str(f.file) for f in executed.files} == {"/d/a.nc"}
 
     def test_execution_log_is_published(self, service: MagicMock) -> None:
@@ -132,8 +159,8 @@ class TestJobExecution:
 
     def test_courier_error_is_contained(self, service: MagicMock) -> None:
         """A failing job must not stop the dispatcher consuming the next one."""
-        dispatcher = _dispatcher(service, "exec-error")
-        dispatcher.raise_on_execute = PipelineError("bad job")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-error")
+        falconer.raise_on_execute = PipelineError("bad job")
         labels = {
             "status": "failure",
             "dispatcher_name": dispatcher.name,
@@ -163,8 +190,8 @@ class TestJobExecution:
         process. Asserting it escapes here pins that contract — a bare
         ``except Exception`` added later would hide poison messages instead.
         """
-        dispatcher = _dispatcher(service, "exec-fatal")
-        dispatcher.raise_on_execute = ValueError("malformed metric line")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-fatal")
+        falconer.raise_on_execute = ValueError("malformed metric line")
 
         with pytest.raises(ValueError, match="malformed metric line"):
             _feed(dispatcher, service, _job("job-1"))
@@ -175,17 +202,17 @@ class TestJobExecution:
 
 class TestDedupe:
     def test_repeated_identifier_is_skipped(self, service: MagicMock) -> None:
-        dispatcher = _dispatcher(service, "dedupe-basic")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "dedupe-basic")
         _feed(dispatcher, service, _job("same-id"), _job("same-id"))
 
-        assert len(dispatcher.executed) == 1
+        assert len(falconer.executed) == 1
 
     def test_distinct_identifiers_both_run(self, service: MagicMock) -> None:
         """The guard must not swallow genuinely different jobs."""
-        dispatcher = _dispatcher(service, "dedupe-distinct")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "dedupe-distinct")
         _feed(dispatcher, service, _job("id-a"), _job("id-b"))
 
-        assert [j.identifier for j in dispatcher.executed] == ["id-a", "id-b"]
+        assert [j.identifier for j in falconer.executed] == ["id-a", "id-b"]
 
     def test_skip_is_counted(self, service: MagicMock) -> None:
         """A dropped duplicate must be visible in metrics, not silent."""
