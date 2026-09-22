@@ -519,6 +519,7 @@ class Service:
         self._logger.info(f"Resolved routing: {resolved}")
 
     def _populate_falconer_map(self) -> None:
+        """Use the falconer map to marry the falcon and falconer. Also give everything to the plugin manager."""
         from courier.interfaces.dispatchers import Dispatcher
         from courier.interfaces.falconers import Falconer
         from courier.interfaces.falcons import Falcon

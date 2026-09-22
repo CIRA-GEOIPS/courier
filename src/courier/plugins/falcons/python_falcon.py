@@ -6,6 +6,7 @@ from courier.types.execution_log import ExecutionLog
 
 
 class PythonFalcon(BashFalcon):
+    """Falcon for Pythin execution"""
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "python_falcon"
@@ -23,16 +24,60 @@ class PythonFalcon(BashFalcon):
     def is_healthy(self) -> bool:
         return True
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
-        command = self.config.toolchain_prepend
-        command.extend([self._default_binary, "-c", f"import shutil; print(shutil.which('{value}'))"])
+        """Validate that a value exists on the runtime PATH
+
+        Parameters
+        ----------
+        value : str
+            Executable name to locate.
+
+        Returns
+        -------
+        list[ExecutionLog]
+            Execution logs describing whether the executable was found.
+        """
+        command = list(self.config.toolchain_prepend)
+        command.extend(
+            [
+                self._default_binary,
+                "-c",
+                (
+                    "import shutil, sys; "
+                    f"sys.exit(0 if shutil.which({value!r}) else 1)"
+                ),
+            ]
+        )
         return self.get_payload_from_job(command)
     def generate_calling_method(self) -> list[str]:
+        """Generate in-line or standard Python calling structure.
+
+        Returns
+        -------
+        list[str]
+            Python interpreter arguments required to execute the configured
+            Falcon. ``-c`` is included when execution uses an inline Python
+            command rather than a Python source file.
+        """
         command_arr = [self._default_binary]
         if self.config.binary or self.config.file.suffix != ".py":
             command_arr.append("-c")
 
         return command_arr
     def declare_command(self, path: Path | None = None) -> list[str]:
+        """Declare the command string used to execute the Falcon
+
+        Parameters
+        ----------
+        path : Path | None, optional
+            Path to the rendered script. If omitted, the configured Falcon
+            file is used.
+
+        Returns
+        -------
+        list[str]
+            Command arguments or inline Python source required to execute the
+            configured Falcon.
+        """
         command_arr = []
         if not self.config.binary and self.config.file.suffix == ".py":
             for prefix in self.config.prefix_args:
@@ -51,5 +96,5 @@ class PythonFalcon(BashFalcon):
             for suffix in self.config.suffix_args:
                 faux_command_arr.append(suffix)
 
-            command_str = f"import subprocess; subprocess.run({faux_command_arr!r})"
+            command_str = f"import subprocess; subprocess.run({faux_command_arr!r}, check=True)"
             return [command_str]

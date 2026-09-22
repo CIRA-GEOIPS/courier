@@ -12,6 +12,7 @@ from courier.utils.shell_executor import execute_shell_script
 from courier.utils.functional import slugify_for_filename
 
 class ShellFalcon(Falcon):
+    """Falcon class for shell execution."""
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "shell_falcon"
@@ -30,15 +31,49 @@ class ShellFalcon(Falcon):
     def is_healthy(self) -> bool:
         return True 
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
-        command = ["sh", "-c", f"command -v {value}"]
+        """Validate toolchain arguments using the `command` command.
+
+        Parameters
+        ----------
+        value : str
+            Executable name to locate.
+
+        Returns
+        -------
+        list[ExecutionLog]
+            Execution logs describing the validation result.
+        """
+        command = [self._default_binary, "-c", f"command -v {value}"]
         return self.get_payload_from_job(command)
     def generate_calling_method(self) -> list[str]:
+        """Generate the way this falcon calls itself. Either with a -c or without.
+
+        Returns
+        -------
+        list[str]
+            Shell interpreter arguments required to execute the configured
+            Falcon. ``-c`` is included when an inline command is required.
+        """
         command_arr = [self._default_binary]
         if self.config.binary:
             command_arr.append("-c")
 
         return command_arr
     def declare_command(self, path: Path | None = None) -> list[str]:
+        """Generate the command-line execution array for this context.
+
+        Parameters
+        ----------
+        path : Path | None, optional
+            Path to the rendered script. If omitted, the configured Falcon
+            file is used.
+
+        Returns
+        -------
+        list[str]
+            Command arguments or an inline shell command required to execute
+            the configured Falcon.
+        """
         command_arr = []
 
         if self.config.binary:
@@ -59,6 +94,23 @@ class ShellFalcon(Falcon):
     def get_payload_from_job(self, command: list[str],
                              log_prefix: str = "",
                              log_file_path: Path | None = None) -> list[ExecutionLog]:         
+        """Execute this command against the current context.
+
+        Parameters
+        ----------
+        command : list[str]
+            Command and arguments to execute.
+        log_prefix : str, optional
+            Prefix added to emitted log messages.
+        log_file_path : Path | None, optional
+            Optional file path for persisted execution logs.
+
+        Returns
+        -------
+        list[ExecutionLog]
+            Execution result containing the process return code, stdout,
+            and stderr.
+        """
         result = execute_shell_script(
             command,
             self.base_config.timeout_seconds,

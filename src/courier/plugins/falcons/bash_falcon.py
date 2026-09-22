@@ -4,6 +4,7 @@ from courier.service import Service
 
 
 class BashFalcon(ShellFalcon):
+    """Falcon class for Bash script execution"""
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "bash_falcon"
