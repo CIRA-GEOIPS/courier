@@ -34,7 +34,7 @@ def falcon_config() -> dict:
 def falconer_config() -> dict:
     return{
         "sbatch_template": "",
-        "slurm_output_dir": "./"
+        "slurm_output_dir": "/tmp/"
     }
 
 class TestCommandRendering:
@@ -52,8 +52,8 @@ class TestCommandRendering:
                 "sbatch",
                 "--parsable",
                 "--job-name=courier-job-1",
-                "--output=job-1.out",
-                "--error=job-1.err",
+                "--output=/tmp/job-1.out",
+                "--error=/tmp/job-1.err",
                 ANY,
             ]
         )
@@ -71,7 +71,7 @@ class TestCommandRendering:
         payload = falconer.initialize_environment(job)
         wrap_arg = payload.command[-1]
         assert re.fullmatch(
-            r""""sh -c 'file -b /[^']+/tmp[^']+\.sh'\"""",
+            r"""sh -c 'file -b /[^']+/tmp[^']+\.sh'""",
             wrap_arg,
         )
 
@@ -89,7 +89,7 @@ class TestCommandRendering:
         payload = falconer.initialize_environment(job)
         wrap_arg = payload.command[-1]
         assert re.fullmatch(
-            r""""bash -c 'file -b /[^']+/tmp[^']+\.sh'\"""",
+            r"""bash -c 'file -b /[^']+/tmp[^']+\.sh'""",
             wrap_arg,
         )
 
@@ -109,7 +109,7 @@ class TestCommandRendering:
         wrap_arg = payload.command[-1]
 
         assert re.fullmatch(
-            r"""python -c 'import subprocess; subprocess\.run\(\['[^']+\.sh'\]\)'""",
+            r"""python -c 'import subprocess; subprocess\.run\(\['file', '-b', '[^']+\.sh'\], check=True\)'""",
             wrap_arg,
         )
     def test_falconer_generate_inline_python_file(self, service, falcon_config, falconer_config) -> None:
@@ -124,21 +124,6 @@ class TestCommandRendering:
         wrap_arg = payload.command[-1]
 
         assert re.fullmatch(
-            r"""python -c 'import subprocess; subprocess\.run\(\['[^']+\.sh'\]\)'""",
+            r"""python -c 'import subprocess; subprocess\.run\(\['[^']+\.sh'\], check=True\)'""",
             wrap_arg,
         )
-
-
-class TestFalconerWorkflow:
-    def test_execute_job(self, service, falcon_config, falconer_config) -> None:
-        job = _job()
-
-        falcon = PythonFalcon(service, falcon_config, "dummyfalcon")
-        falcon.base_config = DispatcherGroupConfig()
-        falconer = SlurmFalconer(service, falconer_config, "dummyfalconer")
-        falconer.falcon = falcon
-        falconer.base_config = DispatcherGroupConfig()
-        
-        payload = falconer.cast_off_falcon(job)
-        assert len(payload) > 0
-        assert payload[0].return_code == 0

@@ -89,6 +89,25 @@ class TestOnlyFlag:
     def test_only_none_runs_all_plugins(self, mock_create_svc):
         """only_set=None should register every runnable plugin unconditionally."""
         entries = self._entries()
+
+        entries[2].spec.config["falconer"] = {
+            "identifier": "my-fr",
+            "spec": {
+                "kind": "falconer",
+                "name": "local_falconer",
+                "config": {},
+            },
+        }
+
+        entries[2].spec.config["falcon"] = {
+            "identifier": "my-fc",
+            "spec": {
+                "kind": "falcon",
+                "name": "shell_falcon",
+                "config": {},
+            },
+        }
+
         config = _make_config(entries)
 
         run_service(config, only_set=None)
@@ -229,6 +248,25 @@ class TestOnlyFlag:
     def test_only_dispatcher_only_registers_dispatcher(self, mock_create_svc):
         """only_set={'my-dp'} registers just the dispatcher plugin."""
         entries = self._entries()
+
+        entries[2].spec.config["falconer"] = {
+            "identifier": "my-fr",
+            "spec": {
+                "kind": "falconer",
+                "name": "local_falconer",
+                "config": {},
+            },
+        }
+
+        entries[2].spec.config["falcon"] = {
+            "identifier": "my-fc",
+            "spec": {
+                "kind": "falcon",
+                "name": "shell_falcon",
+                "config": {},
+            },
+        }
+
         config = _make_config(entries)
 
         run_service(config, only_set={"my-dp"})

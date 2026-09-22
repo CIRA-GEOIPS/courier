@@ -198,6 +198,15 @@ himawari9_ahi = "courier.plugins.data_monitor_configs.himawari9_ahi:CONFIG"
 meteosat10_seviri = "courier.plugins.data_monitor_configs.meteosat10_seviri:CONFIG"
 meteosat9_seviri = "courier.plugins.data_monitor_configs.meteosat9_seviri:CONFIG"
 
+[tool.poetry.plugins."courier.falconers"]
+local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
+slurm_falconer = "courier.plugins.falconers.slurm_falconer:SlurmFalconer"
+
+[tool.poetry.plugins."courier.falcons"]
+shell_falcon = "courier.plugins.falcons.shell_falcon:ShellFalcon"
+bash_falcon = "courier.plugins.falcons.bash_falcon:BashFalcon"
+python_falcon = "courier.plugins.falcons.python_falcon:PythonFalcon"
+
 [tool.poetry.urls]
 Homepage = "https://github.com/biosafetylvl5/courier"
 Issues = "https://github.com/biosafetylvl5/courier/issues"

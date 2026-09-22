@@ -50,7 +50,7 @@ class Falconer(ServicePlugin):
             )
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
-        self._state = PluginRunState.STOPPED
+        self._state: PluginRunState
         self.identifier = identifier
 
     def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
@@ -158,7 +158,7 @@ class Falconer(ServicePlugin):
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 suffix=falcon_config.file.suffix,
-                dir=path,
+                dir=path or "/tmp/",
                 delete=False,
             ) as script_file:
                 script_file.write(rendered_script)
