@@ -33,8 +33,8 @@ _SHIPPED_CONFIGS = sorted(
     [_REPO_ROOT / "config.yaml", *(_REPO_ROOT / "tests").glob("*.yaml")],
 )
 
-# Not service configs: broker fixtures and compose files live here too.
-_NOT_SERVICE_CONFIGS = {"rabbitmq.conf", "docker-compose.rabbitmq-testing.yaml"}
+# Not a service config: the broker compose file is globbed up with them.
+_NOT_SERVICE_CONFIGS = {"docker-compose.rabbitmq-testing.yaml"}
 
 _SERVICE_CONFIGS = [
     path for path in _SHIPPED_CONFIGS if path.name not in _NOT_SERVICE_CONFIGS
@@ -94,7 +94,7 @@ def test_shipped_config_heartbeat_is_plausible_in_seconds(
     service published health metrics every ~17 minutes. Anything above a few
     minutes is almost certainly the same unit confusion returning.
     """
-    interval = load_config(config_path).spec.heartbeat_interval
+    interval = load_config(config_path).spec.service_config.heartbeat_interval
     assert 0 < interval <= 300, (
         f"{config_path.name}: heartbeat_interval={interval}s is implausible; "
         f"the field is seconds, not milliseconds"
@@ -458,7 +458,6 @@ def test_no_yaml_plugins_remain() -> None:
 _OPTIONAL_DEPENDENCY_PLUGINS = [
     ("cron_glob", "courier.plugins.data_monitors.cron_glob", "croniter", "cron"),
     ("s3_poller", "courier.plugins.data_monitors.s3_poller", "boto3", "s3"),
-    ("sftp_poller", "courier.plugins.data_monitors.sftp_poller", "paramiko", "sftp"),
     ("kafka_consumer", "courier.plugins.data_monitors.kafka_consumer", "kafka", "kafka"),
     ("http_dispatcher", "courier.plugins.dispatchers.http_dispatcher", "httpx", "http"),
 ]
@@ -546,7 +545,7 @@ _DISTRIBUTION_NAME = "data-courier"
 
 #: Every extra courier declares, used to spot install instructions in prose.
 _KNOWN_EXTRAS = (
-    "cron", "s3", "sftp", "kafka", "http", "ha", "grafana", "viz",
+    "cron", "s3", "kafka", "http", "ha", "grafana", "viz",
     "doc", "lint", "test", "all-monitors", "all-dispatchers",
 )
 
@@ -660,3 +659,169 @@ def test_version_tuple_matches_version() -> None:
     assert courier.__version_tuple__[: len(expected)] == expected, (
         f"{courier.__version_tuple__} does not match {courier.__version__}"
     )
+
+
+# Broker-monitor field maps.
+#
+# rabbit_mq_watcher maps canonical field names to the keys a producer sends.
+# The schema checks neither side: the canonical side is merged over
+# _DEFAULT_FIELD_MAP, so a key the config omits is filled in silently, and the
+# message side names keys the validator never sees. Both sides shipped a
+# defect.
+
+_BROKER_MONITOR = "rabbit_mq_watcher"
+
+#: A timestamp the monitor's parser accepts, used to build a probe message.
+_PROBE_TIMESTAMP = "2026-01-29T09:10:00+00:00"
+
+
+def _broker_monitors(config_path: Path) -> list[tuple[str, dict]]:
+    """Return ``(identifier, plugin config)`` for each broker monitor in a file.
+
+    Parameters
+    ----------
+    config_path : Path
+        Shipped service configuration to read.
+
+    Returns
+    -------
+    list[tuple[str, dict]]
+        One entry per ``rabbit_mq_watcher`` step, in declaration order.
+    """
+    found: list[tuple[str, dict]] = []
+    for entry in load_config(config_path).spec.run:
+        config = entry.spec.config or {}
+        if entry.spec.name == _BROKER_MONITOR and isinstance(config, dict):
+            found.append((entry.identifier, config))
+    return found
+
+
+def _probe_message(field_map: dict[str, str]) -> dict:
+    """Build a message shaped like the producer these configs document.
+
+    The keys come from courier's ``_DEFAULT_FIELD_MAP`` values, which are the
+    ``nrt_file_notif_queue`` schema every shipped config says it matches.
+    Keying the probe from the config under test would make it agree with any
+    field map, including a misspelt one.
+
+    Parameters
+    ----------
+    field_map : dict[str, str]
+        The monitor's merged field map, read only for the nested time-range
+        key names.
+
+    Returns
+    -------
+    dict
+        A representative notification body.
+    """
+    from courier.plugins.data_monitors.rabbit_mq_watcher import _DEFAULT_FIELD_MAP
+
+    return {
+        _DEFAULT_FIELD_MAP["location"]: "courier@host1:/mount",
+        _DEFAULT_FIELD_MAP["dir_path"]: "/mount/goes18/abi",
+        _DEFAULT_FIELD_MAP["file_name"]: "OR_ABI.nc",
+        _DEFAULT_FIELD_MAP["platform"]: "goes18",
+        _DEFAULT_FIELD_MAP["sensor"]: "abi",
+        _DEFAULT_FIELD_MAP["time_range_key"]: {
+            field_map["time_range_lower_key"]: _PROBE_TIMESTAMP,
+            field_map["time_range_start_key"]: _PROBE_TIMESTAMP,
+        },
+    }
+
+
+def _build_broker_monitor(config: dict):
+    """Construct a monitor from *config*, exercising the real field-map merge.
+
+    Parameters
+    ----------
+    config : dict
+        The plugin's ``config`` block from the shipped YAML.
+
+    Returns
+    -------
+    RabbitMQWatcher
+        A constructed plugin. Nothing connects; only pure methods are called.
+    """
+    from courier.plugins.data_monitors.rabbit_mq_watcher import RabbitMQWatcher
+
+    service = mock.MagicMock()
+    service._config.log_level = "DEBUG"
+    service._config.loki_enabled = False
+    service._config.namespace = "drift-guard"
+    service.config = service._config
+    return RabbitMQWatcher(service, config)
+
+
+@pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
+def test_broker_monitor_field_map_names_keys_the_producer_sends(
+    config_path: Path,
+) -> None:
+    """A canonical field must map onto a key the documented schema contains.
+
+    ``tests/cira-data-inventory-example.yaml`` shipped ``dir_path: dir_ath``.
+    The monitor indexes the mapped key instead of ``.get``-ing it, and the
+    merge against ``_DEFAULT_FIELD_MAP`` leaves the guard on the ``file_path``
+    fallback seeing a present mapping, so it does not fire. Every message
+    raised ``KeyError`` and was rejected without requeue, and the config
+    discarded its whole input stream.
+
+    Only the canonical keys are checked. Other ``field_map`` entries are
+    free-form metadata read with ``.get``, so a misspelling there loses one
+    metadata value.
+    """
+    from courier.plugins.data_monitors.rabbit_mq_watcher import _DEFAULT_FIELD_MAP
+
+    known = set(_DEFAULT_FIELD_MAP.values())
+    problems: list[str] = []
+
+    for identifier, config in _broker_monitors(config_path):
+        for canonical, message_key in (config.get("field_map") or {}).items():
+            if canonical not in _DEFAULT_FIELD_MAP:
+                continue
+            if message_key not in known:
+                problems.append(
+                    f"{identifier}: field_map {canonical}={message_key!r}, "
+                    f"which the documented schema does not contain",
+                )
+
+    assert not problems, (
+        "\n".join(problems) + f"\nschema keys: {sorted(known)}"
+    )
+
+
+@pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
+def test_broker_monitor_resolves_a_real_timestamp(config_path: Path) -> None:
+    """The configured timestamp must resolve to a parseable value.
+
+    ``config.yaml``, ``tests/demo.yaml`` and
+    ``tests/cira-data-inventory-example.yaml`` all shipped
+    ``timestamp_field: time_range``, which resolves to the time-range dict.
+    ``parse_timestamp`` returns ``None`` for a dict, so every file carried
+    ``timestamp=None`` and downstream ``time_grouping`` was disabled. From the
+    outside that looks the same as a producer sending no timestamps.
+
+    The check runs the monitor's own extractor, so any ``timestamp_field``
+    that names a container fails here too.
+    """
+    problems: list[str] = []
+
+    for identifier, config in _broker_monitors(config_path):
+        monitor = _build_broker_monitor(config)
+        message = _probe_message(monitor.field_map)
+        resolved = monitor._extract_timestamp(message)  # noqa: SLF001
+        if resolved is None:
+            problems.append(
+                f"{identifier}: timestamp_field="
+                f"{config.get('timestamp_field')!r} resolved to nothing against "
+                f"a representative message; files would carry timestamp=None",
+            )
+
+    assert not problems, "\n".join(problems)
+
+
+def test_shipped_configs_actually_declare_a_broker_monitor() -> None:
+    """The two checks above pass vacuously if no broker monitor is declared."""
+    total = sum(len(_broker_monitors(path)) for path in _SERVICE_CONFIGS)
+
+    assert total >= 3, f"only {total} {_BROKER_MONITOR} steps found"

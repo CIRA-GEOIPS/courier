@@ -9,7 +9,7 @@ import pytest
 
 from courier.cli.run import run as cli_run
 from courier.cli.run import run_service
-
+from courier.config import ServiceConfig
 
 def _make_entry(identifier: str, kind: str, name: str, config: dict | None = None):
     """Build a mock config run entry with the given attributes."""
@@ -24,13 +24,15 @@ def _make_entry(identifier: str, kind: str, name: str, config: dict | None = Non
 def _make_config(entries, **extra_spec_attrs):
     """Build a mock config from a list of run entries."""
     config = MagicMock()
+
     config.spec.run = entries
     config.spec.broker.to_url.return_value = "memory://"
-    config.metadata.namespace = "test"
-    config.metadata.name = "test-service"
-    config.spec.heartbeat_interval = 30
     config.spec.broker.max_retries = 5
     config.spec.allow_implicit_target = True
+    config.spec.service_config = ServiceConfig(heartbeat_interval=30)
+    
+    config.metadata.namespace = "test"
+    config.metadata.name = "test-service"
     for attr, value in extra_spec_attrs.items():
         setattr(config.spec, attr, value)
     return config
@@ -432,3 +434,47 @@ class TestRunCLIOnlyParsing:
         mock_run_service.assert_called_once_with(
             ANY, log_level=None, only_set={"my-dm"},
         )
+
+
+class TestBuilderIdentifiersAreNeverFiltered:
+    """Every builder's queue is predeclared, whatever ``--only`` selects.
+
+    A container running only a data monitor has no job builders of its own, so
+    it used to hand the service an empty builder set and declare nothing bound
+    to the file-found exchange. On a first deploy, before any builder container
+    had ever started, every file it published was discarded (issue #44).
+    """
+
+    @staticmethod
+    def _entries():
+        return [
+            _make_entry("my-dm", "data_monitor", "rabbit_mq_watcher"),
+            _make_entry("my-jb", "job_builder", "filter_and_group"),
+            _make_entry("jb-2", "job_builder", "filter_and_group"),
+            _make_entry("my-dp", "dispatcher", "serial_bash"),
+        ]
+
+    @patch("courier.cli.run.create_service_with_plugins")
+    @patch("courier.cli.run.PLUGIN_REGISTRIES", _plugin_registries_fixture())
+    def test_monitor_only_container_still_declares_every_builder_queue(
+        self,
+        mock_create_svc,
+    ):
+        """A monitor-only container knows every builder in the YAML."""
+        run_service(_make_config(self._entries()), only_set={"my-dm"})
+
+        _, kwargs = mock_create_svc.return_value.configure_routing.call_args
+        assert kwargs["builder_identifiers"] == {"my-jb", "jb-2"}
+        # --only semantics are otherwise untouched: routing validation still
+        # sees only what this process runs.
+        assert kwargs["dispatcher_identifiers"] == set()
+        assert kwargs["builder_targets"] == {}
+
+    @patch("courier.cli.run.create_service_with_plugins")
+    @patch("courier.cli.run.PLUGIN_REGISTRIES", _plugin_registries_fixture())
+    def test_builder_identifiers_are_passed_without_only(self, mock_create_svc):
+        """The same set is passed when no subset was requested."""
+        run_service(_make_config(self._entries()), only_set=None)
+
+        _, kwargs = mock_create_svc.return_value.configure_routing.call_args
+        assert kwargs["builder_identifiers"] == {"my-jb", "jb-2"}

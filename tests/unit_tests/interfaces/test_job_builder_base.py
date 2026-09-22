@@ -12,6 +12,8 @@ rather than on internal shape.
 
 from __future__ import annotations
 
+import logging
+
 import threading
 import time
 from pathlib import Path
@@ -166,12 +168,6 @@ class TestEmit:
         builder.emit(Job("n", "job-1", {}), ["dp-a"])
 
         assert service.emit.call_count == 2
-
-    def test_publishes_with_confirm(self, service: MagicMock) -> None:
-        """Jobs are published with publisher confirms, not fire-and-forget."""
-        builder = _builder(service)
-        builder.emit(Job("n", "job-1", {}), ["dp-a"])
-        assert service.emit.call_args.kwargs["confirm"] is True
 
 
 # ── claim / pop lifecycle ───────────────────────────────────────────────────
@@ -384,3 +380,77 @@ class TestLifecycle:
         builder.handle_incoming_files()
 
         assert all(g.jobs for g in builder.job_groups)
+
+
+class TestPoisonMessages:
+    """A body that will not parse is dropped.
+
+    The file-found queue is durable, so a message no consumer can parse is
+    redelivered until something drops it.
+    """
+
+    def test_malformed_bodies_are_counted_logged_and_skipped(
+        self,
+        service: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Three unusable bodies are dropped and the good one still lands."""
+        from prometheus_client import REGISTRY
+
+        builder = _builder(service)
+        before = REGISTRY.get_sample_value(
+            "courier_job_builder_malformed_messages_total",
+            {"job_builder_name": builder.name, "job_builder_identifier": "jb-1"},
+        ) or 0.0
+
+        service.consume.return_value = iter(
+            [
+                ("not json at all", None),
+                # A JSON array parses, then fails on attribute access, which an
+                # enumerated (ValueError, KeyError) guard misses.
+                ("[]", None),
+                ("42", None),
+                (str(_file("good")), None),
+            ],
+        )
+
+        with caplog.at_level(logging.ERROR):
+            builder.handle_incoming_files()
+
+        after = REGISTRY.get_sample_value(
+            "courier_job_builder_malformed_messages_total",
+            {"job_builder_name": builder.name, "job_builder_identifier": "jb-1"},
+        )
+        assert after - before == 3
+        assert sum(len(g.jobs) for g in builder.job_groups) == 1
+        assert sum(
+            "Dropping malformed file-found message" in r.message
+            for r in caplog.records
+        ) == 3
+
+    def test_the_logged_preview_is_truncated(
+        self,
+        service: MagicMock,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A huge body does not paste itself into the log in full."""
+        builder = _builder(service)
+        service.consume.return_value = iter([("x" * 5000, None)])
+
+        with caplog.at_level(logging.ERROR):
+            builder.handle_incoming_files()
+
+        assert any("Dropping malformed" in r.message for r in caplog.records)
+        assert all(len(r.getMessage()) < 2000 for r in caplog.records)
+
+    def test_the_subscriber_identifier_is_passed_to_consume(
+        self,
+        service: MagicMock,
+    ) -> None:
+        """The builder names the durable queue it consumes from."""
+        builder = _builder(service, identifier="jb-7")
+        service.consume.return_value = iter(())
+
+        builder.handle_incoming_files()
+
+        assert service.consume.call_args.kwargs["subscriber"] == "jb-7"

@@ -167,28 +167,6 @@ class TestBuilder:
         assert "jid_overflow_3" not in group.jobs
         assert "jid" not in group._open_job_ids
 
-    def test_pop_ready_jobs_retires_the_emitted_job(
-        self,
-        mock_service: MagicMock,
-        make_frozen_file,
-        mocker,
-    ) -> None:
-        """_pop_ready_jobs clears the open-job pointer for the popped job."""
-        builder = FilterAndGroupJobBuilder(
-            mock_service, {"files_per_job": 1},
-        )
-        group = builder.job_groups[0]
-        JobCls = group.job
-        job = JobCls(name=group.name, identifier="bucket_42", config={})
-        job.add_file(make_frozen_file())
-        group.jobs["bucket_42"] = job
-        group._open_job_ids["bucket_42"] = "bucket_42"
-
-        mocker.patch.object(builder, "emit")
-        builder._pop_ready_jobs(group, [job])
-        assert "bucket_42" not in group.jobs
-        assert "bucket_42" not in group._open_job_ids
-
     def test_emitted_bucket_does_not_recycle_its_job_id(
         self,
         mock_service: MagicMock,
@@ -207,7 +185,7 @@ class TestBuilder:
         first = make_frozen_file()
         group.add_file(first)
         (bucket_id,) = list(group.jobs)
-        builder._pop_ready_jobs(group, [group.jobs[bucket_id]])
+        builder._claim_ready_jobs(group)
 
         group.add_file(make_frozen_file())
         (second_id,) = list(group.jobs)

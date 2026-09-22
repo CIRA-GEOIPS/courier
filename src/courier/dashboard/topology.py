@@ -95,9 +95,9 @@ _SECRET_KEY_MARKERS: tuple[str, ...] = (
 
 Generated dashboard JSON is routinely committed to version control and is
 visible to everyone with Grafana access, so plugin config values are rendered
-into it. Without this filter an ``sftp_poller`` password, an
-``http_dispatcher`` bearer token or an ``s3_poller`` secret key would be
-embedded verbatim in the panel HTML.
+into it. Without this filter an ``s3_poller`` secret key, an
+``http_dispatcher`` bearer token or a ``kafka_consumer`` SASL password would
+be embedded verbatim in the panel HTML.
 """
 
 

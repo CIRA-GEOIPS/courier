@@ -10,7 +10,8 @@ metadata:
     Job builders accept any 1 file with ABI as the sensor and full-disk as the sector.
     They dispatch that to a GeoColor creator job that produces output.
 spec:
-  heartbeat_interval: 30 # seconds between health-metric publications
+  service_config:
+    heartbeat_interval: 30 # seconds between health-metric publications
   broker:
     host: rabbitmq
     port: 5672

@@ -61,7 +61,8 @@ def _write_config(tmp_path: Path, input_dir: Path, output_dir: Path) -> Path:
               namespace: shutdown-probe
               description: Process lifecycle probe service.
             spec:
-              heartbeat_interval: 2
+              service_config:
+                heartbeat_interval: 2
               run:
                 - watcher:
                     kind: data_monitor

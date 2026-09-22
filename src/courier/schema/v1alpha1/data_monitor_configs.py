@@ -17,16 +17,8 @@ from pydantic import (
     model_validator,
 )
 
-# Valid template variables for parent_dir and match patterns
-VALID_TEMPLATE_VARS: frozenset[str] = frozenset(
-    {"YYYY", "MM", "DD", "JJJ", "HH", "NN"},
-)
-
 # Date components that can be manually specified or extracted via regex
 DATE_COMPONENTS: frozenset[str] = frozenset({"YYYY", "MM", "DD", "JJJ", "HH", "NN"})
-
-# Template variable pattern for validation
-TEMPLATE_VAR_PATTERN: re.Pattern[str] = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
 def _validate_regex_pattern(pattern: str) -> str:
@@ -73,50 +65,6 @@ def _extract_regex_named_groups(pattern: str) -> frozenset[str]:
         return frozenset(compiled.groupindex.keys())
     except re.error:
         return frozenset()
-
-
-def _extract_template_variables(text: str) -> frozenset[str]:
-    """Extract Jinja-style template variables from a string.
-
-    Parameters
-    ----------
-    text : str
-        The string to analyze for template variables.
-
-    Returns
-    -------
-    frozenset[str]
-        Set of template variable names found.
-    """
-    return frozenset(TEMPLATE_VAR_PATTERN.findall(text))
-
-
-def _validate_template_variables(text: str, field_name: str) -> str:
-    """Validate that only known template variables are used.
-
-    Parameters
-    ----------
-    text : str
-        The string containing template variables.
-    field_name : str
-        Name of the field being validated (for error messages).
-
-    Returns
-    -------
-    str
-        The validated string.
-
-    Raises
-    ------
-    ValueError
-        If unknown template variables are found.
-    """
-    found_vars = _extract_template_variables(text)
-    unknown_vars = found_vars - VALID_TEMPLATE_VARS
-    if unknown_vars:
-        msg = f"Unknown template variables in {field_name}: {sorted(unknown_vars)}"
-        raise ValueError(msg)
-    return text
 
 
 class FileMetadataEntry(BaseModel):

@@ -52,7 +52,6 @@ class PluginSelection:
 
     plugin_class: type
     plugin_name: str  # e.g., "rabbit_mq_watcher"
-    interface_kind: str  # e.g., "data_monitors"
     yaml_kind: str  # e.g., "data_monitor"
     display_label: str  # e.g., "Data Monitor"
     config_model: type[BaseModel] | None
@@ -436,7 +435,6 @@ def prompt_category(
             PluginSelection(
                 plugin_class=matched,
                 plugin_name=matched.name,
-                interface_kind=kind_name,
                 yaml_kind=yaml_kind,
                 display_label=display_label,
                 config_model=config_model,

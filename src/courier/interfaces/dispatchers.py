@@ -55,7 +55,15 @@ from pathlib import Path
 
 _DEDUPE_LRU_SIZE = 1024
 
+#: Seconds a queue-depth probe may wait for the broker before giving up. The
+#: probe runs on the consumer thread between receiving a job and acknowledging
+#: it, so a probe that never returns is a consumer that never acknowledges.
+#: Bounding it turns a silent stall into a suppressed error and a zeroed gauge.
+_QUEUE_DEPTH_TIMEOUT_SECONDS = 5.0
+
 if TYPE_CHECKING:
+    import kombu
+
     from courier.service import Service
     from courier.types.file import File
 
@@ -109,6 +117,10 @@ class Dispatcher(ServicePlugin):
         # Thread-safe: only touched by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[str, None] = OrderedDict()
         self.falconer: Falconer
+        # Connection this dispatcher uses for its queue-depth probe. Opened
+        # lazily by the consumer thread and closed by it, so it is owned by
+        # exactly one thread for its whole life; see _emit_queue_depth.
+        self._depth_connection: kombu.Connection | None = None
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Yield ExecutionLogs."""
@@ -226,6 +238,33 @@ class Dispatcher(ServicePlugin):
             self._seen_jobs.popitem(last=False)
         return False
 
+    def _queue_depth_connection(self) -> kombu.Connection:
+        """Return this dispatcher's own broker connection, opening it if needed.
+
+        Returns
+        -------
+        kombu.Connection
+            A connection used by no other thread.
+        """
+        if self._depth_connection is None or not self._depth_connection.connected:
+            self._depth_connection = (
+                self.parent_service._broker_manager.open_private_connection(
+                    read_timeout=_QUEUE_DEPTH_TIMEOUT_SECONDS,
+                )
+            )
+        return self._depth_connection
+
+    def _close_queue_depth_connection(self) -> None:
+        """Close the probe connection, if one was opened.
+
+        Called by the consumer thread as it leaves, so the connection is
+        released by the same thread that opened and used it.
+        """
+        connection, self._depth_connection = self._depth_connection, None
+        if connection is not None:
+            with contextlib.suppress(Exception):
+                connection.release()
+
     def _emit_queue_depth(self) -> None:
         """Emit the per-dispatcher queue-depth gauge.
 
@@ -233,25 +272,44 @@ class Dispatcher(ServicePlugin):
         is not meaningful for in-memory Kombu channels).  Wire transports
         query the underlying broker queue depth.
 
+        The probe runs on a connection belonging to this dispatcher rather
+        than on the service's shared one.  Sharing it deadlocked the
+        pipeline: this method runs on the plugin's own thread, once per
+        received job, and every dispatcher in the service was issuing a
+        synchronous ``queue_declare`` down the same socket.  Two of them
+        arriving together -- which is what a service with two dispatchers
+        receiving jobs concurrently does on its very first pair of jobs --
+        left both blocked in ``read_frame`` on a reply the other had already
+        read.  That is a hang rather than an exception, so the ``except``
+        below could not have caught it either; and because a message is
+        acknowledged only after this returns, both consumers sat on an
+        unacknowledged message forever.  At the default
+        ``broker_prefetch_count`` of 1 the broker then delivers neither of
+        them anything again.  Dispatch stopped dead while every plugin still
+        reported ``RUNNING``, every heartbeat kept beating and every manager
+        health check stayed green.
+
+        See :meth:`~courier.broker.kombu.MessageBrokerManager.open_private_connection`.
         """
-        with contextlib.suppress(Exception):
-            broker = self.parent_service._broker_manager
-            if broker._connection and broker._connection.connected:
-                with broker._connection.channel() as channel:
-                    queue_name = self.parent_service._broker_manager.get_queue_name(
-                        self.incoming_queue,
-                    )
-                    _, message_count, _ = channel.queue_declare(
-                        queue=queue_name,
-                        passive=True,
-                    )
-                    DISPATCHER_QUEUE_DEPTH.labels(
-                        dispatcher_identifier=self.identifier,
-                    ).set(message_count)
-                    return
+        message_count = 0
+        try:
+            queue_name = self.parent_service._broker_manager.get_queue_name(
+                self.incoming_queue,
+            )
+            with self._queue_depth_connection().channel() as channel:
+                _, message_count, _ = channel.queue_declare(
+                    queue=queue_name,
+                    passive=True,
+                )
+        except Exception:  # a gauge must never break dispatch
+            # Includes the read timeout. Drop the connection so a transport
+            # left mid-frame is replaced rather than reused for every
+            # subsequent job.
+            self._close_queue_depth_connection()
+            message_count = 0
         DISPATCHER_QUEUE_DEPTH.labels(
             dispatcher_identifier=self.identifier,
-        ).set(0)
+        ).set(message_count)
 
     def _run_handle_incoming_jobs(self) -> None:
         """Exit the process on any unhandled exception."""
@@ -273,6 +331,12 @@ class Dispatcher(ServicePlugin):
                     self.name,
                 )
                 os._exit(1)
+            finally:
+                # This thread opened the probe connection, so this thread
+                # closes it. stop() joins with a timeout and cannot assume
+                # the loop has left, and closing a connection out from under
+                # a thread still using it is the class of bug being fixed.
+                self._close_queue_depth_connection()
 
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""

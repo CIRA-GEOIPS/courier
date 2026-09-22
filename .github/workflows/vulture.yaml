@@ -1,0 +1,33 @@
+name: Vulture
+# Dead code that ruff cannot see.
+#
+# Ruff's F401/F841 are single-file checks: they catch an unused import or an
+# unused local, not a function nothing in the project calls. Vulture collects
+# every defined name and every referenced name across the whole tree and
+# reports the difference.
+#
+# Configuration -- scanned paths, confidence, and the framework names vulture
+# cannot resolve -- lives in [tool.vulture] in pyproject.toml, so a developer
+# running `vulture` with no arguments gets exactly what CI runs.
+on: [push]
+jobs:
+  vulture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        # The package itself is installed, not just vulture: vulture parses
+        # the source tree rather than importing it, but the test tier it also
+        # scans imports courier, and an unimportable tree would be reported as
+        # a syntax error rather than as dead code.
+        run: |
+          python -m pip install --upgrade pip
+          pip install vulture
+          pip install .[lint,test]
+      - name: Run vulture
+        # Exits 3 when it finds something, 0 when clean, so no wrapper is
+        # needed to turn a finding into a failed job.
+        run: vulture

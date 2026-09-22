@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from pydantic import (
@@ -12,6 +11,7 @@ from pydantic import (
     model_validator,
 )
 
+from courier.config import ServiceConfig
 from courier.schema.v1alpha1.base import (
     FrozenModel,
     _ensure_api_version,
@@ -25,50 +25,12 @@ from courier.schema.v1alpha1.broker_config import (
 )
 
 __all__ = [
-    "DispatcherQueueConfig",
     "MicroserviceDefinitionModel",
     "MicroserviceModel",
     "ResourceMetadataModel",
     "ServiceConfigModel",
     "ServiceSpecModel",
 ]
-
-
-class DispatcherQueueConfig(FrozenModel):
-    """Per-dispatcher broker queue options.
-
-    Embedded under a dispatcher's ``spec.config.queue`` block. Every
-    field is optional; defaults are chosen so operators running on a
-    laptop memory broker see no-op behavior while AMQP clusters get
-    durable queues by default.
-
-    Parameters
-    ----------
-    durable : bool or None
-        If ``True``, the broker persists the queue across restarts.
-        ``None`` defers to :class:`courier.service.Service` preflight,
-        which sets ``True`` for AMQP-like transports and ``False`` for
-        memory.
-    max_length : int or None
-        Optional broker-enforced maximum queue depth. ``None`` = no cap.
-    message_ttl : int or None
-        Optional per-message TTL in seconds. ``None`` = no expiry.
-    """
-
-    durable: bool | None = Field(
-        default=None,
-        description="Whether the broker should persist the queue across restarts.",
-    )
-    max_length: int | None = Field(
-        default=None,
-        ge=1,
-        description="Broker-enforced maximum number of messages.",
-    )
-    message_ttl: int | None = Field(
-        default=None,
-        ge=1,
-        description="Per-message TTL in seconds.",
-    )
 
 
 class ResourceMetadataModel(FrozenModel):
@@ -178,16 +140,6 @@ class MicroserviceModel(FrozenModel):
 class ServiceSpecModel(FrozenModel):
     """The `spec` section of a courier service configuration."""
 
-    heartbeat_interval: int = Field(
-        default=30,
-        description="Interval in seconds between service heartbeat messages.",
-    )
-    tracing_enabled: bool = Field(
-        default_factory=lambda: (
-            os.environ.get("COURIER_TRACING_ENABLED", "true").lower() != "false"
-        ),
-        description="Enable OpenTelemetry tracing. Defaults to environment variable",
-    )
     broker: BrokerConfig = Field(
         default_factory=MemoryBrokerConfig,
         description="Broker connection config. Defaults to in-memory when omitted.",
@@ -205,6 +157,13 @@ class ServiceSpecModel(FrozenModel):
             "Always emits a WARNING log so operators never auto-wire silently. "
             "Set ``false`` in HA deployments to make the absence of an "
             "explicit target a preflight error."
+        ),
+    )
+    service_config: ServiceConfig = Field(
+        default=ServiceConfig(),
+        description=(
+            "All options relating to environment variables that can be overridden "
+            "with YAML configuration"
         ),
     )
 

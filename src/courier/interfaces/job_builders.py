@@ -31,11 +31,13 @@ from courier.metrics import (
     JOB_BUILDER_JOBS_BUILT,
     JOB_BUILDER_JOBS_DISCARDED,
     JOB_BUILDER_JOBS_EMITTED,
+    JOB_BUILDER_MALFORMED_MESSAGES,
     collect_labeled,
 )
 from courier.tracing import (
     ATTR_CORRELATION_ID,
     ATTR_FILE_PATH,
+    ATTR_FILE_SOURCE,
     ATTR_JOB_GROUP_NAME,
     ATTR_JOB_ID,
     ATTR_JOB_NAME,
@@ -54,6 +56,10 @@ if TYPE_CHECKING:
     from courier.service import Service
     from courier.sync.job_builder_state_sync import JobBuilderStateSync
     from courier.types.job import Job, JobGroup
+
+
+#: Bytes of a malformed message body echoed into the error log.
+_MALFORMED_BODY_PREVIEW = 512
 
 
 class JobBuilder(ServicePlugin):
@@ -83,6 +89,8 @@ class JobBuilder(ServicePlugin):
 
     interface: ClassVar[str] = "job_builders"
     family: ClassVar[str] = "standard"
+    #: Name of the per-file span. Subclasses may override it.
+    _file_span_name: ClassVar[str] = "job_builder.build_job"
     name: ClassVar[str] = "JobBuilder"
 
     def __init__(
@@ -100,10 +108,10 @@ class JobBuilder(ServicePlugin):
         # broker loop returns on stop(). See Dispatcher.__init__ for why this
         # is per-instance rather than service-wide.
         self._stop_event = threading.Event()
-        # Set once this builder's queue is bound to the file-found fanout
-        # exchange. Producers must not start before this: a fanout exchange
-        # drops messages published while nothing is bound, so files emitted
-        # during the startup window would be lost with no error anywhere.
+        # Set once this builder's durable queue is declared and bound to the
+        # file-found exchange. PluginManager waits on it before starting
+        # producers so the first files move promptly. The queue is durable and
+        # predeclared during preflight, so a wait that times out loses nothing.
         self._subscribed = threading.Event()
         self.job_groups: list[JobGroup] = []
         # Thread-safe: _group_locks protects job_group.jobs dicts when
@@ -132,10 +140,24 @@ class JobBuilder(ServicePlugin):
         """Start main thread, connecting to Redis first if sync is enabled."""
         if self._state == PluginRunState.RUNNING:
             return
+        # Locks are populated whether or not state sync is configured: the
+        # timeout reaper mutates the same groups from its own thread either
+        # way. setdefault keeps a dict a subclass built in __init__, whose
+        # lock objects the reaper may already hold.
+        for group in self.job_groups:
+            self._group_locks.setdefault(group.name, threading.Lock())
+        self._check_replication_safety()
         if self._sync is not None:
-            self._group_locks = {jg.name: threading.Lock() for jg in self.job_groups}
             self._sync.connect()  # raises StateSyncConnectionError if unreachable
+            self._sync.set_merge_callback(self._emit_ready_jobs)
             self._sync.start(self.job_groups, self._group_locks)
+            # Hydration merges the shared hash into the local groups without
+            # firing the merge callback. A job already complete when this
+            # replica starts would otherwise wait for an unrelated file in its
+            # group, or for job.timeout to discard it. That state is reached
+            # when a peer died between push_job_update and push_job_deletion.
+            for group in self.job_groups:
+                self._emit_ready_jobs(group, reason="was complete in shared state")
         self._stop_event.clear()
         self._subscribed.clear()
         # daemon=True is a backstop only; stop() sets _stop_event and joins.
@@ -161,6 +183,67 @@ class JobBuilder(ServicePlugin):
         """Check if plugin is healthy."""
         return self._state == PluginRunState.RUNNING
 
+    @property
+    def accumulates(self) -> bool:
+        """Whether any group gathers more than one file into a job.
+
+        Read from the configured group capacity, so it tracks what the builder
+        does. A builder that emits one job per file is safe to replicate
+        without shared state. A builder that gathers files is not, because
+        replicas see different files.
+        """
+        return any(
+            int(getattr(group.config, "files_per_job", 1) or 1) != 1
+            for group in self.job_groups
+        )
+
+    def _check_replication_safety(self) -> None:
+        """Refuse to start if replicating this builder would split its jobs.
+
+        See :class:`~courier.errors.UnsafeReplicationError` for why an
+        accumulating builder cannot be replicated without shared state.
+
+        The peer count is a snapshot. A replica that has started but not yet
+        bound its queue is invisible, so a builder with no observable peer
+        warns and starts; refusing would block ordinary single-replica
+        deployments.
+
+        Raises
+        ------
+        UnsafeReplicationError
+            When another consumer is already attached to this builder's queue
+            and nothing would let the two reassemble a job.
+        """
+        from courier.errors import UnsafeReplicationError  # noqa: PLC0415
+
+        if self._sync is not None or not self.accumulates:
+            return
+        peers = self._peer_consumer_count()
+        if peers > 0:
+            raise UnsafeReplicationError(self.identifier, peers)
+        self._logger.warning(
+            "Job builder %r groups files into jobs and has no state_sync "
+            "block. Running a second replica of this identifier would "
+            "split every job across replicas and emit them short. No peer "
+            "is attached right now, so startup continues.",
+            self.identifier,
+        )
+
+    def _peer_consumer_count(self) -> int:
+        """Return consumers already on this builder's queue, or 0 if unknown."""
+        from courier.constants import file_found_queue_for  # noqa: PLC0415
+
+        manager = getattr(self.parent_service, "_broker_manager", None)
+        counter = getattr(manager, "consumer_count", None)
+        namer = getattr(manager, "get_queue_name", None)
+        if counter is None or namer is None:
+            return 0
+        try:
+            count = counter(namer(file_found_queue_for(self.identifier)))
+        except Exception:  # a stub service in a unit test, or an odd transport
+            return 0
+        return int(count or 0)
+
     def wait_until_subscribed(self, timeout: float) -> bool:
         """Block until this builder is bound to the file-found exchange.
 
@@ -175,7 +258,7 @@ class JobBuilder(ServicePlugin):
     # Core file processing loop
     # ------------------------------------------------------------------
 
-    def emit(self, job: Job, targets: Sequence[str] | None = None) -> None:
+    def emit(self, job: Job, targets: Sequence[str] | None = None) -> bool:
         """Fan out *job* to every dispatcher in *targets*.
 
         Each ``(job_id, target)`` pair is independently claimed via
@@ -193,6 +276,15 @@ class JobBuilder(ServicePlugin):
             the builder's ``self.targets`` configured list.  Preflight
             guarantees at least one target is present.
 
+        Returns
+        -------
+        bool
+            ``False`` when every target was skipped because a peer already
+            holds its claim, so the job reached no broker.  The caller has
+            already removed the job from its group; a ``False`` it ignores
+            discards the job's files silently.  See
+            :meth:`_return_files_to_group`.
+
         Notes
         -----
         Transient broker errors retry with backoff.  Fatal broker errors
@@ -207,14 +299,18 @@ class JobBuilder(ServicePlugin):
                 f"emit called with no targets for job {job.identifier}; dropping",
                 extra={"correlation_id": job.correlation_id},
             )
-            return
+            # Not recoverable by re-adding the files: with no target they
+            # would be dropped again on every pass.
+            return True
         job.emit_time = time.time()
         job.targets = target_list
         message = str(job)
         succeeded: list[str] = []
         failed: list[tuple[str, str]] = []
-        for target in target_list:
+        claimed = sum(
             self._emit_one(job, target, message, succeeded, failed)
+            for target in target_list
+        )
         if failed:
             self._logger.error(
                 f"partial fan-out for job {job.identifier}: "
@@ -224,11 +320,23 @@ class JobBuilder(ServicePlugin):
                     "job_id": job.identifier,
                 },
             )
+        elif claimed == len(target_list):
+            # Every target was a peer's. WARNING because the caller has to act
+            # on it; at INFO it read like an ordinary dedup while the job's
+            # files were dropped.
+            self._logger.warning(
+                f"Job {job.identifier} was claimed by a peer for every target "
+                f"{list(target_list)}; returning its {len(job.files)} file(s) "
+                f"to the group rather than dropping them",
+                extra={"correlation_id": job.correlation_id},
+            )
+            return False
         else:
             self._logger.info(
                 f"Emitted job {job.identifier} to targets {list(succeeded)}",
                 extra={"correlation_id": job.correlation_id},
             )
+        return True
 
     def _emit_one(
         self,
@@ -237,11 +345,17 @@ class JobBuilder(ServicePlugin):
         message: str,
         succeeded: list[str],
         failed: list[tuple[str, str]],
-    ) -> None:
+    ) -> bool:
         """Publish *message* to *target* with per-target claim and retry.
 
         Mutates *succeeded* / *failed* in place so the caller can log a
         single partial-failure line for the whole fan-out.
+
+        Returns
+        -------
+        bool
+            ``True`` when a peer already holds the claim and nothing was
+            published.  The caller counts these to spot a job no target took.
         """
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -257,7 +371,7 @@ class JobBuilder(ServicePlugin):
                     f"Job {job.identifier} target {target} already claimed; skipping",
                     extra={"correlation_id": job.correlation_id},
                 )
-                return
+                return True
             queue_name = self._resolve_target(target)
             try:
                 self._publish_with_retry(queue_name, message)
@@ -286,6 +400,7 @@ class JobBuilder(ServicePlugin):
                     target=target,
                 ).inc()
                 succeeded.append(target)
+        return False
 
     def _resolve_target(self, target: str) -> str:
         """Resolve a dispatcher identifier to its broker queue name.
@@ -319,11 +434,7 @@ class JobBuilder(ServicePlugin):
             base_delay=0.5,
         )
         def _do_publish() -> None:
-            self.parent_service.emit(
-                queue=queue_name,
-                message=message,
-                confirm=True,
-            )
+            self.parent_service.emit(queue=queue_name, message=message)
 
         _do_publish()
 
@@ -356,14 +467,20 @@ class JobBuilder(ServicePlugin):
             FILE_FOUND_EXCHANGE,
             stop_event=self._stop_event,
             on_subscribed=self._subscribed.set,
+            subscriber=self.identifier,
         ):
             start_time = time.time()
-            file = FrozenFile.from_string(str(file_string))
+            file = self._parse_file_message(str(file_string))
+            if file is None:
+                # Dropped: returning to the consume loop acknowledges it.
+                continue
             with tracer.start_as_current_span(
-                "job_builder.build_job",
+                self._file_span_name,
                 context=parent_ctx,
                 attributes={
                     ATTR_FILE_PATH: str(file.file) if file.file else "",
+                    # Dashboards group router spans by this attribute.
+                    ATTR_FILE_SOURCE: file.source or "",
                 },
             ):
                 self._files_received.labels(
@@ -371,11 +488,7 @@ class JobBuilder(ServicePlugin):
                     job_builder_identifier=self.identifier,
                 ).inc()
                 self._logger.debug(f"Received file {file_string} from file queue")
-                for job_group in self.job_groups:
-                    self._logger.debug(
-                        f"Processing file {file} in job group {job_group.name}",
-                    )
-                    self._process_job_group(job_group, file)
+                self._dispatch_file(file)
                 self._file_processing_duration.labels(
                     job_builder_name=self.name,
                     job_builder_identifier=self.identifier,
@@ -390,6 +503,60 @@ class JobBuilder(ServicePlugin):
             self._logger.info("handle_incoming_files loop exited on shutdown")
         else:
             self._logger.error("Exiting handle_incoming_files loop unexpectedly")
+
+    def _dispatch_file(self, file: FrozenFile) -> None:
+        """Hand *file* to every job group.
+
+        Routing builders override this hook instead of
+        :meth:`handle_incoming_files`.
+
+        Parameters
+        ----------
+        file : FrozenFile
+            The file just received.
+        """
+        for job_group in self.job_groups:
+            self._logger.debug(
+                f"Processing file {file} in job group {job_group.name}",
+            )
+            self._process_job_group(job_group, file)
+
+    def _parse_file_message(self, body: str) -> FrozenFile | None:
+        """Decode one file-found body, or log and count a malformed one.
+
+        The catch-all is needed. ``FrozenFile.from_string`` is
+        ``from_dict(json.loads(...))`` and the field extraction calls ``.get``
+        on the result, so a body of ``[]``, ``null`` or a bare number raises
+        ``AttributeError``, which a ``(ValueError, KeyError)`` guard misses.
+        On a durable queue a message that kills the consumer is redelivered,
+        so one malformed body can wedge every replica in turn.
+
+        Parameters
+        ----------
+        body : str
+            Raw message body.
+
+        Returns
+        -------
+        FrozenFile or None
+            The parsed file, or ``None`` when the body is unusable.
+        """
+        try:
+            return FrozenFile.from_string(body)
+        except Exception:  # parser boundary: anything raised here is poison
+            JOB_BUILDER_MALFORMED_MESSAGES.labels(
+                job_builder_name=self.name,
+                job_builder_identifier=self.identifier,
+            ).inc()
+            self._logger.exception(
+                "Dropping malformed file-found message for builder %s "
+                "(%d bytes); first %d shown: %r",
+                self.identifier,
+                len(body),
+                _MALFORMED_BODY_PREVIEW,
+                body[:_MALFORMED_BODY_PREVIEW],
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Per-group helpers (complexity-bounded)
@@ -430,7 +597,8 @@ class JobBuilder(ServicePlugin):
                         ATTR_CORRELATION_ID: ready_job.correlation_id,
                     },
                 ):
-                    self.emit(ready_job, targets)
+                    if not self.emit(ready_job, targets):
+                        self._return_files_to_group(job_group, ready_job)
                     get_current_span().add_event(
                         "job.ready",
                         attributes={
@@ -544,6 +712,71 @@ class JobBuilder(ServicePlugin):
         for job_id in deletions:
             self._sync.push_job_deletion(group_name, job_id)
 
+    def _emit_ready_jobs(
+        self,
+        job_group: JobGroup,
+        reason: str = "completed by a peer's files",
+    ) -> list[Job]:
+        """Emit any job in *job_group* that is now complete.
+
+        Every caller removes ready jobs through this method: the file path, a
+        peer's merge, hydration at startup, and both timeout reapers. It also
+        pushes the deletions. A Redis field that outlives its job survives for
+        ``job.timeout`` (24h by default) and is re-adopted as the bucket's
+        open job on the next restart.
+
+        Jobs are removed under the group lock before being published, and the
+        shared claim decides which replica dispatches.
+
+        Parameters
+        ----------
+        job_group : JobGroup
+            Group to scan.
+        reason : str, optional
+            Why the scan is running, for the per-job log line.
+
+        Returns
+        -------
+        list[Job]
+            The jobs that reached a broker. A job every replica skipped is
+            absent, because its files went back into the group.
+        """
+        lock = self._group_locks.get(job_group.name)
+        with lock if lock is not None else contextlib.nullcontext():
+            ready = self._claim_ready_jobs(job_group)
+        if not ready:
+            return []
+        self._push_deletions(job_group.name, [job.identifier for job in ready])
+        targets = self._targets_for_group(job_group)
+        emitted: list[Job] = []
+        for job in ready:
+            self._logger.info(f"Job {job.identifier} {reason}; emitting")
+            if self.emit(job, targets):
+                emitted.append(job)
+            else:
+                self._return_files_to_group(job_group, job)
+        return emitted
+
+    def _return_files_to_group(self, job_group: JobGroup, job: Job) -> None:
+        """Put back the files of a job every target had already claimed.
+
+        ``_record_job_emitted`` closed the bucket when the job was popped, so
+        these files land in a fresh job with a new identifier and a new claim
+        key. The claim that just rejected them is not retried, and the
+        dispatcher's dedupe LRU sees no repeated identifier.
+
+        Parameters
+        ----------
+        job_group : JobGroup
+            Group the job was taken from.
+        job : Job
+            The job nothing accepted.
+        """
+        lock = self._group_locks.get(job_group.name)
+        with lock if lock is not None else contextlib.nullcontext():
+            for file in job.files:
+                job_group.add_file(file)
+
     def _claim_ready_jobs(self, job_group: JobGroup) -> list[Job]:
         """Remove and return every ready job, taking ownership of each.
 
@@ -556,32 +789,6 @@ class JobBuilder(ServicePlugin):
             claimed.append(job_group.jobs.pop(job_id))
             job_group._record_job_emitted(job_id)
         return claimed
-
-    def _pop_ready_jobs(
-        self,
-        job_group: JobGroup,
-        ready_jobs: list[Job],
-    ) -> None:
-        """Remove emitted ready jobs from the group and sync the deletions.
-
-        Parameters
-        ----------
-        job_group : JobGroup
-            The group to remove jobs from.
-        ready_jobs : list[Job]
-            Ready jobs that have been emitted and should be removed.
-        """
-        if not ready_jobs:
-            return
-        lock = self._group_locks.get(job_group.name)
-        deletions: list[str] = []
-        with lock if lock is not None else contextlib.nullcontext():
-            for job in ready_jobs:
-                if job.identifier in job_group.jobs:
-                    del job_group.jobs[job.identifier]
-                    deletions.append(job.identifier)
-                    job_group._record_job_emitted(job.identifier)
-        self._push_deletions(job_group.name, deletions)
 
     # ------------------------------------------------------------------
     # Metrics
@@ -655,7 +862,11 @@ class JobBuilder(ServicePlugin):
         return JobBuilderStateSync(
             config=sync_config,
             namespace=service.config.namespace,
-            builder_name=self.name,
+            # Keyed by the run-step identifier. Under the class name, two
+            # builders of the same class in one config shared a keyspace and
+            # could claim each other's emissions. Replicas of one run step
+            # still share a keyspace, since they share an identifier.
+            builder_name=self.identifier,
         )
 
 #: Registry of job builder plugins, read from the ``courier.job_builders``

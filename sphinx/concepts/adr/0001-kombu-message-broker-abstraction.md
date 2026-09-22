@@ -34,6 +34,7 @@ directly.
 - Kombu is untyped (`py.typed` marker absent) — all imports carry `# type: ignore[import-untyped]`.
 - Connection-error handling and retry logic must be implemented manually
   (`rabbit_mq_watcher.py` implements exponential backoff on `OperationalError`).
+- Less control.
 
 ## Consequences
 
@@ -47,5 +48,5 @@ directly.
   `# type: ignore[import-untyped]`. This is a known, accepted limitation on type safety
   within the broker module.
 - **Resilience**: Connection-error handling and exponential-backoff retry logic live in
-  `rabbit_mq_watcher.py` rather than being provided by the library. This gives the team
+  plugins rather than being provided by the library. This gives the team
   full control over reconnection policy but must be maintained as Kombu evolves.

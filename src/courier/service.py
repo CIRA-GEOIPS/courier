@@ -3,22 +3,24 @@
 from __future__ import annotations
 
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from courier.broker.kombu import (
     MessageBrokerManager,
     declare_fanout_exchange,
-    declare_fanout_queue,
     declare_queue,
     publish,
     publish_fanout,
+    redeliver_or_park,
 )
 from courier.broker.kombu import messages as broker_messages
 from courier.config import ServiceConfig
 from courier.constants import (
     DISPATCHER_QUEUE,
     FILE_FOUND_EXCHANGE,
-    MAX_QUEUE_NAME_LENGTH,
+    dead_letter_queue_for,
+    file_found_queue_for,
     job_ready_queue_for,
 )
 from courier.errors import ConfigurationError
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
     from courier.interfaces.plugin_protocol import ServicePlugin
     from courier.managers.base import ServiceManager
 from courier.metrics import (
+    BROKER_MESSAGES_PENDING,
     BROKER_MESSAGES_RECEIVED,
     BROKER_MESSAGES_SENT,
     SERVICE_HEALTH,
@@ -119,6 +122,7 @@ class Service:
         self._service_health_metric = SERVICE_HEALTH
 
         self._dispatcher_identifiers: frozenset[str] = frozenset()
+        self._builder_identifiers: frozenset[str] = frozenset()
         self._builder_targets: dict[str, tuple[str, ...]] = {}
         self._falconer_map: list[tuple[str, str, str]]
         self._allow_implicit_target: bool = True
@@ -141,8 +145,11 @@ class Service:
         return self._config
 
     @log_execution
-    def emit(self, queue: str, message: str, confirm: bool = False) -> None:
+    def emit(self, queue: str, message: str) -> None:
         """Publish a message to a message broker queue.
+
+        Blocks until the broker confirms the message; see
+        :func:`courier.broker.kombu.publish`.
 
         Parameters
         ----------
@@ -150,10 +157,6 @@ class Service:
             Name of the queue to publish to.
         message : str
             Message content to publish.
-        confirm : bool, optional
-            When ``True`` and the broker supports it (AMQP), wait for a
-            publisher confirm before returning. No-op on memory transport.
-            Default ``False``.
 
         Raises
         ------
@@ -183,9 +186,13 @@ class Service:
                         conn,
                         exchange,
                         message,
-                        confirm=confirm,
                         headers=w3c_headers,
                     )
+                # Counted per bound queue, matching the label each consumer
+                # decrements. Labelling the increment with the exchange put the
+                # two halves on different series.
+                for bound in self._file_found_queue_names():
+                    BROKER_MESSAGES_PENDING.labels(queue_name=bound).inc()
                 BROKER_MESSAGES_SENT.labels(queue_name=exchange_name).inc()
             return
         # --- Direct queue path
@@ -207,14 +214,29 @@ class Service:
                 },
             ):
                 w3c_headers = inject_trace_headers()
-                publish(conn, q, message, confirm=confirm, headers=w3c_headers)
+                publish(conn, q, message, headers=w3c_headers)
             BROKER_MESSAGES_SENT.labels(queue_name=queue_name).inc()
+
+    def _file_found_queue_names(self) -> tuple[str, ...]:
+        """Return the namespaced file-found queue name of every job builder.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One name per builder identifier known to this service.
+        """
+        return tuple(
+            self._broker_manager.get_queue_name(file_found_queue_for(ident))
+            for ident in sorted(self._builder_identifiers)
+        )
 
     def consume(
         self,
         queue: str,
         stop_event: threading.Event | None = None,
         on_subscribed: Callable[[], None] | None = None,
+        *,
+        subscriber: str | None = None,
     ) -> Generator[tuple[str, Any], None, None]:
         """Yield messages from a message broker queue.
 
@@ -222,13 +244,6 @@ class Service:
         ----------
         queue : str
             The name of the queue to consume messages from.
-        on_subscribed : Callable[[], None] or None, optional
-            Invoked once the queue has been declared and bound, before the
-            first message is read.  A fanout exchange **discards** anything
-            published while no queue is bound to it, so a data monitor that
-            emits during startup silently loses those files unless every
-            builder has already subscribed.  :class:`PluginManager` uses this
-            callback to hold producers back until consumers are attached.
         stop_event : threading.Event or None, optional
             Event that, once set, ends the consume loop after any
             already-buffered messages are delivered.  Plugins pass their own
@@ -237,6 +252,16 @@ class Service:
             set by :class:`~courier.utils.signals.SignalHandler`, so a consumer
             that forgets to supply one still exits on SIGTERM/SIGINT rather
             than wedging interpreter shutdown.
+        on_subscribed : Callable[[], None] or None, optional
+            Invoked once the queue is declared and bound, before the first
+            message is read.  :class:`PluginManager` uses it to start consumers
+            ahead of producers.  The durable file-found queue is predeclared
+            during preflight, so this only affects how promptly the first files
+            move.
+        subscriber : str or None, optional
+            Identifier of the job builder consuming the file-found exchange.
+            **Required** on that path: it names the durable queue
+            ``FilesFound-<subscriber>``.  Ignored for direct queues.
 
         Yields
         ------
@@ -244,101 +269,295 @@ class Service:
             ``(body, parent_ctx)`` where *body* is the decoded message content
             and *parent_ctx* is the extracted trace context (or None).
 
+        Raises
+        ------
+        ConfigurationError
+            If the file-found exchange is consumed without a *subscriber*.
+
         Notes
         -----
-        Breaking the generator loop (e.g. ``break`` after yielding a single
-        message) may requeue any message pre-fetched by the broker but not yet
-        yielded.  For one-shot consumption that avoids this side-effect, use a
-        separate thread with a timeout (see ``concurrent.futures``).
+        A message is acknowledged only after the ``for`` body returns.
+        Abandoning the loop while holding one, by ``break`` or by raising,
+        leaves it unacknowledged, which counts as a failed attempt: the message
+        is requeued behind the backlog, and parked on the dead-letter queue
+        after ``broker_max_redeliveries`` attempts.  Setting *stop_event* first
+        marks the exit as a shutdown, and the message is returned untouched.
+        Breaking may also requeue anything the broker pre-fetched but has not
+        yet yielded.  For one-shot consumption, use a separate thread with a
+        timeout (see ``concurrent.futures``).
+
+        A missing *subscriber* is reported when ``consume`` is called, not on
+        the first ``next()``.
         """
         effective_stop = (
             stop_event if stop_event is not None else self._signal_handler.stop_event
         )
-        # --- Fan-out: FILE_FOUND uses a fanout exchange with an exclusive
-        # --- queue per consumer so every builder sees every file.
         if queue == FILE_FOUND_EXCHANGE:
-            exchange_name = self._broker_manager.get_queue_name(queue)
-            with self._broker_manager.get_connection_context() as conn:
-                exchange = declare_fanout_exchange(conn, exchange_name)
-                q = declare_fanout_queue(conn, exchange)
-                # Bound now: anything published from here on reaches us.
-                if on_subscribed is not None:
-                    on_subscribed()
-                for body, ack, reject, headers in broker_messages(
+            if subscriber is None:
+                raise ConfigurationError(
+                    "Service.consume(FILE_FOUND_EXCHANGE) requires "
+                    "subscriber=<job builder identifier>: it names the durable "
+                    "queue FilesFound-<subscriber>. There is no anonymous "
+                    "fallback, because a per-connection queue is deleted when "
+                    "the consumer disconnects and loses every file published "
+                    "while it is away.",
+                )
+            exchange_name = self._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
+            queue_name = self._broker_manager.add_file_found_queue(subscriber)
+
+            def declare_bound(conn: Any) -> Any:
+                # Redeclared on this connection too. The manager declares a
+                # registered queue only on the first connection it opens, so a
+                # queue deleted after that is never redeclared. durable,
+                # non-exclusive and non-auto-delete are kombu.Queue defaults;
+                # respelling them here once let this drift from
+                # MessageBrokerManager._file_found_queue_config().
+                return declare_queue(
                     conn,
-                    q,
-                    stop_event=effective_stop,
-                ):
-                    try:
-                        self._logger.debug(
-                            f"Received message from exchange '{exchange_name}': {body}",
-                        )
-                        BROKER_MESSAGES_RECEIVED.labels(
-                            queue_name=exchange_name,
-                        ).inc()
-                        parent_ctx = extract_context(headers)
-                        tracer = get_tracer(__name__)
-                        with tracer.start_as_current_span(
-                            "broker.receive",
-                            context=parent_ctx,
-                            attributes={
-                                "messaging.system": "amqp",
-                                "messaging.destination": exchange_name,
-                                "messaging.destination_kind": "fanout",
-                            },
-                        ):
-                            yield body, parent_ctx
-                            ack()
-                    except GeneratorExit:
-                        reject()
-                        raise
-                    except Exception:  # Reject message before propagating any error
-                        reject()
-                        raise
-            return
-        # --- Direct queue path
-        queue_name = self._broker_manager.add_queue(
+                    queue_name,
+                    action="declaring file-found queue",
+                    exchange=declare_fanout_exchange(conn, exchange_name),
+                )
+
+            return self._consume(
+                declare_bound,
+                queue_name,
+                {
+                    "messaging.system": "amqp",
+                    "messaging.destination": exchange_name,
+                    "messaging.destination_kind": "fanout",
+                    "messaging.rabbitmq.destination.queue": queue_name,
+                },
+                effective_stop,
+                on_subscribed,
+            )
+        direct_name = self._broker_manager.add_queue(
             queue,
             durable=True,
             exclusive=False,
         )
+        return self._consume(
+            lambda conn: declare_queue(conn, direct_name),
+            direct_name,
+            {
+                "messaging.system": "amqp",
+                "messaging.destination": direct_name,
+            },
+            effective_stop,
+            on_subscribed,
+        )
 
-        self._logger.debug(f"Consuming from queue: {queue_name}")
+    def _consume(
+        self,
+        declare: Callable[[Any], Any],
+        queue_name: str,
+        span_attributes: dict[str, str],
+        stop_event: threading.Event,
+        on_subscribed: Callable[[], None] | None,
+    ) -> Generator[tuple[str, Any], None, None]:
+        """Open a connection, declare the topology, and relay its messages.
 
+        One generator for both queue families. They differ only in what
+        *declare* does and in the span attributes.
+
+        Parameters
+        ----------
+        declare : Callable[[Any], Any]
+            Declares the queue on the open connection and returns it. Runs
+            inside the connection context, so a declaration failure is raised
+            before *on_subscribed* claims the consumer is attached.
+        queue_name : str
+            Namespaced queue name, for logging, metric labels and the
+            dead-letter name.
+        span_attributes : dict[str, str]
+            Attributes for the receive span.
+        stop_event : threading.Event
+            Ends the loop once set.
+        on_subscribed : Callable[[], None] or None
+            Called once the queue is declared and bound.
+
+        Yields
+        ------
+        tuple[str, Any]
+            ``(body, parent_ctx)`` per message.
+        """
         with self._broker_manager.get_connection_context() as conn:
-            q = declare_queue(conn, queue_name, durable=True)
+            queue = declare(conn)
+            dead_letter = declare_queue(
+                conn,
+                dead_letter_queue_for(queue_name),
+                action="declaring dead-letter queue",
+            )
+            self._logger.info(
+                f"Consuming from {queue_name!r} "
+                f"(prefetch={self._config.broker_prefetch_count}, "
+                f"max_redeliveries={self._config.broker_max_redeliveries})",
+            )
             if on_subscribed is not None:
                 on_subscribed()
-            for body, ack, reject, headers in broker_messages(
+            yield from self._relay(
                 conn,
-                q,
-                stop_event=effective_stop,
-            ):
-                try:
-                    self._logger.debug(
-                        f"Received message from queue '{queue_name}': {body}",
+                queue,
+                dead_letter,
+                stop_event,
+                queue_name,
+                span_attributes,
+            )
+
+    def _relay(  # noqa: PLR0913, PLR0917 (one consumer's declared topology)
+        self,
+        conn: Any,
+        queue: Any,
+        dead_letter: Any,
+        stop_event: threading.Event,
+        queue_name: str,
+        span_attributes: dict[str, str],
+    ) -> Generator[tuple[str, Any], None, None]:
+        """Yield decoded messages, acknowledging each once the caller returns.
+
+        Parameters
+        ----------
+        conn : Any
+            Open broker connection.
+        queue : Any
+            Declared queue to consume.
+        dead_letter : Any
+            Declared queue that parks messages whose attempts are spent.
+        stop_event : threading.Event
+            Ends the loop once set.
+        queue_name : str
+            Namespaced queue name, used for logging and metric labels.
+        span_attributes : dict[str, str]
+            Attributes for the receive span.
+
+        Yields
+        ------
+        tuple[str, Any]
+            ``(body, parent_ctx)`` per message.
+
+        Notes
+        -----
+        A message the caller could not get past is republished behind the
+        current backlog with its attempt count incremented, and parked on the
+        dead-letter queue once the count passes ``broker_max_redeliveries``;
+        see :func:`courier.broker.kombu.redeliver_or_park`. Rejecting with
+        ``requeue=True`` put the message back at the head, and with the shipped
+        prefetch of 1 the same message was handed to the same consumer again
+        immediately.
+
+        An exception raised by the caller inside the ``for`` body is not thrown
+        into this generator. Python closes the generator, so the failure
+        arrives here as ``GeneratorExit`` and never reaches the
+        ``except Exception`` clause; that clause covers only a failure between
+        the ``yield`` and the ``ack``.
+
+        ``GeneratorExit`` is therefore ambiguous: the caller gave up on this
+        message, or the consumer is shutting down with the message untried.
+        *stop_event* separates them. During shutdown the message is rejected
+        unchanged and its attempt count left alone, so a rolling restart does
+        not spend a retry on every in-flight message.
+        """
+        for body, ack, reject, headers in broker_messages(
+            conn,
+            queue,
+            stop_event=stop_event,
+            prefetch_count=self._config.broker_prefetch_count,
+        ):
+            try:
+                self._logger.debug(
+                    f"Received message from queue '{queue_name}': {body}",
+                )
+                BROKER_MESSAGES_RECEIVED.labels(queue_name=queue_name).inc()
+                parent_ctx = extract_context(headers)
+                tracer = get_tracer(__name__)
+                with tracer.start_as_current_span(
+                    "broker.receive",
+                    context=parent_ctx,
+                    attributes=span_attributes,
+                ):
+                    yield body, parent_ctx
+                    ack()
+            except GeneratorExit:
+                if stop_event.is_set():
+                    reject()
+                else:
+                    self._fail_message(
+                        conn,
+                        queue,
+                        dead_letter,
+                        body,
+                        headers,
+                        ack,
+                        reject,
                     )
-                    BROKER_MESSAGES_RECEIVED.labels(
-                        queue_name=queue_name,
-                    ).inc()
-                    parent_ctx = extract_context(headers)
-                    tracer = get_tracer(__name__)
-                    with tracer.start_as_current_span(
-                        "broker.receive",
-                        context=parent_ctx,
-                        attributes={
-                            "messaging.system": "amqp",
-                            "messaging.destination": queue_name,
-                        },
-                    ):
-                        yield body, parent_ctx
-                        ack()
-                except GeneratorExit:
-                    reject()
-                    raise
-                except Exception:  # Reject message before propagating any error
-                    reject()
-                    raise
+                raise
+            except Exception:
+                self._fail_message(
+                    conn,
+                    queue,
+                    dead_letter,
+                    body,
+                    headers,
+                    ack,
+                    reject,
+                )
+                raise
+
+    def _fail_message(  # noqa: PLR0913, PLR0917 (one delivery's worth of state)
+        self,
+        conn: Any,
+        queue: Any,
+        dead_letter: Any,
+        body: str,
+        headers: dict[str, str],
+        ack: Callable[[], None],
+        reject: Callable[[], None],
+    ) -> None:
+        """Get a message the caller could not handle out of the way of the rest.
+
+        Parameters
+        ----------
+        conn : Any
+            Open broker connection.
+        queue : Any
+            The queue the message came from.
+        dead_letter : Any
+            Where the message goes once its attempts are spent.
+        body : str
+            The message body.
+        headers : dict[str, str]
+            The delivered message's headers, carrying the attempt count.
+        ack : Callable[[], None]
+            Acknowledges the original delivery.
+        reject : Callable[[], None]
+            Returns the original delivery to the queue unchanged.
+
+        Notes
+        -----
+        Acknowledging is safe only once the republish is confirmed, so the
+        republish happens first. If the republish fails the delivery is
+        rejected instead, leaving the message on the queue.
+        """
+        try:
+            redeliver_or_park(
+                conn,
+                queue,
+                dead_letter,
+                body,
+                headers,
+                self._config.broker_max_redeliveries,
+            )
+        except Exception:
+            self._logger.exception(
+                "Could not requeue or park a failed message from %r; "
+                "returning it to the queue unchanged, which leaves it able to "
+                "block the messages behind it until the broker recovers",
+                getattr(queue, "name", queue),
+            )
+            with suppress(Exception):
+                reject()
+            return
+        ack()
 
     def register_plugin(
         self,
@@ -367,6 +586,7 @@ class Service:
         dispatcher_identifiers: Iterable[str],
         builder_targets: dict[str, tuple[str, ...]] | None = None,
         allow_implicit_target: bool = True,
+        builder_identifiers: Iterable[str] | None = None,
     ) -> None:
         """Wire up the :class:`TargetResolver` and record builder targets.
 
@@ -383,12 +603,21 @@ class Service:
         builder_targets : dict[str, tuple[str, ...]] or None, optional
             Map from builder identifier → declared targets.  Used by
             :meth:`preflight_check` to enforce unknown-target /
-            duplicate-target / implicit-wire rules.
+            duplicate-target / implicit-wire rules.  Filtered by ``--only``:
+            it drives routing validation for the builders this process runs.
         allow_implicit_target : bool, optional
             Mirror of ``ServiceSpecModel.allow_implicit_target``.
+        builder_identifiers : Iterable[str] or None, optional
+            Every identifier declared as ``kind: job_builders`` in the service
+            YAML, **regardless of ``--only``**.  Each one gets a durable
+            ``FilesFound-<identifier>`` queue predeclared during preflight, so
+            a producer in another container never publishes into a fanout with
+            nothing bound to it.  Without that, the first deploy of a split
+            deployment lost every file.
         """
         self._dispatcher_identifiers = frozenset(dispatcher_identifiers)
         self._builder_targets = builder_targets or {}
+        self._builder_identifiers = frozenset(builder_identifiers or ())
         self._allow_implicit_target = allow_implicit_target
         self._target_resolver = build_default_resolver(self._dispatcher_identifiers)
 
@@ -422,8 +651,37 @@ class Service:
         and which builders to wire up, so walk the plugin manager for any
         information :meth:`configure_routing` did not supply.
         """
-        if self._dispatcher_identifiers and self._builder_targets:
+        if (
+            self._dispatcher_identifiers
+            and self._builder_targets
+            and self._builder_identifiers
+        ):
             return
+        discovered_dispatchers, discovered_builders = self._discover_plugin_routing()
+        if not self._dispatcher_identifiers:
+            self._dispatcher_identifiers = frozenset(discovered_dispatchers)
+            self._target_resolver = build_default_resolver(
+                self._dispatcher_identifiers,
+            )
+        if not self._builder_targets:
+            self._builder_targets = discovered_builders
+        if not self._builder_identifiers:
+            self._builder_identifiers = frozenset(discovered_builders)
+        # A builder named only in the targets map still needs its queue; that
+        # is the shape a harness skipping configure_routing produces.
+        self._builder_identifiers |= frozenset(self._builder_targets)
+
+    def _discover_plugin_routing(
+        self,
+    ) -> tuple[set[str], dict[str, tuple[str, ...]]]:
+        """Walk registered plugins for dispatcher and builder routing data.
+
+        Returns
+        -------
+        tuple[set[str], dict[str, tuple[str, ...]]]
+            Discovered dispatcher identifiers, and builder identifiers mapped
+            to whatever targets their config already carried.
+        """
         plugins = self._plugin_manager.get_plugins()
         discovered_dispatchers: set[str] = set()
         discovered_builders: dict[str, tuple[str, ...]] = {}
@@ -435,13 +693,7 @@ class Service:
             elif interface == "job_builders":
                 existing = getattr(info.plugin, "targets", ())
                 discovered_builders[registry_key] = tuple(existing)
-        if not self._dispatcher_identifiers:
-            self._dispatcher_identifiers = frozenset(discovered_dispatchers)
-            self._target_resolver = build_default_resolver(
-                self._dispatcher_identifiers,
-            )
-        if not self._builder_targets:
-            self._builder_targets = discovered_builders
+        return discovered_dispatchers, discovered_builders
 
     def _propagate_builder_targets(self) -> None:
         """Push preflight-resolved targets back into each builder plugin instance.
@@ -463,7 +715,7 @@ class Service:
             info.plugin.targets = targets  # type: ignore[attr-defined]
 
     def _validate_dispatch_targets(self) -> None:
-        """Fail fast on oversized queue names, unknown / duplicate targets.
+        """Fail fast on unknown or duplicate dispatch targets.
 
         Resolves implicit routing (one builder, one dispatcher, no
         ``targets`` declared) to the sole dispatcher when
@@ -476,14 +728,6 @@ class Service:
             UnknownTargetError,
         )
 
-        for ident in self._dispatcher_identifiers:
-            full = f"{self.namespace}-{job_ready_queue_for(ident)}"
-            if len(full) > MAX_QUEUE_NAME_LENGTH:
-                raise ConfigurationError(
-                    f"Namespaced queue {full!r} exceeds "
-                    f"{MAX_QUEUE_NAME_LENGTH} chars; shorten the namespace "
-                    f"or dispatcher identifier {ident!r}.",
-                )
         resolved: dict[str, tuple[str, ...]] = {}
         for builder_id, declared in self._builder_targets.items():
             if len(declared) != len(set(declared)):
@@ -547,28 +791,48 @@ class Service:
             self._plugin_manager._plugins[falcon_id].plugin = mutated_falcon
     
     def _predeclare_target_queues(self) -> None:
-        """Declare every per-dispatcher queue plus shared queues.
+        """Declare every queue this service or its peers will consume from.
 
-        Done producer-side so the builder can emit before the dispatcher
-        has come up — otherwise AMQP raises on publish to an undeclared
-        queue.  A cheap dict insert on memory transport.
+        Runs producer-side, before any plugin thread starts, and declares:
+
+        * one job-ready queue per dispatcher, so a builder can emit before its
+          dispatcher exists;
+        * the shared dispatcher queue;
+        * one durable ``FilesFound-<builder>`` queue per job builder in the
+          YAML, including builders that run in other containers. A fanout
+          exchange discards anything published while nothing is bound to it, so
+          without this a monitor-only container drops every file until a
+          builder container has started at least once (issue #44).
+
+        Every registration happens before the connection context opens, because
+        that context is what declares the registered queues. The dispatcher
+        queue was once registered after it, and so went undeclared during
+        preflight.
         """
-        for ident in self._dispatcher_identifiers:
+        for ident in sorted(self._dispatcher_identifiers):
             self._broker_manager.add_queue(
                 job_ready_queue_for(ident),
                 durable=True,
                 exclusive=False,
             )
-        # Predeclare the fanout exchange so it exists before any consumer arrives.
-        self._logger.debug(f"Predeclaring fanout exchange for {FILE_FOUND_EXCHANGE}")
-        with self._broker_manager.get_connection_context() as conn:
-            exchange_name = self._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
-            declare_fanout_exchange(conn, exchange_name)
         self._broker_manager.add_queue(
             DISPATCHER_QUEUE,
             durable=True,
             exclusive=False,
         )
+        for ident in sorted(self._builder_identifiers):
+            self._broker_manager.add_file_found_queue(ident)
+
+        exchange_name = self._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
+        self._logger.info(
+            f"Predeclaring fanout exchange {exchange_name!r} and "
+            f"{len(self._builder_identifiers)} file-found queue(s) for "
+            f"{sorted(self._builder_identifiers)}",
+        )
+        # Opening the context declares everything registered above; the
+        # exchange is declared explicitly so it exists even with zero builders.
+        with self._broker_manager.get_connection_context() as conn:
+            declare_fanout_exchange(conn, exchange_name)
 
     def _start_managers(self) -> None:
         """Start all service managers in sequence with error handling."""

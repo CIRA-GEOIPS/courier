@@ -127,27 +127,6 @@ class DashboardModel:
 # Span constants (shared with generator modules)
 # ---------------------------------------------------------------------------
 
-SPAN_NAMES_BY_KIND: dict[PluginKind, list[str]] = {
-    PluginKind.DATA_MONITOR: [
-        "data_monitor.process_file",
-        "data_monitor.add_metadata",
-        "data_monitor.emit_file",
-    ],
-    PluginKind.JOB_BUILDER: [
-        "job_builder.build_job",
-        "job_builder.process_job_group",
-        "job_builder.emit_job",
-        "job_builder.emit_one",
-        "metadata_router.route_file",
-    ],
-    PluginKind.DISPATCHER: [
-        "dispatcher.dispatch_job",
-        "dispatcher.execute_job",
-        "dispatcher.emit_execution_log",
-    ],
-}
-"""Maps each plugin kind to its known OpenTelemetry span name prefixes."""
-
 SPAN_ATTRS: dict[str, str] = {
     "correlation_id": "span.courier.correlation_id",
     "file_path": "span.courier.file.path",
