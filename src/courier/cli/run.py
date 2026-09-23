@@ -77,7 +77,7 @@ def get_registered_plugin(plugin_registrations, entry):
             get_registered_plugin(plugin_registrations, MicroserviceModel.model_validate(entry.spec.config[kind]))
     else:
         raise ValueError(
-            f"{entry.identifier!r}: {entry.spec.kind!r} is not a valid"
+            f"{entry.identifier!r}: {entry.spec.kind!r} is not valid"
         )
 
 
