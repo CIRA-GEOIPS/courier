@@ -19,12 +19,12 @@ from courier.constants import (
     job_ready_queue_for,
 )
 from courier.errors import CourierError
-from courier.interfaces.discovery import (
-    ClassPluginRegistry
-)
-from courier.interfaces.falconers import Falconer
+from courier.interfaces.discovery import ClassPluginRegistry
 from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
+
+if TYPE_CHECKING:
+    from courier.interfaces.falconers import Falconer
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
     DISPATCHER_DEDUPE_SKIPS,
@@ -50,9 +50,6 @@ from courier.types.job import Job
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
-from pydantic import BaseModel, Field, model_validator
-from pathlib import Path
-
 _DEDUPE_LRU_SIZE = 1024
 
 #: Seconds a queue-depth probe may wait for the broker before giving up. The
@@ -66,6 +63,7 @@ if TYPE_CHECKING:
 
     from courier.service import Service
     from courier.types.file import File
+
 
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""
@@ -142,11 +140,14 @@ class Dispatcher(ServicePlugin):
                 ),
             ]
 
-    def set_falconer(self, falconer: Falconer) -> None:
-        self.falconer = falconer
+    def _get_compatible_partners(
+        self,
+        falconer: Falconer,
+        falcon: Falcon,
+    ) -> list[type[Falcon]]:
+        """Return the most specific intersection between falconer and falcon.
 
-    def _get_compatible_partners(self, falconer: Falconer, falcon: Falcon) -> list[type[Falcon]]:
-        """Return the most specific intersection between falconer and falcon represntations, keeping original form.
+        Keeps original form.
 
         Parameters
         ----------
@@ -161,10 +162,16 @@ class Dispatcher(ServicePlugin):
             Falcon representation classes supported by the falconer, preserving
             the order of the falcon's representation hierarchy.
         """
-        return [x for x in falcon.get_representation_hierarchy() if x in falconer.representations]
+        return [
+            x
+            for x in falcon.get_representation_hierarchy()
+            if x in falconer.representations
+        ]
 
     def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> Falcon:
-        """Ordain the marriage between the falconer and the falcon. Then, keep track of the falconer.
+        """Ordain the marriage between the falconer and the falcon.
+
+        Then, keep track of the falconer.
 
         Parameters
         ----------
@@ -188,7 +195,7 @@ class Dispatcher(ServicePlugin):
         compatible_partners = self._get_compatible_partners(falconer, falcon)
         if not compatible_partners:
             raise ValueError(
-            f"The falcon and falconer do not pair."
+                "The falcon and falconer do not pair.",
             )
         best_match = compatible_partners[-1].from_falcon(falcon)
         # configure each of the pair to fit each other's configuration neatly
@@ -198,7 +205,7 @@ class Dispatcher(ServicePlugin):
 
         falconer.falcon = best_match
         self.falconer = falconer
-        
+
         # be free
         return best_match
 
@@ -515,14 +522,9 @@ class Dispatcher(ServicePlugin):
             ),
         }
 
-# the dispatcher cannot be configurable past its base class.
-class DispatcherRegistryWrapper(ClassPluginRegistry):
-    def get_plugin(self, name: str) -> type[ServicePlugin]:
-        return self.expected_base
-
 dispatchers = ClassPluginRegistry(
     name="dispatchers",
     group="",
     expected_base=Dispatcher,
-    nested_values=["falconer", "falcon"]
+    nested_values=["falconer", "falcon"],
 )

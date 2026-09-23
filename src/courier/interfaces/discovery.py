@@ -82,6 +82,7 @@ def refresh() -> None:
     """
     _entry_points.cache_clear()
 
+
 @dataclass(frozen=True)
 class _EntryPointRegistry:
     """Shared lookup and loading for one entry-point group.
@@ -138,6 +139,7 @@ class _EntryPointRegistry:
                 f"{entry_point.value!r}: {exc}",
             ) from exc
 
+
 @dataclass(frozen=True)
 class ClassPluginRegistry(_EntryPointRegistry):
     """Registry of plugin *classes* for one interface.
@@ -178,6 +180,7 @@ class ClassPluginRegistry(_EntryPointRegistry):
     def get_plugins(self) -> list[type[ServicePlugin]]:
         """Return every plugin class in this group, importing each one."""
         return [self.get_plugin(name) for name in self.names()]
+
 
 @dataclass(frozen=True)
 class ConfigPluginRegistry(_EntryPointRegistry, Generic[ModelT]):  # noqa: UP046

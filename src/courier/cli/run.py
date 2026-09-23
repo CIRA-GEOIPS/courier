@@ -14,8 +14,12 @@ from typing import TYPE_CHECKING, Annotated, Any
 import typer
 
 from courier.cli.feedback import load_config_or_exit
-from courier.cli.plugins import NECESSARY_REGISTRIES, PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
-from courier.config import ServiceConfig
+from courier.cli.plugins import (
+    NECESSARY_REGISTRIES,
+    PLUGIN_REGISTRIES,
+    RUN_KINDS,
+    normalize_kind,
+)
 from courier.errors import InvalidPluginConfigError
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.service import create_service_with_plugins
@@ -48,7 +52,9 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
         out[entry.identifier] = tuple(declared)
     return out
 
+
 def get_registered_plugin(plugin_registrations, entry):
+    """Return registered plugin from the plugin registry or necessary registry."""
     kind = normalize_kind(entry.spec.kind)
     if kind not in RUN_KINDS:
         raise ValueError(
@@ -63,8 +69,11 @@ def get_registered_plugin(plugin_registrations, entry):
 
         plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
 
-        for kind in PLUGIN_REGISTRIES[kind].nested_values:
-            get_registered_plugin(plugin_registrations, MicroserviceModel.model_validate(entry.spec.config[kind]))
+        for k in PLUGIN_REGISTRIES[kind].nested_values:
+            get_registered_plugin(
+                plugin_registrations,
+                MicroserviceModel.model_validate(entry.spec.config[k]),
+            )
     elif kind in NECESSARY_REGISTRIES:
         plugin_class = NECESSARY_REGISTRIES[kind].expected_base
         plugin_config: dict[str, Any] = (
@@ -72,12 +81,15 @@ def get_registered_plugin(plugin_registrations, entry):
         )
 
         plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
-        
-        for kind in NECESSARY_REGISTRIES[kind].nested_values:
-            get_registered_plugin(plugin_registrations, MicroserviceModel.model_validate(entry.spec.config[kind]))
+
+        for k in NECESSARY_REGISTRIES[kind].nested_values:
+            get_registered_plugin(
+                plugin_registrations,
+                MicroserviceModel.model_validate(entry.spec.config[k]),
+            )
     else:
         raise ValueError(
-            f"{entry.identifier!r}: {entry.spec.kind!r} is not valid"
+            f"{entry.identifier!r}: {entry.spec.kind!r} is not valid",
         )
 
 
@@ -115,7 +127,7 @@ def _resolve_service_id(config: Any) -> str:
     return str(config.metadata.name)
 
 
-def run_service(
+def run_service( # noqa: PLR0912
     config: Any,
     log_level: str | None = None,
     *,
@@ -215,25 +227,25 @@ def run_service(
         if only_set is not None and e.identifier not in only_set:
             continue
 
-        missing = [
-            key
-            for key in ("falconer", "falcon")
-            if key not in e.spec.config
-        ]
+        missing = [key for key in ("falconer", "falcon") if key not in e.spec.config]
 
         if missing:
             raise InvalidPluginConfigError(
                 f"Dispatcher {e.identifier!r} is missing required config "
-                f"section(s): {', '.join(missing)}"
+                f"section(s): {', '.join(missing)}",
             )
-        falconer_id = MicroserviceModel.model_validate(e.spec.config["falconer"]).identifier
+        falconer_id = MicroserviceModel.model_validate(
+            e.spec.config["falconer"],
+        ).identifier
         falcon_id = MicroserviceModel.model_validate(e.spec.config["falcon"]).identifier
 
-        service._falconer_map.append((
-            e.identifier,
-            falconer_id,
-            falcon_id
-        ))
+        service._falconer_map.append(
+            (
+                e.identifier,
+                falconer_id,
+                falcon_id,
+            ),
+        )
     # Every job builder in the YAML, regardless of --only: each needs a durable
     # FilesFound-<builder> queue declared by this container, so a producer never
     # publishes into a fanout exchange with nothing bound to it (issue #44).

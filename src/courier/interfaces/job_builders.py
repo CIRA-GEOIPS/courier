@@ -869,6 +869,7 @@ class JobBuilder(ServicePlugin):
             builder_name=self.identifier,
         )
 
+
 #: Registry of job builder plugins, read from the ``courier.job_builders``
 #: entry-point group. Hands back classes; ``PluginManager`` constructs them.
 job_builders = ClassPluginRegistry(

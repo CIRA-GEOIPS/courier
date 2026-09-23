@@ -13,7 +13,6 @@ import logging
 import os
 import signal
 import subprocess
-import tempfile
 import threading
 import typing
 from dataclasses import dataclass
@@ -129,17 +128,6 @@ def execute_shell_script(  # noqa: PLR0913, PLR0915
     stderr_lines: list[str] = []
 
     try:
-        # -- Write script body to a temporary file ----------------------------
-        # with tempfile.NamedTemporaryFile(
-        #     mode="w",
-        #     suffix=".sh",
-        #     delete=False,
-        # ) as script_file:
-        #     script_file.write(script_body)
-        #     script_path = script_file.name
-
-        # Path(script_path).chmod(0o755)
-
         # -- Open log file if requested ---------------------------------------
         if log_to_file:
             log_fh = cast("Path", log_file_path).open("w")

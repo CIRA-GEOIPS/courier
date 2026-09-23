@@ -1,12 +1,15 @@
+"""Implementation for the python_falcon falcon class."""
 from pathlib import Path
 from typing import ClassVar
+
 from courier.plugins.falcons.bash_falcon import BashFalcon
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 
 
 class PythonFalcon(BashFalcon):
-    """Falcon for Pythin execution"""
+    """Falcon for Python execution."""
+
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "python_falcon"
@@ -19,12 +22,13 @@ class PythonFalcon(BashFalcon):
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        self._default_binary = self.config.default_binary if self.config.default_binary else "python"
+        self._default_binary = (
+            self.config.default_binary if self.config.default_binary else "python"
+        )
         self._file_suffix = ".py"
-    def is_healthy(self) -> bool:
-        return True
+
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
-        """Validate that a value exists on the runtime PATH
+        """Validate that a value exists on the runtime PATH.
 
         Parameters
         ----------
@@ -41,13 +45,11 @@ class PythonFalcon(BashFalcon):
             [
                 self._default_binary,
                 "-c",
-                (
-                    "import shutil, sys; "
-                    f"sys.exit(0 if shutil.which({value!r}) else 1)"
-                ),
-            ]
+                (f"import shutil, sys; sys.exit(0 if shutil.which({value!r}) else 1)"),
+            ],
         )
         return self.get_payload_from_job(command)
+
     def generate_calling_method(self) -> list[str]:
         """Generate in-line or standard Python calling structure.
 
@@ -63,8 +65,9 @@ class PythonFalcon(BashFalcon):
             command_arr.append("-c")
 
         return command_arr
+
     def declare_command(self, path: Path | None = None) -> list[str]:
-        """Declare the command string used to execute the Falcon
+        """Declare the command string used to execute the Falcon.
 
         Parameters
         ----------
@@ -96,5 +99,7 @@ class PythonFalcon(BashFalcon):
             for suffix in self.config.suffix_args:
                 faux_command_arr.append(suffix)
 
-            command_str = f"import subprocess; subprocess.run({faux_command_arr!r}, check=True)"
+            command_str = (
+                f"import subprocess; subprocess.run({faux_command_arr!r}, check=True)"
+            )
             return [command_str]

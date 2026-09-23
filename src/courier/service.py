@@ -763,33 +763,41 @@ class Service:
         self._logger.info(f"Resolved routing: {resolved}")
 
     def _populate_falconer_map(self) -> None:
-        """Use the falconer map to marry the falcon and falconer. Also give everything to the plugin manager."""
+        """Use the falconer map to marry the falcon and falconer.
+
+        Also give everything to the plugin manager.
+        """
         if not self._falconer_map:
             return
-        from courier.interfaces.dispatchers import Dispatcher
-        from courier.interfaces.falconers import Falconer
-        from courier.interfaces.falcons import Falcon
-        
+        from courier.interfaces.dispatchers import Dispatcher  # noqa: PLC0415
+        from courier.interfaces.falconers import Falconer  # noqa: PLC0415
+        from courier.interfaces.falcons import Falcon  # noqa: PLC0415
+
         for dispatcher_id, falconer_id, falcon_id in self._falconer_map:
             dispatcher_obj = self._plugin_manager._plugins[dispatcher_id].plugin
             falconer_obj = self._plugin_manager._plugins[falconer_id].plugin
             falcon_obj = self._plugin_manager._plugins[falcon_id].plugin
-            
-            if not (isinstance(dispatcher_obj, Dispatcher) and
-                isinstance(falconer_obj, Falconer) and
-                    isinstance(falcon_obj, Falcon)):
-                raise ValueError
 
-            # each object is populated with its initial configuration. 
+            if not (
+                isinstance(dispatcher_obj, Dispatcher)
+                and isinstance(falconer_obj, Falconer)
+                and isinstance(falcon_obj, Falcon)
+            ):
+                raise TypeError("Invalid type for dispatcher group.")
+
+            # each object is populated with its initial configuration.
 
             # dispatcher checks if falconer and falcon are compatible
             # dispatcher configures, marries the falconer and falcon
-            mutated_falcon = dispatcher_obj.ordain_bird_marriage(falconer_obj, falcon_obj)
+            mutated_falcon = dispatcher_obj.ordain_bird_marriage(
+                falconer_obj,
+                falcon_obj,
+            )
 
             # if something goes wrong, check here first: I'm not sure if this will
             # mess up the pipeline
             self._plugin_manager._plugins[falcon_id].plugin = mutated_falcon
-    
+
     def _predeclare_target_queues(self) -> None:
         """Declare every queue this service or its peers will consume from.
 

@@ -16,6 +16,7 @@ from courier.types.file import File, FrozenFile
 
 _OVERFLOW_SEPARATOR = "_overflow_"
 
+
 # Mutable because: Job accumulates files incrementally via add_file() until
 # ready() returns True; single-threaded ownership by the job builder plugin.
 class Job:

@@ -1,57 +1,60 @@
-from dataclasses import field
-from shutil import copy
-from typing import Any, ClassVar
-import jinja2
+"""Implementation for the base falconer class."""
 import tempfile
-import copy
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, ClassVar
+
+import jinja2
 
 from courier.constants import PluginRunState
 from courier.errors import CourierError
-from courier.plugins.falcons.shell_falcon import ShellFalcon
-from pydantic import BaseModel
-from pathlib import Path
-from dataclasses import dataclass
-
-from courier.interfaces.falcons import DispatcherGroupConfig, Falcon, FalconConfig
-from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.interfaces.discovery import (
-        ClassPluginRegistry,
-        ENTRY_POINT_PREFIX
+    ENTRY_POINT_PREFIX,
+    ClassPluginRegistry,
 )
+from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
+from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.logging import get_logger
 
+
 @dataclass
 class FalconerPayload:
+    """Environment payload for falcon cast-off."""
+
     command: list[str]
     log_prefix: str = ""
     log_file_path: Path | None = None
 
+
 class Falconer(ServicePlugin):
+    """Base class for the falconer plugin type."""
+
     interface: ClassVar[str] = "falconers"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "falconer"
 
-    representations: list[type[Falcon]] = []
+    representations: list[type[Falcon]]
     falcon: Falcon
     base_config: DispatcherGroupConfig
 
     def __init__(
         self,
         service: Service,
-        config: dict | None = None,
+        config: dict | None = None, # noqa: ARG002
         identifier: str | None = None,
     ) -> None:
         if identifier is None:
             raise ValueError(
-                f"Falconer {type(self).__name__} requires an identifier"
+                f"Falconer {type(self).__name__} requires an identifier",
             )
         self._logger = get_logger("plugin", self.name, service.config)
         self.parent_service = service
         self._state: PluginRunState
         self.identifier = identifier
+        self.representations = []
 
     def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
         """Initialize the runtime environment and execute the Falcon.
@@ -77,19 +80,22 @@ class Falconer(ServicePlugin):
         except Exception as e:
             self._state = PluginRunState.FAILED
             raise CourierError(
-            f"Failed to initialize environment for {self.identifier}",
-            e
-            )
+                f"Failed to initialize environment for {self.identifier}",
+                e,
+            ) from e
         try:
             return self.falcon.get_payload_from_job(p.command)
         except Exception as e:
             self._state = PluginRunState.FAILED
             raise CourierError(
-                f"Failed to execute job",
-                e
-            )
-    def initialize_environment(self, job) -> FalconerPayload:
-        """Set up the runtime environment. Usually this means creating an array of commands.
+                "Failed to execute job",
+                e,
+            ) from e
+
+    def initialize_environment(self, job) -> FalconerPayload: # noqa: ARG002
+        """Set up the runtime environment.
+
+        Usually this means creating an array of commands.
 
         Parameters
         ----------
@@ -102,6 +108,7 @@ class Falconer(ServicePlugin):
             The command and associated metadata required to execute the job.
         """
         return FalconerPayload(command=[])
+
     def get_metrics(self) -> dict[str, Any]:
         """Return Falconer-specific metrics.
 
@@ -111,6 +118,7 @@ class Falconer(ServicePlugin):
             Mapping of metric names to their current values.
         """
         return {}
+
     def set_falcon(self, falcon: Falcon):
         """Associate a Falcon with this Falconer.
 
@@ -120,8 +128,11 @@ class Falconer(ServicePlugin):
             The Falcon that will execute commands prepared by this Falconer.
         """
         self.falcon = falcon
+
     def _render_script_file(self, job: Job, path: Path | None = None) -> Path:
-        """Render the script against a jinja2 template. Redirect to a directory if necessary.
+        """Render the script against a jinja2 template.
+
+        Redirect to a directory if necessary.
 
         Parameters
         ----------
@@ -145,9 +156,11 @@ class Falconer(ServicePlugin):
         if path is not None:
             try:
                 path.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                self._logger.error(f"Failed to create directory for temporary script at {path}")
-                raise e
+            except Exception:
+                self._logger.exception(
+                    f"Failed to create directory for temporary script at {path}",
+                )
+                raise
         try:
             falcon_config = self.falcon.config
             rendered_script_path: str | None = None
@@ -158,20 +171,25 @@ class Falconer(ServicePlugin):
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 suffix=falcon_config.file.suffix,
-                dir=path or "/tmp/",
+                dir=path or "/tmp/", # noqa: S108
                 delete=False,
             ) as script_file:
                 script_file.write(rendered_script)
                 rendered_script_path = script_file.name
             res = Path(rendered_script_path)
             res.chmod(0o755)
-            return res
+            return res # noqa: TRY300
         except Exception as e:
             raise CourierError(
-            f"Failed to render script file for {self.identifier}",
-            e
-            )
-    def _generate_execution_command(self, job: Job, path: Path | None = None) -> list[str]:
+                f"Failed to render script file for {self.identifier}",
+                e,
+            ) from e
+
+    def _generate_execution_command(
+        self,
+        job: Job,
+        path: Path | None = None,
+    ) -> list[str]:
         """Generate the command to be executed by the falcon at runtime.
 
         Parameters
@@ -192,6 +210,7 @@ class Falconer(ServicePlugin):
         for command in raw_command:
             command_arr.append(self.render_script(job, command))
         return command_arr
+
     def render_script(self, job: Job, script: str) -> str:
         """Render the Jinja2 bash template with job and config context.
 
@@ -222,13 +241,21 @@ class Falconer(ServicePlugin):
             },
             "config": job.config,
         }
-        return jinja2.Environment(
-            undefined=jinja2.StrictUndefined,
-            autoescape=False,
-            finalize=lambda value: "" if value is None or value == [] else value,
-        ).from_string(script).render(**context)
+        return (
+            jinja2.Environment(
+                undefined=jinja2.StrictUndefined,
+                autoescape=False, # noqa: S701
+                finalize=lambda value: "" if value is None or value == [] else value,
+            )
+            .from_string(script)
+            .render(**context)
+        )
+
     def _validate_toolchain(self):
-        """Validate the provided falcon toolchain against its runtime environment using the falcon's set method.
+        """Validate the provided falcon toolchain.
+
+        Validate the provided falcon toolchain against its runtime environment using
+        the falcon's set method.
 
         Raises
         ------
@@ -242,15 +269,19 @@ class Falconer(ServicePlugin):
                 if payload[0].return_code != 0:
                     self._state = PluginRunState.FAILED
                     raise CourierError(
-                    f"Toolchain validation failed for value {value} on falconer {self.identifier}",
-                    payload[0].stderr
+                        f"Toolchain validation failed for value {value}"
+                        "on falconer {self.identifier}",
+                        payload[0].stderr,
                     )
                 else:
-                    self._logger.info(f"Toolchain validation succeeded for value {value}")
+                    self._logger.info(
+                        f"Toolchain validation succeeded for value {value}",
+                    )
             else:
                 raise CourierError(
-                f"Toolchain validation failed with no warning."
+                    "Toolchain validation failed with no warning.",
                 )
+
     def start(self) -> None:
         """Check if the environment is suitable and wait.
 
@@ -261,10 +292,11 @@ class Falconer(ServicePlugin):
         """
         self._validate_toolchain()
         self._state = PluginRunState.STOPPED
-        return
+
     def stop(self) -> None:
         """Stop the Falconer."""
         return
+
     def is_healthy(self) -> bool:
         """Return whether the Falconer is currently healthy.
 
@@ -274,6 +306,7 @@ class Falconer(ServicePlugin):
             ``True`` when the Falconer is running, otherwise ``False``.
         """
         return True
+
 
 falconers = ClassPluginRegistry(
     name="falconers",

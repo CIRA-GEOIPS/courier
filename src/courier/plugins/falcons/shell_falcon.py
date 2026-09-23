@@ -1,18 +1,16 @@
-from datetime import datetime
+"""Implementation of the shell_falcon falcon class."""
 from pathlib import Path
-import tempfile
 from typing import ClassVar
-from courier.interfaces.falcons import Falcon, FalconConfig
+
+from courier.interfaces.falcons import Falcon
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
-from courier.types.job import Job
-
 from courier.utils.shell_executor import execute_shell_script
 
-from courier.utils.functional import slugify_for_filename
 
 class ShellFalcon(Falcon):
     """Falcon class for shell execution."""
+
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "shell_falcon"
@@ -25,11 +23,11 @@ class ShellFalcon(Falcon):
         identifier: str | None = None,
     ) -> None:
         super().__init__(service, config, identifier=identifier)
-        self._default_binary = self.config.default_binary if self.config.default_binary else "sh"
+        self._default_binary = (
+            self.config.default_binary if self.config.default_binary else "sh"
+        )
         self._file_suffix = ".sh"
 
-    def is_healthy(self) -> bool:
-        return True 
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
         """Validate toolchain arguments using the `command` command.
 
@@ -45,6 +43,7 @@ class ShellFalcon(Falcon):
         """
         command = [self._default_binary, "-c", f"command -v {value}"]
         return self.get_payload_from_job(command)
+
     def generate_calling_method(self) -> list[str]:
         """Generate the way this falcon calls itself. Either with a -c or without.
 
@@ -59,6 +58,7 @@ class ShellFalcon(Falcon):
             command_arr.append("-c")
 
         return command_arr
+
     def declare_command(self, path: Path | None = None) -> list[str]:
         """Generate the command-line execution array for this context.
 
@@ -81,7 +81,7 @@ class ShellFalcon(Falcon):
                 self.config.binary,
                 " ".join(self.config.prefix_args),
                 str(path) if path else str(self.config.file),
-                " ".join(self.config.suffix_args)
+                " ".join(self.config.suffix_args),
             ]
             command_arr.append(" ".join(part for part in parts if part))
         else:
@@ -91,9 +91,13 @@ class ShellFalcon(Falcon):
             for suffix in self.config.suffix_args:
                 command_arr.append(suffix)
         return command_arr
-    def get_payload_from_job(self, command: list[str],
-                             log_prefix: str = "",
-                             log_file_path: Path | None = None) -> list[ExecutionLog]:         
+
+    def get_payload_from_job(
+        self,
+        command: list[str],
+        log_prefix: str = "",
+        log_file_path: Path | None = None,
+    ) -> list[ExecutionLog]:
         """Execute this command against the current context.
 
         Parameters
@@ -122,8 +126,10 @@ class ShellFalcon(Falcon):
             log_only_errors=self.base_config.log_only_errors,
         )
 
-        return [ExecutionLog(
-            return_code=result.return_code,
-            stdout=result.stdout,
-            stderr=result.stderr
-        )]
+        return [
+            ExecutionLog(
+                return_code=result.return_code,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            ),
+        ]

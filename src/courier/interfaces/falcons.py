@@ -1,21 +1,21 @@
-import dataclasses
+"""Implementation for the base falcon plugin."""
 import os
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar, Self
-import jinja2
-from pydantic import BaseModel, field_validator, model_validator, Field
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
 from courier.interfaces.discovery import ENTRY_POINT_PREFIX, ClassPluginRegistry
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
-from courier.types.job import Job
 from courier.utils.logging import get_logger
 
-from dataclasses import dataclass
-
-from pathlib import Path
 
 class DispatcherGroupConfig(BaseModel):
     """Validated configuration for the entire dispatcher group."""
+
     timeout_seconds: float = Field(default=3600.0, gt=0)
     log_to_logger: bool = Field(default=False)
     log_to_file: bool = Field(default=False)
@@ -35,27 +35,32 @@ class DispatcherGroupConfig(BaseModel):
                 raise ValueError(f"log_dir is not writable: {self.log_dir}")
         return self
 
+
 # The transient nature of falcons does not allow for modifications to the base config.
 @dataclass(frozen=True)
 class FalconConfig(BaseModel):
     """Validated configuration for a Falcon."""
+
     file: Path
-    toolchain: list[str] = Field(default_factory=list)
-    toolchain_prepend: list[str] = Field(default_factory=list)
-    prefix_args: list[str] = Field(default_factory=list)
-    suffix_args: list[str] = Field(default_factory=list)
+    toolchain: list[str] = field(default_factory=list)
+    toolchain_prepend: list[str] = field(default_factory=list)
+    prefix_args: list[str] = field(default_factory=list)
+    suffix_args: list[str] = field(default_factory=list)
     binary: str | None = None
     default_binary: str | None = None
 
     @field_validator("file")
     @classmethod
     def validate_file(cls, value: Path) -> Path:
+        """Validate if the provided file exists."""
         if not value.exists():
             raise ValueError(f"File does not exist {value}")
         return value
 
+
 class Falcon(ServicePlugin):
     """Base class for Falcons."""
+
     interface: ClassVar[str] = "falcons"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "falcon"
@@ -66,11 +71,11 @@ class Falcon(ServicePlugin):
         self,
         service: Service,
         config: dict | None = None,
-        identifier: str | None = None
+        identifier: str | None = None,
     ) -> None:
         if identifier is None:
             raise ValueError(
-                f"Falcon {type(self).__name__} requires an identifier"
+                f"Falcon {type(self).__name__} requires an identifier",
             )
         self.identifier = identifier
         self._logger = get_logger("plugin", self.name, service.config)
@@ -93,6 +98,7 @@ class Falcon(ServicePlugin):
             for parent in reversed(cls.__mro__)
             if issubclass(parent, Falcon) and parent is not Falcon
         ]
+
     @classmethod
     def from_falcon(cls, falcon: "Falcon") -> "Falcon":
         """Generate a Falcon represntation from another Falcon.
@@ -112,8 +118,9 @@ class Falcon(ServicePlugin):
             falcon.config.model_dump(),
             falcon.identifier,
         )
-    def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
-        """Validate a toolchain argument through a self-defined method
+
+    def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]: # noqa: ARG002
+        """Validate a toolchain argument through a self-defined method.
 
         Parameters
         ----------
@@ -126,9 +133,13 @@ class Falcon(ServicePlugin):
             Execution logs describing the result of validation.
         """
         return []
-    def get_payload_from_job(self, command: list[str],
-                             log_prefix: str = "",
-                             log_file_path: Path | None = None) -> list[ExecutionLog]:         
+
+    def get_payload_from_job(
+        self,
+        command: list[str], # noqa: ARG002
+        log_prefix: str = "", # noqa: ARG002
+        log_file_path: Path | None = None, # noqa: ARG002
+    ) -> list[ExecutionLog]:
         """Get an execution log from execution a command.
 
         Parameters
@@ -146,9 +157,10 @@ class Falcon(ServicePlugin):
             Execution logs produced by the command.
         """
         return [
-            ExecutionLog()
+            ExecutionLog(),
         ]
-    def declare_command(self, path: Path | None = None) -> list[str]:
+
+    def declare_command(self, path: Path | None = None) -> list[str]: # noqa: ARG002
         """Declare the syntax to call a command.
 
         Parameters
@@ -162,8 +174,9 @@ class Falcon(ServicePlugin):
             Command arguments required to execute the Falcon.
         """
         return []
+
     def generate_calling_method(self) -> list[str]:
-        """Declare the first part of a command, e.g. `python3 -c` or `bash -c`
+        """Declare the first part of a command, e.g. `python3 -c` or `bash -c`.
 
         Returns
         -------
@@ -171,14 +184,23 @@ class Falcon(ServicePlugin):
             Command arguments used to invoke this Falcon representation.
         """
         return []
+
     def get_metrics(self) -> dict[str, Any]:
+        """Return plugin-specific metrics."""
         return {}
+
     def start(self) -> None:
+        """Start execution of the falcon."""
         return
+
     def stop(self) -> None:
+        """Stop execution of the falcon."""
         return
+
     def is_healthy(self) -> bool:
+        """Declare the health of the falcon."""
         return True
+
 
 falcons = ClassPluginRegistry(
     name="falcons",

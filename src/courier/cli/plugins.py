@@ -13,18 +13,16 @@ from rich.console import Console
 from rich.table import Table
 
 from courier.cli.feedback import load_config_or_exit
-
 from courier.interfaces import (
+    data_monitor_configs,
     data_monitors,
     dispatchers,
-    job_builders,
     falconers,
     falcons,
-    data_monitor_configs,
+    job_builders,
 )
 
 if TYPE_CHECKING:
-
     from courier.interfaces.discovery import (
         ClassPluginRegistry,
         ConfigPluginRegistry,
@@ -66,12 +64,12 @@ PLUGIN_REGISTRIES: dict[str, ClassPluginRegistry | ConfigPluginRegistry] = {
     "data_monitors": data_monitors,
     "job_builders": job_builders,
     "falconers": falconers,
-    "falcons": falcons
+    "falcons": falcons,
 }
 
 # plugins that are necessary to run other plugins - not configurable past its base class
 NECESSARY_REGISTRIES: dict[str, ClassPluginRegistry] = {
-    "dispatchers": dispatchers
+    "dispatchers": dispatchers,
 }
 
 #: Interfaces that can appear as a ``spec.run`` step. ``data_monitor_configs``
@@ -91,7 +89,7 @@ _KIND_TO_REGISTRY_KEY: dict[Lexeme, str] = {
     Lexeme("job_builder"): "job_builders",
     Lexeme("dispatcher"): "dispatchers",
     Lexeme("falconer"): "falconers",
-    Lexeme("falcon"): "falcons"
+    Lexeme("falcon"): "falcons",
 }
 
 
@@ -118,7 +116,7 @@ _TYPE_STYLES: dict[str, str] = {
     "data_monitors": "magenta",
     "job_builders": "yellow",
     "falconers": "red",
-    "falcons": "blue"
+    "falcons": "blue",
 }
 
 
