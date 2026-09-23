@@ -474,7 +474,29 @@ class TestBuilderIdentifiersAreNeverFiltered:
     @patch("courier.cli.run.PLUGIN_REGISTRIES", _plugin_registries_fixture())
     def test_builder_identifiers_are_passed_without_only(self, mock_create_svc):
         """The same set is passed when no subset was requested."""
-        run_service(_make_config(self._entries()), only_set=None)
+        entries = self._entries()
+
+        entries[3].spec.config["falconer"] = {
+            "identifier": "my-fr",
+            "spec": {
+                "kind": "falconer",
+                "name": "local_falconer",
+                "config": {},
+            },
+        }
+
+        entries[3].spec.config["falcon"] = {
+            "identifier": "my-fc",
+            "spec": {
+                "kind": "falcon",
+                "name": "shell_falcon",
+                "config": {},
+            },
+        }
+
+        config = _make_config(entries)
+
+        run_service(config, only_set={"my-dp"})
 
         _, kwargs = mock_create_svc.return_value.configure_routing.call_args
         assert kwargs["builder_identifiers"] == {"my-jb", "jb-2"}

@@ -124,7 +124,7 @@ class Service:
         self._dispatcher_identifiers: frozenset[str] = frozenset()
         self._builder_identifiers: frozenset[str] = frozenset()
         self._builder_targets: dict[str, tuple[str, ...]] = {}
-        self._falconer_map: list[tuple[str, str, str]]
+        self._falconer_map: list[tuple[str, str, str]] = []
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
 
