@@ -64,6 +64,9 @@ if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.file import File
 
+class DispatcherConfig(DispatcherGroupConfig):
+    pass
+
 
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""

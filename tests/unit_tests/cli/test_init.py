@@ -73,6 +73,7 @@ class _FakePlugin:
 class _FakeRegistry:
     def __init__(self, *names: str) -> None:
         self._plugins = [_FakePlugin(name) for name in names]
+        self.nested_values = []
 
     def get_plugins(self) -> list[_FakePlugin]:
         return list(self._plugins)
@@ -352,6 +353,7 @@ class TestBuildServiceConfig:
             display_label="Data Monitor",
             config_model=None,
             config_values=config_values or {},
+            nested_values=[]
         )
 
     def test_basic_structure(self):
@@ -389,6 +391,7 @@ class TestBuildServiceConfig:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp/watch", "hostname": "myhost"},
+            nested_values=[]
         )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
@@ -424,6 +427,7 @@ class TestBuildServiceConfig:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp"},
+            nested_values=[]
         )
         sel_jb = PluginSelection(
             plugin_class=DummyJobBuilder,
@@ -432,6 +436,7 @@ class TestBuildServiceConfig:
             display_label="Job Builder",
             config_model=DummyJobBuilderConfig,
             config_values={},
+            nested_values=[]
         )
         sel_dp = PluginSelection(
             plugin_class=SerialBashDispatcher,
@@ -440,6 +445,7 @@ class TestBuildServiceConfig:
             display_label="Dispatcher",
             config_model=SerialBashConfig,
             config_values={"bash_script": "echo hello"},
+            nested_values=[]
         )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
@@ -462,6 +468,7 @@ class TestValidateConfig:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp"},
+            nested_values=[]
         )
         config_dict = build_service_config(
             metadata={"name": "test", "description": "test"},
@@ -504,6 +511,7 @@ class TestWriteYaml:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp"},
+            nested_values=[]
         )
         config_dict = build_service_config(
             metadata={"name": "test-roundtrip", "description": "roundtrip test"},
@@ -554,6 +562,7 @@ class TestWriteYaml:
                     display_label="Data Monitor",
                     config_model=FileSystemPollerConfig,
                     config_values={"path": "/tmp"},
+                    nested_values=[]
                 ),
             ],
         )

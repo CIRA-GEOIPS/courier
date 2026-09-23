@@ -2,10 +2,16 @@
 from pathlib import Path
 from typing import ClassVar
 
+from courier.interfaces.falcons import DispatcherGroupConfig, FalconConfig
 from courier.plugins.falcons.bash_falcon import BashFalcon
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 
+class PythonFalconConfig(FalconConfig):
+    pass
+
+class PythonFalconBaseConfig(DispatcherGroupConfig):
+    pass
 
 class PythonFalcon(BashFalcon):
     """Falcon for Python execution."""

@@ -37,15 +37,14 @@ class DispatcherGroupConfig(BaseModel):
 
 
 # The transient nature of falcons does not allow for modifications to the base config.
-@dataclass(frozen=True)
 class FalconConfig(BaseModel):
     """Validated configuration for a Falcon."""
 
     file: Path
-    toolchain: list[str] = field(default_factory=list)
-    toolchain_prepend: list[str] = field(default_factory=list)
-    prefix_args: list[str] = field(default_factory=list)
-    suffix_args: list[str] = field(default_factory=list)
+    toolchain: list[str] = Field(default_factory=list)
+    toolchain_prepend: list[str] = Field(default_factory=list)
+    prefix_args: list[str] = Field(default_factory=list)
+    suffix_args: list[str] = Field(default_factory=list)
     binary: str | None = None
     default_binary: str | None = None
 
