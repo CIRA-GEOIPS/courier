@@ -71,6 +71,30 @@ class TestCommandRendering:
         generated_command = falconer._generate_execution_command(job)
 
         assert generated_command == [f"/bin/dash {falcon.config.file}"]
+    def test_falcon_generate_command_no_file(self, service) -> None:
+        job = _job()
+        falcon_config = {"binary": "cp", "suffix_args": ["{{ files[0].file }}"]}
+
+        falcon = ShellFalcon(service, falcon_config, "dummy")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == ["cp '/d/a.nc'"]
+
+    def test_falcon_generate_env_no_file(self, service) -> None:
+        job = _job()
+        falcon_config = {"binary": "cp", "suffix_args": ["{{ files[0].file }}"]}
+
+        falcon = ShellFalcon(service, falcon_config, "dummy")
+        falconer = LocalFalconer(service, {}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        env = falconer.initialize_environment(job)
+
+        assert env != None
+        assert env.command == ["sh", "-c", "cp '/d/a.nc'"]
 
     def test_falcon_generate_command_with_suffix(self, service, falcon_config) -> None:
         job = _job()

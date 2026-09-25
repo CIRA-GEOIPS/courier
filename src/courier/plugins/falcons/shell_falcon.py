@@ -101,13 +101,20 @@ class ShellFalcon(Falcon):
             the configured Falcon.
         """
         command_arr = []
+        path_str: str
+        if path:
+            path_str = str(path)
+        elif self.config.file:
+            path_str = str(self.config.file)
+        else:
+            path_str = ""
 
         if self.config.binary:
             parts = [
                 self.config.binary,
-                " ".join(self.config.prefix_args),
-                str(path) if path else str(self.config.file),
-                " ".join(self.config.suffix_args),
+                *self.config.prefix_args,
+                path_str,
+                *self.config.suffix_args,
             ]
             command_arr.append(shlex.join(part for part in parts if part))
         else:

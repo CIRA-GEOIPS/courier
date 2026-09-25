@@ -173,14 +173,15 @@ class SlurmFalconer(Falconer):
         CourierError
             If the Falcon script cannot be rendered.
         """
-        clean_path = self._render_script_file(job, self._output_dir)
+        clean_path = self._render_script_file(job, self._output_dir) if self.falcon.config.file else None
 
         command = self._build_sbatch_args(job)
 
         raw_command = self.falcon.declare_command(clean_path)
         if (
             self.falcon.config.binary
-            or self.falcon.config.file.suffix != self.falcon._file_suffix
+            or (self.falcon.config.file and 
+                self.falcon.config.file.suffix != self.falcon._file_suffix)
         ):
             wrap_command = (
                 f"{' '.join(self.falcon.generate_calling_method())} "
@@ -357,7 +358,8 @@ class SlurmFalconer(Falconer):
                 falconer_name=self.name,
                 falconer_identifier=self.identifier,
             ).inc()
-            env.file.unlink()
+            if env.file:
+                env.file.unlink()
             raise CourierError(
                 "Failed to execute job",
                 e,
@@ -410,7 +412,8 @@ class SlurmFalconer(Falconer):
                         falconer_identifier=self.identifier,
                         status="rejected",
                     ).inc()
-                    env.file.unlink()
+                    if env.file:
+                        env.file.unlink()
                     return [
                         ExecutionLog(
                             return_code=-1,
@@ -427,7 +430,8 @@ class SlurmFalconer(Falconer):
                         falconer_identifier=self.identifier,
                         status="rejected",
                     ).inc()
-                    env.file.unlink()
+                    if env.file:
+                        env.file.unlink()
                     return [
                         ExecutionLog(
                             return_code=-1,
@@ -462,7 +466,8 @@ class SlurmFalconer(Falconer):
                     falconer_identifier=self.identifier,
                     status="submitted",
                 ).inc()
-                env.file.unlink()
+                if env.file:
+                    env.file.unlink()
                 return [
                     ExecutionLog(
                         return_code=return_code,

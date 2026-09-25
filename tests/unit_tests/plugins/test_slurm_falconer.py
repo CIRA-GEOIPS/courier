@@ -141,3 +141,28 @@ class TestCommandRendering:
             r"""python -c 'import subprocess; subprocess\.run\(\['[^']+\.sh'\], check=True\)'""",
             wrap_arg,
         )
+
+    def test_falcon_generate_command_no_file(self, service) -> None:
+        job = _job()
+        falcon_config = {"binary": "cp", "suffix_args": ["{{ files[0].file }}"]}
+
+        falcon = ShellFalcon(service, falcon_config, "dummy")
+        falconer = SlurmFalconer(service, {"slurm_output_dir": "/tmp/"}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        generated_command = falconer._generate_execution_command(job)
+
+        assert generated_command == ["cp '/d/a.nc'"]
+
+    def test_falcon_generate_env_no_file(self, service) -> None:
+        job = _job()
+        falcon_config = {"binary": "cp", "suffix_args": ["{{ files[0].file }}"]}
+
+        falcon = ShellFalcon(service, falcon_config, "dummy")
+        falconer = SlurmFalconer(service, {"slurm_output_dir": "/tmp/"}, "dummyfalconer")
+        falconer.falcon = falcon
+        falconer.base_config = DispatcherGroupConfig()
+        env = falconer.initialize_environment(job)
+
+        assert env != None
+        assert env.command[-1] == "sh -c 'cp '/d/a.nc''"

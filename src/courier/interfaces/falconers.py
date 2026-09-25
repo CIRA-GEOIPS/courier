@@ -28,7 +28,7 @@ class FalconerPayload:
     """Environment payload for falcon cast-off."""
 
     command: list[str]
-    file: Path
+    file: Path | None
     log_prefix: str = ""
     log_file_path: Path | None = None
 
@@ -112,7 +112,8 @@ class Falconer(ServicePlugin):
                     falconer_identifier=self.identifier,
                 ).inc()
 
-                p.file.unlink(missing_ok=True)
+                if p.file:
+                    p.file.unlink(missing_ok=True)
 
             except Exception as e:
                 self._state = PluginRunState.FAILED

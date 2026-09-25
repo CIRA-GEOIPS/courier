@@ -82,8 +82,19 @@ def _write_config(tmp_path: Path, input_dir: Path, output_dir: Path) -> Path:
                     kind: dispatcher
                     name: serial_bash
                     config:
-                      bash_script: |
-                        cp {{{{ files[0].file }}}} {output_dir}/
+                        falconer:
+                            identifier: falconer-spec
+                            spec:
+                                kind: falconer
+                                name: local_falconer
+                        falcon:
+                            identifier: falcon-spec
+                            spec:
+                                kind: falcon
+                                name: bash_falcon
+                                config:
+                                    binary: "cp"
+                                    suffix_args: ["{{ files[0].file }}", "~/CIRA/out"]
             """,
         ),
     )

@@ -83,7 +83,8 @@ class LocalFalconer(Falconer):
                     log_file_path=env.log_file_path,
                 )
 
-                env.file.unlink(missing_ok=True)
+                if env.file:
+                    env.file.unlink(missing_ok=True)
 
                 self._jobs_processed.labels(
                     status="success",
@@ -128,7 +129,7 @@ class LocalFalconer(Falconer):
         CourierError
             If rendering or preparing the Falcon script fails.
         """
-        clean_path = self._render_script_file(job)
+        clean_path = self._render_script_file(job) if self.falcon.config.file else None
 
         call = self.falcon.generate_calling_method()
         command = self._generate_execution_command(job, clean_path)

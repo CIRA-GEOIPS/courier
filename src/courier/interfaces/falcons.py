@@ -46,7 +46,7 @@ class DispatcherGroupConfig(BaseModel):
 class FalconConfig(BaseModel):
     """Validated configuration for a Falcon."""
 
-    file: Path
+    file: Path | None = None
     toolchain: list[str] = Field(default_factory=list)
     toolchain_prepend: list[str] = Field(default_factory=list)
     prefix_args: list[str] = Field(default_factory=list)
@@ -56,11 +56,18 @@ class FalconConfig(BaseModel):
 
     @field_validator("file")
     @classmethod
-    def validate_file(cls, value: Path) -> Path:
-        """Validate if the provided file exists."""
-        if not value.exists():
-            raise ValueError(f"File does not exist {value}")
+    def validate_file(cls, value: Path | None) -> Path | None:
+        """Validate that the provided file exists."""
+        if value is not None and not value.exists():
+            raise ValueError(f"File does not exist: {value}")
         return value
+
+    @model_validator(mode="after")
+    def validate_file_or_binary(self) -> "FalconConfig":
+        """Require either a file or a binary."""
+        if self.file is None and self.binary is None:
+            raise ValueError("Either 'file' or 'binary' must be provided")
+        return self
 
 
 class Falcon(ServicePlugin):
