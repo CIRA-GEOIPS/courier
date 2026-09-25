@@ -14,8 +14,10 @@ from courier.errors import CourierError
 
 from unittest.mock import MagicMock, ANY
 
+
 def _job(identifier: str = "job-1") -> Job:
     return Job("n", identifier, {}, files=[File(file=Path("/d/a.nc")).freeze()])
+
 
 @pytest.fixture
 def service() -> MagicMock:
@@ -24,23 +26,23 @@ def service() -> MagicMock:
     svc._broker_manager._connection = None
     return svc
 
+
 @pytest.fixture
 def falcon_config(tmp_path) -> dict:
     file = tmp_path / "demo.sh"
-    file.write_text("#!/bin/sh\n\necho \"hello world! file: {{ files[0].file }}\"")
-    return {
-        "file": file
-    }
+    file.write_text('#!/bin/sh\n\necho "hello world! file: {{ files[0].file }}"')
+    return {"file": file}
+
 
 @pytest.fixture
 def falconer_config() -> dict:
-    return{
-        "sbatch_template": "",
-        "slurm_output_dir": "/tmp/"
-    }
+    return {"sbatch_template": "", "slurm_output_dir": "/tmp/"}
+
 
 class TestCommandRendering:
-    def test_falconer_generate_command(self, service, falcon_config, falconer_config) -> None:
+    def test_falconer_generate_command(
+        self, service, falcon_config, falconer_config
+    ) -> None:
         job = _job()
 
         falcon = ShellFalcon(service, falcon_config, "dummyfalcon")
@@ -58,9 +60,12 @@ class TestCommandRendering:
                 "--error=/tmp/job-1.err",
                 ANY,
             ],
-            file=ANY
+            file=ANY,
         )
-    def test_falconer_generate_shell_inline_command(self, service, falcon_config, falconer_config) -> None:
+
+    def test_falconer_generate_shell_inline_command(
+        self, service, falcon_config, falconer_config
+    ) -> None:
         job = _job()
 
         falcon_config["binary"] = "file"
@@ -78,7 +83,9 @@ class TestCommandRendering:
             wrap_arg,
         )
 
-    def test_falconer_generate_bash_inline_command(self, service, falcon_config, falconer_config) -> None:
+    def test_falconer_generate_bash_inline_command(
+        self, service, falcon_config, falconer_config
+    ) -> None:
         job = _job()
 
         falcon_config["binary"] = "file"
@@ -96,8 +103,9 @@ class TestCommandRendering:
             wrap_arg,
         )
 
-
-    def test_falconer_generate_inline_python(self, service, falcon_config, falconer_config) -> None:
+    def test_falconer_generate_inline_python(
+        self, service, falcon_config, falconer_config
+    ) -> None:
         job = _job()
 
         falcon_config["binary"] = "file"
@@ -115,7 +123,10 @@ class TestCommandRendering:
             r"""python -c 'import subprocess; subprocess\.run\(\['file', '-b', '[^']+\.sh'\], check=True\)'""",
             wrap_arg,
         )
-    def test_falconer_generate_inline_python_file(self, service, falcon_config, falconer_config) -> None:
+
+    def test_falconer_generate_inline_python_file(
+        self, service, falcon_config, falconer_config
+    ) -> None:
         job = _job()
 
         falcon = PythonFalcon(service, falcon_config, "dummyfalcon")

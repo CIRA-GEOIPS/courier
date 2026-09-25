@@ -1,4 +1,5 @@
 """Implementation for the python_falcon falcon class."""
+
 from pathlib import Path
 from typing import ClassVar
 
@@ -7,11 +8,15 @@ from courier.plugins.falcons.bash_falcon import BashFalcon
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 
-class PythonFalconConfig(FalconConfig):
+
+# config classes for courier init discovery
+class PythonFalconConfig(FalconConfig):  # noqa: D101
     pass
 
-class PythonFalconBaseConfig(DispatcherGroupConfig):
+
+class PythonFalconBaseConfig(DispatcherGroupConfig):  # noqa: D101
     pass
+
 
 class PythonFalcon(BashFalcon):
     """Falcon for Python execution."""
@@ -55,9 +60,11 @@ class PythonFalcon(BashFalcon):
             ],
         )
         payload = self.get_payload_from_job(command)
-        self._logger.debug(f"Toolchain validation command {command} returned: {[p.return_code for p in payload]}")
+        self._logger.debug(
+            f"Toolchain validation command {command} returned:"
+            f"{[p.return_code for p in payload]}",
+        )
         return payload
-
 
     def generate_calling_method(self) -> list[str]:
         """Generate in-line or standard Python calling structure.

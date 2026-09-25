@@ -70,6 +70,7 @@ class TestConstructor:
         assert plugin.health is False
         assert plugin.validated.bucket == "test-bucket"
 
+
 # ─── _matches_suffix ────────────────────────────────────────────────────────
 
 

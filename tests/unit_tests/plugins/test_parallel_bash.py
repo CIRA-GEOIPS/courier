@@ -59,11 +59,15 @@ class TestParallelBashConfig:
 
 class TestConstructor:
     def test_initializes(self, mock_service: MagicMock) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
+        plugin = ParallelBashDispatcher(
+            mock_service, _make_config(), identifier="test-disp"
+        )
         assert plugin.validated.bash_script == "echo {{ file.file }}"
 
     def test_always_healthy(self, mock_service: MagicMock) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
+        plugin = ParallelBashDispatcher(
+            mock_service, _make_config(), identifier="test-disp"
+        )
         assert plugin.is_healthy() is True
 
 
@@ -71,9 +75,7 @@ class TestConstructor:
 
 
 class TestRenderScript:
-    def test_substitutes_file(
-        self, mock_service: MagicMock, make_frozen_file
-    ) -> None:
+    def test_substitutes_file(self, mock_service: MagicMock, make_frozen_file) -> None:
         plugin = ParallelBashDispatcher(
             mock_service,
             _make_config(bash_script="echo {{ file.file }}"),
@@ -99,8 +101,11 @@ class TestRenderScript:
         # DebugUndefined renders simple {{ missing }} as literal, so use
         # attribute access (__getattr__ raises UndefinedError).
         plugin._template = jinja2.Environment(
-            undefined=jinja2.DebugUndefined, autoescape=False,
-        ).from_string("echo {{ missing.field }}")  # noqa: S701
+            undefined=jinja2.DebugUndefined,
+            autoescape=False,
+        ).from_string(
+            "echo {{ missing.field }}"
+        )  # noqa: S701
         with pytest.raises(jinja2.TemplateError):
             plugin._render_script(ff, job_context, all_file_dicts)
 
@@ -109,10 +114,10 @@ class TestRenderScript:
 
 
 class TestGetExecutionLog:
-    def test_no_files_returns_empty(
-        self, mock_service: MagicMock, make_job
-    ) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config(), identifier="test-disp")
+    def test_no_files_returns_empty(self, mock_service: MagicMock, make_job) -> None:
+        plugin = ParallelBashDispatcher(
+            mock_service, _make_config(), identifier="test-disp"
+        )
         assert plugin.get_execution_log(make_job()) == []
 
     def test_one_log_per_file(
@@ -122,7 +127,9 @@ class TestGetExecutionLog:
         make_job,
         mocker,
     ) -> None:
-        plugin = ParallelBashDispatcher(mock_service, _make_config(max_workers=2), identifier="test-disp")
+        plugin = ParallelBashDispatcher(
+            mock_service, _make_config(max_workers=2), identifier="test-disp"
+        )
         mocker.patch(
             "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=0, stdout="ok", stderr=""),
@@ -153,15 +160,17 @@ class TestGetExecutionLog:
             "courier.plugins.dispatchers.parallel_bash._run_script",
             return_value=ExecutionLog(return_code=2, stdout="", stderr=""),
         )
-        files = tuple(
-            make_frozen_file(file=Path(f"/f{i}.nc")) for i in range(5)
-        )
+        files = tuple(make_frozen_file(file=Path(f"/f{i}.nc")) for i in range(5))
         logs = plugin.get_execution_log(make_job(files=files))
         assert len(logs) >= 1
         assert logs[0].return_code == 2
 
     def test_render_error_returns_failure_log_and_continues(
-        self, mock_service, make_frozen_file, make_job, mocker,
+        self,
+        mock_service,
+        make_frozen_file,
+        make_job,
+        mocker,
     ) -> None:
         """TemplateError on one file produces failure log; other files continue."""
         mocker.patch(
@@ -271,6 +280,7 @@ class TestLogToLogger:
         def _fake_run(*_, **kwargs):
             captured_prefixes.append(kwargs.get("log_prefix", ""))
             return ExecutionLog(return_code=0, stdout="", stderr="")
+
         mocker.patch(
             "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
@@ -306,9 +316,12 @@ class TestLogToFile:
             lp = kwargs.get("log_file_path")
             captured_paths.append(str(lp) if lp else "")
             return ExecutionLog(
-                return_code=0, stdout="", stderr="",
+                return_code=0,
+                stdout="",
+                stderr="",
                 log_file_path=str(kwargs.get("log_file_path", "")),
             )
+
         mocker.patch(
             "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
@@ -341,11 +354,15 @@ class TestLogToFile:
             _make_config(log_to_file=True, log_dir=str(log_dir), max_workers=2),
             identifier="test-disp",
         )
+
         def _fake_run(*_, **kwargs):
             return ExecutionLog(
-                return_code=0, stdout="ok", stderr="",
+                return_code=0,
+                stdout="ok",
+                stderr="",
                 log_file_path=str(kwargs.get("log_file_path", "")),
             )
+
         mocker.patch(
             "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
@@ -412,13 +429,12 @@ class TestFailFastWithLogging:
             call_count[0] += 1
             # First file fails, triggering fail_fast
             return ExecutionLog(return_code=1, stdout="", stderr="fail")
+
         mocker.patch(
             "courier.plugins.dispatchers.parallel_bash._run_script",
             side_effect=_fake_run,
         )
-        files = tuple(
-            make_frozen_file(file=Path(f"/f{i}.nc")) for i in range(5)
-        )
+        files = tuple(make_frozen_file(file=Path(f"/f{i}.nc")) for i in range(5))
         job = make_job(files=files)
         logs = plugin.get_execution_log(job)
         # At least one log produced; not all 5 due to fail_fast
@@ -485,7 +501,12 @@ class TestPythonVenvEnvPropagation:
     """Tests for python_venv environment variable propagation to subprocess."""
 
     def test_python_venv_env_passed_through_run_script(
-        self, mock_service, make_frozen_file, make_job, tmp_path, mocker,
+        self,
+        mock_service,
+        make_frozen_file,
+        make_job,
+        tmp_path,
+        mocker,
     ) -> None:
         """Env dict with PATH and VIRTUAL_ENV reaches execute_bash_script."""
         venv = tmp_path / "test_venv"
@@ -514,15 +535,19 @@ class TestPythonVenvEnvPropagation:
         job = make_job(files=(ff,))
         plugin.get_execution_log(job)
 
-        assert captured_env["env"] is not None, (
-            "env should be set when python_venv is configured"
-        )
+        assert (
+            captured_env["env"] is not None
+        ), "env should be set when python_venv is configured"
         assert "PATH" in captured_env["env"]
         assert str(venv.resolve() / "bin") in captured_env["env"]["PATH"]
         assert captured_env["env"]["VIRTUAL_ENV"] == str(venv.resolve())
 
     def test_python_venv_not_set_env_is_none(
-        self, mock_service, make_frozen_file, make_job, mocker,
+        self,
+        mock_service,
+        make_frozen_file,
+        make_job,
+        mocker,
     ) -> None:
         """Without python_venv, execute_bash_script is called with env=None."""
         plugin = ParallelBashDispatcher(
@@ -546,6 +571,6 @@ class TestPythonVenvEnvPropagation:
         job = make_job(files=(ff,))
         plugin.get_execution_log(job)
 
-        assert captured_env["env"] is None, (
-            "env should be None when python_venv is not configured"
-        )
+        assert (
+            captured_env["env"] is None
+        ), "env should be None when python_venv is not configured"

@@ -64,7 +64,9 @@ if TYPE_CHECKING:
     from courier.service import Service
     from courier.types.file import File
 
-class DispatcherConfig(DispatcherGroupConfig):
+
+# config class for courier init discovery
+class DispatcherConfig(DispatcherGroupConfig): # noqa: D101
     pass
 
 
@@ -202,7 +204,7 @@ class Dispatcher(ServicePlugin):
             )
         best_match = compatible_partners[-1].from_falcon(falcon)
 
-        if type(best_match) != type(falcon):
+        if type(best_match) is not type(falcon):
             self._logger.info(f"{falconer.name} casted to {best_match.name}")
         # configure each of the pair to fit each other's configuration neatly
         # marry the pair and keep track of the falconer
@@ -418,9 +420,11 @@ class Dispatcher(ServicePlugin):
                             with tracer.start_as_current_span(
                                 "dispatcher.emit_execution_log",
                                 attributes={
-                                    ATTR_EXECUTION_RETURN_CODE: str(ex_log.return_code)
-                                    if ex_log.return_code is not None
-                                    else "",
+                                    ATTR_EXECUTION_RETURN_CODE: (
+                                        str(ex_log.return_code)
+                                        if ex_log.return_code is not None
+                                        else ""
+                                    ),
                                 },
                             ):
                                 self.emit(ex_log)
@@ -527,6 +531,7 @@ class Dispatcher(ServicePlugin):
                 self.name,
             ),
         }
+
 
 dispatchers = ClassPluginRegistry(
     name="dispatchers",

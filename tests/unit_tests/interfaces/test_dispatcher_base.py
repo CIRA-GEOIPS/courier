@@ -51,13 +51,19 @@ class _RecordingDispatcher(Dispatcher):
         self.executed.append(job)
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
+
 class _RecordingFalconer(Falconer):
     """Falconer that records the jobs passed to it."""
 
     name = "recording_falconer"
     version = "test"
 
-    def __init__(self, service: Service, config: dict | None = None, identifier: str | None = None) -> None:
+    def __init__(
+        self,
+        service: Service,
+        config: dict | None = None,
+        identifier: str | None = None,
+    ) -> None:
         super().__init__(service, config, identifier)
         self.executed: list[Job] = []
         self.raise_on_execute: Exception | None = None
@@ -87,12 +93,14 @@ def _dispatcher(service: MagicMock, identifier: str) -> _RecordingDispatcher:
     dispatcher.falconer = falconer
     return dispatcher
 
-def _dispatcher_and_falconer(service: MagicMock, identifier: str) -> tuple[_RecordingDispatcher, _RecordingFalconer]:
+
+def _dispatcher_and_falconer(
+    service: MagicMock, identifier: str
+) -> tuple[_RecordingDispatcher, _RecordingFalconer]:
     dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
     falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
     dispatcher.falconer = falconer
     return dispatcher, falconer
-
 
 
 def _feed(dispatcher: _RecordingDispatcher, service: MagicMock, *jobs: Job) -> None:
@@ -168,14 +176,19 @@ class TestJobExecution:
         }
         # Prometheus counters are process-global; assert the delta rather than
         # an absolute, which would depend on test ordering within the session.
-        before = REGISTRY.get_sample_value(
-            "courier_dispatcher_jobs_processed_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_dispatcher_jobs_processed_total",
+                labels,
+            )
+            or 0.0
+        )
 
         _feed(dispatcher, service, _job("job-1"))  # must not raise
 
         after = REGISTRY.get_sample_value(
-            "courier_dispatcher_jobs_processed_total", labels,
+            "courier_dispatcher_jobs_processed_total",
+            labels,
         )
         assert after == before + 1
 
@@ -218,14 +231,19 @@ class TestDedupe:
         """A dropped duplicate must be visible in metrics, not silent."""
         dispatcher = _dispatcher(service, "dedupe-counted")
         labels = {"dispatcher_identifier": "dedupe-counted"}
-        before = REGISTRY.get_sample_value(
-            "courier_dispatcher_dedupe_skips_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_dispatcher_dedupe_skips_total",
+                labels,
+            )
+            or 0.0
+        )
 
         _feed(dispatcher, service, _job("dup"), _job("dup"))
 
         after = REGISTRY.get_sample_value(
-            "courier_dispatcher_dedupe_skips_total", labels,
+            "courier_dispatcher_dedupe_skips_total",
+            labels,
         )
         assert after == before + 1
 
@@ -260,19 +278,14 @@ class TestLifecycle:
 
         assert dispatcher._stop_event.is_set()
         assert dispatcher._state is PluginRunState.STOPPED
-        assert not (
-            dispatcher._main_thread and dispatcher._main_thread.is_alive()
-        )
+        assert not (dispatcher._main_thread and dispatcher._main_thread.is_alive())
 
     def test_consume_receives_the_stop_event(self, service: MagicMock) -> None:
         """The stop event must reach the broker loop, not just be stored."""
         dispatcher = _dispatcher(service, "life-event")
         _feed(dispatcher, service)  # empty stream, stops after one pass
 
-        assert (
-            service.consume.call_args.kwargs["stop_event"]
-            is dispatcher._stop_event
-        )
+        assert service.consume.call_args.kwargs["stop_event"] is dispatcher._stop_event
         assert service.consume.call_args[0][0] == dispatcher.incoming_queue
 
     def test_emit_file_feeds_the_found_file_exchange(
@@ -290,7 +303,6 @@ class TestLifecycle:
         assert str(emitted.file) == "/out/product.nc"
 
 
-
 # ── falcon, falconer compatibility ───────────────────────────────────────────────────────────────
 class TestDispatcherCelebrant:
     def test_get_common_registration_valid(self, service: MagicMock) -> None:
@@ -300,22 +312,30 @@ class TestDispatcherCelebrant:
         compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
 
         assert compatible_partners == [ShellFalcon]
+
     def test_get_common_registration_invalid(self, service: MagicMock) -> None:
         dispatcher = _dispatcher(service, "celebrant")
+
         class DumbFalconer(Falconer):
             representations = []
+
         falconer = DumbFalconer(service, {"hello": ""}, "dummy")
         falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
         compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
         assert compatible_partners == []
+
     def test_get_most_specific_registration(self, service):
         dispatcher = _dispatcher(service, "celebrant")
+
         class ChildFalcon(ShellFalcon):
             pass
+
         class GrandchildFalcon(ChildFalcon):
             pass
+
         class GreatGrandchildFalcon(GrandchildFalcon):
             pass
+
         falcon = GreatGrandchildFalcon(service, {"file": ""}, "dummyfalcon")
         falconer = LocalFalconer(service, {"hello": ""}, "dummy")
         falconer.representations.append(GrandchildFalcon)

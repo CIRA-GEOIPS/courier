@@ -18,7 +18,6 @@ from courier.sync.job_builder_state_sync import JobBuilderStateSync
 from courier.types.file import FrozenFile
 from courier.types.job import Job, JobGroup
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -51,8 +50,14 @@ def _make_job(
     identifier: str = "job-1",
     last_modified: float | None = None,
 ) -> Job:
-    file = FrozenFile(file=None, hostname=None, source=None, instrument=None,
-                      processing_stage=None, domain=None)
+    file = FrozenFile(
+        file=None,
+        hostname=None,
+        source=None,
+        instrument=None,
+        processing_stage=None,
+        domain=None,
+    )
     files: set[FrozenFile] = {file}
     j = Job(name="test", identifier=identifier, config={}, files=files)
     if last_modified is not None:
@@ -99,32 +104,38 @@ class TestRedisStateSyncConfig:
 
     def test_invalid_port_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="port"):
             RedisStateSyncConfig(port=0)
 
     def test_negative_db_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="db"):
             RedisStateSyncConfig(db=-1)
 
     def test_empty_host_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="host"):
             RedisStateSyncConfig(host="")
 
     def test_empty_channel_prefix_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="channel_prefix"):
             RedisStateSyncConfig(channel_prefix="")
 
     def test_frozen(self) -> None:
         from pydantic import ValidationError
+
         cfg = RedisStateSyncConfig()
         with pytest.raises(ValidationError):
             cfg.host = "other"  # type: ignore[misc]
 
     def test_extra_fields_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="extra"):
             RedisStateSyncConfig(bogus="x")  # type: ignore[call-arg]
 
@@ -324,6 +335,7 @@ class TestTryClaimEmit:
     def test_two_instances_only_one_claims(self) -> None:
         """Two JobBuilderStateSync sharing a fake server — only one claims."""
         server = fakeredis.FakeServer()
+
         def make_instance() -> JobBuilderStateSync:
             inst = JobBuilderStateSync(
                 config=_CFG,

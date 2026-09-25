@@ -1,4 +1,5 @@
 """Implementation for the bash_falcon falcon class."""
+
 from typing import ClassVar
 
 from courier.interfaces.falcons import DispatcherGroupConfig, FalconConfig
@@ -6,11 +7,14 @@ from courier.plugins.falcons.shell_falcon import ShellFalcon
 from courier.service import Service
 
 
-class BashFalconConfig(FalconConfig):
+# classes for courier init discovery
+class BashFalconConfig(FalconConfig):  # noqa: D101
     pass
 
-class BashFalconBaseConfig(DispatcherGroupConfig):
+
+class BashFalconBaseConfig(DispatcherGroupConfig):  # noqa: D101
     pass
+
 
 class BashFalcon(ShellFalcon):
     """Falcon class for Bash script execution."""

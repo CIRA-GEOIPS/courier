@@ -93,7 +93,9 @@ class _Consumer:
                 ):
                     self.delivered.append(body)
                     if body in self.poison:
-                        raise _PluginExplodedError(body)  # noqa: TRY301 -- inline is the point: this is a plugin failing mid-loop
+                        raise _PluginExplodedError(
+                            body
+                        )  # noqa: TRY301 -- inline is the point: this is a plugin failing mid-loop
             except _PluginExplodedError:
                 continue
 
@@ -305,9 +307,9 @@ def test_shutting_down_mid_message_does_not_spend_a_retry(
     finally:
         stream.close()
 
-    assert poll_until(lambda: queue_depth(raw_conn, queue) == 1, timeout=30), (
-        "a message held at shutdown was not returned to its queue"
-    )
+    assert poll_until(
+        lambda: queue_depth(raw_conn, queue) == 1, timeout=30
+    ), "a message held at shutdown was not returned to its queue"
     assert queue_depth(raw_conn, dead_letter) == 0, (
         "a message that was merely interrupted by shutdown was parked as if "
         "the consumer had failed on it"

@@ -11,6 +11,7 @@ from courier.cli.run import run as cli_run
 from courier.cli.run import run_service
 from courier.config import ServiceConfig
 
+
 def _make_entry(identifier: str, kind: str, name: str, config: dict | None = None):
     """Build a mock config run entry with the given attributes."""
     entry = MagicMock()
@@ -30,7 +31,7 @@ def _make_config(entries, **extra_spec_attrs):
     config.spec.broker.max_retries = 5
     config.spec.allow_implicit_target = True
     config.spec.service_config = ServiceConfig(heartbeat_interval=30)
-    
+
     config.metadata.namespace = "test"
     config.metadata.name = "test-service"
     for attr, value in extra_spec_attrs.items():
@@ -116,9 +117,9 @@ class TestOnlyFlag:
 
         expected_count = 3  # all three entries are runnable kinds
         registrations = mock_create_svc.call_args[0][1]
-        assert len(registrations) == expected_count, (
-            f"Expected 3 registrations, got {len(registrations)}"
-        )
+        assert (
+            len(registrations) == expected_count
+        ), f"Expected 3 registrations, got {len(registrations)}"
 
         registered_ids = {r[2] for r in registrations}
         assert registered_ids == {"my-dm", "my-jb", "my-dp"}
@@ -215,7 +216,9 @@ class TestOnlyFlag:
         entries = [
             _make_entry("dm-1", "data_monitor", "rabbit_mq_watcher"),
             _make_entry(
-                "jb-1", "job_builder", "filter_and_group",
+                "jb-1",
+                "job_builder",
+                "filter_and_group",
                 config={"targets": ["dp-remote"]},
             ),
             _make_entry("dp-remote", "dispatcher", "serial_bash"),
@@ -226,9 +229,9 @@ class TestOnlyFlag:
 
         expected_count = 2
         registrations = mock_create_svc.call_args[0][1]
-        assert len(registrations) == expected_count, (
-            f"Expected 2 registrations, got {len(registrations)}"
-        )
+        assert (
+            len(registrations) == expected_count
+        ), f"Expected 2 registrations, got {len(registrations)}"
         registered_ids = {r[2] for r in registrations}
         assert registered_ids == {"dm-1", "jb-1"}
 
@@ -296,9 +299,9 @@ class TestOnlyFlag:
         run_service(config, only_set=set())
 
         registrations = mock_create_svc.call_args[0][1]
-        assert registrations == [], (
-            f"Expected empty registrations list, got {registrations}"
-        )
+        assert (
+            registrations == []
+        ), f"Expected empty registrations list, got {registrations}"
 
         # create_service_with_plugins is still called (with empty list)
         mock_create_svc.assert_called_once()
@@ -310,7 +313,8 @@ class TestOnlyFlag:
     @patch("courier.cli.run.create_service_with_plugins")
     @patch("courier.cli.run.PLUGIN_REGISTRIES", _plugin_registries_fixture())
     def test_only_mixed_valid_and_unknown_raises_before_registration(
-        self, mock_create_svc,
+        self,
+        mock_create_svc,
     ):
         """Validation fails before any plugin is registered when any ID is unknown."""
         entries = self._entries()
@@ -332,7 +336,9 @@ class TestRunCLIOnlyParsing:
     @patch("courier.cli.run.run_service")
     @patch("courier.cli.run.load_config_or_exit")
     def test_only_empty_string_maps_to_none(
-        self, mock_load_config, mock_run_service,
+        self,
+        mock_load_config,
+        mock_run_service,
     ):
         """An empty --only string is treated like --only was never supplied."""
         mock_load_config.return_value = MagicMock()
@@ -344,7 +350,9 @@ class TestRunCLIOnlyParsing:
         cli_run(ctx, config_file, only="")
 
         mock_run_service.assert_called_once_with(
-            ANY, log_level=None, only_set=None,
+            ANY,
+            log_level=None,
+            only_set=None,
         )
 
     # ------------------------------------------------------------------
@@ -354,7 +362,9 @@ class TestRunCLIOnlyParsing:
     @patch("courier.cli.run.run_service")
     @patch("courier.cli.run.load_config_or_exit")
     def test_only_lowercase_normalization(
-        self, mock_load_config, mock_run_service,
+        self,
+        mock_load_config,
+        mock_run_service,
     ):
         """Uppercase-only identifiers are lowercased before reaching run_service."""
         mock_load_config.return_value = MagicMock()
@@ -366,7 +376,9 @@ class TestRunCLIOnlyParsing:
         cli_run(ctx, config_file, only="MY-DM")
 
         mock_run_service.assert_called_once_with(
-            ANY, log_level=None, only_set={"my-dm"},
+            ANY,
+            log_level=None,
+            only_set={"my-dm"},
         )
 
     # ------------------------------------------------------------------
@@ -376,7 +388,9 @@ class TestRunCLIOnlyParsing:
     @patch("courier.cli.run.run_service")
     @patch("courier.cli.run.load_config_or_exit")
     def test_only_strips_spaces(
-        self, mock_load_config, mock_run_service,
+        self,
+        mock_load_config,
+        mock_run_service,
     ):
         """Surrounding and inter-word spaces are stripped from each part."""
         mock_load_config.return_value = MagicMock()
@@ -388,7 +402,9 @@ class TestRunCLIOnlyParsing:
         cli_run(ctx, config_file, only=" my-dm , my-jb ")
 
         mock_run_service.assert_called_once_with(
-            ANY, log_level=None, only_set={"my-dm", "my-jb"},
+            ANY,
+            log_level=None,
+            only_set={"my-dm", "my-jb"},
         )
 
     # ------------------------------------------------------------------
@@ -398,7 +414,9 @@ class TestRunCLIOnlyParsing:
     @patch("courier.cli.run.run_service")
     @patch("courier.cli.run.load_config_or_exit")
     def test_only_deduplicates(
-        self, mock_load_config, mock_run_service,
+        self,
+        mock_load_config,
+        mock_run_service,
     ):
         """Duplicate identifiers are collapsed into a single entry."""
         mock_load_config.return_value = MagicMock()
@@ -410,7 +428,9 @@ class TestRunCLIOnlyParsing:
         cli_run(ctx, config_file, only="my-dm,my-dm")
 
         mock_run_service.assert_called_once_with(
-            ANY, log_level=None, only_set={"my-dm"},
+            ANY,
+            log_level=None,
+            only_set={"my-dm"},
         )
 
     # ------------------------------------------------------------------
@@ -420,7 +440,9 @@ class TestRunCLIOnlyParsing:
     @patch("courier.cli.run.run_service")
     @patch("courier.cli.run.load_config_or_exit")
     def test_only_trailing_comma_ignored(
-        self, mock_load_config, mock_run_service,
+        self,
+        mock_load_config,
+        mock_run_service,
     ):
         """Trailing commas produce no empty identifier in the resulting set."""
         mock_load_config.return_value = MagicMock()
@@ -432,7 +454,9 @@ class TestRunCLIOnlyParsing:
         cli_run(ctx, config_file, only="my-dm,")
 
         mock_run_service.assert_called_once_with(
-            ANY, log_level=None, only_set={"my-dm"},
+            ANY,
+            log_level=None,
+            only_set={"my-dm"},
         )
 
 

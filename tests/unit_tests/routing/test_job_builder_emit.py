@@ -21,12 +21,12 @@ from courier.plugins.job_builders.filter_and_group import (
 from courier.types.job import Job
 
 
-def _make_builder(mock_service: MagicMock, targets: list[str]) -> FilterAndGroupJobBuilder:
+def _make_builder(
+    mock_service: MagicMock, targets: list[str]
+) -> FilterAndGroupJobBuilder:
     """Build a FilterAndGroupJobBuilder with a stubbed service + resolver."""
     mock_service.target_resolver = MagicMock()
-    mock_service.target_resolver.resolve.side_effect = (
-        lambda ident: f"JobReady-{ident}"
-    )
+    mock_service.target_resolver.resolve.side_effect = lambda ident: f"JobReady-{ident}"
     mock_service.emit = MagicMock()
     builder = FilterAndGroupJobBuilder(
         mock_service,
@@ -45,7 +45,9 @@ def test_emit_fans_out_to_each_target(mock_service: MagicMock) -> None:
     """Each target receives exactly one publish call."""
     builder = _make_builder(mock_service, ["a", "b"])
     builder.emit(_job())
-    queues = [c.kwargs.get("queue") or c.args[0] for c in mock_service.emit.call_args_list]
+    queues = [
+        c.kwargs.get("queue") or c.args[0] for c in mock_service.emit.call_args_list
+    ]
     assert sorted(queues) == ["JobReady-a", "JobReady-b"]
 
 
@@ -95,7 +97,9 @@ def test_claim_rejection_skips_publish(mock_service: MagicMock) -> None:
     sync.try_claim_emit.side_effect = [False, True]  # first target already claimed
     builder._sync = sync
     builder.emit(_job())
-    queues = [c.kwargs.get("queue") or c.args[0] for c in mock_service.emit.call_args_list]
+    queues = [
+        c.kwargs.get("queue") or c.args[0] for c in mock_service.emit.call_args_list
+    ]
     assert queues == ["JobReady-b"]
 
 

@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from lexeme_type.lexeme import Lexeme
 import typer
 import yaml
 from rich import box
@@ -22,9 +21,14 @@ from courier.cli.init_helpers import (
     get_field_metadata,
     get_plugin_description,
 )
-
 from courier.cli.plugins import normalize_kind
-from courier.interfaces import data_monitors, dispatchers, falconers, falcons, job_builders
+from courier.interfaces import (
+    data_monitors,
+    dispatchers,
+    falconers,
+    falcons,
+    job_builders,
+)
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 if TYPE_CHECKING:
@@ -72,7 +76,7 @@ KIND_MAPPING: dict[str, tuple[str, str]] = {
     "job_builders": ("Job Builder", "job_builder"),
     "dispatchers": ("Dispatcher", "dispatcher"),
     "falconers": ("Falconer", "falconer"),
-    "falcons": ("Falcon", "falcon")
+    "falcons": ("Falcon", "falcon"),
 }
 
 PLUGIN_REGISTRIES: dict[str, ClassPluginRegistry] = {
@@ -347,7 +351,7 @@ def prompt_plugin_config(
 # ---------------------------------------------------------------------------
 
 
-def prompt_category(
+def prompt_category( # noqa: PLR0915, PLR0912
     kind_name: str,
     registry: Any,
     console: Console,
@@ -385,24 +389,24 @@ def prompt_category(
 
     nested_registries = []
     for nested_name in registry.nested_values:
-        nested_name = normalize_kind(nested_name)
-        if nested_name in PLUGIN_REGISTRIES:
-            nested_registries.append((nested_name, PLUGIN_REGISTRIES[nested_name]))
-        elif nested_name in NECESSARY_REGISTRIES:
-            nested_registries.append((nested_name, NECESSARY_REGISTRIES[nested_name]))
-        else:    
+        name = normalize_kind(nested_name)
+        if name in PLUGIN_REGISTRIES:
+            nested_registries.append((name, PLUGIN_REGISTRIES[name]))
+        elif name in NECESSARY_REGISTRIES:
+            nested_registries.append((name, NECESSARY_REGISTRIES[name]))
+        else:
             raise ValueError(
-                f"Invalid kind: {nested_name}"
+                f"Invalid kind: {name}",
             )
 
     if kind_name in PLUGIN_REGISTRIES:
         kind_name = normalize_kind(kind_name)
         plugins = list(registry.get_plugins())
     elif kind_name in NECESSARY_REGISTRIES:
-        plugins = list([registry.expected_base])
+        plugins = [registry.expected_base]
     else:
         raise ValueError(
-            f"Invalid kind: {kind_name}"
+            f"Invalid kind: {kind_name}",
         )
     if not plugins:
         console.print(f"  [dim]No {display_label.lower()} plugins found.[/dim]")
@@ -466,11 +470,13 @@ def prompt_category(
 
         nested_selections = []
         for nested_regitry_name, nested_registry in nested_registries:
-            nested_selections.extend(prompt_category(
-                nested_regitry_name,
-                nested_registry,
-                console
-            ))
+            nested_selections.extend(
+                prompt_category(
+                    nested_regitry_name,
+                    nested_registry,
+                    console,
+                ),
+            )
         selections.append(
             PluginSelection(
                 plugin_class=matched,
@@ -549,6 +555,7 @@ def show_preview(selections: list[PluginSelection], console: Console) -> None:
 # Phase 5.1 — Build a ServiceConfigModel-compatible dict
 # ---------------------------------------------------------------------------
 
+
 def build_service_config(
     metadata: dict[str, str],
     selections: list[PluginSelection],
@@ -569,9 +576,9 @@ def build_service_config(
     dict
         Dict suitable for ``ServiceConfigModel(**config_dict)``.
     """
-
     run_entries: list[dict[str, Any]] = []
     seen_ids: Counter[str] = Counter()
+
     def get_run_entry(sel):
         base_id = _make_identifier(sel.yaml_kind, sel.plugin_name)
         seen_ids[base_id] += 1
@@ -586,7 +593,7 @@ def build_service_config(
             "name": sel.plugin_name,
         }
 
-        config : dict[str, Any] = {}
+        config: dict[str, Any] = {}
 
         if sel.config_values:
             config.update(sel.config_values)
@@ -594,12 +601,12 @@ def build_service_config(
         for nested_sel in sel.nested_values:
             config[nested_sel.yaml_kind] = get_run_entry(nested_sel)
 
-        if config: spec["config"] = config
+        if config:
+            spec["config"] = config
         return {
             "identifier": identifier,
             "spec": spec,
         }
-
 
     for sel in selections:
         run_entries.append(get_run_entry(sel))
@@ -727,7 +734,11 @@ def init(
     all_selections: list[PluginSelection] = []
 
     for kind_name in CATEGORY_ORDER:
-        registry = PLUGIN_REGISTRIES[kind_name] if kind_name in PLUGIN_REGISTRIES else NECESSARY_REGISTRIES[kind_name]
+        registry = (
+            PLUGIN_REGISTRIES[kind_name]
+            if kind_name in PLUGIN_REGISTRIES
+            else NECESSARY_REGISTRIES[kind_name]
+        )
         category_selections = prompt_category(kind_name, registry, console)
         all_selections.extend(category_selections)
 

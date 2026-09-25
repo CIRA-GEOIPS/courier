@@ -1,4 +1,5 @@
 """Implementation for the base falconer class."""
+
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,17 +15,12 @@ from courier.interfaces.discovery import (
 )
 from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.metrics import FALCONER_JOBS_PROCESSED, collect_labeled
 from courier.service import Service
+from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, get_tracer
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.logging import get_logger
-
-from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, get_tracer
-
-from courier.metrics import (
-    FALCONER_JOBS_PROCESSED,
-    collect_labeled
-)
 
 
 @dataclass
@@ -51,7 +47,7 @@ class Falconer(ServicePlugin):
     def __init__(
         self,
         service: Service,
-        config: dict | None = None, # noqa: ARG002
+        config: dict | None = None,  # noqa: ARG002
         identifier: str | None = None,
     ) -> None:
         if identifier is None:
@@ -84,14 +80,13 @@ class Falconer(ServicePlugin):
         CourierError
             If the Falconer fails to initialize the runtime environment.
         """
-
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "falconer.cast_off_falcon",
             attributes={
                 ATTR_JOB_ID: job.identifier,
                 ATTR_CORRELATION_ID: job.correlation_id,
-            }
+            },
         ):
             self._state = PluginRunState.RUNNING
             # ----------initialize environment
@@ -106,9 +101,11 @@ class Falconer(ServicePlugin):
             # -------------get payload
             try:
                 self._logger.debug(f"Yielding execution log for job: {job}")
-                res= self.falcon.get_payload_from_job(p.command, job)
+                res = self.falcon.get_payload_from_job(p.command, job)
 
-                status = "failure" if any(r.return_code != 0 for r in res) else "success"
+                status = (
+                    "failure" if any(r.return_code != 0 for r in res) else "success"
+                )
                 self._jobs_processed.labels(
                     status=status,
                     falconer_name=self.name,
@@ -117,20 +114,21 @@ class Falconer(ServicePlugin):
 
                 p.file.unlink(missing_ok=True)
 
-                return res
             except Exception as e:
                 self._state = PluginRunState.FAILED
                 self._jobs_processed.labels(
                     status="failure",
                     falconer_name=self.name,
-                    falconer_identifier=self.identifier
+                    falconer_identifier=self.identifier,
                 ).inc()
                 raise CourierError(
                     "Failed to execute job",
                     e,
                 ) from e
 
-    def initialize_environment(self, job) -> FalconerPayload: # noqa: ARG002
+            return res
+
+    def initialize_environment(self, job) -> FalconerPayload:  # noqa: ARG002
         """Set up the runtime environment.
 
         Usually this means creating an array of commands.
@@ -156,7 +154,7 @@ class Falconer(ServicePlugin):
             Mapping of metric names to their current values.
         """
         return {
-            **collect_labeled(FALCONER_JOBS_PROCESSED, "falconer_name", self.name)
+            **collect_labeled(FALCONER_JOBS_PROCESSED, "falconer_name", self.name),
         }
 
     def set_falcon(self, falcon: Falcon):
@@ -211,14 +209,14 @@ class Falconer(ServicePlugin):
             with tempfile.NamedTemporaryFile(
                 mode="w",
                 suffix=falcon_config.file.suffix,
-                dir=path or "/tmp/", # noqa: S108
+                dir=path or "/tmp/",  # noqa: S108
                 delete=False,
             ) as script_file:
                 script_file.write(rendered_script)
                 rendered_script_path = script_file.name
             res = Path(rendered_script_path)
             res.chmod(0o755)
-            return res # noqa: TRY300
+            return res  # noqa: TRY300
         except Exception as e:
             raise CourierError(
                 f"Failed to render script file for {self.identifier}",
@@ -286,7 +284,7 @@ class Falconer(ServicePlugin):
         return (
             jinja2.Environment(
                 undefined=jinja2.StrictUndefined,
-                autoescape=False, # noqa: S701
+                autoescape=False,  # noqa: S701
                 finalize=lambda value: "" if value is None or value == [] else value,
             )
             .from_string(script)

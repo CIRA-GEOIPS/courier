@@ -365,7 +365,9 @@ def test_every_declared_config_loads_to_a_validated_model() -> None:
             problems.append(f"{entry_point.name}: {entry_point.value} -> {exc!r}")
             continue
         if not isinstance(loaded, DataMonitorConfig):
-            problems.append(f"{entry_point.name}: {type(loaded).__name__}, not a config")
+            problems.append(
+                f"{entry_point.name}: {type(loaded).__name__}, not a config"
+            )
             continue
         if loaded.name != entry_point.name:
             problems.append(
@@ -409,9 +411,7 @@ def test_metadata_tools_reference_real_configs(config_path: Path) -> None:
             if tool not in available:
                 missing.append(f"{entry.identifier}: metadata-tools/{tool!r}")
 
-    assert not missing, (
-        "\n".join(missing) + f"\navailable: {sorted(available)}"
-    )
+    assert not missing, "\n".join(missing) + f"\navailable: {sorted(available)}"
 
 
 def test_shipped_configs_actually_use_metadata_tools() -> None:
@@ -435,8 +435,7 @@ def test_no_yaml_plugins_remain() -> None:
     """
     package_root = _REPO_ROOT / "src" / "courier"
     stray = sorted(
-        str(path.relative_to(_REPO_ROOT))
-        for path in package_root.rglob("*.yaml")
+        str(path.relative_to(_REPO_ROOT)) for path in package_root.rglob("*.yaml")
     )
 
     assert not stray, "YAML files inside the package are never loaded:\n" + "\n".join(
@@ -458,7 +457,12 @@ def test_no_yaml_plugins_remain() -> None:
 _OPTIONAL_DEPENDENCY_PLUGINS = [
     ("cron_glob", "courier.plugins.data_monitors.cron_glob", "croniter", "cron"),
     ("s3_poller", "courier.plugins.data_monitors.s3_poller", "boto3", "s3"),
-    ("kafka_consumer", "courier.plugins.data_monitors.kafka_consumer", "kafka", "kafka"),
+    (
+        "kafka_consumer",
+        "courier.plugins.data_monitors.kafka_consumer",
+        "kafka",
+        "kafka",
+    ),
     ("http_dispatcher", "courier.plugins.dispatchers.http_dispatcher", "httpx", "http"),
 ]
 
@@ -481,7 +485,9 @@ def test_optional_dependency_is_declared_as_an_extra(
     """
     extras = _pyproject()["tool"]["poetry"]["extras"]
 
-    assert extra in extras, f"{plugin_name} names courier[{extra}], which is not declared"
+    assert (
+        extra in extras
+    ), f"{plugin_name} names courier[{extra}], which is not declared"
     normalised = {name.replace("_", "-").lower() for name in extras[extra]}
     assert package.replace("_", "-") in normalised or any(
         package.replace("_", "-") in n for n in normalised
@@ -545,8 +551,18 @@ _DISTRIBUTION_NAME = "data-courier"
 
 #: Every extra courier declares, used to spot install instructions in prose.
 _KNOWN_EXTRAS = (
-    "cron", "s3", "kafka", "http", "ha", "grafana", "viz",
-    "doc", "lint", "test", "all-monitors", "all-dispatchers",
+    "cron",
+    "s3",
+    "kafka",
+    "http",
+    "ha",
+    "grafana",
+    "viz",
+    "doc",
+    "lint",
+    "test",
+    "all-monitors",
+    "all-dispatchers",
 )
 
 
@@ -652,13 +668,12 @@ def test_version_tuple_matches_version() -> None:
     import courier
 
     expected = tuple(
-        int(part) for part in courier.__version__.split(".")[:3]
-        if part.isdigit()
+        int(part) for part in courier.__version__.split(".")[:3] if part.isdigit()
     )
 
-    assert courier.__version_tuple__[: len(expected)] == expected, (
-        f"{courier.__version_tuple__} does not match {courier.__version__}"
-    )
+    assert (
+        courier.__version_tuple__[: len(expected)] == expected
+    ), f"{courier.__version_tuple__} does not match {courier.__version__}"
 
 
 # Broker-monitor field maps.
@@ -785,9 +800,7 @@ def test_broker_monitor_field_map_names_keys_the_producer_sends(
                     f"which the documented schema does not contain",
                 )
 
-    assert not problems, (
-        "\n".join(problems) + f"\nschema keys: {sorted(known)}"
-    )
+    assert not problems, "\n".join(problems) + f"\nschema keys: {sorted(known)}"
 
 
 @pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)

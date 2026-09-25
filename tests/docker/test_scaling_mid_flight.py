@@ -304,13 +304,22 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
     queues = (files_found, job_ready)
 
     dispatcher = pipeline.start_courier(
-        "dispatcher", config, only=DISPATCHER_ID, env={"SERVICE_ID": "dispatcher"},
+        "dispatcher",
+        config,
+        only=DISPATCHER_ID,
+        env={"SERVICE_ID": "dispatcher"},
     )
     replica_a = pipeline.start_courier(
-        "builder-a", config, only=BUILDER_ID, env={"SERVICE_ID": "builder-a"},
+        "builder-a",
+        config,
+        only=BUILDER_ID,
+        env={"SERVICE_ID": "builder-a"},
     )
     producer = pipeline.start_courier(
-        "producer", config, only="watch-files", env={"SERVICE_ID": "producer"},
+        "producer",
+        config,
+        only="watch-files",
+        env={"SERVICE_ID": "producer"},
     )
     logs = {
         dispatcher: "dispatcher",
@@ -330,15 +339,16 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
     # the path and reports when it is live. It creates an unknown number of
     # files, some of them before the observer existed, so the count it leaves
     # is a baseline.
-    assert pipeline.seed_until("warmup"), (
-        "the pipeline never produced any output at all\n"
-        + "\n".join(
-            f"--- {role} ({name}) ---\n{container_logs(name)}"
-            for name, role in logs.items()
-        )
+    assert pipeline.seed_until(
+        "warmup"
+    ), "the pipeline never produced any output at all\n" + "\n".join(
+        f"--- {role} ({name}) ---\n{container_logs(name)}"
+        for name, role in logs.items()
     )
     assert poll_until(
-        lambda: pipeline.drained(queues), timeout=120.0, interval=1.0,
+        lambda: pipeline.drained(queues),
+        timeout=120.0,
+        interval=1.0,
     ), f"the warm-up files never cleared the queues: {pipeline.queue_stats()}"
     baseline = len(_settle(pipeline, queues))
     assert baseline > 0, "warm-up produced output but recorded no dispatch"
@@ -360,7 +370,10 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
 
     # Scale up.
     replica_b = pipeline.start_courier(
-        "builder-b", config, only=BUILDER_ID, env={"SERVICE_ID": "builder-b"},
+        "builder-b",
+        config,
+        only=BUILDER_ID,
+        env={"SERVICE_ID": "builder-b"},
     )
     logs[replica_b] = "builder replica B"
     pipeline.await_consumers(files_found, 2, timeout=180.0)
@@ -427,9 +440,9 @@ def test_replicas_of_one_builder_share_the_files_and_dispatch_each_once(
     )
 
     # Whole-run invariants.
-    assert len(ledger) == len(set(ledger)), (
-        f"some file was dispatched twice over the whole run: {ledger}"
-    )
+    assert len(ledger) == len(
+        set(ledger)
+    ), f"some file was dispatched twice over the whole run: {ledger}"
     assert len(ledger) == baseline + SCALED_UP_FILES + SCALED_DOWN_FILES, (
         f"unexpected total dispatch count {len(ledger)} against a warm-up "
         f"baseline of {baseline}: {ledger}"

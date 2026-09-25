@@ -280,7 +280,9 @@ class TestNumberedSelection:
 
         monkeypatch.setattr(init_module.Prompt, "ask", staticmethod(_ask))
         monkeypatch.setattr(
-            init_module.Confirm, "ask", staticmethod(lambda *a, **k: False),
+            init_module.Confirm,
+            "ask",
+            staticmethod(lambda *a, **k: False),
         )
 
         prompt_category(
@@ -353,11 +355,13 @@ class TestBuildServiceConfig:
             display_label="Data Monitor",
             config_model=None,
             config_values=config_values or {},
-            nested_values=[]
+            nested_values=[],
         )
 
     def test_basic_structure(self):
-        sel = self._make_selection(FileSystemPoller, "file_system_poller_watchdog", "data_monitor")
+        sel = self._make_selection(
+            FileSystemPoller, "file_system_poller_watchdog", "data_monitor"
+        )
         config = build_service_config(
             metadata={"name": "test-svc", "description": "test"},
             selections=[sel],
@@ -368,15 +372,22 @@ class TestBuildServiceConfig:
         assert len(config["spec"]["run"]) == 1
 
     def test_identifier_generation(self):
-        sel = self._make_selection(FileSystemPoller, "file_system_poller_watchdog", "data_monitor")
+        sel = self._make_selection(
+            FileSystemPoller, "file_system_poller_watchdog", "data_monitor"
+        )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
             selections=[sel],
         )
-        assert config["spec"]["run"][0]["identifier"] == "data-monitor-file-system-poller-watchdog"
+        assert (
+            config["spec"]["run"][0]["identifier"]
+            == "data-monitor-file-system-poller-watchdog"
+        )
 
     def test_kind_is_singular(self):
-        sel = self._make_selection(FileSystemPoller, "file_system_poller_watchdog", "data_monitor")
+        sel = self._make_selection(
+            FileSystemPoller, "file_system_poller_watchdog", "data_monitor"
+        )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
             selections=[sel],
@@ -391,7 +402,7 @@ class TestBuildServiceConfig:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp/watch", "hostname": "myhost"},
-            nested_values=[]
+            nested_values=[],
         )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
@@ -401,7 +412,9 @@ class TestBuildServiceConfig:
         assert config["spec"]["run"][0]["spec"]["config"]["hostname"] == "myhost"
 
     def test_config_omitted_when_empty(self):
-        sel = self._make_selection(FileSystemPoller, "file_system_poller_watchdog", "data_monitor")
+        sel = self._make_selection(
+            FileSystemPoller, "file_system_poller_watchdog", "data_monitor"
+        )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
             selections=[sel],
@@ -409,7 +422,9 @@ class TestBuildServiceConfig:
         assert "config" not in config["spec"]["run"][0]["spec"]
 
     def test_duplicate_names_add_suffix(self):
-        sel = self._make_selection(FileSystemPoller, "file_system_poller_watchdog", "data_monitor")
+        sel = self._make_selection(
+            FileSystemPoller, "file_system_poller_watchdog", "data_monitor"
+        )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
             selections=[sel, sel],
@@ -427,7 +442,7 @@ class TestBuildServiceConfig:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp"},
-            nested_values=[]
+            nested_values=[],
         )
         sel_jb = PluginSelection(
             plugin_class=DummyJobBuilder,
@@ -436,7 +451,7 @@ class TestBuildServiceConfig:
             display_label="Job Builder",
             config_model=DummyJobBuilderConfig,
             config_values={},
-            nested_values=[]
+            nested_values=[],
         )
         sel_dp = PluginSelection(
             plugin_class=SerialBashDispatcher,
@@ -445,7 +460,7 @@ class TestBuildServiceConfig:
             display_label="Dispatcher",
             config_model=SerialBashConfig,
             config_values={"bash_script": "echo hello"},
-            nested_values=[]
+            nested_values=[],
         )
         config = build_service_config(
             metadata={"name": "test", "description": "test"},
@@ -468,7 +483,7 @@ class TestValidateConfig:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp"},
-            nested_values=[]
+            nested_values=[],
         )
         config_dict = build_service_config(
             metadata={"name": "test", "description": "test"},
@@ -480,21 +495,25 @@ class TestValidateConfig:
     def test_invalid_config_raises(self):
         """Missing required fields should raise."""
         with pytest.raises(Exception):
-            validate_config({"apiVersion": "bad", "kind": "Service", "metadata": {}, "spec": {}})
+            validate_config(
+                {"apiVersion": "bad", "kind": "Service", "metadata": {}, "spec": {}}
+            )
 
     def test_empty_run_raises(self):
         """Empty run list should be rejected."""
         with pytest.raises(Exception):
-            validate_config({
-                "apiVersion": "runcourier.dev/v1alpha1",
-                "kind": "Service",
-                "metadata": {
-                    "name": "test",
-                    "namespace": "test",
-                    "description": "test",
-                },
-                "spec": {"run": []},
-            })
+            validate_config(
+                {
+                    "apiVersion": "runcourier.dev/v1alpha1",
+                    "kind": "Service",
+                    "metadata": {
+                        "name": "test",
+                        "namespace": "test",
+                        "description": "test",
+                    },
+                    "spec": {"run": []},
+                }
+            )
 
 
 class TestWriteYaml:
@@ -511,7 +530,7 @@ class TestWriteYaml:
             display_label="Data Monitor",
             config_model=FileSystemPollerConfig,
             config_values={"path": "/tmp"},
-            nested_values=[]
+            nested_values=[],
         )
         config_dict = build_service_config(
             metadata={"name": "test-roundtrip", "description": "roundtrip test"},
@@ -562,7 +581,7 @@ class TestWriteYaml:
                     display_label="Data Monitor",
                     config_model=FileSystemPollerConfig,
                     config_values={"path": "/tmp"},
-                    nested_values=[]
+                    nested_values=[],
                 ),
             ],
         )

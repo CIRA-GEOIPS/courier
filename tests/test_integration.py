@@ -224,9 +224,7 @@ def test_cron_glob_single_file_end_to_end(tmp_path: Path) -> None:
         assert _wait_for_healthy(service), "Service did not become healthy"
 
         output_file = output_dir / "sample.nc"
-        assert _poll_for_file(output_file), (
-            f"Pipeline did not produce {output_file}"
-        )
+        assert _poll_for_file(output_file), f"Pipeline did not produce {output_file}"
         assert output_file.read_text() == "sensor data payload"
     finally:
         _shutdown_service(service, thread)
@@ -264,9 +262,9 @@ def test_watchdog_detects_new_files_end_to_end(tmp_path: Path) -> None:
             (watch_dir / name).write_text(f"content of {name}")
             time.sleep(1.0)
 
-        assert _poll_for_content(processed_log, filenames, timeout=30), (
-            f"Not all files appeared in {processed_log}"
-        )
+        assert _poll_for_content(
+            processed_log, filenames, timeout=30
+        ), f"Not all files appeared in {processed_log}"
     finally:
         _shutdown_service(service, thread)
 
@@ -323,18 +321,18 @@ def test_cron_glob_ignore_existing_processes_only_new(tmp_path: Path) -> None:
 
         # Wait for the next cron tick to detect the new file (up to ~65s)
         output_new = output_dir / "new_data.nc"
-        assert _poll_for_file(output_new, timeout=90), (
-            "New file was not dispatched within timeout"
-        )
+        assert _poll_for_file(
+            output_new, timeout=90
+        ), "New file was not dispatched within timeout"
         assert output_new.read_text() == "fresh data"
 
         # Give extra time to confirm old files never show up
         time.sleep(3)
-        assert not (output_dir / "old_a.nc").exists(), (
-            "Pre-existing file old_a.nc should not have been dispatched"
-        )
-        assert not (output_dir / "old_b.nc").exists(), (
-            "Pre-existing file old_b.nc should not have been dispatched"
-        )
+        assert not (
+            output_dir / "old_a.nc"
+        ).exists(), "Pre-existing file old_a.nc should not have been dispatched"
+        assert not (
+            output_dir / "old_b.nc"
+        ).exists(), "Pre-existing file old_b.nc should not have been dispatched"
     finally:
         _shutdown_service(service, thread)

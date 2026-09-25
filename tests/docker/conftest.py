@@ -210,7 +210,11 @@ def pipeline(
     from tests.docker._pipeline import Pipeline
 
     helper = Pipeline(
-        docker_image, docker_network, docker_volume, tmp_path, broker_image,
+        docker_image,
+        docker_network,
+        docker_volume,
+        tmp_path,
+        broker_image,
     )
     try:
         helper.start_broker()

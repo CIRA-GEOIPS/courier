@@ -64,7 +64,9 @@ def get_registered_plugin(plugin_registrations, entry):
 
     cfg = entry.spec.config or {}
     missing = [
-        k for k in (PLUGIN_REGISTRIES | NECESSARY_REGISTRIES)[kind].nested_values if k not in cfg
+        k
+        for k in (PLUGIN_REGISTRIES | NECESSARY_REGISTRIES)[kind].nested_values
+        if k not in cfg
     ]
     if missing:
         raise InvalidPluginConfigError(
@@ -137,7 +139,7 @@ def _resolve_service_id(config: Any) -> str:
     return str(config.metadata.name)
 
 
-def run_service( # noqa: PLR0912
+def run_service(
     config: Any,
     log_level: str | None = None,
     *,

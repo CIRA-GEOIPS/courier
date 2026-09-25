@@ -1,14 +1,18 @@
 """Implementation for the base falcon plugin."""
+
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Self
 
-from courier.metrics import FALCON_JOB_EXECUTION_DURATION, FALCON_JOBS_PROCESSED, collect_labeled
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.interfaces.discovery import ENTRY_POINT_PREFIX, ClassPluginRegistry
 from courier.interfaces.plugin_protocol import ServicePlugin
+from courier.metrics import (
+    FALCON_JOB_EXECUTION_DURATION,
+    FALCON_JOBS_PROCESSED,
+    collect_labeled,
+)
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
@@ -123,7 +127,7 @@ class Falcon(ServicePlugin):
             falcon.identifier,
         )
 
-    def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]: # noqa: ARG002
+    def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:  # noqa: ARG002
         """Validate a toolchain argument through a self-defined method.
 
         Parameters
@@ -140,10 +144,10 @@ class Falcon(ServicePlugin):
 
     def get_payload_from_job(
         self,
-        command: list[str], # noqa: ARG002
-        job: Job | None = None, #noqa: ARG002
-        log_prefix: str = "", # noqa: ARG002
-        log_file_path: Path | None = None, # noqa: ARG002
+        command: list[str],  # noqa: ARG002
+        job: Job | None = None,  # noqa: ARG002
+        log_prefix: str = "",  # noqa: ARG002
+        log_file_path: Path | None = None,  # noqa: ARG002
     ) -> list[ExecutionLog]:
         """Get an execution log from execution a command.
 
@@ -165,7 +169,7 @@ class Falcon(ServicePlugin):
             ExecutionLog(),
         ]
 
-    def declare_command(self, path: Path | None = None) -> list[str]: # noqa: ARG002
+    def declare_command(self, path: Path | None = None) -> list[str]:  # noqa: ARG002
         """Declare the syntax to call a command.
 
         Parameters
@@ -194,7 +198,7 @@ class Falcon(ServicePlugin):
         """Return plugin-specific metrics."""
         return {
             **collect_labeled(FALCON_JOB_EXECUTION_DURATION, "falcon_name", self.name),
-            **collect_labeled(FALCON_JOBS_PROCESSED, "falcon_name", self.name)
+            **collect_labeled(FALCON_JOBS_PROCESSED, "falcon_name", self.name),
         }
 
     def start(self) -> None:

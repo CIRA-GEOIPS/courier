@@ -40,7 +40,9 @@ def _courier_command() -> list[str]:
     """Return the command that runs courier, preferring the console script."""
     console_script = shutil.which(
         "courier",
-        path=str(Path(sys.executable).parent) + os.pathsep + (os.environ.get("PATH") or ""),
+        path=str(Path(sys.executable).parent)
+        + os.pathsep
+        + (os.environ.get("PATH") or ""),
     )
     if console_script:
         return [console_script]
@@ -136,8 +138,9 @@ def _wait_for_pipeline(output_file: Path, process: subprocess.Popen[str]) -> Non
             )
         time.sleep(0.25)
     _terminate(process)
-    pytest.fail(f"pipeline never produced {output_file} within "
-                f"{_STARTUP_TIMEOUT_SECONDS}s")
+    pytest.fail(
+        f"pipeline never produced {output_file} within " f"{_STARTUP_TIMEOUT_SECONDS}s"
+    )
 
 
 @pytest.mark.parametrize(

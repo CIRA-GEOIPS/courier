@@ -240,9 +240,7 @@ class TestReadyJobLifecycle:
         builder._process_job_group(group, _file("a"))
         builder._process_job_group(group, _file("b"))
 
-        assert observed == [0], (
-            f"job still in group while being emitted: {observed}"
-        )
+        assert observed == [0], f"job still in group while being emitted: {observed}"
 
     def test_files_beyond_capacity_are_not_dropped(
         self,
@@ -289,14 +287,19 @@ class TestEmittedMetrics:
             "job_builder_identifier": "jb-metrics",
             "target": "dp-a",
         }
-        before = REGISTRY.get_sample_value(
-            "courier_job_builder_jobs_emitted_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_job_builder_jobs_emitted_total",
+                labels,
+            )
+            or 0.0
+        )
 
         builder.emit(Job("n", "job-1", {}), ["dp-a"])
 
         after = REGISTRY.get_sample_value(
-            "courier_job_builder_jobs_emitted_total", labels,
+            "courier_job_builder_jobs_emitted_total",
+            labels,
         )
         assert after == before + 1
 
@@ -313,14 +316,19 @@ class TestEmittedMetrics:
             "target": "dp-a",
             "reason": "fatal",
         }
-        before = REGISTRY.get_sample_value(
-            "courier_job_builder_emit_failures_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_job_builder_emit_failures_total",
+                labels,
+            )
+            or 0.0
+        )
 
         builder.emit(Job("n", "job-1", {}), ["dp-a"])
 
         after = REGISTRY.get_sample_value(
-            "courier_job_builder_emit_failures_total", labels,
+            "courier_job_builder_emit_failures_total",
+            labels,
         )
         assert after == before + 1
 
@@ -398,10 +406,13 @@ class TestPoisonMessages:
         from prometheus_client import REGISTRY
 
         builder = _builder(service)
-        before = REGISTRY.get_sample_value(
-            "courier_job_builder_malformed_messages_total",
-            {"job_builder_name": builder.name, "job_builder_identifier": "jb-1"},
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_job_builder_malformed_messages_total",
+                {"job_builder_name": builder.name, "job_builder_identifier": "jb-1"},
+            )
+            or 0.0
+        )
 
         service.consume.return_value = iter(
             [
@@ -423,10 +434,13 @@ class TestPoisonMessages:
         )
         assert after - before == 3
         assert sum(len(g.jobs) for g in builder.job_groups) == 1
-        assert sum(
-            "Dropping malformed file-found message" in r.message
-            for r in caplog.records
-        ) == 3
+        assert (
+            sum(
+                "Dropping malformed file-found message" in r.message
+                for r in caplog.records
+            )
+            == 3
+        )
 
     def test_the_logged_preview_is_truncated(
         self,

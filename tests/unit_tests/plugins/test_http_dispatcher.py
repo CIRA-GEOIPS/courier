@@ -115,7 +115,9 @@ class TestSendWithRetries:
         assert err is not None and "TransportError" in err
 
     def test_non_success_status_returned(self, mock_service: MagicMock) -> None:
-        plugin = HttpDispatcher(mock_service, _make_config(retry_count=0), identifier="test-disp")
+        plugin = HttpDispatcher(
+            mock_service, _make_config(retry_count=0), identifier="test-disp"
+        )
         client = MagicMock()
         resp = MagicMock()
         resp.status_code = 400
@@ -130,9 +132,7 @@ class TestSendWithRetries:
 
 
 class TestGetExecutionLog:
-    def test_success_path(
-        self, mock_service: MagicMock, make_job, mocker
-    ) -> None:
+    def test_success_path(self, mock_service: MagicMock, make_job, mocker) -> None:
         plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
         client = MagicMock()
         resp = MagicMock()
@@ -151,9 +151,7 @@ class TestGetExecutionLog:
         self, mock_service: MagicMock, make_job, mocker
     ) -> None:
         plugin = HttpDispatcher(mock_service, _make_config(), identifier="test-disp")
-        mocker.patch.object(
-            plugin._template, "render", side_effect=Exception("render")
-        )
+        mocker.patch.object(plugin._template, "render", side_effect=Exception("render"))
         # The plugin catches jinja2.TemplateError only; force a real one:
         import jinja2
 

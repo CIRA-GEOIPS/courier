@@ -12,7 +12,6 @@ from hypothesis import strategies as st
 from courier.types.file import File, FrozenFile
 from courier.types.job import _OVERFLOW_SEPARATOR, Job, JobGroup
 
-
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -34,7 +33,12 @@ def _jobs_equal(a: Job, b: Job) -> bool:
 @pytest.fixture
 def simple_job() -> Job:
     """Minimal Job with no files."""
-    return Job(name="test_job", identifier="job-001", config={"key": "value"}, last_modified=1000.0)
+    return Job(
+        name="test_job",
+        identifier="job-001",
+        config={"key": "value"},
+        last_modified=1000.0,
+    )
 
 
 @pytest.fixture
@@ -93,7 +97,9 @@ def test_is_old_false_for_new_job(simple_job: Job) -> None:
 def test_is_old_true_for_expired_job() -> None:
     """A job older than its timeout is old."""
     old_ts = time.time() - 7200
-    job = Job(name="j", identifier="i", config=None, last_modified=old_ts, timeout=3600.0)
+    job = Job(
+        name="j", identifier="i", config=None, last_modified=old_ts, timeout=3600.0
+    )
     assert job.is_old()
 
 
@@ -152,7 +158,11 @@ _timestamps = st.one_of(
         min_value=datetime(2000, 1, 1),
         max_value=datetime(2100, 1, 1),
         timezones=st.sampled_from(
-            [UTC, timezone(timedelta(hours=-6)), timezone(timedelta(hours=5, minutes=30))],
+            [
+                UTC,
+                timezone(timedelta(hours=-6)),
+                timezone(timedelta(hours=5, minutes=30)),
+            ],
         ),
     ),
 )
@@ -163,7 +173,9 @@ _frozen_files = st.builds(
         st.none(),
         st.builds(Path, st.from_regex(r"/[a-zA-Z0-9/\-_\.]{1,60}", fullmatch=True)),
     ),
-    hostname=st.one_of(st.none(), st.from_regex(r"[a-zA-Z0-9\-]{1,30}", fullmatch=True)),
+    hostname=st.one_of(
+        st.none(), st.from_regex(r"[a-zA-Z0-9\-]{1,30}", fullmatch=True)
+    ),
     source=st.one_of(st.none(), st.from_regex(r"[a-z0-9]{2,10}", fullmatch=True)),
     timestamp=_timestamps,
 )
@@ -172,10 +184,16 @@ _frozen_files = st.builds(
 @given(
     name=_identifiers,
     identifier=_identifiers,
-    config=st.one_of(st.none(), st.dictionaries(_identifiers, _json_scalars, max_size=5)),
+    config=st.one_of(
+        st.none(), st.dictionaries(_identifiers, _json_scalars, max_size=5)
+    ),
     files=st.frozensets(_frozen_files, max_size=4),
-    last_modified=st.floats(min_value=0.0, max_value=1e12, allow_nan=False, allow_infinity=False),
-    timeout=st.floats(min_value=1.0, max_value=1e9, allow_nan=False, allow_infinity=False),
+    last_modified=st.floats(
+        min_value=0.0, max_value=1e12, allow_nan=False, allow_infinity=False
+    ),
+    timeout=st.floats(
+        min_value=1.0, max_value=1e9, allow_nan=False, allow_infinity=False
+    ),
 )
 @settings(max_examples=50)
 def test_hypothesis_round_trip(
@@ -321,7 +339,8 @@ class TestJobIdSequencing:
                 return True
 
             def get_job_ids_from_file(
-                self, _file: File | FrozenFile,
+                self,
+                _file: File | FrozenFile,
             ) -> list[str]:
                 return ["alpha", "beta", "gamma"]
 

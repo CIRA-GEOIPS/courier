@@ -101,9 +101,9 @@ def test_cold_start_publish_before_any_consumer_is_retained() -> None:
     worker = _consume_once(consumer, "jb", received, stop, subscribed)
     try:
         assert subscribed.wait(timeout=10), "consumer never subscribed"
-        assert poll_until(lambda: bool(received), timeout=10), (
-            "the file published before any consumer existed was lost"
-        )
+        assert poll_until(
+            lambda: bool(received), timeout=10
+        ), "the file published before any consumer existed was lost"
     finally:
         stop.set()
         worker.join(timeout=10)
@@ -229,9 +229,9 @@ def test_distinct_builders_each_receive_every_file() -> None:
             FILE_FOUND_EXCHANGE,
             '{"file": "/data/both.nc", "hostname": "h"}',
         )
-        assert poll_until(lambda: all(received), timeout=10), (
-            f"not every builder received the file: {received}"
-        )
+        assert poll_until(
+            lambda: all(received), timeout=10
+        ), f"not every builder received the file: {received}"
     finally:
         for stop in stops:
             stop.set()

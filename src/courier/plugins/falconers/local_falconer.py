@@ -1,4 +1,5 @@
 """Implementation of the local_falconer falconer class."""
+
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
@@ -60,8 +61,8 @@ class LocalFalconer(Falconer):
             "falconer.cast_off_falcon",
             attributes={
                 ATTR_JOB_ID: job.identifier,
-                ATTR_CORRELATION_ID: job.correlation_id
-            }
+                ATTR_CORRELATION_ID: job.correlation_id,
+            },
         ):
             self._state = PluginRunState.RUNNING
             # ---------initialize environment
@@ -87,22 +88,24 @@ class LocalFalconer(Falconer):
                 self._jobs_processed.labels(
                     status="success",
                     falconer_name=self.name,
-                    falconer_identifier=self.identifier
+                    falconer_identifier=self.identifier,
                 ).inc()
             except Exception as e:
                 self._state = PluginRunState.FAILED
                 self._jobs_processed.labels(
                     status="failure",
                     falconer_name=self.name,
-                    falconer_identifier=self.identifier
+                    falconer_identifier=self.identifier,
                 ).inc()
                 raise CourierError(
                     "Failed to execute job",
-                    e
+                    e,
                 ) from e
             if any(p.return_code != 0 for p in payload):
                 self._state = PluginRunState.FAILED
-                self._logger.error(f"Exception occurred while running job {job.identifier}")
+                self._logger.error(
+                    f"Exception occurred while running job {job.identifier}",
+                )
             self._logger.debug(f"Yielding execution log for {job}")
             return payload
 

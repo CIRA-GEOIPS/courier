@@ -767,7 +767,6 @@ class Service:
 
         Also give everything to the plugin manager.
         """
-
         from courier.interfaces.dispatchers import Dispatcher  # noqa: PLC0415
         from courier.interfaces.falconers import Falconer  # noqa: PLC0415
         from courier.interfaces.falcons import Falcon  # noqa: PLC0415
@@ -779,14 +778,14 @@ class Service:
         missing_elements = [
             plugin_id
             for plugin_id, registered_plugin in self._plugin_manager._plugins.items()
-            if registered_plugin.plugin.interface in {"dispatchers", "falconers", "falcons"}
+            if registered_plugin.plugin.interface
+            in {"dispatchers", "falconers", "falcons"}
             and plugin_id not in flattened_map
         ]
 
         if missing_elements:
             raise ConfigurationError(
-                "Missing element(s) from falconer map: "
-                f"{missing_elements}"
+                "Missing element(s) from falconer map: " f"{missing_elements}",
             )
 
         for dispatcher_id, falconer_id, falcon_id in self._falconer_map:
@@ -927,9 +926,6 @@ class Service:
                 self.preflight_check()
                 self._start_managers()
 
-                if not self._health_check():
-                    raise RuntimeError("Service health check failed after startup")  # noqa: TRY301
-
                 self._logger.info(
                     f"Service {self._config.service_id} started successfully",
                 )
@@ -942,6 +938,10 @@ class Service:
                 self._logger.exception("Service startup failed")
                 raise
             finally:
+                if not self._health_check():
+                    raise RuntimeError(
+                        "Service health check failed after startup",
+                    )
                 self._cleanup()
 
     def _cleanup(self) -> None:
@@ -954,8 +954,9 @@ class Service:
 
 def create_service_with_plugins(
     config: ServiceConfig | None = None,
-    plugins: Sequence[tuple[type[ServicePlugin], dict[str, Any], str | None]]
-    | None = None,
+    plugins: (
+        Sequence[tuple[type[ServicePlugin], dict[str, Any], str | None]] | None
+    ) = None,
 ) -> Service:
     """Create new Service instance with optional configuration and plugins.
 

@@ -107,8 +107,10 @@ class TestRegisterPlugin:
         mock_instance = _make_plugin("reg-test")
         clazz = _plugin_cls_for(mock_instance)
 
-        with patch.object(manager, "_plugin_state_metric") as mock_state, \
-             patch.object(manager, "_plugin_health_metric"):
+        with (
+            patch.object(manager, "_plugin_state_metric") as mock_state,
+            patch.object(manager, "_plugin_health_metric"),
+        ):
             manager.register_plugin(clazz, {}, identifier="reg-test")
 
         mock_state.labels.assert_called_once()
@@ -125,8 +127,10 @@ class TestRegisterPlugin:
         mock_instance = _make_plugin("reg-test-2")
         clazz = _plugin_cls_for(mock_instance)
 
-        with patch.object(manager, "_plugin_state_metric"), \
-             patch.object(manager, "_plugin_health_metric") as mock_health:
+        with (
+            patch.object(manager, "_plugin_state_metric"),
+            patch.object(manager, "_plugin_health_metric") as mock_health,
+        ):
             manager.register_plugin(clazz, {}, identifier="reg-test-2")
 
         mock_health.labels.return_value.set.assert_called_once_with(0)
@@ -145,9 +149,7 @@ class TestRegisterPlugin:
         clazz2 = _plugin_cls_for(mock2)
         mock2.identifier = "dup-key"
 
-        with patch.object(
-            manager, "_registration_failures_metric"
-        ) as mock_reg_fail:
+        with patch.object(manager, "_registration_failures_metric") as mock_reg_fail:
             with pytest.raises(ValueError, match="already registered"):
                 manager.register_plugin(clazz2, {}, identifier="dup-key")
 

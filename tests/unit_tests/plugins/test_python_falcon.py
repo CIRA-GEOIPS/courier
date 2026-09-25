@@ -9,6 +9,7 @@ from courier.plugins.falcons.python_falcon import PythonFalcon
 from courier.types.job import Job
 from courier.types.file import File
 
+
 @pytest.fixture
 def service() -> MagicMock:
     svc = MagicMock()
@@ -16,28 +17,36 @@ def service() -> MagicMock:
     svc._broker_manager._connection = None
     return svc
 
+
 @pytest.fixture
 def config(tmp_path) -> dict:
     file = tmp_path / "demo.sh"
-    file.write_text("#!/bin/sh\n\necho \"hello world! file: {{ files[0].file }}\"")
-    return {
-        "file": file
-    }
+    file.write_text('#!/bin/sh\n\necho "hello world! file: {{ files[0].file }}"')
+    return {"file": file}
+
 
 def _job(identifier: str = "job-1") -> Job:
     return Job("n", identifier, {}, files=[File(file=Path("/d/a.nc")).freeze()])
 
+
 def _base_config() -> DispatcherGroupConfig:
     return DispatcherGroupConfig.model_validate({})
 
+
 class TestConstruction:
-    def test_falcon_construction_with_config(self, service: MagicMock, config: dict) -> None:
+    def test_falcon_construction_with_config(
+        self, service: MagicMock, config: dict
+    ) -> None:
         res = PythonFalcon(service, config, "dummyfalcon")
 
         assert res != None
-    def test_falcon_construction_with_invalid_file_path(self, service: MagicMock) -> None:
+
+    def test_falcon_construction_with_invalid_file_path(
+        self, service: MagicMock
+    ) -> None:
         with pytest.raises(ValidationError):
             res = PythonFalcon(service, {"file": "invalid_file"}, "dummyfalcon")
+
 
 class TestFalconWorkflow:
     def test_get_payload_from_file(self, service, config):
@@ -53,6 +62,7 @@ class TestFalconWorkflow:
         result = falconer.cast_off_falcon(job)
         assert len(result) > 0
         assert result[0].return_code == 0
+
     def test_get_payload_from_binary(self, service, config):
         job = _job()
 

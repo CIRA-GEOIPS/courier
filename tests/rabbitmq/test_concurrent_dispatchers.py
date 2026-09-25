@@ -219,9 +219,9 @@ def test_two_dispatchers_consuming_at_once_both_keep_dispatching(
         for dispatcher in dispatchers:
             dispatcher.start()
         for dispatcher in dispatchers:
-            assert dispatcher.wait_until_subscribed(timeout=30), (
-                f"{dispatcher.identifier} never bound to its job queue"
-            )
+            assert dispatcher.wait_until_subscribed(
+                timeout=30
+            ), f"{dispatcher.identifier} never bound to its job queue"
 
         # 30s against a passing path that finishes in under two: the wedge is
         # immediate and permanent, so the budget only has to cover a loaded

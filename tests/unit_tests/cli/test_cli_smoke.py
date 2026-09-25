@@ -123,7 +123,8 @@ def test_plugins_list_json_is_machine_readable() -> None:
 def test_plugins_list_filtered_by_config(config: Path) -> None:
     """Filtering by config must return the plugins that config references."""
     result = runner.invoke(
-        app, ["plugins", "list", str(config), "--json"],
+        app,
+        ["plugins", "list", str(config), "--json"],
     )
     assert result.exit_code == 0, result.output
 
@@ -267,8 +268,10 @@ def _iter_documented_invocations() -> list[tuple[str, int, str]]:
             # Inside a fence a line may start with the command; outside one,
             # only a backticked span counts. Prose such as "courier loads it,
             # rather than..." is a sentence, not an invocation.
-            pattern = r"(?:^|`|\$ )\s*(courier +[^`\n|>#]+)" if in_fence else (
-                r"`\s*(courier +[^`\n]+)`"
+            pattern = (
+                r"(?:^|`|\$ )\s*(courier +[^`\n|>#]+)"
+                if in_fence
+                else (r"`\s*(courier +[^`\n]+)`")
             )
             for match in re.finditer(pattern, raw):
                 command = match.group(1).strip().rstrip("\\").strip()
@@ -387,7 +390,11 @@ def test_config_is_positional_for_every_command() -> None:
         if command and "--config" in _opts(command):
             offenders.append(name)
 
-    for group_name, sub in (("queues", "list"), ("queues", "prune"), ("plugins", "list")):
+    for group_name, sub in (
+        ("queues", "list"),
+        ("queues", "prune"),
+        ("plugins", "list"),
+    ):
         group = root.get_command(click.Context(root), group_name)
         command = group.get_command(click.Context(group), sub)
         if "--config" in _opts(command):

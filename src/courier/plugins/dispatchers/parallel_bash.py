@@ -352,15 +352,15 @@ class ParallelBashDispatcher(Dispatcher):
                             script_body,
                             self.validated.timeout_seconds,
                             hostname,
-                            logger=self._logger
-                            if self.validated.log_to_logger
-                            else None,
+                            logger=(
+                                self._logger if self.validated.log_to_logger else None
+                            ),
                             log_to_logger=self.validated.log_to_logger,
                             log_prefix=log_prefix,
                             log_to_file=self.validated.log_to_file,
-                            log_file_path=log_path
-                            if self.validated.log_to_file
-                            else None,
+                            log_file_path=(
+                                log_path if self.validated.log_to_file else None
+                            ),
                             log_only_errors=self.validated.log_only_errors,
                             env=env,
                         )

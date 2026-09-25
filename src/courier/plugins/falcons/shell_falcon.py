@@ -1,24 +1,32 @@
 """Implementation of the shell_falcon falcon class."""
+
+import shlex
+import time
+from contextlib import nullcontext
 from pathlib import Path
 from socket import gethostname
-import time
-import shlex
 from typing import ClassVar
-
-from contextlib import nullcontext
 
 from courier.interfaces.falcons import DispatcherGroupConfig, Falcon, FalconConfig
 from courier.service import Service
-from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, extract_context, get_tracer
+from courier.tracing import (
+    ATTR_CORRELATION_ID,
+    ATTR_JOB_ID,
+    get_tracer,
+)
 from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.shell_executor import execute_shell_script
 
-class ShellFalconConfig(FalconConfig):
+
+# classes for courier init discovery
+class ShellFalconConfig(FalconConfig):  # noqa: D101
     pass
 
-class ShellFalconBaseConfig(DispatcherGroupConfig):
+
+class ShellFalconBaseConfig(DispatcherGroupConfig):  # noqa: D101
     pass
+
 
 class ShellFalcon(Falcon):
     """Falcon class for shell execution."""
@@ -56,7 +64,10 @@ class ShellFalcon(Falcon):
         command = [self._default_binary, "-c", f"command -v {value}"]
         payload = self.get_payload_from_job(command)
 
-        self._logger.debug(f"Toolchain validation command {command} returned: {[p.return_code for p in payload]}")
+        self._logger.debug(
+            f"Toolchain validation command {command} returned:"
+            f"{[p.return_code for p in payload]}",
+        )
         return payload
 
     def generate_calling_method(self) -> list[str]:
@@ -139,8 +150,8 @@ class ShellFalcon(Falcon):
                 "falcon.get_payload_from_job",
                 attributes={
                     ATTR_JOB_ID: job.identifier,
-                    ATTR_CORRELATION_ID: job.correlation_id
-                }
+                    ATTR_CORRELATION_ID: job.correlation_id,
+                },
             )
             start_time = time.time()
             self.active_job_timestamps[job.identifier] = start_time
@@ -166,15 +177,15 @@ class ShellFalcon(Falcon):
                     )
                     self._job_execution_duration.labels(
                         falcon_name=self.name,
-                        falcon_identifier=self.identifier
+                        falcon_identifier=self.identifier,
                     ).observe(execution_time)
                     del self.active_job_timestamps[job.identifier]
             if job:
                 status = "success" if result.return_code == 0 else "failure"
                 self._jobs_processed.labels(
-                    status = status,
+                    status=status,
                     falcon_name=self.name,
-                    falcon_identifier=self.identifier
+                    falcon_identifier=self.identifier,
                 ).inc()
 
             return [
@@ -182,6 +193,6 @@ class ShellFalcon(Falcon):
                     return_code=result.return_code,
                     stdout=result.stdout,
                     stderr=result.stderr,
-                    hostname=hostname
+                    hostname=hostname,
                 ),
             ]
