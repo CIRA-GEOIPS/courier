@@ -98,9 +98,9 @@ def test_files_published_while_the_consumer_is_gone_are_delivered_later(
     received: list[str] = []
     worker = _drain(service, "jb", received)
     try:
-        assert poll_until(lambda: len(received) == 3, timeout=30), (
-            f"only {len(received)} of 3 buffered files were delivered"
-        )
+        assert poll_until(
+            lambda: len(received) == 3, timeout=30
+        ), f"only {len(received)} of 3 buffered files were delivered"
     finally:
         _stop(worker)
 

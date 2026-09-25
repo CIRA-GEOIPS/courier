@@ -569,7 +569,9 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 self._error_queue.put(exc)
                 return
 
-    def _connect_and_consume(self, file_queue: queue.Queue[File]) -> None:  # noqa: PLR0915
+    def _connect_and_consume( # noqa: PLR0915
+        self, file_queue: queue.Queue[File],
+    ) -> None:
         """Open a single broker connection and block until consumption ends."""
         url = self._build_broker_url()
         self._logger.debug(

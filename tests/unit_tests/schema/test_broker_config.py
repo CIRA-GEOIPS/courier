@@ -38,7 +38,9 @@ class _BrokerWrapper(BaseModel):
     broker: BrokerConfig
 
 
-def _validate(data: Any) -> AmqpBrokerConfig | RedisBrokerConfig | MemoryBrokerConfig | UrlBrokerConfig:
+def _validate(
+    data: Any,
+) -> AmqpBrokerConfig | RedisBrokerConfig | MemoryBrokerConfig | UrlBrokerConfig:
     """Validate *data* through the ``BrokerConfig`` discriminated union."""
     return _BrokerWrapper(broker=data).broker
 

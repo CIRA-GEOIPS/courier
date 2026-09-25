@@ -60,9 +60,9 @@ def test_abi_base_entry_matches_every_channel(
     entry = config.spec.file_metadata[config_name.replace("_abi", "_abi_l1b")]
     filename = _abi_filename("RadF", channel, _satellite_code(config_name))
 
-    assert any(re.search(p, filename) for p in entry.match), (
-        f"{config_name}: channel C{channel:02d} matches none of {entry.match}"
-    )
+    assert any(
+        re.search(p, filename) for p in entry.match
+    ), f"{config_name}: channel C{channel:02d} matches none of {entry.match}"
 
 
 @pytest.mark.parametrize("config_name", _ABI_CONFIGS)
@@ -135,8 +135,7 @@ def test_abi_domain_entries_are_mutually_exclusive(
             other
             for other in _ABI_DOMAIN_PRODUCTS
             if any(
-                re.search(p, filename)
-                for p in config.spec.file_metadata[other].match
+                re.search(p, filename) for p in config.spec.file_metadata[other].match
             )
         }
         assert matching == {entry_name}, (

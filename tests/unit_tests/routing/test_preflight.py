@@ -49,6 +49,7 @@ def test_implicit_routing_resolves_to_sole_dispatcher(
         builder_targets={"builder": ()},
         allow_implicit_target=True,
     )
+    svc._falconer_map = []
     # Courier loggers don't propagate to root; attach caplog's handler to the
     # actual service logger instance.
     logger = svc._logger.logger  # underlying Logger behind the ContextAdapter

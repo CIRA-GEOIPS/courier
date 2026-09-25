@@ -40,7 +40,9 @@ class TestCollectLabeled:
             status="success",
         ).inc(3)
         result = collect_labeled(
-            DATA_MONITOR_FILES_PROCESSED, "monitor_name", "cl_counter",
+            DATA_MONITOR_FILES_PROCESSED,
+            "monitor_name",
+            "cl_counter",
         )
         assert result, "counter samples missing"
         # Keys are "<sample_name>_{labels}"; check the sample-name portion.
@@ -49,42 +51,57 @@ class TestCollectLabeled:
 
     def test_histogram_sum_and_count_are_returned(self) -> None:
         DATA_MONITOR_SCAN_DURATION.labels(
-            monitor_name="cl_hist", monitor_identifier="dm-1",
+            monitor_name="cl_hist",
+            monitor_identifier="dm-1",
         ).observe(0.25)
         result = collect_labeled(
-            DATA_MONITOR_SCAN_DURATION, "monitor_name", "cl_hist",
+            DATA_MONITOR_SCAN_DURATION,
+            "monitor_name",
+            "cl_hist",
         )
         suffixes = {name.split("_{")[0].rsplit("_", 1)[-1] for name in result}
         assert {"sum", "count"} <= suffixes
 
     def test_gauge_still_works(self) -> None:
         DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(
-            monitor_name="cl_gauge", monitor_identifier="dm-1",
+            monitor_name="cl_gauge",
+            monitor_identifier="dm-1",
         ).set(5)
         result = collect_labeled(
-            DATA_MONITOR_LAST_SCAN_TIMESTAMP, "monitor_name", "cl_gauge",
+            DATA_MONITOR_LAST_SCAN_TIMESTAMP,
+            "monitor_name",
+            "cl_gauge",
         )
         assert [entry["value"] for entry in result.values()] == [5.0]
 
     def test_bookkeeping_samples_are_excluded(self) -> None:
         """``_created`` and ``_bucket`` are not measurements."""
         DATA_MONITOR_SCAN_DURATION.labels(
-            monitor_name="cl_excl", monitor_identifier="dm-1",
+            monitor_name="cl_excl",
+            monitor_identifier="dm-1",
         ).observe(0.5)
         result = collect_labeled(
-            DATA_MONITOR_SCAN_DURATION, "monitor_name", "cl_excl",
+            DATA_MONITOR_SCAN_DURATION,
+            "monitor_name",
+            "cl_excl",
         )
         assert not any("_created" in n or "_bucket" in n for n in result)
 
     def test_other_label_values_are_filtered_out(self) -> None:
         DATA_MONITOR_FILES_PROCESSED.labels(
-            monitor_name="cl_keep", monitor_identifier="dm-1", status="success",
+            monitor_name="cl_keep",
+            monitor_identifier="dm-1",
+            status="success",
         ).inc()
         DATA_MONITOR_FILES_PROCESSED.labels(
-            monitor_name="cl_drop", monitor_identifier="dm-1", status="success",
+            monitor_name="cl_drop",
+            monitor_identifier="dm-1",
+            status="success",
         ).inc()
         result = collect_labeled(
-            DATA_MONITOR_FILES_PROCESSED, "monitor_name", "cl_keep",
+            DATA_MONITOR_FILES_PROCESSED,
+            "monitor_name",
+            "cl_keep",
         )
         assert all(e["labels"]["monitor_name"] == "cl_keep" for e in result.values())
 

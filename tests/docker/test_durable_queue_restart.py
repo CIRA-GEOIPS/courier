@@ -294,7 +294,9 @@ def test_a_stopped_builders_queue_keeps_its_backlog_until_the_container_returns(
     pipeline.await_queue(files_found)
 
     consumer = pipeline.start_courier(
-        "consumer", config, only="create-jobs,process-files",
+        "consumer",
+        config,
+        only="create-jobs,process-files",
     )
     # No other signal shows a process that has started but not yet bound. A
     # count of one means the replicas share one queue; one count per replica

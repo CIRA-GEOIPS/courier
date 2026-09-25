@@ -135,9 +135,9 @@ def test_a_queue_the_watcher_cannot_declare_is_reported_not_retried_forever(
         worker.join(timeout=30)
 
     error = raised[0]
-    assert isinstance(error, FatalBrokerError), (
-        f"expected a FatalBrokerError naming the queue, got {error!r}"
-    )
+    assert isinstance(
+        error, FatalBrokerError
+    ), f"expected a FatalBrokerError naming the queue, got {error!r}"
     message = str(error)
     assert watched_queue in message
     assert "406" in message or "PRECONDITION" in message.upper()
@@ -174,9 +174,9 @@ def test_a_queue_the_watcher_can_declare_keeps_the_listener_running(
     try:
         assert started.wait(timeout=30)
         # It stays up: the queue matches, so there is nothing to report.
-        assert not poll_until(lambda: bool(raised), timeout=5), (
-            f"a healthy queue was reported as a broker failure: {raised}"
-        )
+        assert not poll_until(
+            lambda: bool(raised), timeout=5
+        ), f"a healthy queue was reported as a broker failure: {raised}"
     finally:
         watcher.stop()
         worker.join(timeout=30)

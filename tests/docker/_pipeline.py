@@ -78,11 +78,17 @@ class Pipeline:
         """Start RabbitMQ and block until it answers a ping."""
         result = run(
             [
-                "docker", "run", "-d",
-                "--name", self.broker,
-                "--network", self.network,
-                "-e", f"RABBITMQ_DEFAULT_USER={BROKER_USER}",
-                "-e", f"RABBITMQ_DEFAULT_PASS={BROKER_PASSWORD}",
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                self.broker,
+                "--network",
+                self.network,
+                "-e",
+                f"RABBITMQ_DEFAULT_USER={BROKER_USER}",
+                "-e",
+                f"RABBITMQ_DEFAULT_PASS={BROKER_PASSWORD}",
                 self.broker_image,
             ],
             timeout=300.0,
@@ -90,9 +96,9 @@ class Pipeline:
         assert result.returncode == 0, result.stderr
         self._containers.append(self.broker)
 
-        assert poll_until(self._broker_ready, timeout=180.0, interval=1.0), (
-            f"rabbitmq never became ready:\n{container_logs(self.broker)}"
-        )
+        assert poll_until(
+            self._broker_ready, timeout=180.0, interval=1.0
+        ), f"rabbitmq never became ready:\n{container_logs(self.broker)}"
 
     def _broker_ready(self) -> bool:
         """Return whether the broker answers a diagnostics ping.
@@ -104,8 +110,14 @@ class Pipeline:
         """
         probe = run(
             [
-                "docker", "exec", "-u", "rabbitmq", self.broker,
-                "rabbitmq-diagnostics", "-q", "ping",
+                "docker",
+                "exec",
+                "-u",
+                "rabbitmq",
+                self.broker,
+                "rabbitmq-diagnostics",
+                "-q",
+                "ping",
             ],
             timeout=30.0,
         )
@@ -145,11 +157,17 @@ class Pipeline:
         container = f"courier-{name}-{uuid.uuid4().hex[:6]}"
 
         command = [
-            "docker", "run", "-d",
-            "--name", container,
-            "--network", self.network,
-            "-v", f"{self.volume}:/data",
-            "-v", f"{config_path}:/cfg/service.yaml:ro",
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            container,
+            "--network",
+            self.network,
+            "-v",
+            f"{self.volume}:/data",
+            "-v",
+            f"{config_path}:/cfg/service.yaml:ro",
         ]
         for key, value in (env or {}).items():
             command += ["-e", f"{key}={value}"]
@@ -219,8 +237,15 @@ class Pipeline:
         """Return the queue names currently declared on the broker."""
         result = run(
             [
-                "docker", "exec", "-u", "rabbitmq", self.broker,
-                "rabbitmqctl", "list_queues", "-s", "name",
+                "docker",
+                "exec",
+                "-u",
+                "rabbitmq",
+                self.broker,
+                "rabbitmqctl",
+                "list_queues",
+                "-s",
+                "name",
             ],
             timeout=60.0,
         )
@@ -250,8 +275,17 @@ class Pipeline:
         """
         result = run(
             [
-                "docker", "exec", "-u", "rabbitmq", self.broker,
-                "rabbitmqctl", "list_queues", "-s", "name", "messages", "consumers",
+                "docker",
+                "exec",
+                "-u",
+                "rabbitmq",
+                self.broker,
+                "rabbitmqctl",
+                "list_queues",
+                "-s",
+                "name",
+                "messages",
+                "consumers",
             ],
             timeout=60.0,
         )
@@ -296,9 +330,9 @@ class Pipeline:
         timeout : float, optional
             Seconds to wait.  Default 120.
         """
-        assert poll_until(lambda: name in self.queue_names(), timeout=timeout), (
-            f"queue {name!r} never appeared; declared: {sorted(self.queue_names())}"
-        )
+        assert poll_until(
+            lambda: name in self.queue_names(), timeout=timeout
+        ), f"queue {name!r} never appeared; declared: {sorted(self.queue_names())}"
 
     def await_consumers(
         self,
@@ -556,7 +590,11 @@ class Pipeline:
         """
         result = run(
             [
-                "docker", "exec", container, "python", "-c",
+                "docker",
+                "exec",
+                container,
+                "python",
+                "-c",
                 "import urllib.request;"
                 "print(urllib.request.urlopen("
                 f"'http://127.0.0.1:{port}/metrics', timeout=5).read().decode())",
@@ -644,19 +682,29 @@ class Pipeline:
         self._containers.append(publisher)
         result = run(
             [
-                "docker", "run", "--rm", "--name", publisher,
-                "--network", self.network,
-                "-e", f"BROKER_URL={url}",
-                "-e", f"QUEUE={queue}",
-                "-e", f"BODY={json.dumps(payload, separators=(',', ':'))}",
+                "docker",
+                "run",
+                "--rm",
+                "--name",
+                publisher,
+                "--network",
+                self.network,
+                "-e",
+                f"BROKER_URL={url}",
+                "-e",
+                f"QUEUE={queue}",
+                "-e",
+                f"BODY={json.dumps(payload, separators=(',', ':'))}",
                 self.image,
-                "python", "-c", snippet,
+                "python",
+                "-c",
+                snippet,
             ],
             timeout=timeout,
         )
-        assert result.returncode == 0, (
-            f"publishing to {queue!r} failed:\n{result.stdout}\n{result.stderr}"
-        )
+        assert (
+            result.returncode == 0
+        ), f"publishing to {queue!r} failed:\n{result.stdout}\n{result.stderr}"
 
     def _data_helper(self) -> str:
         """Return a long-lived container with the data volume mounted."""
@@ -665,9 +713,16 @@ class Pipeline:
         name = f"data-{uuid.uuid4().hex[:8]}"
         result = run(
             [
-                "docker", "run", "-d", "--name", name,
-                "-v", f"{self.volume}:/data",
-                self.image, "sleep", "3600",
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                name,
+                "-v",
+                f"{self.volume}:/data",
+                self.image,
+                "sleep",
+                "3600",
             ],
         )
         assert result.returncode == 0, result.stderr
@@ -678,7 +733,13 @@ class Pipeline:
         # output directory the dispatcher writes to are chowned here.
         prepared = run(
             [
-                "docker", "exec", "-u", "root", name, "sh", "-c",
+                "docker",
+                "exec",
+                "-u",
+                "root",
+                name,
+                "sh",
+                "-c",
                 "mkdir -p /data/in /data/out && chown -R 1000:1000 /data",
             ],
         )
@@ -706,9 +767,16 @@ class Pipeline:
         name = f"scrape-{uuid.uuid4().hex[:8]}"
         result = run(
             [
-                "docker", "run", "-d", "--name", name,
-                "--network", self.network,
-                self.image, "sleep", "3600",
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                name,
+                "--network",
+                self.network,
+                self.image,
+                "sleep",
+                "3600",
             ],
         )
         assert result.returncode == 0, result.stderr
@@ -753,7 +821,11 @@ class Pipeline:
         # address is re-interpreted.
         result = run(
             [
-                "docker", "exec", self._metrics_scraper(), "python", "-c",
+                "docker",
+                "exec",
+                self._metrics_scraper(),
+                "python",
+                "-c",
                 "import sys, urllib.request;"
                 "sys.stdout.write("
                 "urllib.request.urlopen(sys.argv[1], timeout=5).read().decode())",
@@ -790,9 +862,7 @@ class Pipeline:
 
         def answering() -> bool:
             body = self.scrape_over_network(container, port)
-            return any(
-                line.startswith("courier_") for line in body.splitlines()
-            )
+            return any(line.startswith("courier_") for line in body.splitlines())
 
         assert poll_until(answering, timeout=timeout, interval=1.0), (
             f"no courier metrics were served on {container}:{port} within "

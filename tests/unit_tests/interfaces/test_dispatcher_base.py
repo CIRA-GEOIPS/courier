@@ -9,21 +9,29 @@ has seen before.
 
 from __future__ import annotations
 
+from dataclasses import field
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from courier.service import Service
 import pytest
 from prometheus_client import REGISTRY
 
 from courier.constants import PluginRunState, job_ready_queue_for
 from courier.errors import CourierError, PipelineError
+from courier.interfaces import dispatchers
 from courier.interfaces.dispatchers import (
     _DEDUPE_LRU_SIZE,
     Dispatcher,
 )
+from courier.interfaces.falconers import Falconer
+from courier.interfaces.falcons import FalconConfig
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from courier.types.job import Job
+
+from courier.plugins.falconers.local_falconer import LocalFalconer
+from courier.plugins.falcons.shell_falcon import ShellFalcon
 
 
 class _RecordingDispatcher(Dispatcher):
@@ -44,6 +52,29 @@ class _RecordingDispatcher(Dispatcher):
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
 
+class _RecordingFalconer(Falconer):
+    """Falconer that records the jobs passed to it."""
+
+    name = "recording_falconer"
+    version = "test"
+
+    def __init__(
+        self,
+        service: Service,
+        config: dict | None = None,
+        identifier: str | None = None,
+    ) -> None:
+        super().__init__(service, config, identifier)
+        self.executed: list[Job] = []
+        self.raise_on_execute: Exception | None = None
+
+    def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
+        if self.raise_on_execute is not None:
+            raise self.raise_on_execute
+        self.executed.append(job)
+        return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
+
+
 def _job(identifier: str = "job-1") -> Job:
     return Job("n", identifier, {}, files=[File(file=Path("/d/a.nc")).freeze()])
 
@@ -57,7 +88,19 @@ def service() -> MagicMock:
 
 
 def _dispatcher(service: MagicMock, identifier: str) -> _RecordingDispatcher:
-    return _RecordingDispatcher(service, {}, identifier=identifier)
+    dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
+    falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
+    dispatcher.falconer = falconer
+    return dispatcher
+
+
+def _dispatcher_and_falconer(
+    service: MagicMock, identifier: str
+) -> tuple[_RecordingDispatcher, _RecordingFalconer]:
+    dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
+    falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
+    dispatcher.falconer = falconer
+    return dispatcher, falconer
 
 
 def _feed(dispatcher: _RecordingDispatcher, service: MagicMock, *jobs: Job) -> None:
@@ -96,19 +139,19 @@ class TestConstruction:
 
 class TestJobExecution:
     def test_consumed_job_is_executed(self, service: MagicMock) -> None:
-        dispatcher = _dispatcher(service, "exec-basic")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-basic")
         _feed(dispatcher, service, _job("job-1"))
 
-        assert [j.identifier for j in dispatcher.executed] == ["job-1"]
+        assert [j.identifier for j in falconer.executed] == ["job-1"]
 
     def test_job_files_survive_the_broker_round_trip(
         self,
         service: MagicMock,
     ) -> None:
-        dispatcher = _dispatcher(service, "exec-files")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-files")
         _feed(dispatcher, service, _job("job-1"))
 
-        (executed,) = dispatcher.executed
+        (executed,) = falconer.executed
         assert {str(f.file) for f in executed.files} == {"/d/a.nc"}
 
     def test_execution_log_is_published(self, service: MagicMock) -> None:
@@ -124,8 +167,8 @@ class TestJobExecution:
 
     def test_courier_error_is_contained(self, service: MagicMock) -> None:
         """A failing job must not stop the dispatcher consuming the next one."""
-        dispatcher = _dispatcher(service, "exec-error")
-        dispatcher.raise_on_execute = PipelineError("bad job")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-error")
+        falconer.raise_on_execute = PipelineError("bad job")
         labels = {
             "status": "failure",
             "dispatcher_name": dispatcher.name,
@@ -133,14 +176,19 @@ class TestJobExecution:
         }
         # Prometheus counters are process-global; assert the delta rather than
         # an absolute, which would depend on test ordering within the session.
-        before = REGISTRY.get_sample_value(
-            "courier_dispatcher_jobs_processed_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_dispatcher_jobs_processed_total",
+                labels,
+            )
+            or 0.0
+        )
 
         _feed(dispatcher, service, _job("job-1"))  # must not raise
 
         after = REGISTRY.get_sample_value(
-            "courier_dispatcher_jobs_processed_total", labels,
+            "courier_dispatcher_jobs_processed_total",
+            labels,
         )
         assert after == before + 1
 
@@ -155,8 +203,8 @@ class TestJobExecution:
         process. Asserting it escapes here pins that contract — a bare
         ``except Exception`` added later would hide poison messages instead.
         """
-        dispatcher = _dispatcher(service, "exec-fatal")
-        dispatcher.raise_on_execute = ValueError("malformed metric line")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-fatal")
+        falconer.raise_on_execute = ValueError("malformed metric line")
 
         with pytest.raises(ValueError, match="malformed metric line"):
             _feed(dispatcher, service, _job("job-1"))
@@ -167,30 +215,35 @@ class TestJobExecution:
 
 class TestDedupe:
     def test_repeated_identifier_is_skipped(self, service: MagicMock) -> None:
-        dispatcher = _dispatcher(service, "dedupe-basic")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "dedupe-basic")
         _feed(dispatcher, service, _job("same-id"), _job("same-id"))
 
-        assert len(dispatcher.executed) == 1
+        assert len(falconer.executed) == 1
 
     def test_distinct_identifiers_both_run(self, service: MagicMock) -> None:
         """The guard must not swallow genuinely different jobs."""
-        dispatcher = _dispatcher(service, "dedupe-distinct")
+        dispatcher, falconer = _dispatcher_and_falconer(service, "dedupe-distinct")
         _feed(dispatcher, service, _job("id-a"), _job("id-b"))
 
-        assert [j.identifier for j in dispatcher.executed] == ["id-a", "id-b"]
+        assert [j.identifier for j in falconer.executed] == ["id-a", "id-b"]
 
     def test_skip_is_counted(self, service: MagicMock) -> None:
         """A dropped duplicate must be visible in metrics, not silent."""
         dispatcher = _dispatcher(service, "dedupe-counted")
         labels = {"dispatcher_identifier": "dedupe-counted"}
-        before = REGISTRY.get_sample_value(
-            "courier_dispatcher_dedupe_skips_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_dispatcher_dedupe_skips_total",
+                labels,
+            )
+            or 0.0
+        )
 
         _feed(dispatcher, service, _job("dup"), _job("dup"))
 
         after = REGISTRY.get_sample_value(
-            "courier_dispatcher_dedupe_skips_total", labels,
+            "courier_dispatcher_dedupe_skips_total",
+            labels,
         )
         assert after == before + 1
 
@@ -225,19 +278,14 @@ class TestLifecycle:
 
         assert dispatcher._stop_event.is_set()
         assert dispatcher._state is PluginRunState.STOPPED
-        assert not (
-            dispatcher._main_thread and dispatcher._main_thread.is_alive()
-        )
+        assert not (dispatcher._main_thread and dispatcher._main_thread.is_alive())
 
     def test_consume_receives_the_stop_event(self, service: MagicMock) -> None:
         """The stop event must reach the broker loop, not just be stored."""
         dispatcher = _dispatcher(service, "life-event")
         _feed(dispatcher, service)  # empty stream, stops after one pass
 
-        assert (
-            service.consume.call_args.kwargs["stop_event"]
-            is dispatcher._stop_event
-        )
+        assert service.consume.call_args.kwargs["stop_event"] is dispatcher._stop_event
         assert service.consume.call_args[0][0] == dispatcher.incoming_queue
 
     def test_emit_file_feeds_the_found_file_exchange(
@@ -253,3 +301,48 @@ class TestLifecycle:
         assert service.emit.call_args.kwargs["queue"] == FILE_FOUND_EXCHANGE
         emitted = File.from_string(service.emit.call_args.kwargs["message"])
         assert str(emitted.file) == "/out/product.nc"
+
+
+# ── falcon, falconer compatibility ───────────────────────────────────────────────────────────────
+class TestDispatcherCelebrant:
+    def test_get_common_registration_valid(self, service: MagicMock) -> None:
+        dispatcher = _dispatcher(service, "celebrant")
+        falconer = LocalFalconer(service, {"hello": ""}, "dummy")
+        falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+
+        assert compatible_partners == [ShellFalcon]
+
+    def test_get_common_registration_invalid(self, service: MagicMock) -> None:
+        dispatcher = _dispatcher(service, "celebrant")
+
+        class DumbFalconer(Falconer):
+            representations = []
+
+        falconer = DumbFalconer(service, {"hello": ""}, "dummy")
+        falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+        assert compatible_partners == []
+
+    def test_get_most_specific_registration(self, service):
+        dispatcher = _dispatcher(service, "celebrant")
+
+        class ChildFalcon(ShellFalcon):
+            pass
+
+        class GrandchildFalcon(ChildFalcon):
+            pass
+
+        class GreatGrandchildFalcon(GrandchildFalcon):
+            pass
+
+        falcon = GreatGrandchildFalcon(service, {"file": ""}, "dummyfalcon")
+        falconer = LocalFalconer(service, {"hello": ""}, "dummy")
+        falconer.representations.append(GrandchildFalcon)
+
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+        assert compatible_partners[-1] == GrandchildFalcon
+
+        falconer.representations.append(GreatGrandchildFalcon)
+        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+        assert compatible_partners[-1] == GreatGrandchildFalcon

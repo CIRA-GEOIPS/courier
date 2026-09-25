@@ -46,13 +46,17 @@ class TestSlurmDispatcherConfig:
 
 class TestConstructor:
     def test_initializes(self, mock_service: MagicMock, tmp_path: Path) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         assert plugin._output_dir == tmp_path
 
     def test_start_requires_sbatch(
         self, mock_service: MagicMock, tmp_path: Path, mocker
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         mocker.patch(
             "courier.plugins.dispatchers.slurm_dispatcher.shutil.which",
             return_value=None,
@@ -66,7 +70,9 @@ class TestConstructor:
 
 class TestParseSacctOutput:
     def test_completed(self, mock_service: MagicMock, tmp_path: Path) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         state, rc = plugin._parse_sacct_output("COMPLETED|0:0\n")
         assert state == "COMPLETED"
         assert rc == 0
@@ -74,15 +80,17 @@ class TestParseSacctOutput:
     def test_failed_with_exit_code(
         self, mock_service: MagicMock, tmp_path: Path
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         state, rc = plugin._parse_sacct_output("FAILED|2:0")
         assert state == "FAILED"
         assert rc == 2
 
-    def test_empty_returns_blank(
-        self, mock_service: MagicMock, tmp_path: Path
-    ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+    def test_empty_returns_blank(self, mock_service: MagicMock, tmp_path: Path) -> None:
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         state, rc = plugin._parse_sacct_output("")
         assert state == ""
         assert rc == 0
@@ -95,8 +103,12 @@ class TestSubmit:
     def test_parses_job_id_from_stdout_verbose(
         self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
-        result = MagicMock(returncode=0, stdout="Submitted batch job 12345\n", stderr="")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
+        result = MagicMock(
+            returncode=0, stdout="Submitted batch job 12345\n", stderr=""
+        )
         mocker.patch(
             "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
             return_value=result,
@@ -107,7 +119,9 @@ class TestSubmit:
     def test_parses_parsable_output(
         self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         result = MagicMock(returncode=0, stdout="98765\n", stderr="")
         mocker.patch(
             "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
@@ -118,7 +132,9 @@ class TestSubmit:
     def test_nonzero_returncode_yields_none(
         self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         result = MagicMock(returncode=1, stdout="", stderr="rejected")
         mocker.patch(
             "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
@@ -150,7 +166,9 @@ class TestGetExecutionLog:
     def test_full_cycle_completed(
         self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
         mocker.patch.object(plugin, "_submit", return_value="77")
         mocker.patch.object(plugin, "_poll_status", return_value=("COMPLETED", 0))
         mocker.patch.object(plugin, "_read_output", return_value=("out", ""))
@@ -161,7 +179,9 @@ class TestGetExecutionLog:
     def test_submission_failure_returns_error_log(
         self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
     ) -> None:
-        plugin = SlurmDispatcher(mock_service, _make_config(tmp_path), identifier="test-disp")
+        plugin = SlurmDispatcher(
+            mock_service, _make_config(tmp_path), identifier="test-disp"
+        )
 
         def fake_submit(*_args, **_kwargs):
             plugin._last_submit_error = "oops"
