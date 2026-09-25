@@ -779,7 +779,7 @@ class Service:
         missing_elements = [
             plugin_id
             for plugin_id, registered_plugin in self._plugin_manager._plugins.items()
-            if registered_plugin.plugin.name in {"dispatcher", "falconer", "falcon"}
+            if registered_plugin.plugin.interface in {"dispatcher", "falconer", "falcon"}
             and plugin_id not in flattened_map
         ]
 

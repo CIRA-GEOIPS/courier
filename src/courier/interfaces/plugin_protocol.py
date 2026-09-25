@@ -43,6 +43,7 @@ class ServicePlugin(Protocol):
         The plugin version.
     """
 
+    interface: ClassVar[str]
     name: ClassVar[str]
     version: ClassVar[str] = "0.0.0"
 
