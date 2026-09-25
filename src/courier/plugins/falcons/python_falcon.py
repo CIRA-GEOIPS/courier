@@ -77,7 +77,8 @@ class PythonFalcon(BashFalcon):
             command rather than a Python source file.
         """
         command_arr = [self._default_binary]
-        if self.config.binary or (self.config.file and self.config.file.suffix != ".py"):
+        if (self.config.binary or
+                (self.config.file and self.config.file.suffix != ".py")):
             command_arr.append("-c")
 
         return command_arr
@@ -98,7 +99,8 @@ class PythonFalcon(BashFalcon):
             configured Falcon.
         """
         command_arr = []
-        if not self.config.binary and (self.config.file and self.config.file.suffix == ".py"):
+        if not (self.config.binary and
+                (self.config.file and self.config.file.suffix == ".py")):
             for prefix in self.config.prefix_args:
                 command_arr.append(prefix)
             command_arr.append(str(path) if path else str(self.config.file))
