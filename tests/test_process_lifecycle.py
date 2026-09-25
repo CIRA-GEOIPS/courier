@@ -94,7 +94,7 @@ def _write_config(tmp_path: Path, input_dir: Path, output_dir: Path) -> Path:
                                 name: bash_falcon
                                 config:
                                     binary: "cp"
-                                    suffix_args: ["{{ files[0].file }}", "~/CIRA/out"]
+                                    suffix_args: ["{{{{ files[0].file }}}}", "{output_dir}"]
             """,
         ),
     )
