@@ -70,7 +70,7 @@ def test_shipped_config_references_real_plugins(config_path: Path) -> None:
         kind = normalize_kind(entry.spec.kind)
         if kind in NECESSARY_REGISTRIES:
             continue
-        registry = PLUGIN_REGISTRIES[kind]
+        registry = PLUGIN_REGISTRIES.get(kind)
         if registry is None:
             missing.append(f"{entry.identifier}: unknown kind {entry.spec.kind!r}")
             continue

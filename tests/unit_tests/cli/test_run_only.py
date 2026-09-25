@@ -496,7 +496,7 @@ class TestBuilderIdentifiersAreNeverFiltered:
 
         config = _make_config(entries)
 
-        run_service(config, only_set={"my-dp"})
+        run_service(config, only_set=None)
 
         _, kwargs = mock_create_svc.return_value.configure_routing.call_args
         assert kwargs["builder_identifiers"] == {"my-jb", "jb-2"}

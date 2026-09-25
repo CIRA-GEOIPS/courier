@@ -767,11 +767,27 @@ class Service:
 
         Also give everything to the plugin manager.
         """
-        if not self._falconer_map:
-            return
+
         from courier.interfaces.dispatchers import Dispatcher  # noqa: PLC0415
         from courier.interfaces.falconers import Falconer  # noqa: PLC0415
         from courier.interfaces.falcons import Falcon  # noqa: PLC0415
+
+        flattened_map = {element for tup in self._falconer_map for element in tup}
+
+        # check missing elements against registered plugins to
+        # ensure that all elements are distributed properly
+        missing_elements = [
+            plugin_id
+            for plugin_id, registered_plugin in self._plugin_manager._plugins.items()
+            if registered_plugin.plugin.name in {"dispatcher", "falconer", "falcon"}
+            and plugin_id not in flattened_map
+        ]
+
+        if missing_elements:
+            raise ConfigurationError(
+                "Missing element(s) from falconer map: "
+                f"{missing_elements}"
+            )
 
         for dispatcher_id, falconer_id, falcon_id in self._falconer_map:
             dispatcher_obj = self._plugin_manager._plugins[dispatcher_id].plugin
@@ -783,7 +799,7 @@ class Service:
                 and isinstance(falconer_obj, Falconer)
                 and isinstance(falcon_obj, Falcon)
             ):
-                raise TypeError("Invalid type for dispatcher group.")
+                raise ConfigurationError("Invalid type for dispatcher group.")
 
             # each object is populated with its initial configuration.
 

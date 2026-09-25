@@ -32,6 +32,7 @@ class FalconerPayload:
     """Environment payload for falcon cast-off."""
 
     command: list[str]
+    file: Path
     log_prefix: str = ""
     log_file_path: Path | None = None
 
@@ -111,6 +112,8 @@ class Falconer(ServicePlugin):
                     falconer_name=self.name,
                     falconer_identifier=self.identifier,
                 ).inc()
+
+                p.file.unlink(missing_ok=True)
 
                 return res
             except Exception as e:
@@ -308,7 +311,7 @@ class Falconer(ServicePlugin):
                     self._state = PluginRunState.FAILED
                     raise CourierError(
                         f"Toolchain validation failed for value {value}"
-                        "on falconer {self.identifier}",
+                        f" on falconer {self.identifier}",
                         payload[0].stderr,
                     )
                 else:

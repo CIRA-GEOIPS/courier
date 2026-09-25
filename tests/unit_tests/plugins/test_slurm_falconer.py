@@ -57,7 +57,8 @@ class TestCommandRendering:
                 "--output=/tmp/job-1.out",
                 "--error=/tmp/job-1.err",
                 ANY,
-            ]
+            ],
+            file=ANY
         )
     def test_falconer_generate_shell_inline_command(self, service, falcon_config, falconer_config) -> None:
         job = _job()

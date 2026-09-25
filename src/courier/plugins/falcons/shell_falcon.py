@@ -2,6 +2,7 @@
 from pathlib import Path
 from socket import gethostname
 import time
+import shlex
 from typing import ClassVar
 
 from contextlib import nullcontext
@@ -13,10 +14,10 @@ from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.shell_executor import execute_shell_script
 
-class PythonFalconConfig(FalconConfig):
+class ShellFalconConfig(FalconConfig):
     pass
 
-class PythonFalconBaseConfig(DispatcherGroupConfig):
+class ShellFalconBaseConfig(DispatcherGroupConfig):
     pass
 
 class ShellFalcon(Falcon):
@@ -97,7 +98,7 @@ class ShellFalcon(Falcon):
                 str(path) if path else str(self.config.file),
                 " ".join(self.config.suffix_args),
             ]
-            command_arr.append(" ".join(part for part in parts if part))
+            command_arr.append(shlex.join(part for part in parts if part))
         else:
             for prefix in self.config.prefix_args:
                 command_arr.append(prefix)

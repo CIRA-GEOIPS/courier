@@ -61,6 +61,16 @@ def get_registered_plugin(plugin_registrations, entry):
             f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
             f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
         )
+
+    cfg = entry.spec.config or {}
+    missing = [
+        k for k in (PLUGIN_REGISTRIES | NECESSARY_REGISTRIES)[kind].nested_values if k not in cfg
+    ]
+    if missing:
+        raise InvalidPluginConfigError(
+            f"{entry.identifier!r} is missing required config "
+            f"section(s): {', '.join(missing)}",
+        )
     if kind in PLUGIN_REGISTRIES:
         plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
         plugin_config: dict[str, Any] = (
@@ -227,13 +237,6 @@ def run_service( # noqa: PLR0912
         if only_set is not None and e.identifier not in only_set:
             continue
 
-        missing = [key for key in ("falconer", "falcon") if key not in e.spec.config]
-
-        if missing:
-            raise InvalidPluginConfigError(
-                f"Dispatcher {e.identifier!r} is missing required config "
-                f"section(s): {', '.join(missing)}",
-            )
         falconer_id = MicroserviceModel.model_validate(
             e.spec.config["falconer"],
         ).identifier

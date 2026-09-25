@@ -177,7 +177,6 @@ class SlurmFalconer(Falconer):
                 f"{' '.join(self.falcon.generate_calling_method())} "
                 f"'{self.render_script(job, raw_command[0])}'"
             )
-
             command.extend(["--wrap", wrap_command])
         else:
             for c in raw_command:
@@ -186,6 +185,7 @@ class SlurmFalconer(Falconer):
         self._logger.debug(f"Generated slurm command: {command}")
         return FalconerPayload(
             command=command,
+            file=clean_path
         )
 
     def _get_slurm_job_id(self, result: ExecutionLog) -> str | None:

@@ -82,6 +82,8 @@ class LocalFalconer(Falconer):
                     log_file_path=env.log_file_path,
                 )
 
+                env.file.unlink(missing_ok=True)
+
                 self._jobs_processed.labels(
                     status="success",
                     falconer_name=self.name,
@@ -143,6 +145,7 @@ class LocalFalconer(Falconer):
             )
         payload = FalconerPayload(
             command=command,
+            file=clean_path,
             log_prefix=log_prefix,
             log_file_path=log_file_path,
         )
