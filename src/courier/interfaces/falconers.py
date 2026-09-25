@@ -19,6 +19,13 @@ from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.logging import get_logger
 
+from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, get_tracer
+
+from courier.metrics import (
+    FALCONER_JOBS_PROCESSED,
+    collect_labeled
+)
+
 
 @dataclass
 class FalconerPayload:
@@ -56,6 +63,8 @@ class Falconer(ServicePlugin):
         self.identifier = identifier
         self.representations = []
 
+        self._jobs_processed = FALCONER_JOBS_PROCESSED
+
     def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
         """Initialize the runtime environment and execute the Falcon.
 
@@ -74,23 +83,45 @@ class Falconer(ServicePlugin):
         CourierError
             If the Falconer fails to initialize the runtime environment.
         """
-        self._state = PluginRunState.RUNNING
-        try:
-            p = self.initialize_environment(job)
-        except Exception as e:
-            self._state = PluginRunState.FAILED
-            raise CourierError(
-                f"Failed to initialize environment for {self.identifier}",
-                e,
-            ) from e
-        try:
-            return self.falcon.get_payload_from_job(p.command)
-        except Exception as e:
-            self._state = PluginRunState.FAILED
-            raise CourierError(
-                "Failed to execute job",
-                e,
-            ) from e
+
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "falconer.cast_off_falcon",
+            attributes={
+                ATTR_JOB_ID: job.identifier,
+                ATTR_CORRELATION_ID: job.correlation_id,
+            }
+        ):
+            self._state = PluginRunState.RUNNING
+            # ----------initialize environment
+            try:
+                p = self.initialize_environment(job)
+            except Exception as e:
+                self._state = PluginRunState.FAILED
+                raise CourierError(
+                    f"Failed to initialize environment for {self.identifier}",
+                    e,
+                ) from e
+            # -------------get payload
+            try:
+                self._logger.debug(f"Yielding execution log for job: {job}")
+                self._jobs_processed.labels(
+                    status="success",
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier,
+                ).inc()
+                return self.falcon.get_payload_from_job(p.command, job)
+            except Exception as e:
+                self._state = PluginRunState.FAILED
+                self._jobs_processed.labels(
+                    status="failure",
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier
+                ).inc()
+                raise CourierError(
+                    "Failed to execute job",
+                    e,
+                ) from e
 
     def initialize_environment(self, job) -> FalconerPayload: # noqa: ARG002
         """Set up the runtime environment.
@@ -117,7 +148,9 @@ class Falconer(ServicePlugin):
         dict[str, Any]
             Mapping of metric names to their current values.
         """
-        return {}
+        return {
+            **collect_labeled(FALCONER_JOBS_PROCESSED, "falconer_name", self.name)
+        }
 
     def set_falcon(self, falcon: Falcon):
         """Associate a Falcon with this Falconer.
@@ -209,6 +242,8 @@ class Falconer(ServicePlugin):
 
         for command in raw_command:
             command_arr.append(self.render_script(job, command))
+
+        self._logger.debug(f"Falconer generated command: {' '.join(command_arr)}")
         return command_arr
 
     def render_script(self, job: Job, script: str) -> str:
@@ -263,6 +298,7 @@ class Falconer(ServicePlugin):
         If a required tool cannot be validated, validation returns no
         execution logs, or the validation command exits unsuccessfully.
         """
+        self._logger.debug(f"Toolchain validation started for {self.identifier}")
         for value in self.falcon.config.toolchain:
             payload = self.falcon.validate_toolchain_arg(value)
             if len(payload) > 0:
@@ -278,6 +314,7 @@ class Falconer(ServicePlugin):
                         f"Toolchain validation succeeded for value {value}",
                     )
             else:
+                self._state = PluginRunState.FAILED
                 raise CourierError(
                     "Toolchain validation failed with no warning.",
                 )
@@ -305,7 +342,7 @@ class Falconer(ServicePlugin):
         bool
             ``True`` when the Falconer is running, otherwise ``False``.
         """
-        return True
+        return self._state != PluginRunState.FAILED
 
 
 falconers = ClassPluginRegistry(

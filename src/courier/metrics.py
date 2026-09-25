@@ -242,6 +242,45 @@ DISPATCHER_DEDUPE_SKIPS: Counter = Counter(
 )
 
 # ---------------------------------------------------------------------------
+# Falconer metrics
+# ---------------------------------------------------------------------------
+
+FALCONER_JOBS_PROCESSED: Counter = Counter(
+    "courier_falconer_jobs_processed_total",
+    "Total number of jobs processed by a falconer plugin",
+    ["falconer_name", "falconer_identifier", "status"],
+)
+
+FALCONER_SLURM_JOBS_PENDING: Gauge = Gauge(
+    "courier_falconer_slurm_jobs_pending",
+    "Number of submitted SLURM jobs currently in PENDING or RUNNING state",
+    ["falconer_name", "falconer_identifier"],
+)
+
+FALCONER_SLURM_SUBMISSIONS: Counter = Counter(
+    "courier_falconer_slurm_submissions_total",
+    "Total number of sbatch submissions made by a SLURM falconer",
+    ["falconer_name", "falconer_identifier", "status"],
+)
+
+# ---------------------------------------------------------------------------
+# Falcon metrics
+# ---------------------------------------------------------------------------
+#
+FALCON_JOBS_PROCESSED: Counter = Counter(
+    "courier_falcon_jobs_processed_total",
+    "Total number of jobs processed by a falcon plugin",
+    ["falcon_name", "falcon_identifier", "status"],
+)
+
+FALCON_JOB_EXECUTION_DURATION: Histogram = Histogram(
+    "courier_falcon_job_execution_duration_seconds",
+    "Job execution duration in seconds for a falcon plugin",
+    ["falcon_name", "falcon_identifier"],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
+)
+
+# ---------------------------------------------------------------------------
 # Custom gauge — populated by deployment scripts via COURIER_METRIC: stdout
 # ---------------------------------------------------------------------------
 

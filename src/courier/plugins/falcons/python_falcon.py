@@ -54,7 +54,10 @@ class PythonFalcon(BashFalcon):
                 (f"import shutil, sys; sys.exit(0 if shutil.which({value!r}) else 1)"),
             ],
         )
-        return self.get_payload_from_job(command)
+        payload = self.get_payload_from_job(command)
+        self._logger.debug(f"Toolchain validation command {command} returned: {[p.return_code for p in payload]}")
+        return payload
+
 
     def generate_calling_method(self) -> list[str]:
         """Generate in-line or standard Python calling structure.

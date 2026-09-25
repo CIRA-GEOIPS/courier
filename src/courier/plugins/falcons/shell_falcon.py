@@ -1,10 +1,16 @@
 """Implementation of the shell_falcon falcon class."""
 from pathlib import Path
+from socket import gethostname
+import time
 from typing import ClassVar
+
+from contextlib import nullcontext
 
 from courier.interfaces.falcons import DispatcherGroupConfig, Falcon, FalconConfig
 from courier.service import Service
+from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, extract_context, get_tracer
 from courier.types.execution_log import ExecutionLog
+from courier.types.job import Job
 from courier.utils.shell_executor import execute_shell_script
 
 class PythonFalconConfig(FalconConfig):
@@ -47,7 +53,10 @@ class ShellFalcon(Falcon):
             Execution logs describing the validation result.
         """
         command = [self._default_binary, "-c", f"command -v {value}"]
-        return self.get_payload_from_job(command)
+        payload = self.get_payload_from_job(command)
+
+        self._logger.debug(f"Toolchain validation command {command} returned: {[p.return_code for p in payload]}")
+        return payload
 
     def generate_calling_method(self) -> list[str]:
         """Generate the way this falcon calls itself. Either with a -c or without.
@@ -100,6 +109,7 @@ class ShellFalcon(Falcon):
     def get_payload_from_job(
         self,
         command: list[str],
+        job: Job | None = None,
         log_prefix: str = "",
         log_file_path: Path | None = None,
     ) -> list[ExecutionLog]:
@@ -120,21 +130,55 @@ class ShellFalcon(Falcon):
             Execution result containing the process return code, stdout,
             and stderr.
         """
-        result = execute_shell_script(
-            command,
-            self.base_config.timeout_seconds,
-            logger=self._logger,
-            log_to_logger=self.base_config.log_to_logger,
-            log_prefix=log_prefix,
-            log_to_file=self.base_config.log_to_file,
-            log_file_path=log_file_path,
-            log_only_errors=self.base_config.log_only_errors,
-        )
+        tracer = get_tracer(__name__)
+        hostname = gethostname()
 
-        return [
-            ExecutionLog(
-                return_code=result.return_code,
-                stdout=result.stdout,
-                stderr=result.stderr,
-            ),
-        ]
+        if job:
+            trace_context = tracer.start_as_current_span(
+                "falcon.get_payload_from_job",
+                attributes={
+                    ATTR_JOB_ID: job.identifier,
+                    ATTR_CORRELATION_ID: job.correlation_id
+                }
+            )
+            start_time = time.time()
+            self.active_job_timestamps[job.identifier] = start_time
+        else:
+            trace_context = nullcontext()
+        with trace_context:
+            self._logger.debug(f"Executing command {' '.join(command)}")
+            result = execute_shell_script(
+                command,
+                self.base_config.timeout_seconds,
+                logger=self._logger,
+                log_to_logger=self.base_config.log_to_logger,
+                log_prefix=log_prefix,
+                log_to_file=self.base_config.log_to_file,
+                log_file_path=log_file_path,
+                log_only_errors=self.base_config.log_only_errors,
+            )
+
+            if job:
+                execution_time = (
+                    time.time() - self.active_job_timestamps[job.identifier]
+                )
+                status = "success" if result.return_code == 0 else "failure"
+                self._jobs_processed.labels(
+                    status = status,
+                    falcon_name=self.name,
+                    falcon_identifier=self.identifier
+                ).inc()
+                self._job_execution_duration.labels(
+                    falcon_name=self.name,
+                    falcon_identifier=self.identifier
+                ).observe(execution_time)
+                del self.active_job_timestamps[job.identifier]
+
+            return [
+                ExecutionLog(
+                    return_code=result.return_code,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    hostname=hostname
+                ),
+            ]

@@ -47,7 +47,7 @@ class TestFalconWorkflow:
         config["prefix_args"] = ["-b"]
         falcon = ShellFalcon(service, config, "dummyfalcon")
         falcon.base_config = _base_config()
-        result = falcon.get_payload_from_job(["sh", "-c", f"file -b {falcon.config.file}"])
+        result = falcon.get_payload_from_job(["sh", "-c", f"file -b {falcon.config.file}"], job)
 
         assert len(result) > 0
         assert result[0].return_code == 0

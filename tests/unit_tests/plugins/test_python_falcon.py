@@ -66,7 +66,7 @@ class TestFalconWorkflow:
         falconer.falcon = falcon
 
         payload = falconer.initialize_environment(job)
-        result = falcon.get_payload_from_job(payload.command)
+        result = falcon.get_payload_from_job(payload.command, job)
 
         assert len(result) > 0
         assert result[0].return_code == 0

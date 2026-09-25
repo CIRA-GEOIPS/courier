@@ -4,8 +4,10 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
+import socket
 
+from courier.metrics import DISPATCHER_SLURM_SUBMISSIONS, FALCONER_SLURM_JOBS_PENDING, FALCONER_SLURM_SUBMISSIONS, collect_labeled
 from pydantic import BaseModel, Field
 
 from courier.interfaces.falconers import Falconer, FalconerPayload
@@ -95,6 +97,16 @@ class SlurmFalconer(Falconer):
                 self.falcon.config.toolchain.append(req)
         super().start()
 
+    def get_metrics(self) -> dict[str, Any]:
+        metrics = {
+            **collect_labeled(FALCONER_SLURM_JOBS_PENDING, "falconer_name", self.name),
+            **collect_labeled(FALCONER_SLURM_SUBMISSIONS, "falconer_name", self.name),
+        }
+        result = super().get_metrics()
+        result.update(metrics)
+
+        return result
+
     def _build_sbatch_args(self, job: Job) -> list[str]:
         """Build an argument array for sbatch.
 
@@ -171,7 +183,7 @@ class SlurmFalconer(Falconer):
             for c in raw_command:
                 command.append(self.render_script(job, c))
 
-        self._logger.info(f"COMMAND: {command}")
+        self._logger.debug(f"Generated slurm command: {command}")
         return FalconerPayload(
             command=command,
         )
@@ -321,44 +333,82 @@ class SlurmFalconer(Falconer):
             Execution result describing either the submitted job or its final
             Slurm execution state.
         """
+        hostname = socket.gethostname()
         with self._slot_semaphore:
+            if job:
+                FALCONER_SLURM_JOBS_PENDING.labels(
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier
+                ).inc()
+            # initialize the environment and return the payload
             payload = super().cast_off_falcon(job)
 
+            if job:
+                FALCONER_SLURM_JOBS_PENDING.labels(
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier
+                )
+
             if not payload:
+                FALCONER_SLURM_SUBMISSIONS.labels(
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier,
+                    status="rejected"
+                ).inc()
                 return [
                     ExecutionLog(
                         return_code=-1,
                         stdout="",
                         stderr="sbatch produced no execution result.",
+                        hostname=hostname
                     ),
                 ]
 
             slurm_job_id = self._get_slurm_job_id(payload[0])
             if slurm_job_id is None:
+                FALCONER_SLURM_SUBMISSIONS.labels(
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier,
+                    status="rejected"
+                ).inc()
                 return [
                     ExecutionLog(
                         return_code=-1,
                         stdout="",
                         stderr=(self._last_submit_error or "sbatch submission failed"),
+                        hostname=hostname
                     ),
                 ]
 
             if not self.config.wait_for_completion:
+                FALCONER_SLURM_SUBMISSIONS.labels(
+                    falconer_name=self.name,
+                    falconer_identifier=self.identifier,
+                    status="submitted"
+                ).inc()
                 return [
                     ExecutionLog(
                         return_code=0,
                         stdout=f"SLURM job {slurm_job_id} submitted",
                         stderr=None,
+                        hostname=hostname
                     ),
                 ]
             state, exit_code = self._poll_status(slurm_job_id)
             stdout, stderr = self._read_output(job)
             return_code = 0 if state == "COMPLETED" else (exit_code or -1)
+
+            FALCONER_SLURM_SUBMISSIONS.labels(
+                falconer_name=self.name,
+                falconer_identifier=self.identifier,
+                status="submitted"
+            ).inc()
             return [
                 ExecutionLog(
                     return_code=return_code,
                     stdout=stdout,
                     stderr=stderr
                     or f"SLURM job {slurm_job_id} ended with state {state}",
+                    hostname=hostname
                 ),
             ]
