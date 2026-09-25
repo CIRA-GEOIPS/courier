@@ -107,8 +107,10 @@ class Falconer(ServicePlugin):
             try:
                 self._logger.debug(f"Yielding execution log for job: {job}")
                 res= self.falcon.get_payload_from_job(p.command, job)
+
+                status = "failure" if any(r.return_code != 0 for r in res) else "success"
                 self._jobs_processed.labels(
-                    status="success",
+                    status=status,
                     falconer_name=self.name,
                     falconer_identifier=self.identifier,
                 ).inc()
