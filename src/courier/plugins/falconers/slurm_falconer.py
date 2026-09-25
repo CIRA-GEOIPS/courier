@@ -391,12 +391,14 @@ class SlurmFalconer(Falconer):
                 }
             ):
                 self._state = PluginRunState.RUNNING
-                env = self._get_slurm_run_environment(job)
-                payload = self._get_slurm_execution_result(env, job)
-                FALCONER_SLURM_JOBS_PENDING.labels(
-                    falconer_name=self.name,
-                    falconer_identifier=self.identifier
-                ).dec()
+                try:
+                    env = self._get_slurm_run_environment(job)
+                    payload = self._get_slurm_execution_result(env, job)
+                finally:
+                    FALCONER_SLURM_JOBS_PENDING.labels(
+                        falconer_name=self.name,
+                        falconer_identifier=self.identifier
+                    ).dec()
 
                 if not payload:
                     FALCONER_SLURM_SUBMISSIONS.labels(
@@ -437,7 +439,6 @@ class SlurmFalconer(Falconer):
                         falconer_identifier=self.identifier,
                         status="submitted"
                     ).inc()
-                    env.file.unlink()
                     return [
                         ExecutionLog(
                             return_code=0,
