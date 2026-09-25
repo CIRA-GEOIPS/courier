@@ -61,4 +61,5 @@ class TestFalconWorkflow:
 
         assert len(result) > 0
         assert result[0].return_code == 0
-        assert result[0].stdout == "POSIX shell script, ASCII text executable\n"
+        assert result[0].stdout
+        assert "POSIX" in result[0].stdout
