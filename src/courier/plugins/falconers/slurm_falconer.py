@@ -347,7 +347,7 @@ class SlurmFalconer(Falconer):
                 FALCONER_SLURM_JOBS_PENDING.labels(
                     falconer_name=self.name,
                     falconer_identifier=self.identifier
-                )
+                ).dec()
 
             if not payload:
                 FALCONER_SLURM_SUBMISSIONS.labels(

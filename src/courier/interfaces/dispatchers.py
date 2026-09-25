@@ -202,7 +202,7 @@ class Dispatcher(ServicePlugin):
             )
         best_match = compatible_partners[-1].from_falcon(falcon)
 
-        if best_match != type(falcon):
+        if type(best_match) != type(falcon):
             self._logger.info(f"{falconer.name} casted to {best_match.name}")
         # configure each of the pair to fit each other's configuration neatly
         # marry the pair and keep track of the falconer

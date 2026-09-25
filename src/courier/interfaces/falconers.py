@@ -105,12 +105,14 @@ class Falconer(ServicePlugin):
             # -------------get payload
             try:
                 self._logger.debug(f"Yielding execution log for job: {job}")
+                res= self.falcon.get_payload_from_job(p.command, job)
                 self._jobs_processed.labels(
                     status="success",
                     falconer_name=self.name,
                     falconer_identifier=self.identifier,
                 ).inc()
-                return self.falcon.get_payload_from_job(p.command, job)
+
+                return res
             except Exception as e:
                 self._state = PluginRunState.FAILED
                 self._jobs_processed.labels(

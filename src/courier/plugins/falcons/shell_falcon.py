@@ -147,32 +147,34 @@ class ShellFalcon(Falcon):
             trace_context = nullcontext()
         with trace_context:
             self._logger.debug(f"Executing command {' '.join(command)}")
-            result = execute_shell_script(
-                command,
-                self.base_config.timeout_seconds,
-                logger=self._logger,
-                log_to_logger=self.base_config.log_to_logger,
-                log_prefix=log_prefix,
-                log_to_file=self.base_config.log_to_file,
-                log_file_path=log_file_path,
-                log_only_errors=self.base_config.log_only_errors,
-            )
-
-            if job:
-                execution_time = (
-                    time.time() - self.active_job_timestamps[job.identifier]
+            try:
+                result = execute_shell_script(
+                    command,
+                    self.base_config.timeout_seconds,
+                    logger=self._logger,
+                    log_to_logger=self.base_config.log_to_logger,
+                    log_prefix=log_prefix,
+                    log_to_file=self.base_config.log_to_file,
+                    log_file_path=log_file_path,
+                    log_only_errors=self.base_config.log_only_errors,
                 )
+            finally:
+                if job:
+                    execution_time = (
+                        time.time() - self.active_job_timestamps[job.identifier]
+                    )
+                    self._job_execution_duration.labels(
+                        falcon_name=self.name,
+                        falcon_identifier=self.identifier
+                    ).observe(execution_time)
+                    del self.active_job_timestamps[job.identifier]
+            if job:
                 status = "success" if result.return_code == 0 else "failure"
                 self._jobs_processed.labels(
                     status = status,
                     falcon_name=self.name,
                     falcon_identifier=self.identifier
                 ).inc()
-                self._job_execution_duration.labels(
-                    falcon_name=self.name,
-                    falcon_identifier=self.identifier
-                ).observe(execution_time)
-                del self.active_job_timestamps[job.identifier]
 
             return [
                 ExecutionLog(
