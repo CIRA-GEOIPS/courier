@@ -21,6 +21,7 @@ from courier.metrics import (
 )
 from courier.plugins.falcons.bash_falcon import BashFalcon
 from courier.plugins.falcons.shell_falcon import ShellFalcon
+from courier.plugins.falcons.python_falcon import PythonFalcon
 from courier.service import Service
 from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, get_tracer
 from courier.types.execution_log import ExecutionLog
@@ -87,7 +88,7 @@ class SlurmFalconer(Falconer):
         self._slot_semaphore = threading.Semaphore(self.config.max_concurrent_jobs)
         self._output_dir = Path(self.config.slurm_output_dir)
         self._last_submit_error: str | None = None
-        self.representations = [ShellFalcon, BashFalcon]
+        self.representations = [ShellFalcon, BashFalcon, PythonFalcon]
 
     def start(self) -> None:
         """Add necessary items to the toolchain and validate.
@@ -183,7 +184,7 @@ class SlurmFalconer(Falconer):
         if (
             self.falcon.config.binary
             or (self.falcon.config.file and
-                self.falcon.config.file.suffix != self.falcon._file_suffix)
+                self.falcon.config.file.suffix != "sh")
         ):
             wrap_command = (
                 f"{' '.join(self.falcon.generate_calling_method())} "
