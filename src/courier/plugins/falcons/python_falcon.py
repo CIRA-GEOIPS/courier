@@ -99,7 +99,7 @@ class PythonFalcon(BashFalcon):
             configured Falcon.
         """
         command_arr = []
-        if not (self.config.binary and
+        if (not self.config.binary and
                 (self.config.file and self.config.file.suffix == ".py")):
             for prefix in self.config.prefix_args:
                 command_arr.append(prefix)

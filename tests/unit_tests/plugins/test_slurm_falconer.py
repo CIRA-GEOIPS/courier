@@ -58,6 +58,7 @@ class TestCommandRendering:
                 "--job-name=courier-job-1",
                 "--output=/tmp/job-1.out",
                 "--error=/tmp/job-1.err",
+                "--wrap",
                 ANY,
             ],
             file=ANY,

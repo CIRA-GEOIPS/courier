@@ -20,8 +20,8 @@ from courier.metrics import (
     collect_labeled,
 )
 from courier.plugins.falcons.bash_falcon import BashFalcon
-from courier.plugins.falcons.shell_falcon import ShellFalcon
 from courier.plugins.falcons.python_falcon import PythonFalcon
+from courier.plugins.falcons.shell_falcon import ShellFalcon
 from courier.service import Service
 from courier.tracing import ATTR_CORRELATION_ID, ATTR_JOB_ID, get_tracer
 from courier.types.execution_log import ExecutionLog
