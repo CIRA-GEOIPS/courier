@@ -397,7 +397,6 @@ class TestPoisonMessages:
     redelivered until something drops it.
     """
 
-    @pytest.mark.skip("Mistakenly taken from another branch")
     def test_malformed_bodies_are_counted_logged_and_skipped(
         self,
         service: MagicMock,
