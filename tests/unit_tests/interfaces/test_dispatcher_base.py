@@ -5,15 +5,16 @@ modes live here: a non-``CourierError`` escaping ``get_execution_log`` takes
 the process down via ``os._exit`` with the message unacked (so it recurs on
 redelivery), and the dedupe LRU silently discards any job whose identifier it
 has seen before.
+
+The dispatcher now hydrates the payload a job carries rather than pairing with
+one, so the compatibility tests build payload specs directly.
 """
 
 from __future__ import annotations
 
-from dataclasses import field
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from courier.service import Service
 import pytest
 from prometheus_client import REGISTRY
 
@@ -24,14 +25,15 @@ from courier.interfaces.dispatchers import (
     _DEDUPE_LRU_SIZE,
     Dispatcher,
 )
-from courier.interfaces.falconers import Falconer
-from courier.interfaces.falcons import FalconConfig
+from courier.interfaces.payloads import Payload
+from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
+from courier.plugins.payloads.bash_payload import BashPayload
+from courier.plugins.payloads.python_payload import PythonPayload
+from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from courier.types.job import Job
-
-from courier.plugins.falconers.local_falconer import LocalFalconer
-from courier.plugins.falcons.shell_falcon import ShellFalcon
+from courier.types.payload import PayloadSpec
 
 
 class _RecordingDispatcher(Dispatcher):
@@ -52,31 +54,14 @@ class _RecordingDispatcher(Dispatcher):
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
 
-class _RecordingFalconer(Falconer):
-    """Falconer that records the jobs passed to it."""
-
-    name = "recording_falconer"
-    version = "test"
-
-    def __init__(
-        self,
-        service: Service,
-        config: dict | None = None,
-        identifier: str | None = None,
-    ) -> None:
-        super().__init__(service, config, identifier)
-        self.executed: list[Job] = []
-        self.raise_on_execute: Exception | None = None
-
-    def cast_off_falcon(self, job: Job) -> list[ExecutionLog]:
-        if self.raise_on_execute is not None:
-            raise self.raise_on_execute
-        self.executed.append(job)
-        return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
-
-
-def _job(identifier: str = "job-1") -> Job:
-    return Job("n", identifier, {}, files=[File(file=Path("/d/a.nc")).freeze()])
+def _job(identifier: str = "job-1", payload: PayloadSpec | None = None) -> Job:
+    return Job(
+        "n",
+        identifier,
+        {},
+        files=[File(file=Path("/d/a.nc")).freeze()],
+        payload=payload,
+    )
 
 
 @pytest.fixture
@@ -88,19 +73,7 @@ def service() -> MagicMock:
 
 
 def _dispatcher(service: MagicMock, identifier: str) -> _RecordingDispatcher:
-    dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
-    falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
-    dispatcher.falconer = falconer
-    return dispatcher
-
-
-def _dispatcher_and_falconer(
-    service: MagicMock, identifier: str
-) -> tuple[_RecordingDispatcher, _RecordingFalconer]:
-    dispatcher = _RecordingDispatcher(service, {}, identifier=identifier)
-    falconer = _RecordingFalconer(service, {}, identifier=f"falconer-{identifier}")
-    dispatcher.falconer = falconer
-    return dispatcher, falconer
+    return _RecordingDispatcher(service, {}, identifier=identifier)
 
 
 def _feed(dispatcher: _RecordingDispatcher, service: MagicMock, *jobs: Job) -> None:
@@ -139,19 +112,19 @@ class TestConstruction:
 
 class TestJobExecution:
     def test_consumed_job_is_executed(self, service: MagicMock) -> None:
-        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-basic")
+        dispatcher = _dispatcher(service, "exec-basic")
         _feed(dispatcher, service, _job("job-1"))
 
-        assert [j.identifier for j in falconer.executed] == ["job-1"]
+        assert [j.identifier for j in dispatcher.executed] == ["job-1"]
 
     def test_job_files_survive_the_broker_round_trip(
         self,
         service: MagicMock,
     ) -> None:
-        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-files")
+        dispatcher = _dispatcher(service, "exec-files")
         _feed(dispatcher, service, _job("job-1"))
 
-        (executed,) = falconer.executed
+        (executed,) = dispatcher.executed
         assert {str(f.file) for f in executed.files} == {"/d/a.nc"}
 
     def test_execution_log_is_published(self, service: MagicMock) -> None:
@@ -167,8 +140,8 @@ class TestJobExecution:
 
     def test_courier_error_is_contained(self, service: MagicMock) -> None:
         """A failing job must not stop the dispatcher consuming the next one."""
-        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-error")
-        falconer.raise_on_execute = PipelineError("bad job")
+        dispatcher = _dispatcher(service, "exec-error")
+        dispatcher.raise_on_execute = PipelineError("bad job")
         labels = {
             "status": "failure",
             "dispatcher_name": dispatcher.name,
@@ -203,8 +176,8 @@ class TestJobExecution:
         process. Asserting it escapes here pins that contract — a bare
         ``except Exception`` added later would hide poison messages instead.
         """
-        dispatcher, falconer = _dispatcher_and_falconer(service, "exec-fatal")
-        falconer.raise_on_execute = ValueError("malformed metric line")
+        dispatcher = _dispatcher(service, "exec-fatal")
+        dispatcher.raise_on_execute = ValueError("malformed metric line")
 
         with pytest.raises(ValueError, match="malformed metric line"):
             _feed(dispatcher, service, _job("job-1"))
@@ -215,17 +188,17 @@ class TestJobExecution:
 
 class TestDedupe:
     def test_repeated_identifier_is_skipped(self, service: MagicMock) -> None:
-        dispatcher, falconer = _dispatcher_and_falconer(service, "dedupe-basic")
+        dispatcher = _dispatcher(service, "dedupe-basic")
         _feed(dispatcher, service, _job("same-id"), _job("same-id"))
 
-        assert len(falconer.executed) == 1
+        assert len(dispatcher.executed) == 1
 
     def test_distinct_identifiers_both_run(self, service: MagicMock) -> None:
         """The guard must not swallow genuinely different jobs."""
-        dispatcher, falconer = _dispatcher_and_falconer(service, "dedupe-distinct")
+        dispatcher = _dispatcher(service, "dedupe-distinct")
         _feed(dispatcher, service, _job("id-a"), _job("id-b"))
 
-        assert [j.identifier for j in falconer.executed] == ["id-a", "id-b"]
+        assert [j.identifier for j in dispatcher.executed] == ["id-a", "id-b"]
 
     def test_skip_is_counted(self, service: MagicMock) -> None:
         """A dropped duplicate must be visible in metrics, not silent."""
@@ -303,46 +276,99 @@ class TestLifecycle:
         assert str(emitted.file) == "/out/product.nc"
 
 
-# ── falcon, falconer compatibility ───────────────────────────────────────────────────────────────
-class TestDispatcherCelebrant:
-    def test_get_common_registration_valid(self, service: MagicMock) -> None:
-        dispatcher = _dispatcher(service, "celebrant")
-        falconer = LocalFalconer(service, {"hello": ""}, "dummy")
-        falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
-        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
+# ── payload hydration and compatibility ─────────────────────────────────────
 
-        assert compatible_partners == [ShellFalcon]
 
-    def test_get_common_registration_invalid(self, service: MagicMock) -> None:
-        dispatcher = _dispatcher(service, "celebrant")
+def _spec(name: str, **config: object) -> PayloadSpec:
+    return PayloadSpec(name=name, identifier="payload-1", config=config)
 
-        class DumbFalconer(Falconer):
-            representations = []
 
-        falconer = DumbFalconer(service, {"hello": ""}, "dummy")
-        falcon = ShellFalcon(service, {"file": ""}, "dummyfalcon")
-        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
-        assert compatible_partners == []
+class TestPayloadResolution:
+    """Hydration must pick the *right* representation, not just a compatible one.
 
-    def test_get_most_specific_registration(self, service):
-        dispatcher = _dispatcher(service, "celebrant")
+    Each payload class configures a different interpreter, so asserting the
+    interpreter the hydrated instance selects proves the correct class (and its
+    ``_configure_from_config``) was used — unlike an ``isinstance`` check, which
+    is also satisfied by the more specific subclasses.
+    """
 
-        class ChildFalcon(ShellFalcon):
-            pass
+    def test_bash_payload_hydrates(self, service: MagicMock) -> None:
+        dispatcher = LocalDispatcher(service, {}, identifier="celebrant")
+        resolved = dispatcher._resolve_job_payload(
+            _job("j", _spec("bash_payload", binary="echo")),
+        )
 
-        class GrandchildFalcon(ChildFalcon):
-            pass
+        assert type(resolved) is BashPayload
+        assert resolved.generate_calling_method() == ["bash", "-c"]
 
-        class GreatGrandchildFalcon(GrandchildFalcon):
-            pass
+    def test_shell_payload_hydrates(self, service: MagicMock) -> None:
+        dispatcher = LocalDispatcher(service, {}, identifier="celebrant")
+        resolved = dispatcher._resolve_job_payload(
+            _job("j", _spec("shell_payload", binary="echo")),
+        )
 
-        falcon = GreatGrandchildFalcon(service, {"file": ""}, "dummyfalcon")
-        falconer = LocalFalconer(service, {"hello": ""}, "dummy")
-        falconer.representations.append(GrandchildFalcon)
+        assert type(resolved) is ShellPayload
+        assert resolved.generate_calling_method() == ["sh", "-c"]
 
-        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
-        assert compatible_partners[-1] == GrandchildFalcon
+    def test_most_specific_representation_wins(self, service: MagicMock) -> None:
+        """A python payload hydrates as python even where shell would run it."""
+        dispatcher = LocalDispatcher(service, {}, identifier="celebrant")
+        resolved = dispatcher._resolve_job_payload(
+            _job("j", _spec("python_payload", binary="echo")),
+        )
 
-        falconer.representations.append(GreatGrandchildFalcon)
-        compatible_partners = dispatcher._get_compatible_partners(falconer, falcon)
-        assert compatible_partners[-1] == GreatGrandchildFalcon
+        assert type(resolved) is PythonPayload
+        assert resolved.generate_calling_method() == ["python", "-c"]
+
+    def test_missing_payload_is_an_error(self, service: MagicMock) -> None:
+        dispatcher = LocalDispatcher(service, {}, identifier="celebrant")
+        with pytest.raises(CourierError, match="carries no payload"):
+            dispatcher._resolve_job_payload(_job("j"))
+
+    def test_incompatible_payload_is_an_error(self, service: MagicMock) -> None:
+        class ForeignPayload(Payload):
+            name = "foreign_payload"
+
+        dispatcher = LocalDispatcher(service, {}, identifier="celebrant")
+        dispatcher.representations = [ForeignPayload]
+        with pytest.raises(CourierError, match="no compatible representation"):
+            dispatcher._resolve_job_payload(
+                _job("j", _spec("bash_payload", binary="echo")),
+            )
+
+
+class TestEndToEndExecution:
+    """Drive a real dispatcher through the consume loop with a real subprocess.
+
+    ``_RecordingDispatcher`` overrides ``get_execution_log``, so the tests above
+    never exercise hydration, rendering or process execution.  This runs
+    ``LocalDispatcher`` (no overrides) end to end: consume -> hydrate -> render
+    pass two -> write script -> run -> observe the file it produced.
+    """
+
+    def test_local_dispatcher_runs_the_payload_the_job_carries(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        source = tmp_path / "source.nc"
+        source.write_text("payload-payload-payload")
+        destination = tmp_path / "copied.nc"
+
+        template = tmp_path / "copy.sh"
+        template.write_text(f"cp {{{{ files[0].file }}}} {destination}")
+
+        payload = BashPayload(service, {"file": template}, "payload-1")
+        job = Job(
+            "n",
+            "job-e2e",
+            {},
+            files=[File(file=source).freeze()],
+        )
+        job.payload = payload.to_job_spec(job)
+
+        dispatcher = LocalDispatcher(service, {}, identifier="e2e")
+        _feed(dispatcher, service, job)
+
+        assert destination.exists()
+        assert destination.read_text() == "payload-payload-payload"

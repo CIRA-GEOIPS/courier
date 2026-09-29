@@ -51,8 +51,9 @@ from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
+    from courier.interfaces.payloads import Payload
     from courier.service import Service
     from courier.sync.job_builder_state_sync import JobBuilderStateSync
     from courier.types.job import Job, JobGroup
@@ -121,6 +122,12 @@ class JobBuilder(ServicePlugin):
         self.config = config or {}
         self._sync: JobBuilderStateSync | None = self._init_sync(self.config, service)
         self.targets: tuple[str, ...] = tuple(self.config.get("targets") or ())
+        #: Nested payload plugin for this builder; wired by service preflight
+        #: from the ``payload`` block in the builder's config. The builder
+        #: renders it onto every emitted job. ``None`` only in harnesses that
+        #: drive a builder without running preflight; a real service fails
+        #: preflight if the block is absent.
+        self.payload: Payload | None = None
 
         self._files_received = JOB_BUILDER_FILES_RECEIVED
         self._jobs_built = JOB_BUILDER_JOBS_BUILT
@@ -130,6 +137,10 @@ class JobBuilder(ServicePlugin):
         self._files_per_job = JOB_BUILDER_FILES_PER_JOB
         self._jobs_emitted = JOB_BUILDER_JOBS_EMITTED
         self._emit_failures = JOB_BUILDER_EMIT_FAILURES
+        self._metric_labels = {
+            "job_builder_name": self.name,
+            "job_builder_identifier": self.identifier,
+        }
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -269,8 +280,8 @@ class JobBuilder(ServicePlugin):
         Parameters
         ----------
         job : Job
-            Job to emit.  ``emit_time`` and ``targets`` are populated on
-            a copy produced by this method before publish.
+            Job to emit.  ``emit_time``, ``targets`` and (when a payload is
+            bound) ``payload`` are populated on the job before publish.
         targets : Sequence[str] or None, optional
             Dispatcher identifiers to route to.  ``None`` falls back to
             the builder's ``self.targets`` configured list.  Preflight
@@ -304,13 +315,13 @@ class JobBuilder(ServicePlugin):
             return True
         job.emit_time = time.time()
         job.targets = target_list
+        if self.payload is not None:
+            job.payload = self.payload.to_job_spec(job, builder=self)
         message = str(job)
         succeeded: list[str] = []
         failed: list[tuple[str, str]] = []
-        claimed = sum(
+        for target in target_list:
             self._emit_one(job, target, message, succeeded, failed)
-            for target in target_list
-        )
         if failed:
             self._logger.error(
                 f"partial fan-out for job {job.identifier}: "
@@ -320,7 +331,7 @@ class JobBuilder(ServicePlugin):
                     "job_id": job.identifier,
                 },
             )
-        elif claimed == len(target_list):
+        elif not succeeded:
             # Every target was a peer's. WARNING because the caller has to act
             # on it; at INFO it read like an ordinary dedup while the job's
             # files were dropped.
@@ -345,17 +356,12 @@ class JobBuilder(ServicePlugin):
         message: str,
         succeeded: list[str],
         failed: list[tuple[str, str]],
-    ) -> bool:
+    ) -> None:
         """Publish *message* to *target* with per-target claim and retry.
 
         Mutates *succeeded* / *failed* in place so the caller can log a
-        single partial-failure line for the whole fan-out.
-
-        Returns
-        -------
-        bool
-            ``True`` when a peer already holds the claim and nothing was
-            published.  The caller counts these to spot a job no target took.
+        single partial-failure line for the whole fan-out and spot a job
+        no target took.  A peer's claim leaves both lists untouched.
         """
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -371,36 +377,32 @@ class JobBuilder(ServicePlugin):
                     f"Job {job.identifier} target {target} already claimed; skipping",
                     extra={"correlation_id": job.correlation_id},
                 )
-                return True
+                return
             queue_name = self._resolve_target(target)
             try:
                 self._publish_with_retry(queue_name, message)
             except TransientBrokerError as exc:
                 self._emit_failures.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
                     target=target,
                     reason="transient",
+                    **self._metric_labels,
                 ).inc()
                 failed.append((target, f"transient:{exc!s}"))
             except FatalBrokerError as exc:
                 self._emit_failures.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
                     target=target,
                     reason="fatal",
+                    **self._metric_labels,
                 ).inc()
                 failed.append((target, f"fatal:{exc!s}"))
                 if self._sync is not None:
                     self._sync.release_emit_claim(emit_key)
             else:
                 self._jobs_emitted.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
                     target=target,
+                    **self._metric_labels,
                 ).inc()
                 succeeded.append(target)
-        return False
 
     def _resolve_target(self, target: str) -> str:
         """Resolve a dispatcher identifier to its broker queue name.
@@ -483,20 +485,13 @@ class JobBuilder(ServicePlugin):
                     ATTR_FILE_SOURCE: file.source or "",
                 },
             ):
-                self._files_received.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
-                ).inc()
+                self._files_received.labels(**self._metric_labels).inc()
                 self._logger.debug(f"Received file {file_string} from file queue")
                 self._dispatch_file(file)
                 self._file_processing_duration.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
+                    **self._metric_labels,
                 ).observe(time.time() - start_time)
-                self._active_job_groups.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
-                ).set(
+                self._active_job_groups.labels(**self._metric_labels).set(
                     len(self.job_groups),
                 )
         if self._stop_event.is_set():
@@ -544,10 +539,7 @@ class JobBuilder(ServicePlugin):
         try:
             return FrozenFile.from_string(body)
         except Exception:  # parser boundary: anything raised here is poison
-            JOB_BUILDER_MALFORMED_MESSAGES.labels(
-                job_builder_name=self.name,
-                job_builder_identifier=self.identifier,
-            ).inc()
+            JOB_BUILDER_MALFORMED_MESSAGES.labels(**self._metric_labels).inc()
             self._logger.exception(
                 "Dropping malformed file-found message for builder %s "
                 "(%d bytes); first %d shown: %r",
@@ -615,15 +607,20 @@ class JobBuilder(ServicePlugin):
                     )
                 self._jobs_built.labels(
                     status="ready",
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
+                    **self._metric_labels,
                 ).inc()
                 self._files_per_job.labels(
-                    job_builder_name=self.name,
-                    job_builder_identifier=self.identifier,
+                    **self._metric_labels,
                 ).observe(len(ready_job.files))
 
             self._cleanup_old_jobs(job_group)
+
+    @contextlib.contextmanager
+    def _group_lock(self, job_group: JobGroup) -> Iterator[None]:
+        """Hold *job_group*'s lock when state sync configured one, else no-op."""
+        lock = self._group_locks.get(job_group.name)
+        with lock if lock is not None else contextlib.nullcontext():
+            yield
 
     def _add_file_locked(
         self,
@@ -638,10 +635,9 @@ class JobBuilder(ServicePlugin):
             ``(added, ready_jobs, updates)`` where *updates* maps job IDs
             to the modified ``Job`` objects that should be pushed to Redis.
         """
-        lock = self._group_locks.get(job_group.name)
         updates: dict[str, Job] = {}
         ready: list[Job] = []
-        with lock if lock is not None else contextlib.nullcontext():
+        with self._group_lock(job_group):
             added = job_group.add_file(file)
             if added:
                 updates = self._collect_sync_updates(job_group, file)
@@ -684,8 +680,7 @@ class JobBuilder(ServicePlugin):
 
     def _collect_and_delete_old_jobs(self, job_group: JobGroup) -> list[str]:
         """Delete timed-out jobs under the group lock; return their IDs."""
-        lock = self._group_locks.get(job_group.name)
-        with lock if lock is not None else contextlib.nullcontext():
+        with self._group_lock(job_group):
             old_ids = [jid for jid, job in job_group.jobs.items() if job.is_old()]
             for job_id in old_ids:
                 self._log_discard(job_id)
@@ -695,15 +690,8 @@ class JobBuilder(ServicePlugin):
     def _log_discard(self, job_id: str) -> None:
         """Log and count a discarded job."""
         self._logger.info(f"Discarding old job {job_id}")
-        self._jobs_discarded.labels(
-            job_builder_name=self.name,
-            job_builder_identifier=self.identifier,
-        ).inc()
-        self._jobs_built.labels(
-            status="old",
-            job_builder_name=self.name,
-            job_builder_identifier=self.identifier,
-        ).inc()
+        self._jobs_discarded.labels(**self._metric_labels).inc()
+        self._jobs_built.labels(status="old", **self._metric_labels).inc()
 
     def _push_deletions(self, group_name: str, deletions: list[str]) -> None:
         """Notify peers of deleted jobs (no-op when sync is disabled)."""
@@ -741,8 +729,7 @@ class JobBuilder(ServicePlugin):
             The jobs that reached a broker. A job every replica skipped is
             absent, because its files went back into the group.
         """
-        lock = self._group_locks.get(job_group.name)
-        with lock if lock is not None else contextlib.nullcontext():
+        with self._group_lock(job_group):
             ready = self._claim_ready_jobs(job_group)
         if not ready:
             return []
@@ -772,8 +759,7 @@ class JobBuilder(ServicePlugin):
         job : Job
             The job nothing accepted.
         """
-        lock = self._group_locks.get(job_group.name)
-        with lock if lock is not None else contextlib.nullcontext():
+        with self._group_lock(job_group):
             for file in job.files:
                 job_group.add_file(file)
 
@@ -876,4 +862,5 @@ job_builders = ClassPluginRegistry(
     name="job_builders",
     group=f"{ENTRY_POINT_PREFIX}.job_builders",
     expected_base=JobBuilder,
+    nested_values=["payload"],
 )

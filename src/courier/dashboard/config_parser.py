@@ -100,12 +100,6 @@ class DashboardModel:
     has_slurm: bool
     """``True`` when any dispatcher has ``plugin_name == "slurm_dispatcher"``."""
 
-    has_http: bool
-    """``True`` when any dispatcher has ``plugin_name == "http_dispatcher"``."""
-
-    has_parallel_bash: bool
-    """``True`` when any dispatcher has ``plugin_name == "parallel_bash"``."""
-
     # ---- Sub-section -------------------------------------------------------
     local_identifiers: set[str] | None = None
     """Matching identifiers when a sub-section filter is active.
@@ -182,18 +176,12 @@ def _plugin_kind_or_none(raw_kind: str) -> PluginKind | None:
     """Map a YAML ``kind`` onto a :class:`PluginKind`, or ``None`` if not one.
 
     Accepts both the singular kinds written in configs (``data_monitor``) and
-    the plural interface names (``data_monitors``) that
-    :func:`courier.cli.plugins.normalize_kind` maps them to, so the dashboard
-    understands exactly the set of configs the runtime accepts.
+    the plural interface names (``data_monitors``).
     """
-    from courier.cli.plugins import normalize_kind  # noqa: PLC0415
-
-    for candidate in (raw_kind, normalize_kind(raw_kind)):
-        try:
-            return PluginKind(candidate)
-        except ValueError:
-            continue
-    # Plural interface name -> singular enum value (e.g. "dispatchers").
+    try:
+        return PluginKind(raw_kind)
+    except ValueError:
+        pass
     singular = raw_kind[:-1] if raw_kind.endswith("s") else raw_kind
     try:
         return PluginKind(singular)
@@ -275,15 +263,13 @@ def _build_routing(job_builders: list[PluginInfo]) -> dict[str, list[str]]:
 def _compute_capability_flags(
     job_builders: list[PluginInfo],
     dispatchers: list[PluginInfo],
-) -> tuple[bool, bool, bool, bool]:
+) -> tuple[bool, bool]:
     """Compute boolean capability flags from the plugin lists."""
     has_metadata_router = any(
         jb.plugin_name == "metadata_router" for jb in job_builders
     )
     has_slurm = any(d.plugin_name == "slurm_dispatcher" for d in dispatchers)
-    has_http = any(d.plugin_name == "http_dispatcher" for d in dispatchers)
-    has_parallel_bash = any(d.plugin_name == "parallel_bash" for d in dispatchers)
-    return has_metadata_router, has_slurm, has_http, has_parallel_bash
+    return has_metadata_router, has_slurm
 
 
 def _resolve_local_identifiers(
@@ -414,8 +400,9 @@ def parse_config(
     routing = _build_routing(job_builders)
 
     # Phase 3 — capability flags
-    has_metadata_router, has_slurm, has_http, has_parallel_bash = (
-        _compute_capability_flags(job_builders, dispatchers)
+    has_metadata_router, has_slurm = _compute_capability_flags(
+        job_builders,
+        dispatchers,
     )
 
     # Phase 4 — sub-section (only when filters are active)
@@ -433,8 +420,6 @@ def parse_config(
             routing=routing,
             has_metadata_router=has_metadata_router,
             has_slurm=has_slurm,
-            has_http=has_http,
-            has_parallel_bash=has_parallel_bash,
             local_identifiers=None,
             upstream_dependencies=set(),
             downstream_dependencies=set(),
@@ -469,8 +454,6 @@ def parse_config(
         routing=routing,
         has_metadata_router=has_metadata_router,
         has_slurm=has_slurm,
-        has_http=has_http,
-        has_parallel_bash=has_parallel_bash,
         local_identifiers=local_identifiers,
         upstream_dependencies=upstream_deps,
         downstream_dependencies=downstream_deps,

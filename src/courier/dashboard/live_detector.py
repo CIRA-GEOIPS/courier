@@ -147,7 +147,7 @@ def detect_active_plugins(
     # at the boundary so downstream code trusts the types.
     # ------------------------------------------------------------------
     raw_metrics = _parse_prometheus_text(raw_text)
-    plugin_states = _extract_plugin_states(raw_text)
+    plugin_states = _states_from_metrics(raw_metrics)
 
     # ------------------------------------------------------------------
     # Determine active identifiers — those whose state is in _ACTIVE_STATES.
@@ -218,11 +218,28 @@ def _parse_prometheus_text(text: str) -> dict[str, list[dict[str, Any]]]:
     return result
 
 
-def _extract_plugin_states(text: str) -> dict[str, int]:
-    """Extract ``courier_plugin_state`` values from Prometheus text.
+def _states_from_metrics(
+    metrics: dict[str, list[dict[str, Any]]],
+) -> dict[str, int]:
+    """Map plugin identifiers to their ``PluginRunState`` integer value.
 
-    Only examines lines belonging to the ``courier_plugin_state`` metric.
-    Every other line is a no-op.
+    Reads the ``courier_plugin_state`` family from already-parsed metrics.
+    Keyed on ``plugin_identifier``, with a fallback to ``plugin_name`` for
+    metrics scraped from an older courier that predates the identifier label:
+    the caller matches these against the YAML ``run[*].identifier``, and
+    ``plugin_name`` carries the plugin *class* name ("local_dispatcher").
+    """
+    states: dict[str, int] = {}
+    for entry in metrics.get(_PLUGIN_STATE_METRIC, []):
+        labels = entry["labels"]
+        identifier = labels.get("plugin_identifier") or labels.get("plugin_name")
+        if identifier is not None:
+            states[identifier] = int(entry["value"])
+    return states
+
+
+def _extract_plugin_states(text: str) -> dict[str, int]:
+    """Extract plugin states from raw Prometheus exposition text.
 
     Parameters
     ----------
@@ -234,71 +251,5 @@ def _extract_plugin_states(text: str) -> dict[str, int]:
     dict[str, int]
         Mapping of ``plugin_identifier`` label to ``PluginRunState`` integer
         value. Returns an empty dict if no plugin-state lines are found.
-
-    Notes
-    -----
-    Keyed on ``plugin_identifier``, not ``plugin_name``: the caller feeds these
-    into ``parse_config(run_identifiers=...)``, which matches against the YAML
-    ``run[*].identifier``. ``plugin_name`` carries the plugin *class* name
-    ("serial_bash"), so the two sets never intersected and ``--live`` always
-    resolved to an empty sub-section. Falls back to ``plugin_name`` for
-    metrics scraped from an older courier that predates the identifier label.
     """
-    result: dict[str, int] = {}
-
-    for raw_line in text.splitlines():
-        stripped = raw_line.strip()
-
-        if not stripped or stripped.startswith("#"):
-            continue
-
-        if not stripped.startswith(_PLUGIN_STATE_METRIC):
-            continue
-
-        parsed = _METRIC_LINE_RE.match(stripped)
-        if parsed is None:
-            continue
-
-        if parsed.group(1) != _PLUGIN_STATE_METRIC:
-            continue
-
-        labels_str = parsed.group(2)
-        value_str = parsed.group(3)
-
-        identifier = _extract_label(labels_str, "plugin_identifier") or _extract_label(
-            labels_str,
-            "plugin_name",
-        )
-        if identifier is None:
-            continue
-
-        try:
-            state = int(float(value_str))
-        except (ValueError, OverflowError):
-            continue
-
-        result[identifier] = state
-
-    return result
-
-
-def _extract_label(labels_str: str, key: str) -> str | None:
-    """Return the value of *key* from a Prometheus label string.
-
-    Parameters
-    ----------
-    labels_str : str
-        The label portion of a Prometheus metric line, e.g.
-        ``plugin_name="my-plugin",other="val"``.
-    key : str
-        The label key to look up.
-
-    Returns
-    -------
-    str or None
-        The label value if found, otherwise ``None``.
-    """
-    for label_match in _LABEL_RE.finditer(labels_str):
-        if label_match.group(1) == key:
-            return label_match.group(2)
-    return None
+    return _states_from_metrics(_parse_prometheus_text(text))

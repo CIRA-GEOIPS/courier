@@ -16,7 +16,7 @@ specific executor.
 This broke two realistic deployments:
 
 1. **Mixed-cost workloads.** A service that runs both a cheap
-   `serial_bash` workflow and an expensive `slurm_dispatcher` cannot
+   `local_dispatcher` workflow and an expensive `slurm_dispatcher` cannot
    send the SLURM-eligible jobs to the right executor.
 1. **Fan-out / audit traffic.** A deployment that wants every job
    mirrored to an audit dispatcher alongside its primary executor had

@@ -170,7 +170,7 @@ class TestLiveDetection:
     """``--live`` resolves identifiers, which is what parse_config matches on."""
 
     _METRICS = (
-        'courier_plugin_state{plugin_name="serial_bash",'
+        'courier_plugin_state{plugin_name="local_dispatcher",'
         'plugin_identifier="my-dispatcher"} 3.0\n'
     )
 
@@ -181,8 +181,8 @@ class TestLiveDetection:
 
     def test_falls_back_to_plugin_name_when_identifier_absent(self) -> None:
         """Tolerates metrics scraped from a courier predating the label."""
-        legacy = 'courier_plugin_state{plugin_name="serial_bash"} 3.0\n'
-        assert _extract_plugin_states(legacy) == {"serial_bash": 3}
+        legacy = 'courier_plugin_state{plugin_name="local_dispatcher"} 3.0\n'
+        assert _extract_plugin_states(legacy) == {"local_dispatcher": 3}
 
 
 class TestDashboardKindMapping:

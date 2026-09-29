@@ -18,7 +18,6 @@ in :mod:`courier.interfaces` and
 * ``courier_plugin_*`` — :mod:`courier.metrics`
 * ``courier_broker_*`` — :mod:`courier.metrics`
 * ``courier_dispatcher_slurm_*`` — :mod:`courier.metrics`
-* ``courier_dispatcher_http_*`` — :mod:`courier.metrics`
 
 Panel Generation Logic
 ----------------------
@@ -49,36 +48,6 @@ from grafanalib.core import (
 
 if TYPE_CHECKING:
     from courier.dashboard.config_parser import DashboardModel
-
-# ==========================================================================
-# Color Palette — Courier-branded, Grafana dark-theme compatible
-# ==========================================================================
-
-COLORS = {
-    "primary": "#33C7FF",
-    "success": "#1EBF6E",
-    "warning": "#FFB357",
-    "danger": "#FF4B4B",
-    "neutral": "#8A9BB5",
-    "accent": "#C85EFA",
-    "series": [
-        "#33C7FF",
-        "#1EBF6E",
-        "#FFB357",
-        "#C85EFA",
-        "#FF4B4B",
-        "#6ED0FF",
-        "#47D487",
-        "#FFCF85",
-        "#D685FF",
-        "#FF7A7A",
-    ],
-}
-"""Color palette for Courier-branded Grafana panels.
-
-Keys map to semantic roles; ``series`` holds ten colours for
-multi-series graphs — cycling through them avoids repetition.
-"""
 
 # ==========================================================================
 # Common Y-Axis Formats
@@ -125,12 +94,6 @@ _THRESH_PIPELINE_HEALTH: list = [
     Threshold("red", 0, 0.0),
     Threshold("orange", 1, 0.80),
     Threshold("green", 2, 0.95),
-]
-
-_THRESH_QUEUE_DEPTH: list = [
-    Threshold("green", 0, 0.0),
-    Threshold("orange", 1, 1.0),
-    Threshold("red", 2, 100.0),
 ]
 
 # ==========================================================================
@@ -1120,92 +1083,6 @@ def _slurm_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
 
 # ==========================================================================
-# 7. HTTP Row (ONLY if model.has_http)
-# ==========================================================================
-
-
-def _http_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
-    """Generate HTTP-specific panels — requests, latency, status codes."""
-    if not model.has_http:
-        return None
-
-    y_row = _advance(gs, 1)
-    lbl = 'dispatcher_name=~"$dp_plugin"'
-    py = _advance(gs, 8)
-
-    panels: list = []
-
-    panels.append(
-        _timeseries(
-            gs,
-            title="HTTP Responses",
-            targets=[
-                _target(
-                    _rate(f"{_PREFIX}_dispatcher_http_response_codes_total", lbl),
-                    "{{dispatcher_name}} — {{status_code}}",
-                ),
-            ],
-            unit="ops",
-            y=py,
-            w=8,
-            x=0,
-        ),
-    )
-
-    panels.append(
-        _timeseries(
-            gs,
-            title="HTTP Latency (avg)",
-            targets=[
-                _target(
-                    _avg_rate(
-                        f"{_PREFIX}_dispatcher_http_request_duration_seconds_sum",
-                        f"{_PREFIX}_dispatcher_http_request_duration_seconds_count",
-                        lbl,
-                    ),
-                    "{{dispatcher_name}}",
-                ),
-            ],
-            unit=YAXIS_SECONDS,
-            y=py,
-            w=8,
-            x=8,
-        ),
-    )
-
-    http_rate = _rate(
-        f"{_PREFIX}_dispatcher_http_response_codes_total",
-        lbl,
-    )
-    panels.append(
-        _timeseries(
-            gs,
-            title="HTTP Status Codes",
-            targets=[
-                _target(
-                    f"sum by (status_code) ({http_rate})",
-                    "{{status_code}}",
-                ),
-            ],
-            stacking={"mode": "normal", "group": "A"},
-            fill_opacity=30,
-            unit="ops",
-            y=py,
-            w=8,
-            x=16,
-        ),
-    )
-
-    return RowPanel(
-        id=_next_id(gs),
-        title="HTTP Dispatcher",
-        collapsed=True,
-        gridPos=GridPos(h=1, w=24, x=0, y=y_row),
-        panels=panels,
-    )
-
-
-# ==========================================================================
 # 8. Plugin Manager Row (always generated)
 # ==========================================================================
 
@@ -1404,7 +1281,7 @@ def _pipeline_latency_row(
     """End-to-end pipeline latency from satellite scan time to product generation.
 
     Metrics are populated by deployment scripts via the ``COURIER_METRIC:``
-    stdout protocol (see :mod:`courier.plugins.dispatchers.serial_bash`
+    stdout protocol (see :mod:`courier.plugins.dispatchers.local_dispatcher`
     docs).  Each dispatcher emits its own ``scan_to_*_latency_seconds`` gauge
     after every job.
     """
@@ -1793,8 +1670,6 @@ def _state_timeline(  # noqa: PLR0913
 
 def build_prometheus_panels(
     model: DashboardModel,
-    *,
-    datasource: str = "Prometheus",  # noqa: ARG001 — reserved for future use
 ) -> list:
     """Generate config-aware Prometheus panels for a Courier pipeline model.
 
@@ -1806,10 +1681,6 @@ def build_prometheus_panels(
     model : DashboardModel
         Parsed dashboard configuration model from
         :func:`courier.dashboard.config_parser.parse_config`.
-    datasource : str
-        Name of the Prometheus datasource in Grafana. Used only for
-        the datasource template variable; all panel targets reference
-        ``$datasource``.
 
     Returns
     -------
@@ -1856,11 +1727,6 @@ def build_prometheus_panels(
     slurm_row = _slurm_row(model, gs)
     if slurm_row is not None:
         panels.append(slurm_row)
-
-    # 8. HTTP — only if has_http
-    http_row = _http_row(model, gs)
-    if http_row is not None:
-        panels.append(http_row)
 
     # 9. Plugin Manager — always generated
     panels.append(_plugin_manager_row(model, gs))

@@ -37,7 +37,7 @@ from courier.tracing import (
 
 if TYPE_CHECKING:
     import threading
-    from collections.abc import Callable, Generator, Iterable, Sequence
+    from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 
     from courier.interfaces.plugin_protocol import ServicePlugin
     from courier.managers.base import ServiceManager
@@ -124,7 +124,6 @@ class Service:
         self._dispatcher_identifiers: frozenset[str] = frozenset()
         self._builder_identifiers: frozenset[str] = frozenset()
         self._builder_targets: dict[str, tuple[str, ...]] = {}
-        self._falconer_map: list[tuple[str, str, str]] = []
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
 
@@ -638,7 +637,8 @@ class Service:
         """
         self._auto_discover_routing()
         self._validate_dispatch_targets()
-        self._populate_falconer_map()
+        self._bind_builder_payloads()
+        self._validate_payload_compatibility()
         self._propagate_builder_targets()
         self._predeclare_target_queues()
 
@@ -671,6 +671,12 @@ class Service:
         # is the shape a harness skipping configure_routing produces.
         self._builder_identifiers |= frozenset(self._builder_targets)
 
+    def _registered(self, interface: str) -> Iterator[tuple[str, ServicePlugin]]:
+        """Yield ``(registry_key, plugin)`` for every plugin of *interface*."""
+        for registry_key, info in self._plugin_manager.get_plugins().items():
+            if getattr(info.plugin, "interface", None) == interface:
+                yield registry_key, info.plugin
+
     def _discover_plugin_routing(
         self,
     ) -> tuple[set[str], dict[str, tuple[str, ...]]]:
@@ -682,17 +688,12 @@ class Service:
             Discovered dispatcher identifiers, and builder identifiers mapped
             to whatever targets their config already carried.
         """
-        plugins = self._plugin_manager.get_plugins()
         discovered_dispatchers: set[str] = set()
         discovered_builders: dict[str, tuple[str, ...]] = {}
-        for registry_key, info in plugins.items():
-            interface = getattr(info.plugin, "interface", None)
-            if interface == "dispatchers":
-                ident = getattr(info.plugin, "identifier", registry_key)
-                discovered_dispatchers.add(ident)
-            elif interface == "job_builders":
-                existing = getattr(info.plugin, "targets", ())
-                discovered_builders[registry_key] = tuple(existing)
+        for registry_key, plugin in self._registered("dispatchers"):
+            discovered_dispatchers.add(getattr(plugin, "identifier", registry_key))
+        for registry_key, plugin in self._registered("job_builders"):
+            discovered_builders[registry_key] = tuple(getattr(plugin, "targets", ()))
         return discovered_dispatchers, discovered_builders
 
     def _propagate_builder_targets(self) -> None:
@@ -705,14 +706,9 @@ class Service:
         empty).  Copy the resolved tuple onto every matching instance so
         :meth:`JobBuilder.emit` has non-empty fan-out targets.
         """
-        plugins = self._plugin_manager.get_plugins()
-        for builder_id, targets in self._builder_targets.items():
-            info = plugins.get(builder_id)
-            if info is None:
-                continue
-            if getattr(info.plugin, "interface", None) != "job_builders":
-                continue
-            info.plugin.targets = targets  # type: ignore[attr-defined]
+        for builder_id, plugin in self._registered("job_builders"):
+            if builder_id in self._builder_targets:
+                plugin.targets = self._builder_targets[builder_id]  # type: ignore[attr-defined]
 
     def _validate_dispatch_targets(self) -> None:
         """Fail fast on unknown or duplicate dispatch targets.
@@ -762,56 +758,77 @@ class Service:
         self._builder_targets = resolved
         self._logger.info(f"Resolved routing: {resolved}")
 
-    def _populate_falconer_map(self) -> None:
-        """Use the falconer map to marry the falcon and falconer.
+    def _bind_builder_payloads(self) -> None:
+        """Wire each registered job builder to its nested payload plugin.
 
-        Also give everything to the plugin manager.
+        The ``payload`` block in a builder's config is a nested microservice
+        that the plugin manager has already registered under its identifier.
+        The builder needs the live instance to render it onto jobs, and the
+        binding also verifies that every builder declared a payload.
+
+        Raises
+        ------
+        ConfigurationError
+            If a registered job builder has no payload, or the payload
+            identifier from its config is not registered as a payload.
+        """
+        from courier.interfaces.job_builders import JobBuilder  # noqa: PLC0415
+        from courier.interfaces.payloads import Payload  # noqa: PLC0415
+        from courier.schema.v1alpha1.service_config import (  # noqa: PLC0415
+            MicroserviceModel,
+        )
+
+        plugins = self._plugin_manager.get_plugins()
+        for registry_key, plugin in self._registered("job_builders"):
+            if not isinstance(plugin, JobBuilder):
+                continue
+            try:
+                payload_id = MicroserviceModel.model_validate(
+                    plugin.config.get("payload"),
+                ).identifier
+            except Exception as exc:
+                raise ConfigurationError(
+                    f"Job builder {registry_key!r} has a malformed payload "
+                    f"block: {exc}",
+                ) from exc
+            payload_info = plugins.get(payload_id)
+            if payload_info is None or not isinstance(payload_info.plugin, Payload):
+                raise ConfigurationError(
+                    f"Payload {payload_id!r} for job builder {registry_key!r} "
+                    f"is not registered as a payload.",
+                )
+            plugin.payload = payload_info.plugin
+
+    def _validate_payload_compatibility(self) -> None:
+        """Fail fast when a builder's payload cannot run on a declared target.
+
+        Compatibility is checked statically for declared and implicitly
+        resolved targets: the payload's representation hierarchy must intersect
+        the dispatcher's supported representations.  A target that only exists in
+        another container is not registered here and is checked by the dispatcher
+        when it hydrates the payload.
         """
         from courier.interfaces.dispatchers import Dispatcher  # noqa: PLC0415
-        from courier.interfaces.falconers import Falconer  # noqa: PLC0415
-        from courier.interfaces.falcons import Falcon  # noqa: PLC0415
 
-        flattened_map = {element for tup in self._falconer_map for element in tup}
-
-        # check missing elements against registered plugins to
-        # ensure that all elements are distributed properly
-        missing_elements = [
-            plugin_id
-            for plugin_id, registered_plugin in self._plugin_manager._plugins.items()
-            if registered_plugin.plugin.interface
-            in {"dispatchers", "falconers", "falcons"}
-            and plugin_id not in flattened_map
-        ]
-
-        if missing_elements:
-            raise ConfigurationError(
-                "Missing element(s) from falconer map: " f"{missing_elements}",
-            )
-
-        for dispatcher_id, falconer_id, falcon_id in self._falconer_map:
-            dispatcher_obj = self._plugin_manager._plugins[dispatcher_id].plugin
-            falconer_obj = self._plugin_manager._plugins[falconer_id].plugin
-            falcon_obj = self._plugin_manager._plugins[falcon_id].plugin
-
-            if not (
-                isinstance(dispatcher_obj, Dispatcher)
-                and isinstance(falconer_obj, Falconer)
-                and isinstance(falcon_obj, Falcon)
-            ):
-                raise ConfigurationError("Invalid type for dispatcher group.")
-
-            # each object is populated with its initial configuration.
-
-            # dispatcher checks if falconer and falcon are compatible
-            # dispatcher configures, marries the falconer and falcon
-            mutated_falcon = dispatcher_obj.ordain_bird_marriage(
-                falconer_obj,
-                falcon_obj,
-            )
-
-            # if something goes wrong, check here first: I'm not sure if this will
-            # mess up the pipeline
-            self._plugin_manager._plugins[falcon_id].plugin = mutated_falcon
+        plugins = self._plugin_manager.get_plugins()
+        for registry_key, plugin in self._registered("job_builders"):
+            payload = getattr(plugin, "payload", None)
+            if payload is None:
+                continue
+            builder_id = getattr(plugin, "identifier", registry_key)
+            for target in self._builder_targets.get(builder_id, ()):
+                dispatcher_info = plugins.get(target)
+                if dispatcher_info is None:
+                    continue
+                dispatcher = dispatcher_info.plugin
+                if not isinstance(dispatcher, Dispatcher):
+                    continue
+                if dispatcher.compatible_representation(type(payload)) is None:
+                    raise ConfigurationError(
+                        f"Job builder {builder_id!r} payload {payload.name!r} is "
+                        f"not compatible with dispatcher {target!r} "
+                        f"(supports {dispatcher.supported_representations}).",
+                    )
 
     def _predeclare_target_queues(self) -> None:
         """Declare every queue this service or its peers will consume from.

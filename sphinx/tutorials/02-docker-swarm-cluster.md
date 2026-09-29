@@ -117,19 +117,25 @@ spec:
     - create-jobs:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
+        config:
+          targets:
+            - process-files
+          payload:
+            echo-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  #!/bin/bash
+                  echo "=========================================="
+                  echo "File detected: {{ files[0].file }}"
+                  echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
+                  echo "=========================================="
 
-    # Dispatcher — echo file details
+    # Dispatcher — execute the payload each job carries
     - process-files:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            #!/bin/bash
-            echo "=========================================="
-            echo "File detected: {file}"
-            echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "=========================================="
+        name: local_dispatcher
 ```
 
 Key differences from {doc}`01-simple-file-watcher`:
@@ -634,7 +640,7 @@ You should see:
 ```
 [Plugin: DummyJobBuilder] Received file from file queue
 [Plugin: DummyJobBuilder] Job job_... is ready; emitting
-[Plugin: serial_bash] Executing job
+[Plugin: local_dispatcher] Executing job
 ==========================================
 File detected: /data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000...
 Timestamp: 2026-06-12 ...

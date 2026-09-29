@@ -95,8 +95,8 @@ _SECRET_KEY_MARKERS: tuple[str, ...] = (
 
 Generated dashboard JSON is routinely committed to version control and is
 visible to everyone with Grafana access, so plugin config values are rendered
-into it. Without this filter an ``s3_poller`` secret key, an
-``http_dispatcher`` bearer token or a ``kafka_consumer`` SASL password would
+into it. Without this filter an ``s3_poller`` secret key, a
+``rabbit_mq_watcher`` password or a ``kafka_consumer`` SASL password would
 be embedded verbatim in the panel HTML.
 """
 
@@ -643,8 +643,6 @@ def _build_dep_table(
 
 def build_subsection_header(
     model: DashboardModel,
-    *,
-    datasource: str = "Prometheus",  # noqa: ARG001 — reserved for future use
 ) -> Row | None:
     """Build a sub-section header row.
 
@@ -655,8 +653,6 @@ def build_subsection_header(
     ----------
     model : DashboardModel
         Parsed dashboard model.
-    datasource : str
-        Grafana datasource name (unused here — reserved for future use).
 
     Returns
     -------

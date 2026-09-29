@@ -200,6 +200,8 @@ spec:
         kind: job_builder
         name: filter_and_group
         config:
+          targets:
+            - dispatch
           state_sync:
             host: redis.prod.internal
             port: 6379
@@ -207,13 +209,17 @@ spec:
             password: "${REDIS_SYNC_PASSWORD}"
             ssl: true
             channel_prefix: goes18-prod
+          payload:
+            procflow-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  run_geoips.sh {{ files[0].file }}
 
     - dispatch:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            run_geoips.sh {file}
+        name: local_dispatcher
 ```
 
 Start both instances (on different hosts or in different containers):

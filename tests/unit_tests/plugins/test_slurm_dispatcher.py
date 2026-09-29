@@ -1,193 +1,258 @@
-"""Unit tests for the slurm_dispatcher plugin."""
+"""Unit tests for the Slurm dispatcher's command and polling helpers."""
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import ValidationError
 
-from courier.errors import PluginStartupError
-from courier.plugins.dispatchers.slurm_dispatcher import (
-    SlurmDispatcher,
-    SlurmDispatcherConfig,
-)
+from courier.errors import CourierError
+from courier.interfaces.dispatchers import ExecutionPayload
+from courier.interfaces.payloads import PayloadSpec
+from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
 from courier.types.execution_log import ExecutionLog
+from courier.types.job import Job
 
 
-def _make_config(tmp_path: Path, **overrides: Any) -> dict[str, Any]:
-    cfg: dict[str, Any] = {
-        "sbatch_template": "#!/bin/bash\n#SBATCH --job-name={{ job.name }}\necho ok",
-        "slurm_output_dir": str(tmp_path),
-    }
-    cfg.update(overrides)
-    return cfg
+@pytest.fixture
+def service() -> MagicMock:
+    svc = MagicMock()
+    svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
+    svc._broker_manager._connection = None
+    return svc
 
 
-# ─── Config ─────────────────────────────────────────────────────────────────
+def _dispatcher(service: MagicMock, tmp_path: Path, **config: object) -> SlurmDispatcher:
+    base = {"slurm_output_dir": str(tmp_path / "slurm")}
+    base.update(config)
+    return SlurmDispatcher(service, base, identifier="sd")
 
 
-class TestSlurmDispatcherConfig:
-    def test_minimal_valid(self, tmp_path: Path) -> None:
-        cfg = SlurmDispatcherConfig.model_validate(_make_config(tmp_path))
-        assert cfg.wait_for_completion is True
-
-    def test_invalid_template_rejected(self, tmp_path: Path) -> None:
-        with pytest.raises(ValidationError, match="Invalid sbatch_template"):
-            SlurmDispatcherConfig.model_validate(
-                _make_config(tmp_path, sbatch_template="{{ unclosed"),
-            )
+def _job(identifier: str = "job-1") -> Job:
+    return Job("n", identifier, {})
 
 
-# ─── Constructor / start ────────────────────────────────────────────────────
+class TestSbatchArgs:
+    def test_minimal_args(self, service: MagicMock, tmp_path: Path) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+        out_base = Path(dispatcher.config.slurm_output_dir) / "job-1"
 
+        assert dispatcher._build_sbatch_args(_job()) == [
+            "sbatch",
+            "--parsable",
+            "--job-name=courier-job-1",
+            f"--output={out_base}.out",
+            f"--error={out_base}.err",
+        ]
 
-class TestConstructor:
-    def test_initializes(self, mock_service: MagicMock, tmp_path: Path) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        assert plugin._output_dir == tmp_path
-
-    def test_start_requires_sbatch(
-        self, mock_service: MagicMock, tmp_path: Path, mocker
+    def test_optional_flags_are_included(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
     ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
+        dispatcher = _dispatcher(
+            service,
+            tmp_path,
+            partition="gpu",
+            account="acct",
+            qos="high",
+            time_limit="01:00:00",
+            ntasks=4,
+            mem_per_node="8G",
+            sbatch_extra_args=["--gres=gpu:1"],
         )
-        mocker.patch(
-            "courier.plugins.dispatchers.slurm_dispatcher.shutil.which",
-            return_value=None,
-        )
-        with pytest.raises(PluginStartupError, match="sbatch"):
-            plugin.start()
+        out_base = Path(dispatcher.config.slurm_output_dir) / "job-1"
+
+        assert dispatcher._build_sbatch_args(_job()) == [
+            "sbatch",
+            "--parsable",
+            "--job-name=courier-job-1",
+            f"--output={out_base}.out",
+            f"--error={out_base}.err",
+            "--partition=gpu",
+            "--account=acct",
+            "--qos=high",
+            "--time=01:00:00",
+            "--ntasks=4",
+            "--mem=8G",
+            "--gres=gpu:1",
+        ]
 
 
-# ─── _parse_sacct_output ────────────────────────────────────────────────────
+class TestJobIdParsing:
+    def test_parses_submitted_batch_job(self, service: MagicMock, tmp_path: Path) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+        result = ExecutionLog(stdout="Submitted batch job 4321")
+
+        assert dispatcher._get_slurm_job_id(result) == "4321"
+
+    def test_parses_bare_digits(self, service: MagicMock, tmp_path: Path) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+
+        assert dispatcher._get_slurm_job_id(ExecutionLog(stdout="99")) == "99"
+
+    def test_returns_none_for_garbage(self, service: MagicMock, tmp_path: Path) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+
+        assert dispatcher._get_slurm_job_id(ExecutionLog(stdout="nope")) is None
 
 
-class TestParseSacctOutput:
-    def test_completed(self, mock_service: MagicMock, tmp_path: Path) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        state, rc = plugin._parse_sacct_output("COMPLETED|0:0\n")
+class TestSacctParsing:
+    def test_parses_state_and_exit_code(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+
+        state, exit_code = dispatcher._parse_sacct_output("COMPLETED|0:0\n")
+
         assert state == "COMPLETED"
-        assert rc == 0
+        assert exit_code == 0
 
-    def test_failed_with_exit_code(
-        self, mock_service: MagicMock, tmp_path: Path
+    def test_empty_output_yields_empty_state(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
     ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        state, rc = plugin._parse_sacct_output("FAILED|2:0")
-        assert state == "FAILED"
-        assert rc == 2
+        dispatcher = _dispatcher(service, tmp_path)
 
-    def test_empty_returns_blank(self, mock_service: MagicMock, tmp_path: Path) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        state, rc = plugin._parse_sacct_output("")
-        assert state == ""
-        assert rc == 0
+        assert dispatcher._parse_sacct_output("") == ("", 0)
 
 
-# ─── _submit ────────────────────────────────────────────────────────────────
+class TestExecuteJob:
+    def _payload(self, stdout: str) -> MagicMock:
+        payload = MagicMock()
+        payload.get_payload_from_job.return_value = [
+            ExecutionLog(return_code=0, stdout=stdout, stderr="", hostname="h"),
+        ]
+        return payload
 
-
-class TestSubmit:
-    def test_parses_job_id_from_stdout_verbose(
-        self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
+    def test_submitted_only_when_not_waiting(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
     ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        result = MagicMock(
-            returncode=0, stdout="Submitted batch job 12345\n", stderr=""
-        )
-        mocker.patch(
-            "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
-            return_value=result,
-        )
-        job_id = plugin._submit(make_job(), tmp_path / "s.sbatch")
-        assert job_id == "12345"
+        dispatcher = _dispatcher(service, tmp_path, wait_for_completion=False)
+        payload = self._payload("Submitted batch job 7")
+        env = ExecutionPayload(command=["sbatch"], file=None)
 
-    def test_parses_parsable_output(
-        self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
-    ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        result = MagicMock(returncode=0, stdout="98765\n", stderr="")
-        mocker.patch(
-            "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
-            return_value=result,
-        )
-        assert plugin._submit(make_job(), tmp_path / "s.sbatch") == "98765"
+        logs = dispatcher._execute_job(_job(), payload, env)
 
-    def test_nonzero_returncode_yields_none(
-        self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
-    ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        result = MagicMock(returncode=1, stdout="", stderr="rejected")
-        mocker.patch(
-            "courier.plugins.dispatchers.slurm_dispatcher.subprocess.run",
-            return_value=result,
-        )
-        assert plugin._submit(make_job(), tmp_path / "s.sbatch") is None
-        assert plugin._last_submit_error == "rejected"
-
-
-# ─── get_execution_log ──────────────────────────────────────────────────────
-
-
-class TestGetExecutionLog:
-    def test_no_wait_returns_submit_log(
-        self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
-    ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service,
-            _make_config(tmp_path, wait_for_completion=False),
-            identifier="test-disp",
-        )
-        mocker.patch.object(plugin, "_submit", return_value="42")
-        logs = plugin.get_execution_log(make_job())
-        assert len(logs) == 1
-        assert isinstance(logs[0], ExecutionLog)
         assert logs[0].return_code == 0
-        assert "42" in (logs[0].stdout or "")
+        assert "7" in (logs[0].stdout or "")
 
-    def test_full_cycle_completed(
-        self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
+    def test_rejected_when_output_unparseable(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
     ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
-        mocker.patch.object(plugin, "_submit", return_value="77")
-        mocker.patch.object(plugin, "_poll_status", return_value=("COMPLETED", 0))
-        mocker.patch.object(plugin, "_read_output", return_value=("out", ""))
-        logs = plugin.get_execution_log(make_job())
-        assert logs[0].return_code == 0
-        assert logs[0].stdout == "out"
+        dispatcher = _dispatcher(service, tmp_path)
+        payload = self._payload("totally bogus")
+        env = ExecutionPayload(command=["sbatch"], file=None)
 
-    def test_submission_failure_returns_error_log(
-        self, mock_service: MagicMock, tmp_path: Path, make_job, mocker
-    ) -> None:
-        plugin = SlurmDispatcher(
-            mock_service, _make_config(tmp_path), identifier="test-disp"
-        )
+        logs = dispatcher._execute_job(_job(), payload, env)
 
-        def fake_submit(*_args, **_kwargs):
-            plugin._last_submit_error = "oops"
-            return None
-
-        mocker.patch.object(plugin, "_submit", side_effect=fake_submit)
-        logs = plugin.get_execution_log(make_job())
         assert logs[0].return_code == -1
-        assert logs[0].stderr == "oops"
+
+    def test_waiting_reads_the_slurm_output_files(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+        out_dir = dispatcher._output_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "job-1.out").write_text("done")
+        (out_dir / "job-1.err").write_text("")
+        payload = self._payload("Submitted batch job 7")
+        env = ExecutionPayload(command=["sbatch"], file=None)
+        dispatcher._poll_status = MagicMock(return_value=("COMPLETED", 0))  # type: ignore[method-assign]
+
+        logs = dispatcher._execute_job(_job(), payload, env)
+
+        assert logs[0].return_code == 0
+        assert logs[0].stdout == "done"
+
+
+class TestStart:
+    def test_start_requires_sbatch_on_path(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import courier.plugins.dispatchers.slurm_dispatcher as slurm_module
+
+        dispatcher = _dispatcher(service, tmp_path)
+        monkeypatch.setattr(slurm_module.shutil, "which", lambda _name: None)
+
+        with pytest.raises(CourierError, match="sbatch"):
+            dispatcher.start()
+
+
+class TestToolchainValidation:
+    def test_missing_toolchain_binary_fails_hydration(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        dispatcher = _dispatcher(service, tmp_path)
+        job = Job(
+            "n",
+            "job-1",
+            {},
+            payload=PayloadSpec(
+                name="bash_payload",
+                identifier="p1",
+                config={
+                    "binary": "echo",
+                    "toolchain": ["courier-no-such-binary-xyz"],
+                },
+            ),
+        )
+
+        with pytest.raises(CourierError, match="Toolchain validation failed"):
+            dispatcher._resolve_job_payload(job)
+
+
+class TestInitializeEnvironment:
+    def test_wrapped_command_is_quoted_as_a_single_token(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """``--wrap`` must carry the whole command as one shell-quoted argv token.
+
+        A payload with a binary takes the ``sbatch --wrap`` branch; the rendered
+        command is interpolated into a shell string, so it must be ``shlex``
+        quoted.  An output path containing a space makes the quoting observable.
+        """
+        spaced = tmp_path / "slurm output"
+        dispatcher = SlurmDispatcher(
+            service,
+            {"slurm_output_dir": str(spaced)},
+            identifier="sd",
+        )
+        job = Job(
+            "n",
+            "job-1",
+            {},
+            payload=PayloadSpec(
+                name="bash_payload",
+                identifier="p1",
+                config={"binary": "echo"},
+                script="echo hi",
+                defer_nonce="abc",
+            ),
+        )
+        payload = dispatcher._resolve_job_payload(job)
+
+        env = dispatcher.initialize_environment(job, payload)
+
+        assert "--wrap" in env.command
+        wrapped = env.command[env.command.index("--wrap") + 1]
+        inner = shlex.join(["echo", str(dispatcher._output_dir / "job-1.sh")])
+        assert shlex.split(wrapped) == ["bash", "-c", inner]

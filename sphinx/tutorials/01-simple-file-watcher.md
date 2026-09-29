@@ -103,26 +103,32 @@ spec:
     - create-jobs:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
+        config:
+          targets:
+            - log-files
+          payload:
+            log-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  #!/bin/bash
+                  echo "=========================================="
+                  echo "File detected: {{ files[0].file }}"
+                  echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
+                  echo "=========================================="
+
+                  # Optional: Move to processed directory
+                  # mv {{ files[0].file }} ./data/processed/
 
     # Log processing
     - log-files:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            #!/bin/bash
-            echo "=========================================="
-            echo "File detected: {file}"
-            echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "=========================================="
-
-            # Optional: Move to processed directory
-            # mv {file} ./data/processed/
+        name: local_dispatcher
 ```
 
-> **Template syntax:** This tutorial uses the simple `{file}` placeholder.
-> For advanced templating with conditionals and loops, see the
+> **Template syntax:** This tutorial uses `{{ files[0].file }}`. For the
+> two-pass template context (builder and dispatcher values), see the
 > {doc}`../getting-started/configuration` Jinja2 section.
 
 ## Step 4: Validate Configuration
@@ -157,7 +163,7 @@ You should see startup logs:
 [Manager: RabbitMQManager] Successfully connected to RabbitMQ
 [Manager: PluginManager] Registered plugin: file_system_poller_watchdog v0.0.0
 [Manager: PluginManager] Registered plugin: DummyJobBuilder v-1
-[Manager: PluginManager] Registered plugin: serial_bash v-1
+[Manager: PluginManager] Registered plugin: local_dispatcher v-1
 [Plugin: file_system_poller_watchdog] Starting to watch directory: ./data/incoming
 [Service: tutorial-01-file-watcher] Service tutorial-01-file-watcher started successfully
 ```
@@ -197,7 +203,7 @@ In the service logs, you'll see:
 )
 [Plugin: DummyJobBuilder] Received file from file queue
 [Plugin: DummyJobBuilder] Job job_test_1705320123 is ready; emitting
-[Plugin: serial_bash] Executing job
+[Plugin: local_dispatcher] Executing job
 ==========================================
 File detected: ./data/incoming/test_1705320123.nc
 Timestamp: 2024-01-15 12:01:03
@@ -248,7 +254,7 @@ job_builder_jobs_built_total{status="ready",job_builder_name="DummyJobBuilder"} 
 ### Jobs executed
 
 ```
-dispatcher_jobs_processed_total{status="success",dispatcher_name="serial_bash"} 1.0
+dispatcher_jobs_processed_total{status="success",dispatcher_name="local_dispatcher"} 1.0
 ```
 
 These metrics update in real-time as files are processed.
@@ -284,7 +290,7 @@ Stop the service gracefully with `Ctrl+C`:
 [Service: tutorial-01-file-watcher] Cleaning up resources...
 [Manager: PluginManager] Plugin stopped: file_system_poller_watchdog
 [Manager: PluginManager] Plugin stopped: DummyJobBuilder
-[Manager: PluginManager] Plugin stopped: serial_bash
+[Manager: PluginManager] Plugin stopped: local_dispatcher
 [Manager: PluginManager] Plugin manager stopped
 [Manager: RabbitMQManager] RabbitMQ connection closed
 [Service: tutorial-01-file-watcher] Service tutorial-01-file-watcher stopped

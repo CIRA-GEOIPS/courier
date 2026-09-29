@@ -59,7 +59,7 @@ MONITOR_ID = "watch-files"
 MONITOR_NAME = "file_system_poller_watchdog"
 BUILDER_ID = "create-jobs"
 DISPATCHER_ID = "process-files"
-DISPATCHER_NAME = "serial_bash"
+DISPATCHER_NAME = "local_dispatcher"
 
 
 def _files_seen(exposition: str) -> float | None:

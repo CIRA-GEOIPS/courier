@@ -62,9 +62,14 @@ spec:
             instrument: abi
             domain: Full-Disk
             product: CLAVR-x
+          targets:
+            - run-preprocessing-suite
+          payload:
+            procflow-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: "python3 nar-procflow-overcast.py {{ files[0].file }}"
     - run-preprocessing-suite:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            python3 nar-procflow-overcast.py $input_file
+        name: local_dispatcher

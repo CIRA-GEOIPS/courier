@@ -20,18 +20,20 @@ from courier.cli.init import (
     validate_config,
     write_yaml,
 )
+from courier.interfaces.payloads import PayloadConfig
 from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
     FileSystemPollerConfig,
 )
-from courier.plugins.dispatchers.serial_bash import (
-    SerialBashDispatcher,
-    SerialBashConfig,
+from courier.plugins.dispatchers.local_dispatcher import (
+    LocalDispatcher,
+    LocalDispatcherConfig,
 )
 from courier.plugins.job_builders.dummy_job_builder import (
     DummyJobBuilder,
     DummyJobBuilderConfig,
 )
+from courier.plugins.payloads.bash_payload import BashPayload
 
 
 class TestMakeIdentifier:
@@ -444,6 +446,15 @@ class TestBuildServiceConfig:
             config_values={"path": "/tmp"},
             nested_values=[],
         )
+        sel_payload = PluginSelection(
+            plugin_class=BashPayload,
+            plugin_name="bash_payload",
+            yaml_kind="payload",
+            display_label="Payload",
+            config_model=PayloadConfig,
+            config_values={"binary": "echo"},
+            nested_values=[],
+        )
         sel_jb = PluginSelection(
             plugin_class=DummyJobBuilder,
             plugin_name="DummyJobBuilder",
@@ -451,15 +462,15 @@ class TestBuildServiceConfig:
             display_label="Job Builder",
             config_model=DummyJobBuilderConfig,
             config_values={},
-            nested_values=[],
+            nested_values=[sel_payload],
         )
         sel_dp = PluginSelection(
-            plugin_class=SerialBashDispatcher,
-            plugin_name="serial_bash",
+            plugin_class=LocalDispatcher,
+            plugin_name="local_dispatcher",
             yaml_kind="dispatcher",
             display_label="Dispatcher",
-            config_model=SerialBashConfig,
-            config_values={"bash_script": "echo hello"},
+            config_model=LocalDispatcherConfig,
+            config_values={},
             nested_values=[],
         )
         config = build_service_config(
