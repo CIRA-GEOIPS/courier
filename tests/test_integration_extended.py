@@ -143,7 +143,6 @@ def _prometheus_cleanup(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 @pytest.mark.integration
 def test_multi_builder_multi_dispatcher_explicit_routing(
     tmp_path: Path,
@@ -210,7 +209,6 @@ def test_multi_builder_multi_dispatcher_explicit_routing(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_single_builder_fan_out_to_multiple_dispatchers(
     tmp_path: Path,
 ) -> None:
@@ -273,7 +271,6 @@ def test_single_builder_fan_out_to_multiple_dispatchers(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_preflight_rejects_unknown_target() -> None:
     """Preflight raises UnknownTargetError when a builder references a
     dispatcher that was never registered.
@@ -302,7 +299,6 @@ def test_preflight_rejects_unknown_target() -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
     """FilterAndGroupJobBuilder groups files into jobs, with overflow.
 
@@ -385,7 +381,6 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_dispatcher_dedupe_lru_prevents_reprocessing(
     tmp_path: Path,
 ) -> None:
@@ -481,7 +476,6 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_execution_log_flows_back(tmp_path: Path) -> None:
     """Every dispatched job produces an ExecutionLog on DISPATCHER_QUEUE.
 
@@ -563,12 +557,11 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
 
     service = Service(_make_service_config())
     service.register_plugin(DummyJobBuilder, {})
-    # TODO: add this dispatcher back with falcons
-    #service.register_plugin(
-    #    SerialBashDispatcher,
-    #    {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-    #    identifier="runner",
-    #)
+    service.register_plugin(
+        SerialBashDispatcher,
+        {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
+        identifier="runner",
+    )
 
     thread = threading.Thread(target=service.start, daemon=True)
     thread.start()
@@ -596,7 +589,6 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_implicit_routing_auto_wires_sole_dispatcher(
     tmp_path: Path,
 ) -> None:
@@ -645,7 +637,6 @@ def test_implicit_routing_auto_wires_sole_dispatcher(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_namespace_isolation_between_services(tmp_path: Path) -> None:
     """Two services with different namespaces do not interfere.
 
@@ -839,7 +830,6 @@ def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
     """MetadataRouterBuilder routes files to dispatchers by source attribute.
 
