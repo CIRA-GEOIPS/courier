@@ -48,11 +48,15 @@ class PluginStateInfo:
         Last error message if plugin failed.
     ready : threading.Event
         Event set when the plugin reaches RUNNING state.
+    threaded : bool, default=True
+        Whether the plugin runs its own thread.  Sub-plugins such as
+        payloads are not threaded and are started without one.
     """
 
     plugin: ServicePlugin
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
+    threaded: bool = True
     last_health_check: datetime | None = None
     restart_count: int = 0
     last_restart: datetime | None = None
@@ -171,6 +175,7 @@ class PluginManager(ServiceManager):
 
             self._plugins[registry_key] = PluginStateInfo(
                 plugin=plugin_instance,
+                threaded=getattr(plugin_instance, "threaded", True),
             )
 
             # Emit initial metric values so the series exists from container
@@ -189,6 +194,18 @@ class PluginManager(ServiceManager):
                 f"Registered plugin: {registry_key} "
                 f"(class={plugin_name} v{plugin_instance.version})",
             )
+
+    def _mark_running(self, plugin_info: PluginStateInfo) -> None:
+        """Transition *plugin_info* to RUNNING and signal readiness."""
+        with self._lock:
+            plugin_info.state = PluginRunState.RUNNING
+            plugin_info.last_health_check = None
+            plugin_info.error_message = None
+        self._plugin_state_metric.labels(
+            plugin_name=plugin_info.plugin.name,
+            plugin_identifier=self._plugin_identifier(plugin_info.plugin),
+        ).set(plugin_info.state.value)
+        plugin_info.ready.set()
 
     def _start_plugin(self, plugin_info: PluginStateInfo) -> None:  # noqa: PLR0915
         """Start a plugin in a separate thread.
@@ -238,15 +255,7 @@ class PluginManager(ServiceManager):
                         plugin_info.plugin.name,
                     )
 
-                with self._lock:
-                    plugin_info.state = PluginRunState.RUNNING
-                    plugin_info.last_health_check = None
-                    plugin_info.error_message = None
-
-                self._plugin_state_metric.labels(
-                    plugin_name=plugin_info.plugin.name,
-                    plugin_identifier=self._plugin_identifier(plugin_info.plugin),
-                ).set(plugin_info.state.value)
+                self._mark_running(plugin_info)
 
                 self._logger.info(
                     f"Plugin started successfully: {plugin_info.plugin.name}",
@@ -261,8 +270,6 @@ class PluginManager(ServiceManager):
                             ATTR_PLUGIN_NAME: plugin_info.plugin.name,
                         },
                     )
-
-                plugin_info.ready.set()
 
                 while (
                     self._state == PluginRunState.RUNNING
@@ -296,6 +303,24 @@ class PluginManager(ServiceManager):
             plugin_info.last_health_check = None
             plugin_info.error_message = None
             plugin_info.ready.clear()
+
+        if not plugin_info.threaded:
+            # Sub-plugins such as payloads have no run loop; starting them is a
+            # no-op, so registration must not fork a thread that would then sit
+            # in the manager's health loop forever.
+            try:
+                plugin_info.plugin.start()
+            except Exception:
+                self._logger.exception(
+                    f"Plugin {plugin_info.plugin.name} failed to start",
+                )
+                with self._lock:
+                    plugin_info.state = PluginRunState.FAILED
+                return
+            self._mark_running(plugin_info)
+            return
+
+        with self._lock:
             plugin_info.thread = threading.Thread(
                 target=run_plugin,
                 name=f"Plugin-{plugin_info.plugin.name}",
@@ -381,7 +406,7 @@ class PluginManager(ServiceManager):
                         plugin_info.last_health_check = now
 
                         if plugin_info.state == PluginRunState.RUNNING:
-                            if (
+                            if plugin_info.threaded and (
                                 not plugin_info.thread
                                 or not plugin_info.thread.is_alive()
                             ):
@@ -604,8 +629,11 @@ class PluginManager(ServiceManager):
             healthy_plugins = filter_map(
                 lambda info: (
                     info.state in [PluginRunState.RUNNING, PluginRunState.STARTING]
-                    and info.thread is not None
-                    and info.thread.is_alive()
+                    and (
+                        info.thread.is_alive()
+                        if info.thread is not None
+                        else not info.threaded
+                    )
                 ),
                 lambda info: info.plugin.is_healthy(),
                 self._plugins.values(),

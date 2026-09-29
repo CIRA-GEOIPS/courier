@@ -14,7 +14,6 @@ from prometheus_client import REGISTRY
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job
-from courier.utils.bash_executor import BashExecResult
 
 
 @pytest.fixture(autouse=True)
@@ -94,26 +93,6 @@ def make_job(make_frozen_file):
         )
         defaults.update(overrides)
         return Job(**defaults, files=set(files))
-
-    return _factory
-
-
-@pytest.fixture
-def fake_bash_exec_result():
-    """Build BashExecResult for bash dispatcher tests."""
-
-    def _factory(
-        return_code: int = 0,
-        stdout: str = "ok",
-        stderr: str = "",
-        log_file_path: str | None = None,
-    ) -> BashExecResult:
-        return BashExecResult(
-            return_code=return_code,
-            stdout=stdout,
-            stderr=stderr,
-            log_file_path=log_file_path,
-        )
 
     return _factory
 

@@ -71,21 +71,27 @@ spec:
     - group-files:
         kind: job_builder
         name: DummyJobBuilder
-        config: null
+        config:
+          targets:
+            - process-data
+          payload:
+            process-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  #!/bin/bash
+                  echo "=========================================="
+                  echo "Processing file: {{ files[0].file }}"
+                  echo "Timestamp: $(date)"
+                  echo "=========================================="
+
+                  # Move processed file
+                  mv {{ files[0].file }} ~/goes18_data/processed/
 
     - process-data:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            #!/bin/bash
-            echo "=========================================="
-            echo "Processing file: {{ files[0].file }}"
-            echo "Timestamp: $(date)"
-            echo "=========================================="
-
-            # Move processed file
-            mv {{ files[0].file }} ~/goes18_data/processed/
+        name: local_dispatcher
 
             echo "Processing complete!"
 ```
@@ -111,7 +117,7 @@ You should see output like:
 [Service: goes18-file-watcher] Starting Prometheus server on port 8000
 [Manager: PluginManager] Registered plugin: file_system_poller_watchdog v0.0.0
 [Manager: PluginManager] Registered plugin: DummyJobBuilder v-1
-[Manager: PluginManager] Registered plugin: serial_bash v-1
+[Manager: PluginManager] Registered plugin: local_dispatcher v-1
 [Plugin: file_system_poller_watchdog] Starting to watch directory: ~/goes18_data/incoming
 [Service: goes18-file-watcher] Service goes18-file-watcher started successfully
 ```
@@ -129,7 +135,7 @@ Watch the service logs. You should see:
 ```
 [Plugin: file_system_poller_watchdog] Found file: File(file=~/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc, platform=goes18, sensor=abi, sector=Full-Disk, timestamp=2024-01-15 12:00:00)
 [Plugin: DummyJobBuilder] Received file from file queue
-[Plugin: serial_bash] Executing job
+[Plugin: local_dispatcher] Executing job
 ==========================================
 Processing file: ~/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc
 Timestamp: Mon Jan 15 12:05:30 UTC 2024

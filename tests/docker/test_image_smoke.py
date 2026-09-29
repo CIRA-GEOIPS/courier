@@ -123,12 +123,12 @@ def test_image_keeps_its_distribution_metadata(docker_image: str) -> None:
 
     meta = json.loads(result.stdout)
     assert meta["requires"] > 0, "no Requires-Dist: the dist-info was lost"
-    assert "serial_bash" in meta["dispatchers"]
+    assert "local_dispatcher" in meta["dispatchers"]
     assert "file_system_poller_watchdog" in meta["monitors"]
 
 
 def test_image_provides_bash_at_the_hardcoded_path(docker_image: str) -> None:
-    """``/bin/bash`` exists, because the bash executor execs that path."""
+    """``/bin/bash`` exists, because the shell executor execs that path."""
     result = run(
         ["docker", "run", "--rm", docker_image, "/bin/bash", "-c", "echo bash-ok"],
     )

@@ -45,6 +45,7 @@ def _make_registry():
     mock_plugin.__class__ = type("FakePlugin", (), {})
     registry = MagicMock()
     registry.get_plugin.return_value = mock_plugin
+    registry.nested_values = []
     return registry
 
 
@@ -77,7 +78,7 @@ class TestOnlyFlag:
         entries = [
             _make_entry("my-dm", "data_monitor", "rabbit_mq_watcher"),
             _make_entry("my-jb", "job_builder", "filter_and_group"),
-            _make_entry("my-dp", "dispatcher", "serial_bash"),
+            _make_entry("my-dp", "dispatcher", "local_dispatcher"),
         ]
         if extra:
             entries.extend(extra)
@@ -92,25 +93,6 @@ class TestOnlyFlag:
     def test_only_none_runs_all_plugins(self, mock_create_svc):
         """only_set=None should register every runnable plugin unconditionally."""
         entries = self._entries()
-
-        entries[2].spec.config["falconer"] = {
-            "identifier": "my-fr",
-            "spec": {
-                "kind": "falconer",
-                "name": "local_falconer",
-                "config": {},
-            },
-        }
-
-        entries[2].spec.config["falcon"] = {
-            "identifier": "my-fc",
-            "spec": {
-                "kind": "falcon",
-                "name": "shell_falcon",
-                "config": {},
-            },
-        }
-
         config = _make_config(entries)
 
         run_service(config, only_set=None)
@@ -221,7 +203,7 @@ class TestOnlyFlag:
                 "filter_and_group",
                 config={"targets": ["dp-remote"]},
             ),
-            _make_entry("dp-remote", "dispatcher", "serial_bash"),
+            _make_entry("dp-remote", "dispatcher", "local_dispatcher"),
         ]
         config = _make_config(entries)
 
@@ -253,25 +235,6 @@ class TestOnlyFlag:
     def test_only_dispatcher_only_registers_dispatcher(self, mock_create_svc):
         """only_set={'my-dp'} registers just the dispatcher plugin."""
         entries = self._entries()
-
-        entries[2].spec.config["falconer"] = {
-            "identifier": "my-fr",
-            "spec": {
-                "kind": "falconer",
-                "name": "local_falconer",
-                "config": {},
-            },
-        }
-
-        entries[2].spec.config["falcon"] = {
-            "identifier": "my-fc",
-            "spec": {
-                "kind": "falcon",
-                "name": "shell_falcon",
-                "config": {},
-            },
-        }
-
         config = _make_config(entries)
 
         run_service(config, only_set={"my-dp"})
@@ -475,7 +438,7 @@ class TestBuilderIdentifiersAreNeverFiltered:
             _make_entry("my-dm", "data_monitor", "rabbit_mq_watcher"),
             _make_entry("my-jb", "job_builder", "filter_and_group"),
             _make_entry("jb-2", "job_builder", "filter_and_group"),
-            _make_entry("my-dp", "dispatcher", "serial_bash"),
+            _make_entry("my-dp", "dispatcher", "local_dispatcher"),
         ]
 
     @patch("courier.cli.run.create_service_with_plugins")
@@ -499,25 +462,6 @@ class TestBuilderIdentifiersAreNeverFiltered:
     def test_builder_identifiers_are_passed_without_only(self, mock_create_svc):
         """The same set is passed when no subset was requested."""
         entries = self._entries()
-
-        entries[3].spec.config["falconer"] = {
-            "identifier": "my-fr",
-            "spec": {
-                "kind": "falconer",
-                "name": "local_falconer",
-                "config": {},
-            },
-        }
-
-        entries[3].spec.config["falcon"] = {
-            "identifier": "my-fc",
-            "spec": {
-                "kind": "falcon",
-                "name": "shell_falcon",
-                "config": {},
-            },
-        }
-
         config = _make_config(entries)
 
         run_service(config, only_set=None)

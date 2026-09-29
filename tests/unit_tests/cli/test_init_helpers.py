@@ -26,9 +26,9 @@ from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
     MetadataRouterConfig,
 )
-from courier.plugins.dispatchers.serial_bash import (
-    SerialBashDispatcher,
-    SerialBashConfig,
+from courier.plugins.dispatchers.local_dispatcher import (
+    LocalDispatcher,
+    LocalDispatcherConfig,
 )
 
 
@@ -43,7 +43,7 @@ class TestFindConfigModel:
             (RabbitMQWatcher, RabbitMQWatcherConfig),
             (DummyJobBuilder, DummyJobBuilderConfig),
             (MetadataRouterBuilder, MetadataRouterConfig),
-            (SerialBashDispatcher, SerialBashConfig),
+            (LocalDispatcher, LocalDispatcherConfig),
         ],
     )
     def test_finds_known_configs(self, plugin_class, expected_config_class):

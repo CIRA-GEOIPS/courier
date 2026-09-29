@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed - in debate
+Superseded by ADR-0011.
 
 ## Context
 

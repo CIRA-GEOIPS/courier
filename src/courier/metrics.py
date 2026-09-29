@@ -202,19 +202,6 @@ DISPATCHER_SLURM_SUBMISSIONS: Counter = Counter(
     ["dispatcher_name", "dispatcher_identifier", "status"],
 )
 
-DISPATCHER_HTTP_RESPONSE_CODES: Counter = Counter(
-    "courier_dispatcher_http_response_codes_total",
-    "Total number of HTTP requests processed by an HTTP dispatcher",
-    ["dispatcher_name", "dispatcher_identifier", "status_code"],
-)
-
-DISPATCHER_HTTP_REQUEST_DURATION: Histogram = Histogram(
-    "courier_dispatcher_http_request_duration_seconds",
-    "HTTP request latency in seconds for an HTTP dispatcher",
-    ["dispatcher_name", "dispatcher_identifier"],
-    buckets=(0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0),
-)
-
 DISPATCHER_JOBS_CONSUMED: Counter = Counter(
     "courier_dispatcher_jobs_consumed_total",
     "Total number of jobs consumed from a dispatcher's per-identifier queue",
@@ -242,41 +229,19 @@ DISPATCHER_DEDUPE_SKIPS: Counter = Counter(
 )
 
 # ---------------------------------------------------------------------------
-# Falconer metrics
+# Payload metrics
 # ---------------------------------------------------------------------------
 
-FALCONER_JOBS_PROCESSED: Counter = Counter(
-    "courier_falconer_jobs_processed_total",
-    "Total number of jobs processed by a falconer plugin",
-    ["falconer_name", "falconer_identifier", "status"],
+PAYLOAD_JOBS_PROCESSED: Counter = Counter(
+    "courier_payload_jobs_processed_total",
+    "Total number of jobs processed by a payload plugin",
+    ["payload_name", "payload_identifier", "status"],
 )
 
-FALCONER_SLURM_JOBS_PENDING: Gauge = Gauge(
-    "courier_falconer_slurm_jobs_pending",
-    "Number of submitted SLURM jobs currently in PENDING or RUNNING state",
-    ["falconer_name", "falconer_identifier"],
-)
-
-FALCONER_SLURM_SUBMISSIONS: Counter = Counter(
-    "courier_falconer_slurm_submissions_total",
-    "Total number of sbatch submissions made by a SLURM falconer",
-    ["falconer_name", "falconer_identifier", "status"],
-)
-
-# ---------------------------------------------------------------------------
-# Falcon metrics
-# ---------------------------------------------------------------------------
-#
-FALCON_JOBS_PROCESSED: Counter = Counter(
-    "courier_falcon_jobs_processed_total",
-    "Total number of jobs processed by a falcon plugin",
-    ["falcon_name", "falcon_identifier", "status"],
-)
-
-FALCON_JOB_EXECUTION_DURATION: Histogram = Histogram(
-    "courier_falcon_job_execution_duration_seconds",
-    "Job execution duration in seconds for a falcon plugin",
-    ["falcon_name", "falcon_identifier"],
+PAYLOAD_JOB_EXECUTION_DURATION: Histogram = Histogram(
+    "courier_payload_job_execution_duration_seconds",
+    "Job execution duration in seconds for a payload plugin",
+    ["payload_name", "payload_identifier"],
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0),
 )
 
@@ -287,8 +252,8 @@ FALCON_JOB_EXECUTION_DURATION: Histogram = Histogram(
 COURIER_CUSTOM_GAUGE: Gauge = Gauge(
     "courier_custom_gauge",
     "Labels-specific custom gauge populated by deployment scripts via the "
-    "``COURIER_METRIC: <name> <value>`` stdout protocol.  Set by serial_bash "
-    "and parallel_bash dispatchers after every job execution.",
+    "``COURIER_METRIC: <name> <value>`` stdout protocol.  Set by the "
+    "local_dispatcher after every job execution.",
     ["dispatcher_identifier", "metric_name"],
 )
 
@@ -389,11 +354,6 @@ BROKER_MESSAGES_DEAD_LETTERED: Counter = Counter(
     "gave up on and an operator must triage; alert on it.",
     ["queue_name"],
 )
-
-# ---------------------------------------------------------------------------
-# Helper utilities
-# ---------------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 # State sync metrics

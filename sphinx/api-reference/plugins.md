@@ -15,28 +15,17 @@ Watches a directory for new files and emits them to the pipeline.
 
 ## Standard Dispatchers
 
-### serial_bash
+A dispatcher executes the *payload* a job carries. The payload is configured on
+the job builder that emits the job, not on the dispatcher; a dispatcher only
+declares which payload representations it can run.
 
-:class:`~courier.plugins.dispatchers.serial_bash.SerialBashDispatcher`
+### local_dispatcher
 
-Executes a single Jinja2-templated bash script for an entire job. All
-files are available in the template, producing one
-:class:`~courier.types.execution_log.ExecutionLog`.
+:class:`~courier.plugins.dispatchers.local_dispatcher.LocalDispatcher`
 
-See {doc}`plugins/serial_bash` for the full serial bash dispatcher
-documentation, including configuration, template context, error handling,
-and output file scanning.
-
-### parallel_bash
-
-:class:`~courier.plugins.dispatchers.parallel_bash.ParallelBashDispatcher`
-
-Executes a Jinja2-templated bash script independently for each file in
-the job. Up to ``max_workers`` scripts run concurrently.
-
-See {doc}`plugins/parallel_bash` for the full parallel bash dispatcher
-documentation, including configuration, template context, error handling,
-and output file scanning.
+Runs a job's payload on the local host. It supports shell, bash and python
+payloads (each representation lowers to the next, most specific match wins) and
+ingests the ``COURIER_METRIC:`` stdout conduit.
 
 ### slurm_dispatcher
 
@@ -106,23 +95,37 @@ How to use
               return [ExecutionLog(return_code=0)]
 
 Example: Multi-stage YAML configuration
-   The example below shows a two-stage pipeline where ``serial_bash``
-   produces calibrated files that a second job builder picks up and routes
-   to ``parallel_bash`` for product generation:
+   The example below shows a two-stage pipeline where a local dispatcher
+   executes a calibration payload, scans its stdout for an output file, and a
+   second builder routes that file to another dispatcher for product
+   generation:
 
    .. code-block:: yaml
 
       spec:
         run:
-          # Stage 1: Calibrate raw files
+          # Stage 1 builder: owns the calibration payload
+          - calibrate-builder:
+              kind: job_builder
+              name: filter_and_group
+              config:
+                targets: [calibrate]
+                payload:
+                  calibration:
+                    kind: payload
+                    name: bash_payload
+                    config:
+                      script: |
+                        # ... calibration logic ...
+                        echo "calibrated.nc"  # signal output file path
+
+          # Stage 1 dispatcher: scan stdout for produced files
           - calibrate:
               kind: dispatcher
-              name: serial_bash
+              name: local_dispatcher
               config:
-                bash_script: |
-                  #!/bin/bash
-                  # ... calibration logic ...
-                  echo "calibrated.nc"  # signal output file path
+                output_files:
+                  - pattern: "^(?P<file>.*\\.nc)$"
 
           # Stage 2 builder: Only picks up calibrated files
           - build-products:
@@ -133,21 +136,24 @@ Example: Multi-stage YAML configuration
                   processing_stage: l2
                 targets:
                   - generate-products
+                payload:
+                  generation:
+                    kind: payload
+                    name: bash_payload
+                    config:
+                      script: |
+                        # ... product generation logic ...
 
           # Stage 2: Generate products from calibrated files
           - generate-products:
               kind: dispatcher
-              name: parallel_bash
-              config:
-                bash_script: |
-                  #!/bin/bash
-                  # ... product generation logic ...
+              name: local_dispatcher
 
    The key points:
 
-   - Stage 1's dispatcher must call ``self.emit_file()`` with the output
-     file path, setting ``processing_stage`` (or another metadata field)
-     to a distinct value.
+   - Stage 1's dispatcher lists an ``output_files`` pattern so each path its
+     script prints is re-emitted as a :class:`~courier.types.file.File`, with
+     metadata set to distinguish it from the raw input.
    - Stage 2's job builder uses a ``filters`` block to select only files
      from the calibration stage, preventing infinite loops.
    - The pipeline continues naturally — no custom wiring or external
@@ -282,6 +288,4 @@ Routes files to different dispatchers based on file metadata (source, instrument
 :maxdepth: 1
 :hidden:
 
-plugins/serial_bash
-plugins/parallel_bash
 ```

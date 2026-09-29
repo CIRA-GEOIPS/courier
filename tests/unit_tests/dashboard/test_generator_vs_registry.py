@@ -198,7 +198,7 @@ class TestGeneratorTemplates:
         """All *plugin filters must use the plugin type-name domain.
 
         The metrics emitted at runtime label with ``self.name`` (the
-        plugin's type ``ClassVar``, e.g. ``"serial_bash"``), not with
+        plugin's type ``ClassVar``, e.g. ``"local_dispatcher"``), not with
         the configuration identifier.  Template variables must
         therefore be populated from the same domain so the
         ``{…=~"$filter"}`` selectors actually match.

@@ -147,12 +147,17 @@ spec:
       spec:
         kind: job_builder
         name: DummyJobBuilder
-    - identifier: dispatcher-serial-bash
+        config:
+          payload:
+            payload-bash-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: echo "Files assigned: {{ files | length }}"
+    - identifier: dispatcher-local-dispatcher
       spec:
         kind: dispatcher
-        name: serial_bash
-        config:
-          command: echo "Files assigned: {{ files | length }}"
+        name: local_dispatcher
 ```
 
 Each pipeline step has an `identifier` (a DNS-safe name derived from

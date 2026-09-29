@@ -1,7 +1,7 @@
 """Shared helper for executing shell scripts with configurable logging modes.
 
-Provides :func:`execute_shell_script` — a single entry-point that runs a shell
-script body and captures stdout/stderr, optionally streaming to a logger and/or
+Provides :func:`execute_shell_script` — a single entry-point that runs a command
+and captures stdout/stderr, optionally streaming to a logger and/or
 a log file in real-time. The function **never raises**; all failure modes are
 captured in the returned :class:`ShellExecResult`.
 """
@@ -16,8 +16,10 @@ import subprocess
 import threading
 import typing
 from dataclasses import dataclass
-from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -61,7 +63,7 @@ def _terminate_process_group(process: subprocess.Popen) -> None:
             process.wait(timeout=5)
 
 
-def execute_shell_script(  # noqa: PLR0913, PLR0915
+def execute_shell_script(  # noqa: PLR0913
     execution_command: list[str],
     timeout_seconds: float,
     *,
@@ -75,16 +77,16 @@ def execute_shell_script(  # noqa: PLR0913, PLR0915
 ) -> ShellExecResult:
     """Execute a shell script with configurable logging modes.
 
-    Writes *script_body* to a temporary file, executes it via ``/bin/shell``,
-    and captures stdout/stderr. Depending on flags, output may be streamed
-    to a logger and/or written to a file in real-time.
+    Executes *execution_command* as a subprocess and captures stdout/stderr.
+    Depending on flags, output may be streamed to a logger and/or written to a
+    file in real-time.
 
     Never raises — all failure modes are captured in :class:`ShellExecResult`.
 
     Parameters
     ----------
-    script_body : str
-        The shell script content to execute.
+    execution_command : list[str]
+        The argv of the command to execute.
     timeout_seconds : float
         Maximum execution time before kill.
     logger : logging.Logger or logging.LoggerAdapter or None
@@ -122,7 +124,6 @@ def execute_shell_script(  # noqa: PLR0913, PLR0915
     if log_to_file and log_file_path is None:
         raise ValueError("log_to_file is True but no log_file_path was provided")
 
-    script_path: str | None = None
     log_fh = None
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
@@ -167,15 +168,11 @@ def execute_shell_script(  # noqa: PLR0913, PLR0915
             """Deliver a single line to the logger if requested."""
             if not log_to_logger or logger is None:
                 return
-            if log_only_errors and stream_name == "stdout":
-                return
             logger.log(level, f"{log_prefix} [{stream_name}] {line.rstrip()}")
 
         def _write_to_file(line: str, stream_name: str) -> None:
             """Append a single line to the log file if open."""
             if log_fh is None:
-                return
-            if log_only_errors and stream_name == "stdout":
                 return
             log_fh.write(f"[{stream_name}] {line}")
             log_fh.flush()
@@ -225,6 +222,3 @@ def execute_shell_script(  # noqa: PLR0913, PLR0915
     finally:
         if log_fh is not None:
             log_fh.close()
-        if script_path is not None:
-            with contextlib.suppress(OSError):
-                Path(script_path).unlink()

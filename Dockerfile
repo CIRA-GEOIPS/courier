@@ -27,9 +27,9 @@ ARG COURIER_EXTRAS=""
 
 WORKDIR /build
 
-# Copied by name rather than `COPY .`: the committed docs/ tree is 12 MB of a
-# 13.8 MB repository, and a docs-only commit must not invalidate this layer.
-# poetry-core needs exactly these (README.md is required by `readme =`).
+# Copied by name rather than `COPY .`: only the build inputs belong in this
+# layer, so an unrelated repo change must not invalidate it. poetry-core needs
+# exactly these (README.md is required by `readme =`).
 COPY pyproject.toml README.md ./
 COPY src ./src
 
@@ -47,11 +47,11 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 # runtime -- THE PUBLISHED ARTIFACT, and the default build target
 FROM ${PYTHON_IMAGE} AS runtime
 
-# bash is load-bearing, not the convenience the old comment claimed:
-# courier/utils/bash_executor.py execs the hardcoded path "/bin/bash", so both
-# shipped bash dispatchers break without it.
-# tini reaps the /bin/bash children serial_bash and parallel_bash fork, and
-# forwards SIGTERM. PID 1 does neither.
+# bash is load-bearing, not the convenience the old comment claimed: the bash
+# and shell payloads emit ``bash -c`` / ``sh -c`` command lines, so they break
+# without it.  (shell_executor.py runs whatever argv it is handed.)
+# tini reaps the children a local_dispatcher forks and forwards SIGTERM.
+# PID 1 does neither.
 RUN apk add --no-cache bash tini \
  && adduser -D -u 1000 courier \
  && mkdir -p /work \

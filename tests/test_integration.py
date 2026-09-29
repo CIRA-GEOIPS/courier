@@ -23,7 +23,8 @@ from courier.plugins.data_monitors.cron_glob import CronGlob
 from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
 )
-from courier.plugins.dispatchers.serial_bash import SerialBashDispatcher
+from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
+from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
 from courier.service import Service
 
@@ -183,8 +184,29 @@ def _prometheus_cleanup(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 # Tests
 # ---------------------------------------------------------------------------
 
+
+def _register_local_pipeline(service, script: str) -> None:
+    """Register a payload-carrying builder and a local dispatcher."""
+    payload_config = {"script": script}
+    service.register_plugin(BashPayload, payload_config, identifier="payload")
+    service.register_plugin(
+        DummyJobBuilder,
+        {
+            "targets": ["runner"],
+            "payload": {
+                "identifier": "payload",
+                "spec": {
+                    "kind": "payload",
+                    "name": "bash_payload",
+                    "config": payload_config,
+                },
+            },
+        },
+        identifier="builder",
+    )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
+
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_cron_glob_single_file_end_to_end(tmp_path: Path) -> None:
     """CronGlob detects a pre-existing file and the pipeline dispatches it.
 
@@ -210,11 +232,9 @@ def test_cron_glob_single_file_end_to_end(tmp_path: Path) -> None:
             "hostname": "test-host",
         },
     )
-    service.register_plugin(DummyJobBuilder, {})
-    service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-        identifier="runner",
+    _register_local_pipeline(
+        service,
+        "cp {{ files[0].file }} " + str(output_dir) + "/",
     )
 
     thread = threading.Thread(target=service.start, daemon=True)
@@ -233,7 +253,6 @@ def test_cron_glob_single_file_end_to_end(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_watchdog_detects_new_files_end_to_end(tmp_path: Path) -> None:
     """FileSystemPoller detects files created after startup.
 
@@ -247,11 +266,9 @@ def test_watchdog_detects_new_files_end_to_end(tmp_path: Path) -> None:
 
     service = Service(_make_service_config())
     service.register_plugin(FileSystemPoller, {"path": str(watch_dir)})
-    service.register_plugin(DummyJobBuilder, {})
-    service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "echo {{ files[0].file }} >> " + str(processed_log)},
-        identifier="runner",
+    _register_local_pipeline(
+        service,
+        "echo {{ files[0].file }} >> " + str(processed_log),
     )
 
     thread = threading.Thread(target=service.start, daemon=True)
@@ -274,7 +291,6 @@ def test_watchdog_detects_new_files_end_to_end(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 @pytest.mark.slow
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_cron_glob_ignore_existing_processes_only_new(tmp_path: Path) -> None:
     """CronGlob with ignore_existing=True skips pre-existing files.
 
@@ -305,11 +321,9 @@ def test_cron_glob_ignore_existing_processes_only_new(tmp_path: Path) -> None:
             "hostname": "test-host",
         },
     )
-    service.register_plugin(DummyJobBuilder, {})
-    service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-        identifier="runner",
+    _register_local_pipeline(
+        service,
+        "cp {{ files[0].file }} " + str(output_dir) + "/",
     )
 
     thread = threading.Thread(target=service.start, daemon=True)
