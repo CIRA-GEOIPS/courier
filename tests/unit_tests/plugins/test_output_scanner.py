@@ -11,7 +11,6 @@ from courier.dispatchers._output_scanner import (
 )
 from courier.types.file import File
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -44,9 +43,7 @@ class TestBasicScanning:
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout=(
-                "Processed /tmp/a.nc\n"
-                "Processed /tmp/b.nc\n"
-                "Processed /tmp/c.nc\n"
+                "Processed /tmp/a.nc\n" "Processed /tmp/b.nc\n" "Processed /tmp/c.nc\n"
             ),
             stderr="",
             patterns=[_make_pattern(r"Processed (?P<file>/tmp/[^.\s]+\.nc)")],
@@ -125,10 +122,7 @@ class TestMultiplePatterns:
         """Two patterns matching disjoint outputs each emit files."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
-            stdout=(
-                "Output: /tmp/goes.nc\n"
-                "Result: /tmp/himawari.nc\n"
-            ),
+            stdout=("Output: /tmp/goes.nc\n" "Result: /tmp/himawari.nc\n"),
             stderr="",
             patterns=[
                 _make_pattern(r"Output: (?P<file>/tmp/goes\.nc)"),
@@ -144,10 +138,7 @@ class TestMultiplePatterns:
         """Each pattern's static fields apply independently to its matches."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
-            stdout=(
-                "GOES: /tmp/g.nc\n"
-                "HIMAWARI: /tmp/h.nc\n"
-            ),
+            stdout=("GOES: /tmp/g.nc\n" "HIMAWARI: /tmp/h.nc\n"),
             stderr="",
             patterns=[
                 _make_pattern(
@@ -180,10 +171,7 @@ class TestDeduplication:
         """Same file path appearing multiple times in one pattern emits once."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
-            stdout=(
-                "Created /tmp/test.nc\n"
-                "Also created /tmp/test.nc\n"
-            ),
+            stdout=("Created /tmp/test.nc\n" "Also created /tmp/test.nc\n"),
             stderr="",
             patterns=[_make_pattern(r"Created (?P<file>/tmp/test\.nc)")],
             emit_file=mock_emit,
@@ -194,10 +182,7 @@ class TestDeduplication:
         """Same file path matched by two patterns emits only once."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
-            stdout=(
-                "OUT: /tmp/shared.nc\n"
-                "RESULT: /tmp/shared.nc\n"
-            ),
+            stdout=("OUT: /tmp/shared.nc\n" "RESULT: /tmp/shared.nc\n"),
             stderr="",
             patterns=[
                 _make_pattern(r"OUT: (?P<file>/tmp/shared\.nc)"),
@@ -588,12 +573,7 @@ class TestEdgeCases:
         """re.MULTILINE flag lets ^/$ match at line boundaries."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
-            stdout=(
-                "other text\n"
-                "/tmp/a.nc\n"
-                "/tmp/b.nc\n"
-                "trailing\n"
-            ),
+            stdout=("other text\n" "/tmp/a.nc\n" "/tmp/b.nc\n" "trailing\n"),
             stderr="",
             patterns=[_make_pattern(r"^(?P<file>/tmp/[ab]\.nc)$")],
             emit_file=mock_emit,

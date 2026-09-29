@@ -85,13 +85,20 @@ class TestComponentBuiltTimestamps:
 
     def test_yyyy_jjj_is_utc(self) -> None:
         built = build_timestamp_from_components(
-            yyyy="2026", jjj="208", hh="18", nn="00",
+            yyyy="2026",
+            jjj="208",
+            hh="18",
+            nn="00",
         )
         assert built == _INSTANT
 
     def test_yyyy_mm_dd_is_utc(self) -> None:
         built = build_timestamp_from_components(
-            yyyy="2026", mm="07", dd="27", hh="18", nn="00",
+            yyyy="2026",
+            mm="07",
+            dd="27",
+            hh="18",
+            nn="00",
         )
         assert built == _INSTANT
 
@@ -100,21 +107,29 @@ class TestFileNormalisesAtConstruction:
     """The invariant is enforced on the type, not just at parse boundaries."""
 
     def test_file_tags_naive_timestamp(self) -> None:
-        f = File(file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0))  # noqa: DTZ001
+        f = File(
+            file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
+        )  # noqa: DTZ001
         assert f.timestamp == _INSTANT
         assert f.timestamp.tzinfo is not None
 
     def test_frozen_file_tags_naive_timestamp(self) -> None:
-        ff = FrozenFile(file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0))  # noqa: DTZ001
+        ff = FrozenFile(
+            file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
+        )  # noqa: DTZ001
         assert ff.timestamp == _INSTANT
 
     def test_round_trip_is_identity(self) -> None:
         """A File that crosses the broker comes back equal to what was sent."""
-        f = File(file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0))  # noqa: DTZ001
+        f = File(
+            file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
+        )  # noqa: DTZ001
         assert File.from_string(str(f)) == f
 
     def test_freeze_preserves_normalised_timestamp(self) -> None:
-        f = File(file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0))  # noqa: DTZ001
+        f = File(
+            file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
+        )  # noqa: DTZ001
         assert f.freeze().timestamp == _INSTANT
 
 
@@ -146,7 +161,9 @@ class TestTimeGroupingBucketsAgree:
 
     def test_bucket_survives_the_broker_round_trip(self) -> None:
         group = self._group()
-        f = File(file=Path("/x.nc"), timestamp=datetime(2026, 7, 27, 18, 0))  # noqa: DTZ001
+        f = File(
+            file=Path("/x.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
+        )  # noqa: DTZ001
         assert group.get_job_ids_from_file(f) == group.get_job_ids_from_file(
             File.from_string(str(f)),
         )

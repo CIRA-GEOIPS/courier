@@ -48,8 +48,7 @@ def _monitor(service: MagicMock, identifier: str = "dm-1") -> _ScriptedMonitor:
 
 def _emitted_files(service: MagicMock) -> list[File]:
     return [
-        File.from_string(call.kwargs["message"])
-        for call in service.emit.call_args_list
+        File.from_string(call.kwargs["message"]) for call in service.emit.call_args_list
     ]
 
 
@@ -137,14 +136,19 @@ class TestMetrics:
             "monitor_identifier": "dm-success",
             "status": "success",
         }
-        before = REGISTRY.get_sample_value(
-            "courier_data_monitor_files_processed_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_data_monitor_files_processed_total",
+                labels,
+            )
+            or 0.0
+        )
 
         monitor.find_and_emit_files()
 
         after = REGISTRY.get_sample_value(
-            "courier_data_monitor_files_processed_total", labels,
+            "courier_data_monitor_files_processed_total",
+            labels,
         )
         assert after == before + 1
 
@@ -157,14 +161,19 @@ class TestMetrics:
             "monitor_identifier": "dm-failure",
             "status": "failure",
         }
-        before = REGISTRY.get_sample_value(
-            "courier_data_monitor_files_processed_total", labels,
-        ) or 0.0
+        before = (
+            REGISTRY.get_sample_value(
+                "courier_data_monitor_files_processed_total",
+                labels,
+            )
+            or 0.0
+        )
 
         monitor.find_and_emit_files()
 
         after = REGISTRY.get_sample_value(
-            "courier_data_monitor_files_processed_total", labels,
+            "courier_data_monitor_files_processed_total",
+            labels,
         )
         assert after == before + 1
 
@@ -176,9 +185,13 @@ class TestMetrics:
 
         monitor.find_and_emit_files()
 
-        assert REGISTRY.get_sample_value(
-            "courier_data_monitor_last_processed_timestamp_seconds", labels,
-        ) > 0
+        assert (
+            REGISTRY.get_sample_value(
+                "courier_data_monitor_last_processed_timestamp_seconds",
+                labels,
+            )
+            > 0
+        )
 
 
 class TestLifecycle:

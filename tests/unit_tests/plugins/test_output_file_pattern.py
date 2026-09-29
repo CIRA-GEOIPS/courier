@@ -7,7 +7,6 @@ import pydantic
 
 from courier.dispatchers._output_file_pattern import OutputFilePattern
 
-
 # ─── Valid Construction ──────────────────────────────────────────────────────
 
 
@@ -81,8 +80,7 @@ class TestValidPattern:
 
         entry = OutputFilePattern(
             pattern=(
-                r"/data/(?P<instrument>\w+)/(?P<source>\w+)/"
-                r"(?P<file>[^/]+\.nc)"
+                r"/data/(?P<instrument>\w+)/(?P<source>\w+)/" r"(?P<file>[^/]+\.nc)"
             ),
         )
         emit = MagicMock()

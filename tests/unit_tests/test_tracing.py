@@ -24,7 +24,6 @@ from courier.tracing import (
     trace_plugin_method,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -104,7 +103,9 @@ def disabled_config() -> ServiceConfig:
 class TestInitShutdownLifecycle:
     """Tests for init_tracing() and shutdown_tracing() lifecycle."""
 
-    def test_init_tracing_noop_when_disabled(self, disabled_config: ServiceConfig) -> None:
+    def test_init_tracing_noop_when_disabled(
+        self, disabled_config: ServiceConfig
+    ) -> None:
         """Tracing disabled produces a NoOp TracerProvider with non-recording spans."""
         init_tracing(disabled_config)
         tracer = get_tracer("test")
@@ -126,7 +127,9 @@ class TestInitShutdownLifecycle:
         init_tracing(disabled_config)  # should succeed
         shutdown_tracing()
 
-    def test_reset_tracing_for_test_isolation(self, disabled_config: ServiceConfig) -> None:
+    def test_reset_tracing_for_test_isolation(
+        self, disabled_config: ServiceConfig
+    ) -> None:
         """reset_tracing() clears module state so a clean init follows."""
         init_tracing(disabled_config)
         reset_tracing()
@@ -200,9 +203,7 @@ class TestW3CPropagation:
             assert ctx is not None
 
             # Create a child span using the extracted context
-            with tracer.start_as_current_span(
-                "consumer", context=ctx
-            ) as child:
+            with tracer.start_as_current_span("consumer", context=ctx) as child:
                 child.set_attribute(ATTR_CORRELATION_ID, "test-correlation-123")
 
         # Spans are finished inner-first: consumer, then producer.

@@ -62,9 +62,15 @@ def test_image_validates_the_shipped_config(docker_image: str) -> None:
     config = _REPO_ROOT / "config.yaml"
     result = run(
         [
-            "docker", "run", "--rm",
-            "-v", f"{config}:/cfg/config.yaml:ro",
-            docker_image, "courier", "validate", "/cfg/config.yaml",
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{config}:/cfg/config.yaml:ro",
+            docker_image,
+            "courier",
+            "validate",
+            "/cfg/config.yaml",
         ],
     )
     assert result.returncode == 0, result.stderr

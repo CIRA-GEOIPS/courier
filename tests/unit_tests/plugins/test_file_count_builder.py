@@ -117,4 +117,3 @@ class TestConstructor:
     def test_initializes(self, mock_service: MagicMock) -> None:
         builder = FileCountBuilder(mock_service, {})
         assert len(builder.job_groups) == 1
-

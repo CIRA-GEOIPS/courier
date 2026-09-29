@@ -33,7 +33,7 @@ catches that.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib.metadata import EntryPoint, entry_points
 from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
@@ -155,6 +155,7 @@ class ClassPluginRegistry(_EntryPointRegistry):
     """
 
     expected_base: type
+    nested_values: list[str] = field(default_factory=list)
 
     def get_plugin(self, name: str) -> type[ServicePlugin]:
         """Return the plugin class declared under *name*.
@@ -197,6 +198,7 @@ class ConfigPluginRegistry(_EntryPointRegistry, Generic[ModelT]):  # noqa: UP046
     """
 
     model: type[ModelT]
+    nested_values: list[str] = field(default_factory=list)
 
     def get_plugin(self, name: str) -> ModelT:
         """Return the config object declared under *name*.

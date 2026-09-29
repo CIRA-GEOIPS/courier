@@ -50,7 +50,9 @@ def test_a_fanout_publish_is_counted_against_every_bound_queue() -> None:
     namespace = f"pg-{uuid.uuid4().hex[:8]}"
     service = _service(namespace, frozenset({"alpha", "beta"}))
     alpha, beta = service._file_found_queue_names()  # noqa: SLF001
-    exchange = service._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)  # noqa: SLF001
+    exchange = service._broker_manager.get_queue_name(
+        FILE_FOUND_EXCHANGE
+    )  # noqa: SLF001
 
     service.emit(FILE_FOUND_EXCHANGE, "one")
 

@@ -12,7 +12,9 @@ from courier.interfaces.dispatchers import Dispatcher, _DEDUPE_LRU_SIZE
 from courier.types.file import File
 
 
-def _make_dispatcher(mock_service: MagicMock, identifier: str = "runner-a") -> Dispatcher:
+def _make_dispatcher(
+    mock_service: MagicMock, identifier: str = "runner-a"
+) -> Dispatcher:
     """Construct a Dispatcher via its base class with an identifier."""
     return Dispatcher(mock_service, {}, identifier=identifier)
 

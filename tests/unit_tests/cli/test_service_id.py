@@ -15,7 +15,9 @@ import pytest
 from courier.cli.run import _resolve_service_id
 
 
-def _config(service_id: str, metadata_name: str = "shipping-service") -> SimpleNamespace:
+def _config(
+    service_id: str, metadata_name: str = "shipping-service"
+) -> SimpleNamespace:
     """Return a stand-in config carrying only the fields under test.
 
     Parameters

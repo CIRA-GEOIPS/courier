@@ -237,7 +237,9 @@ class TestMergeMetadata:
 
     def test_fills_only_unset_fields(self) -> None:
         merged = File(file=Path("/x.nc")).merge_metadata(
-            source="goes16", instrument="abi", domain="CONUS",
+            source="goes16",
+            instrument="abi",
+            domain="CONUS",
         )
         assert merged.source == "goes16"
         assert merged.instrument == "abi"
@@ -251,7 +253,9 @@ class TestMergeMetadata:
 
     def test_num_expected_default_is_replaceable(self) -> None:
         """1 is the unset sentinel for num_expected, so a config may set it."""
-        assert File(file=Path("/x.nc")).merge_metadata(num_expected=16).num_expected == 16
+        assert (
+            File(file=Path("/x.nc")).merge_metadata(num_expected=16).num_expected == 16
+        )
 
     def test_explicit_num_expected_is_preserved(self) -> None:
         original = File(file=Path("/x.nc"), num_expected=4)
@@ -302,7 +306,9 @@ _paths = st.one_of(
     st.builds(Path, st.from_regex(r"/[a-zA-Z0-9/\-_\.]{1,60}", fullmatch=True)),
     st.from_regex(r"s3://[a-z0-9\-]{3,20}/[a-zA-Z0-9/\-_\.]{1,40}", fullmatch=True),
 )
-_optional_text = st.one_of(st.none(), st.from_regex(r"[a-zA-Z0-9\-]{1,20}", fullmatch=True))
+_optional_text = st.one_of(
+    st.none(), st.from_regex(r"[a-zA-Z0-9\-]{1,20}", fullmatch=True)
+)
 _timestamps = st.one_of(
     st.none(),
     st.datetimes(min_value=datetime(2000, 1, 1), max_value=datetime(2100, 1, 1)),
@@ -387,7 +393,9 @@ class TestBuildTimestampFromComponents:
         ],
     )
     def test_various_inputs(
-        self, kwargs: dict, expected: datetime | None,
+        self,
+        kwargs: dict,
+        expected: datetime | None,
     ) -> None:
         """Test timestamp building with various component combinations."""
         assert build_timestamp_from_components(**kwargs) == expected
@@ -395,7 +403,10 @@ class TestBuildTimestampFromComponents:
     def test_jjj_priority_over_mm_dd(self) -> None:
         """When jjj is provided alongside mm/dd, jjj is used."""
         result = build_timestamp_from_components(
-            yyyy="2023", mm="06", dd="15", jjj="001",
+            yyyy="2023",
+            mm="06",
+            dd="15",
+            jjj="001",
         )
         assert result == datetime(2023, 1, 1, tzinfo=UTC)
 
@@ -410,13 +421,16 @@ class TestBuildTimestampFromComponents:
         ("yyyy", "jjj", "expected_yday"),
         [
             ("2023", "001", 1),
-            ("2023", "182", 182),   # July 1
-            ("2023", "365", 365),   # Dec 31 non-leap
-            ("2024", "366", 366),   # Dec 31 leap year
+            ("2023", "182", 182),  # July 1
+            ("2023", "365", 365),  # Dec 31 non-leap
+            ("2024", "366", 366),  # Dec 31 leap year
         ],
     )
     def test_julian_day_calculation(
-        self, yyyy: str, jjj: str, expected_yday: int,
+        self,
+        yyyy: str,
+        jjj: str,
+        expected_yday: int,
     ) -> None:
         """Julian day maps to the correct day of year."""
         result = build_timestamp_from_components(yyyy=yyyy, jjj=jjj)
@@ -443,8 +457,7 @@ class TestExtractDatetimeFromRegex:
     def test_full_named_groups(self) -> None:
         """All date/time components extracted via named groups."""
         pattern = (
-            r"(?P<YYYY>\d{4})(?P<MM>\d{2})(?P<DD>\d{2})"
-            r"_(?P<HH>\d{2})(?P<NN>\d{2})"
+            r"(?P<YYYY>\d{4})(?P<MM>\d{2})(?P<DD>\d{2})" r"_(?P<HH>\d{2})(?P<NN>\d{2})"
         )
         result = extract_datetime_from_regex(pattern, "data_20230615_1430.nc")
         assert result == datetime(2023, 6, 15, 14, 30, tzinfo=UTC)
@@ -554,6 +567,9 @@ class TestLegacyAliasRemoval:
     def test_null_source_does_not_fallback(self) -> None:
         """When 'source' is explicit null, it stays None (does not fall back to 'platform')."""
         import json
-        data = json.loads('{"file": "/tmp/test.nc", "source": null, "platform": "goes-18"}')
+
+        data = json.loads(
+            '{"file": "/tmp/test.nc", "source": null, "platform": "goes-18"}'
+        )
         f = File.from_dict(data)
         assert f.source is None

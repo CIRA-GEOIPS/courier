@@ -124,6 +124,7 @@ class Service:
         self._dispatcher_identifiers: frozenset[str] = frozenset()
         self._builder_identifiers: frozenset[str] = frozenset()
         self._builder_targets: dict[str, tuple[str, ...]] = {}
+        self._falconer_map: list[tuple[str, str, str]] = []
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
 
@@ -637,6 +638,7 @@ class Service:
         """
         self._auto_discover_routing()
         self._validate_dispatch_targets()
+        self._populate_falconer_map()
         self._propagate_builder_targets()
         self._predeclare_target_queues()
 
@@ -760,6 +762,57 @@ class Service:
         self._builder_targets = resolved
         self._logger.info(f"Resolved routing: {resolved}")
 
+    def _populate_falconer_map(self) -> None:
+        """Use the falconer map to marry the falcon and falconer.
+
+        Also give everything to the plugin manager.
+        """
+        from courier.interfaces.dispatchers import Dispatcher  # noqa: PLC0415
+        from courier.interfaces.falconers import Falconer  # noqa: PLC0415
+        from courier.interfaces.falcons import Falcon  # noqa: PLC0415
+
+        flattened_map = {element for tup in self._falconer_map for element in tup}
+
+        # check missing elements against registered plugins to
+        # ensure that all elements are distributed properly
+        missing_elements = [
+            plugin_id
+            for plugin_id, registered_plugin in self._plugin_manager._plugins.items()
+            if registered_plugin.plugin.interface
+            in {"dispatchers", "falconers", "falcons"}
+            and plugin_id not in flattened_map
+        ]
+
+        if missing_elements:
+            raise ConfigurationError(
+                "Missing element(s) from falconer map: " f"{missing_elements}",
+            )
+
+        for dispatcher_id, falconer_id, falcon_id in self._falconer_map:
+            dispatcher_obj = self._plugin_manager._plugins[dispatcher_id].plugin
+            falconer_obj = self._plugin_manager._plugins[falconer_id].plugin
+            falcon_obj = self._plugin_manager._plugins[falcon_id].plugin
+
+            if not (
+                isinstance(dispatcher_obj, Dispatcher)
+                and isinstance(falconer_obj, Falconer)
+                and isinstance(falcon_obj, Falcon)
+            ):
+                raise ConfigurationError("Invalid type for dispatcher group.")
+
+            # each object is populated with its initial configuration.
+
+            # dispatcher checks if falconer and falcon are compatible
+            # dispatcher configures, marries the falconer and falcon
+            mutated_falcon = dispatcher_obj.ordain_bird_marriage(
+                falconer_obj,
+                falcon_obj,
+            )
+
+            # if something goes wrong, check here first: I'm not sure if this will
+            # mess up the pipeline
+            self._plugin_manager._plugins[falcon_id].plugin = mutated_falcon
+
     def _predeclare_target_queues(self) -> None:
         """Declare every queue this service or its peers will consume from.
 
@@ -873,9 +926,6 @@ class Service:
                 self.preflight_check()
                 self._start_managers()
 
-                if not self._health_check():
-                    raise RuntimeError("Service health check failed after startup")  # noqa: TRY301
-
                 self._logger.info(
                     f"Service {self._config.service_id} started successfully",
                 )
@@ -888,6 +938,10 @@ class Service:
                 self._logger.exception("Service startup failed")
                 raise
             finally:
+                if not self._health_check():
+                    raise RuntimeError(
+                        "Service health check failed after startup",
+                    )
                 self._cleanup()
 
     def _cleanup(self) -> None:
@@ -900,8 +954,9 @@ class Service:
 
 def create_service_with_plugins(
     config: ServiceConfig | None = None,
-    plugins: Sequence[tuple[type[ServicePlugin], dict[str, Any], str | None]]
-    | None = None,
+    plugins: (
+        Sequence[tuple[type[ServicePlugin], dict[str, Any], str | None]] | None
+    ) = None,
 ) -> Service:
     """Create new Service instance with optional configuration and plugins.
 

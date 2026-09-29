@@ -69,8 +69,7 @@ class TestLogToLogger:
         assert len(debug_calls) >= 1
         # At least one call should contain "hello" with prefix
         assert any(
-            "[job: test]" in str(call) and "hello" in str(call)
-            for call in debug_calls
+            "[job: test]" in str(call) and "hello" in str(call) for call in debug_calls
         )
 
     def test_stderr_streamed_to_warning(self) -> None:
@@ -225,7 +224,9 @@ class TestTimeout:
             timeout_seconds=0.5,
         )
         assert result.return_code == -1
-        assert "timed out" in result.stderr.lower() or "timeout" in result.stderr.lower()
+        assert (
+            "timed out" in result.stderr.lower() or "timeout" in result.stderr.lower()
+        )
 
 
 class TestFailFastGuards:

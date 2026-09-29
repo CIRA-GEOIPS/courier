@@ -78,32 +78,32 @@ class TestMetricsFetcher:
             "courier_service_heartbeat_timestamp_seconds 1715000000.0\n"
             "# HELP courier_data_monitor_files_processed_total Files\n"
             "# TYPE courier_data_monitor_files_processed_total counter\n"
-            "courier_data_monitor_files_processed_total{monitor_name=\"m1\",status=\"success\"} 42.0\n"
-            "courier_data_monitor_files_processed_total{monitor_name=\"m1\",status=\"error\"} 3.0\n"
-            "courier_data_monitor_files_processed_total{monitor_name=\"m2\",status=\"success\"} 15.0\n"
+            'courier_data_monitor_files_processed_total{monitor_name="m1",status="success"} 42.0\n'
+            'courier_data_monitor_files_processed_total{monitor_name="m1",status="error"} 3.0\n'
+            'courier_data_monitor_files_processed_total{monitor_name="m2",status="success"} 15.0\n'
             "# HELP courier_broker_connected Broker connected\n"
             "# TYPE courier_broker_connected gauge\n"
             "courier_broker_connected 1.0\n"
             "# HELP courier_job_builder_files_received_total Files received\n"
             "# TYPE courier_job_builder_files_received_total counter\n"
-            "courier_job_builder_files_received_total{job_builder_name=\"b1\"} 100.0\n"
+            'courier_job_builder_files_received_total{job_builder_name="b1"} 100.0\n'
             "# HELP courier_job_builder_jobs_built_total Jobs built\n"
             "# TYPE courier_job_builder_jobs_built_total counter\n"
-            "courier_job_builder_jobs_built_total{job_builder_name=\"b1\",status=\"ready\"} 100.0\n"
+            'courier_job_builder_jobs_built_total{job_builder_name="b1",status="ready"} 100.0\n'
             "# HELP courier_job_builder_jobs_emitted_total Jobs emitted\n"
             "# TYPE courier_job_builder_jobs_emitted_total counter\n"
-            "courier_job_builder_jobs_emitted_total{job_builder_name=\"b1\",target=\"d1\"} 80.0\n"
+            'courier_job_builder_jobs_emitted_total{job_builder_name="b1",target="d1"} 80.0\n'
             "# HELP courier_job_builder_emit_failures_total Emit failures\n"
             "# TYPE courier_job_builder_emit_failures_total counter\n"
-            "courier_job_builder_emit_failures_total{job_builder_name=\"b1\",target=\"d1\",reason=\"timeout\"} 20.0\n"
+            'courier_job_builder_emit_failures_total{job_builder_name="b1",target="d1",reason="timeout"} 20.0\n'
             "# HELP courier_dispatcher_jobs_processed_total Dispatcher jobs\n"
             "# TYPE courier_dispatcher_jobs_processed_total counter\n"
-            "courier_dispatcher_jobs_processed_total{dispatcher_name=\"d1\",status=\"success\"} 50.0\n"
-            "courier_dispatcher_jobs_processed_total{dispatcher_name=\"d1\",status=\"error\"} 2.0\n"
+            'courier_dispatcher_jobs_processed_total{dispatcher_name="d1",status="success"} 50.0\n'
+            'courier_dispatcher_jobs_processed_total{dispatcher_name="d1",status="error"} 2.0\n'
             "# HELP courier_plugin_state Plugin state\n"
             "# TYPE courier_plugin_state gauge\n"
-            "courier_plugin_state{plugin_name=\"p1\"} 2.0\n"
-            "courier_plugin_health{plugin_name=\"p1\"} 1.0\n"
+            'courier_plugin_state{plugin_name="p1"} 2.0\n'
+            'courier_plugin_health{plugin_name="p1"} 1.0\n'
         )
         mock_client.get.return_value = mock_response
 
@@ -126,7 +126,7 @@ class TestMetricsFetcher:
         assert m1.name == "m1"
         assert m1.files_processed == 45.0  # 42 + 3
         assert m1.success_count == 42.0
-        assert m1.failure_count == 3.0     # 45 - 42
+        assert m1.failure_count == 3.0  # 45 - 42
         m2 = result.data_monitors.monitors[1]
         assert m2.name == "m2"
         assert m2.files_processed == 15.0

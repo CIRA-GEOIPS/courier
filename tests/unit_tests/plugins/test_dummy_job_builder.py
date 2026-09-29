@@ -10,7 +10,6 @@ from courier.plugins.job_builders.dummy_job_builder import (
     DummyJobGroup,
 )
 
-
 # ─── DummyJob ───────────────────────────────────────────────────────────────
 
 
@@ -78,6 +77,6 @@ class TestDummyJobBuilder:
             builder._process_job_group(group, file_i)
             # After each file, the group should be empty because
             # the ready job is popped immediately after emission.
-            assert len(group.jobs) == 0, (
-                f"After file {i}, group should be empty but has {len(group.jobs)} jobs"
-            )
+            assert (
+                len(group.jobs) == 0
+            ), f"After file {i}, group should be empty but has {len(group.jobs)} jobs"

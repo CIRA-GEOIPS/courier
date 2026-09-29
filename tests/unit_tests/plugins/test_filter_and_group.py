@@ -115,7 +115,8 @@ class TestBuilder:
         self, mock_service: MagicMock, make_frozen_file, mocker
     ) -> None:
         builder = FilterAndGroupJobBuilder(
-            mock_service, {"files_per_job": 1},
+            mock_service,
+            {"files_per_job": 1},
         )
         group = builder.job_groups[0]
         JobCls = group.job
@@ -240,11 +241,17 @@ class TestFileMatchesFilters:
             instrument="abi",
             metadata={"location": "ceph-IPs", "file_name": "test.nc"},
         )
-        assert _file_matches_filters(f, {
-            "source": "goes16",
-            "instrument": "abi",
-            "location": "ceph-IPs",
-        }) is True
+        assert (
+            _file_matches_filters(
+                f,
+                {
+                    "source": "goes16",
+                    "instrument": "abi",
+                    "location": "ceph-IPs",
+                },
+            )
+            is True
+        )
 
     def test_filter_fails_if_any_key_mismatches(self) -> None:
         """All keys must match; one mismatch returns False."""
@@ -253,10 +260,16 @@ class TestFileMatchesFilters:
             source="goes16",
             metadata={"location": "ceph-IPs"},
         )
-        assert _file_matches_filters(f, {
-            "source": "goes16",
-            "location": "wrong",
-        }) is False
+        assert (
+            _file_matches_filters(
+                f,
+                {
+                    "source": "goes16",
+                    "location": "wrong",
+                },
+            )
+            is False
+        )
 
     def test_unknown_filter_key_logs_warning_and_returns_false(
         self, caplog, make_frozen_file

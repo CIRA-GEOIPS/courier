@@ -51,6 +51,7 @@ def mock_service() -> MagicMock:
 @pytest.fixture
 def make_file():
     """Factory that builds a File with sensible test defaults."""
+
     def _factory(**overrides: Any) -> File:
         defaults: dict[str, Any] = dict(
             file=Path("/tmp/x.nc"),
@@ -60,12 +61,14 @@ def make_file():
         )
         defaults.update(overrides)
         return File(**defaults)
+
     return _factory
 
 
 @pytest.fixture
 def make_frozen_file():
     """Factory that builds a FrozenFile with sensible test defaults."""
+
     def _factory(**overrides: Any) -> FrozenFile:
         defaults: dict[str, Any] = dict(
             file=Path("/tmp/x.nc"),
@@ -75,12 +78,14 @@ def make_frozen_file():
         )
         defaults.update(overrides)
         return FrozenFile(**defaults)
+
     return _factory
 
 
 @pytest.fixture
 def make_job(make_frozen_file):
     """Factory that builds a Job for dispatcher tests."""
+
     def _factory(files: tuple = (), **overrides: Any) -> Job:
         defaults: dict[str, Any] = dict(
             name="test-job",
@@ -89,13 +94,14 @@ def make_job(make_frozen_file):
         )
         defaults.update(overrides)
         return Job(**defaults, files=set(files))
-    return _factory
 
+    return _factory
 
 
 @pytest.fixture
 def fake_bash_exec_result():
     """Build BashExecResult for bash dispatcher tests."""
+
     def _factory(
         return_code: int = 0,
         stdout: str = "ok",
@@ -108,6 +114,7 @@ def fake_bash_exec_result():
             stderr=stderr,
             log_file_path=log_file_path,
         )
+
     return _factory
 
 

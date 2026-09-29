@@ -201,6 +201,15 @@ himawari9_ahi = "courier.plugins.data_monitor_configs.himawari9_ahi:CONFIG"
 meteosat10_seviri = "courier.plugins.data_monitor_configs.meteosat10_seviri:CONFIG"
 meteosat9_seviri = "courier.plugins.data_monitor_configs.meteosat9_seviri:CONFIG"
 
+[tool.poetry.plugins."courier.falconers"]
+local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
+slurm_falconer = "courier.plugins.falconers.slurm_falconer:SlurmFalconer"
+
+[tool.poetry.plugins."courier.falcons"]
+shell_falcon = "courier.plugins.falcons.shell_falcon:ShellFalcon"
+bash_falcon = "courier.plugins.falcons.bash_falcon:BashFalcon"
+python_falcon = "courier.plugins.falcons.python_falcon:PythonFalcon"
+
 [tool.poetry.urls]
 Homepage = "https://github.com/biosafetylvl5/courier"
 Issues = "https://github.com/biosafetylvl5/courier/issues"
@@ -555,6 +564,16 @@ parallel_bash = "courier.plugins.dispatchers.parallel_bash:ParallelBashDispatche
 serial_bash = "courier.plugins.dispatchers.serial_bash:SerialBashDispatcher"
 slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
+[project.entry-points."courier.falconers"]
+local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
+slurm_falconer = "courier.plugins.falconers.slurm_falconer:SlurmFalconer"
+
+
+[project.entry-points."courier.falcons"]
+shell_falcon = "courier.plugins.falcons.shell_falcon:ShellFalcon"
+bash_falcon = "courier.plugins.falcons.bash_falcon:BashFalcon"
+python_falcon = "courier.plugins.falcons.python_falcon:PythonFalcon"
+
 [project.entry-points."courier.data_monitor_configs"]
 gk2a_ami = "courier.plugins.data_monitor_configs.gk2a_ami:CONFIG"
 goes16_abi = "courier.plugins.data_monitor_configs.goes16_abi:CONFIG"
@@ -571,6 +590,8 @@ build-backend = "poetry.core.masonry.api"
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "pytest-timeout>=2.4.0",
     "types-redis>=4.6.0.20241004",
 ]
 

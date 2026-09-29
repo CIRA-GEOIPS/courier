@@ -83,10 +83,10 @@ class TestRetryWithBackoff:
         """Backoff is doubled each attempt but never exceeds MAX_BACKOFF_SECONDS."""
         base = 1.0
         for attempt in range(10):
-            computed = min(base * (2 ** attempt), MAX_BACKOFF_SECONDS)
+            computed = min(base * (2**attempt), MAX_BACKOFF_SECONDS)
             assert computed <= MAX_BACKOFF_SECONDS
         # With a large exponent the cap must take effect
-        assert min(1.0 * (2 ** 20), MAX_BACKOFF_SECONDS) == MAX_BACKOFF_SECONDS
+        assert min(1.0 * (2**20), MAX_BACKOFF_SECONDS) == MAX_BACKOFF_SECONDS
 
     def test_max_backoff_seconds_is_60(self) -> None:
         """MAX_BACKOFF_SECONDS equals 60.0."""
@@ -97,7 +97,9 @@ class TestRetryWithBackoff:
         stop_event = threading.Event()
 
         @retry_with_backoff(
-            max_retries=5, base_delay=10.0, stop_event=stop_event,
+            max_retries=5,
+            base_delay=10.0,
+            stop_event=stop_event,
         )
         def fail() -> None:
             raise ValueError("fail")

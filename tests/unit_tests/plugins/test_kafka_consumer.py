@@ -66,7 +66,9 @@ class TestKafkaConsumerConfig:
 
     def test_invalid_offset_reset_raises(self) -> None:
         with pytest.raises(ValidationError):
-            KafkaConsumerConfig.model_validate(_make_config(auto_offset_reset="invalid"))
+            KafkaConsumerConfig.model_validate(
+                _make_config(auto_offset_reset="invalid")
+            )
 
     def test_negative_poll_timeout_raises(self) -> None:
         with pytest.raises(ValidationError):

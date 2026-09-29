@@ -37,8 +37,7 @@ if TYPE_CHECKING:
 # in the one test that deliberately extends a real group.
 _TEST_GROUP = "courier.discovery_test_plugins"
 
-_PLUGIN_MODULE = textwrap.dedent(
-    r'''
+_PLUGIN_MODULE = textwrap.dedent(r'''
     """Throwaway plugin package used by the discovery tests."""
 
     from typing import ClassVar
@@ -69,8 +68,7 @@ _PLUGIN_MODULE = textwrap.dedent(
     )
 
     NOT_A_PLUGIN = 42
-    '''
-)
+    ''')
 
 _BROKEN_MODULE = 'raise RuntimeError("this plugin is broken on import")\n'
 

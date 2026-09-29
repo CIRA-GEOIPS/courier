@@ -19,11 +19,12 @@ from courier.constants import (
     job_ready_queue_for,
 )
 from courier.errors import CourierError
-from courier.interfaces.discovery import (
-    ENTRY_POINT_PREFIX,
-    ClassPluginRegistry,
-)
+from courier.interfaces.discovery import ClassPluginRegistry
+from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
 from courier.interfaces.plugin_protocol import ServicePlugin
+
+if TYPE_CHECKING:
+    from courier.interfaces.falconers import Falconer
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
     DISPATCHER_DEDUPE_SKIPS,
@@ -64,6 +65,11 @@ if TYPE_CHECKING:
     from courier.types.file import File
 
 
+# config class for courier init discovery
+class DispatcherConfig(DispatcherGroupConfig): # noqa: D101
+    pass
+
+
 class Dispatcher(ServicePlugin):
     """Base dispatcher plugin."""
 
@@ -98,7 +104,7 @@ class Dispatcher(ServicePlugin):
         self._stop_event = threading.Event()
         # Set once bound to the per-identifier job queue; see JobBuilder.
         self._subscribed = threading.Event()
-        self.config = config or {}
+        self.config = DispatcherGroupConfig.model_validate(config or {})
 
         self._jobs_processed = DISPATCHER_JOBS_PROCESSED
         self._job_execution_duration = DISPATCHER_JOB_EXECUTION_DURATION
@@ -113,6 +119,7 @@ class Dispatcher(ServicePlugin):
         # duplicates; cross-replica strict dedupe is opt-in via state sync.
         # Thread-safe: only touched by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[str, None] = OrderedDict()
+        self.falconer: Falconer
         # Connection this dispatcher uses for its queue-depth probe. Opened
         # lazily by the consumer thread and closed by it, so it is owned by
         # exactly one thread for its whole life; see _emit_queue_depth.
@@ -137,6 +144,78 @@ class Dispatcher(ServicePlugin):
                     hostname=None,
                 ),
             ]
+
+    def _get_compatible_partners(
+        self,
+        falconer: Falconer,
+        falcon: Falcon,
+    ) -> list[type[Falcon]]:
+        """Return the most specific intersection between falconer and falcon.
+
+        Keeps original form.
+
+        Parameters
+        ----------
+        falconer : Falconer
+            The falconer whose supported representations are considered.
+        falcon : Falcon
+            The falcon whose representation hierarchy is inspected.
+
+        Returns
+        -------
+        list[type[Falcon]]
+            Falcon representation classes supported by the falconer, preserving
+            the order of the falcon's representation hierarchy.
+        """
+        return [
+            x
+            for x in falcon.get_representation_hierarchy()
+            if x in falconer.representations
+        ]
+
+    def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> Falcon:
+        """Ordain the marriage between the falconer and the falcon.
+
+        Then, keep track of the falconer.
+
+        Parameters
+        ----------
+        falconer : Falconer
+            The falconer to pair with the falcon.
+        falcon : Falcon
+            The falcon whose compatible representation should be selected.
+
+        Returns
+        -------
+        Falcon
+            The selected Falcon representation configured for the dispatcher and
+            paired with the falconer.
+
+        Raises
+        ------
+        ValueError
+            If the falcon and falconer have no compatible representations.
+
+        """
+        compatible_partners = self._get_compatible_partners(falconer, falcon)
+        if not compatible_partners:
+            raise ValueError(
+                "The falcon and falconer do not pair.",
+            )
+        best_match = compatible_partners[-1].from_falcon(falcon)
+
+        if type(best_match) is not type(falcon):
+            self._logger.info(f"{falconer.name} casted to {best_match.name}")
+        # configure each of the pair to fit each other's configuration neatly
+        # marry the pair and keep track of the falconer
+        best_match.base_config = self.config
+        falconer.base_config = self.config
+
+        falconer.falcon = best_match
+        self.falconer = falconer
+
+        # be free
+        return best_match
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
@@ -329,7 +408,7 @@ class Dispatcher(ServicePlugin):
                     ).observe(start_time - job.last_modified)
 
                     try:
-                        execution_logs = self.get_execution_log(job)
+                        execution_logs = self.falconer.cast_off_falcon(job)
                         get_current_span().add_event(
                             "job.executed",
                             attributes={
@@ -341,9 +420,11 @@ class Dispatcher(ServicePlugin):
                             with tracer.start_as_current_span(
                                 "dispatcher.emit_execution_log",
                                 attributes={
-                                    ATTR_EXECUTION_RETURN_CODE: str(ex_log.return_code)
-                                    if ex_log.return_code is not None
-                                    else "",
+                                    ATTR_EXECUTION_RETURN_CODE: (
+                                        str(ex_log.return_code)
+                                        if ex_log.return_code is not None
+                                        else ""
+                                    ),
                                 },
                             ):
                                 self.emit(ex_log)
@@ -452,10 +533,9 @@ class Dispatcher(ServicePlugin):
         }
 
 
-#: Registry of dispatcher plugins, read from the ``courier.dispatchers``
-#: entry-point group. Hands back classes; ``PluginManager`` constructs them.
 dispatchers = ClassPluginRegistry(
     name="dispatchers",
-    group=f"{ENTRY_POINT_PREFIX}.dispatchers",
+    group="",
     expected_base=Dispatcher,
+    nested_values=["falconer", "falcon"],
 )

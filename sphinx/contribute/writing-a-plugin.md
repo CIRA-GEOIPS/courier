@@ -164,9 +164,10 @@ optional imports inside methods rather than at module scope, as the shipped
 plugins do:
 
 ```python
-    def _client(self):
-        import boto3  # noqa: PLC0415
-        return boto3.client("s3")
+def _client(self):
+    import boto3  # noqa: PLC0415
+
+    return boto3.client("s3")
 ```
 
 ## Next Steps

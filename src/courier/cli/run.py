@@ -14,7 +14,14 @@ from typing import TYPE_CHECKING, Annotated, Any
 import typer
 
 from courier.cli.feedback import load_config_or_exit
-from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
+from courier.cli.plugins import (
+    NECESSARY_REGISTRIES,
+    PLUGIN_REGISTRIES,
+    RUN_KINDS,
+    normalize_kind,
+)
+from courier.errors import InvalidPluginConfigError
+from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.service import create_service_with_plugins
 
 logger = logging.getLogger(__name__)
@@ -44,6 +51,58 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
             declared.extend(cfg.get("targets") or [])
         out[entry.identifier] = tuple(declared)
     return out
+
+
+def get_registered_plugin(plugin_registrations, entry):
+    """Return registered plugin from the plugin registry or necessary registry."""
+    kind = normalize_kind(entry.spec.kind)
+    if kind not in RUN_KINDS:
+        raise ValueError(
+            f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
+            f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+        )
+
+    cfg = entry.spec.config or {}
+    missing = [
+        k
+        for k in (PLUGIN_REGISTRIES | NECESSARY_REGISTRIES)[kind].nested_values
+        if k not in cfg
+    ]
+    if missing:
+        raise InvalidPluginConfigError(
+            f"{entry.identifier!r} is missing required config "
+            f"section(s): {', '.join(missing)}",
+        )
+    if kind in PLUGIN_REGISTRIES:
+        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
+        plugin_config: dict[str, Any] = (
+            entry.spec.config if entry.spec.config is not None else {}
+        )
+
+        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
+
+        for k in PLUGIN_REGISTRIES[kind].nested_values:
+            get_registered_plugin(
+                plugin_registrations,
+                MicroserviceModel.model_validate(entry.spec.config[k]),
+            )
+    elif kind in NECESSARY_REGISTRIES:
+        plugin_class = NECESSARY_REGISTRIES[kind].expected_base
+        plugin_config: dict[str, Any] = (
+            entry.spec.config if entry.spec.config is not None else {}
+        )
+
+        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
+
+        for k in NECESSARY_REGISTRIES[kind].nested_values:
+            get_registered_plugin(
+                plugin_registrations,
+                MicroserviceModel.model_validate(entry.spec.config[k]),
+            )
+    else:
+        raise ValueError(
+            f"{entry.identifier!r}: {entry.spec.kind!r} is not valid",
+        )
 
 
 #: Shape of the identifier ``ServiceConfig`` generates when ``SERVICE_ID`` is
@@ -159,20 +218,7 @@ def run_service(
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
-        kind = normalize_kind(entry.spec.kind)
-        # An unrecognised kind used to be skipped silently, which produced a
-        # service that started up, reported healthy, and processed nothing.
-        if kind not in RUN_KINDS:
-            raise ValueError(
-                f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
-                f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
-            )
-        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
-        plugin_config: dict[str, Any] = (
-            entry.spec.config if entry.spec.config is not None else {}
-        )
-        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
-
+        get_registered_plugin(plugin_registrations, entry)
     service = create_service_with_plugins(
         service_config,
         plugin_registrations,
@@ -183,6 +229,28 @@ def run_service(
         if normalize_kind(e.spec.kind) == "dispatchers"
         and (only_set is None or e.identifier in only_set)
     }
+
+    # list[tuple[str, str, str]] of the dispatcher, its falconer, and its falcon.
+    service._falconer_map = []
+    for e in config.spec.run:
+        if normalize_kind(e.spec.kind) != "dispatchers":
+            continue
+
+        if only_set is not None and e.identifier not in only_set:
+            continue
+
+        falconer_id = MicroserviceModel.model_validate(
+            e.spec.config["falconer"],
+        ).identifier
+        falcon_id = MicroserviceModel.model_validate(e.spec.config["falcon"]).identifier
+
+        service._falconer_map.append(
+            (
+                e.identifier,
+                falconer_id,
+                falcon_id,
+            ),
+        )
     # Every job builder in the YAML, regardless of --only: each needs a durable
     # FilesFound-<builder> queue declared by this container, so a producer never
     # publishes into a fanout exchange with nothing bound to it (issue #44).

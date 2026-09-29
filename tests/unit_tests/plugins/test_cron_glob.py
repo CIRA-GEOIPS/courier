@@ -14,7 +14,6 @@ from courier.plugins.data_monitors.cron_glob import (
 )
 from courier.types.file import File
 
-
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
 
@@ -118,7 +117,9 @@ class TestCronGlobConfig:
 class TestScanDirectory:
     """Tests for the _scan_directory method."""
 
-    def test_yields_matching_files(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_yields_matching_files(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         files = list(plugin._scan_directory())
         paths = {f.file for f in files}
@@ -126,12 +127,16 @@ class TestScanDirectory:
         assert (tmp_data_dir / "data_b.nc").resolve() in paths
         assert (tmp_data_dir / "data_c.txt").resolve() not in paths
 
-    def test_skips_directories(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_skips_directories(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir, glob_pattern="*"))
         files = list(plugin._scan_directory())
         assert all(f.file is not None and f.file.is_file() for f in files)
 
-    def test_skips_already_seen(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_skips_already_seen(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         first = list(plugin._scan_directory())
         second = list(plugin._scan_directory())
@@ -147,8 +152,12 @@ class TestScanDirectory:
         assert (tmp_data_dir / "sub" / "data_d.nc").resolve() in paths
         assert len(paths) == 3
 
-    def test_yields_file_objects_with_correct_hostname(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
-        plugin = CronGlob(mock_service, _make_config(tmp_data_dir, hostname="test-host"))
+    def test_yields_file_objects_with_correct_hostname(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
+        plugin = CronGlob(
+            mock_service, _make_config(tmp_data_dir, hostname="test-host")
+        )
         files = list(plugin._scan_directory())
         assert all(isinstance(f, File) for f in files)
         assert all(f.hostname == "test-host" for f in files)
@@ -160,7 +169,9 @@ class TestScanDirectory:
 class TestLRUEviction:
     """Tests for the bounded seen-set with inline LRU eviction."""
 
-    def test_seen_set_never_exceeds_cap(self, mock_service: MagicMock, tmp_path: Path) -> None:
+    def test_seen_set_never_exceeds_cap(
+        self, mock_service: MagicMock, tmp_path: Path
+    ) -> None:
         """The seen-set must not exceed max_seen_files at any point during a scan."""
         for i in range(10):
             (tmp_path / f"file_{i}.nc").write_text(str(i))
@@ -180,7 +191,9 @@ class TestLRUEviction:
         list(plugin._scan_directory())
         assert len(plugin._seen) == 3
 
-    def test_evicted_file_is_re_emitted(self, mock_service: MagicMock, tmp_path: Path) -> None:
+    def test_evicted_file_is_re_emitted(
+        self, mock_service: MagicMock, tmp_path: Path
+    ) -> None:
         """A file removed from the seen-set must appear again on the next scan."""
         (tmp_path / "file_a.nc").write_text("a")
         (tmp_path / "file_b.nc").write_text("b")
@@ -198,7 +211,9 @@ class TestLRUEviction:
         emitted_paths = {f.file for f in second_scan}
         assert resolved_a in emitted_paths
 
-    def test_cap_enforced_on_partial_consumption(self, mock_service: MagicMock, tmp_path: Path) -> None:
+    def test_cap_enforced_on_partial_consumption(
+        self, mock_service: MagicMock, tmp_path: Path
+    ) -> None:
         """Cap must hold even if the caller stops consuming the generator early."""
         for i in range(10):
             (tmp_path / f"file_{i}.nc").write_text(str(i))
@@ -215,18 +230,24 @@ class TestLRUEviction:
 class TestSeedSeen:
     """Tests for the _seed_seen method."""
 
-    def test_populates_seen_set(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_populates_seen_set(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         plugin._seed_seen()
         assert len(plugin._seen) == 2
 
-    def test_seeded_files_are_not_emitted(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_seeded_files_are_not_emitted(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         """Files present at seed time must not appear in the following scan."""
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         plugin._seed_seen()
         assert list(plugin._scan_directory()) == []
 
-    def test_seed_respects_max_seen_files(self, mock_service: MagicMock, tmp_path: Path) -> None:
+    def test_seed_respects_max_seen_files(
+        self, mock_service: MagicMock, tmp_path: Path
+    ) -> None:
         """Seeding must not allow the seen-set to exceed max_seen_files."""
         for i in range(10):
             (tmp_path / f"file_{i}.nc").write_text(str(i))
@@ -242,13 +263,17 @@ class TestSeedSeen:
 class TestWaitUntil:
     """Tests for _wait_until respecting the stop event."""
 
-    def test_returns_true_when_stop_event_is_set(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_returns_true_when_stop_event_is_set(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         plugin._stop_event.set()
         target = datetime.now() + timedelta(hours=1)
         assert plugin._wait_until(target) is True
 
-    def test_returns_false_when_target_is_in_the_past(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_returns_false_when_target_is_in_the_past(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         target = datetime.now() - timedelta(seconds=1)
         assert plugin._wait_until(target) is False
@@ -260,7 +285,9 @@ class TestWaitUntil:
 class TestFindFile:
     """Integration tests for the find_file generator."""
 
-    def test_run_on_start_emits_immediately(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_run_on_start_emits_immediately(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         """With run_on_start=True, files are emitted before the first cron tick."""
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir, run_on_start=True))
         plugin._stop_event.set()
@@ -275,7 +302,9 @@ class TestFindFile:
         plugin._stop_event.set()
         assert list(plugin.find_file()) == []
 
-    def test_ignore_existing_suppresses_initial_files(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_ignore_existing_suppresses_initial_files(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         """With ignore_existing=True, pre-existing files are not emitted on first scan."""
         plugin = CronGlob(
             mock_service,
@@ -303,7 +332,9 @@ class TestFindFile:
         with pytest.raises(RuntimeError, match="does not exist"):
             list(plugin.find_file())
 
-    def test_health_true_during_operation_false_after(self, mock_service: MagicMock, tmp_data_dir: Path) -> None:
+    def test_health_true_during_operation_false_after(
+        self, mock_service: MagicMock, tmp_data_dir: Path
+    ) -> None:
         """Health must be True while the generator is active, False after it exits."""
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir, run_on_start=True))
         assert plugin.health is False
@@ -316,4 +347,6 @@ class TestFindFile:
             health_during = plugin.health
 
         assert health_during is True, "health should be True while find_file is running"
-        assert plugin.health is False, "health should reset to False after generator exits"
+        assert (
+            plugin.health is False
+        ), "health should reset to False after generator exits"

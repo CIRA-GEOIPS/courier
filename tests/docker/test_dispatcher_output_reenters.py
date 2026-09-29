@@ -273,9 +273,16 @@ def prepare_chain_directories(pipeline: Pipeline, *paths: str) -> None:
     joined = " ".join(paths)
     result = run(
         [
-            "docker", "run", "--rm", "-u", "root",
-            "-v", f"{pipeline.volume}:/data",
-            pipeline.image, "sh", "-c",
+            "docker",
+            "run",
+            "--rm",
+            "-u",
+            "root",
+            "-v",
+            f"{pipeline.volume}:/data",
+            pipeline.image,
+            "sh",
+            "-c",
             f"mkdir -p {joined} && chown 1000:1000 {joined}",
         ],
     )
@@ -441,18 +448,24 @@ def test_config_with_two_chained_pipelines_is_accepted(
 
     result = run(
         [
-            "docker", "run", "--rm",
-            "-v", f"{config_path}:/cfg/service.yaml:ro",
-            docker_image, "courier", "validate", "/cfg/service.yaml",
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{config_path}:/cfg/service.yaml:ro",
+            docker_image,
+            "courier",
+            "validate",
+            "/cfg/service.yaml",
         ],
     )
 
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
     # A count per kind: the failure mode being excluded is a step that parsed as
     # part of its neighbour and was silently dropped.
-    assert "2 data monitors, 2 job builders, 2 dispatchers" in result.stdout, (
-        result.stdout
-    )
+    assert (
+        "2 data monitors, 2 job builders, 2 dispatchers" in result.stdout
+    ), result.stdout
 
 
 def test_a_dispatchers_output_is_observed_and_processed_again(
@@ -506,9 +519,9 @@ def test_a_dispatchers_output_is_observed_and_processed_again(
     for queue in chain_queues:
         pipeline.await_queue(queue)
 
-    assert pipeline.is_running(container), (
-        f"service exited during start-up:\n{container_logs(container)}"
-    )
+    assert pipeline.is_running(
+        container
+    ), f"service exited during start-up:\n{container_logs(container)}"
 
     # Every queue above is predeclared from the YAML before a single plugin
     # thread starts, so all four exist even if neither chain ever attached.  A

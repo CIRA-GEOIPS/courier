@@ -8,7 +8,6 @@ from hypothesis import strategies as st
 
 from courier.types.execution_log import ExecutionLog
 
-
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 
@@ -93,7 +92,9 @@ _log_file_path = st.one_of(st.none(), st.text(min_size=1, max_size=200))
     return_code=_return_code,
     stdout=_text,
     stderr=_text,
-    hostname=st.one_of(st.none(), st.from_regex(r"[a-zA-Z0-9\-\.]{1,63}", fullmatch=True)),
+    hostname=st.one_of(
+        st.none(), st.from_regex(r"[a-zA-Z0-9\-\.]{1,63}", fullmatch=True)
+    ),
     log_file_path=_log_file_path,
 )
 def test_hypothesis_round_trip(
@@ -112,6 +113,3 @@ def test_hypothesis_round_trip(
         log_file_path=log_file_path,
     )
     assert ExecutionLog.from_string(str(log)) == log
-
-
-

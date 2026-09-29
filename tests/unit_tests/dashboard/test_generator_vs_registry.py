@@ -99,6 +99,7 @@ def test_registry_scan_is_not_vacuous() -> None:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestGeneratorVsRegistry:
     """Dashboard generator must only reference metrics in the registry."""
 
@@ -134,7 +135,7 @@ class TestGeneratorVsRegistry:
         phantoms: list[str] = []
 
         label_re = re.compile(r"\{([^}]+)\}")
-        selector_re = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*[=!~]')
+        selector_re = re.compile(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*[=!~]")
 
         for expr in _iter_target_expressions():
             all_metrics_in_expr = set(_METRIC_PATTERN.findall(expr))
@@ -156,7 +157,9 @@ class TestGeneratorVsRegistry:
                         if selector in valid_anywhere:
                             continue
                         # Template variables like $plugin_filter are not labels
-                        value_part = block.split(selector, 1)[1] if selector in block else ""
+                        value_part = (
+                            block.split(selector, 1)[1] if selector in block else ""
+                        )
                         if value_part.lstrip("=!~\"'").startswith("$"):
                             continue
                         phantoms.append(
@@ -172,9 +175,7 @@ class TestGeneratorVsRegistry:
 class TestPluginRunStatePromQL:
     """PromQL literals that compare against PluginRunState must match the enum."""
 
-    _STATE_VALUE_RE = re.compile(
-        r"courier_plugin_state\b[^}]*\}\s*==\s*(\d+)"
-    )
+    _STATE_VALUE_RE = re.compile(r"courier_plugin_state\b[^}]*\}\s*==\s*(\d+)")
 
     def test_state_values_match_enum(self) -> None:
         """Every ``courier_plugin_state{…} == N`` must have N in PluginRunState."""

@@ -30,7 +30,9 @@ def _make_config(**overrides):
 class TestConstructor:
     def test_stores_config(self, mock_service: MagicMock) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         assert isinstance(plugin.validated, SerialBashConfig)
         assert plugin.validated.bash_script == "echo {{ files[0].file }}"
@@ -54,7 +56,9 @@ class TestConstructor:
 class TestIsHealthy:
     def test_always_healthy(self, mock_service: MagicMock) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         assert plugin.is_healthy() is True
 
@@ -72,7 +76,9 @@ class TestGetExecutionLog:
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         execute = mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
@@ -98,7 +104,9 @@ class TestGetExecutionLog:
         make_job,
     ) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         job = make_job(files=())
         logs = plugin.get_execution_log(job)
@@ -134,7 +142,9 @@ class TestGetExecutionLog:
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
@@ -157,7 +167,9 @@ class TestGetExecutionLog:
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
@@ -180,7 +192,9 @@ class TestGetExecutionLog:
         mocker,
     ) -> None:
         plugin = SerialBashDispatcher(
-            mock_service, _make_config(), identifier="test-disp",
+            mock_service,
+            _make_config(),
+            identifier="test-disp",
         )
         captured_body: list[str] = []
 
@@ -262,7 +276,10 @@ class TestLogToLogger:
         mock_exec = mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
-                return_code=0, stdout="hello\n", stderr="", log_file_path=None,
+                return_code=0,
+                stdout="hello\n",
+                stderr="",
+                log_file_path=None,
             ),
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
@@ -286,7 +303,10 @@ class TestLogToLogger:
         mock_exec = mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
-                return_code=1, stdout="", stderr="error msg\n", log_file_path=None,
+                return_code=1,
+                stdout="",
+                stderr="error msg\n",
+                log_file_path=None,
             ),
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
@@ -378,7 +398,10 @@ class TestLogOnlyErrors:
         mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
-                return_code=0, stdout="", stderr="", log_file_path=None,
+                return_code=0,
+                stdout="",
+                stderr="",
+                log_file_path=None,
             ),
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
@@ -401,7 +424,10 @@ class TestLogOnlyErrors:
         mocker.patch(
             "courier.plugins.dispatchers.serial_bash.execute_bash_script",
             return_value=BashExecResult(
-                return_code=1, stdout="", stderr="error occurred", log_file_path=None,
+                return_code=1,
+                stdout="",
+                stderr="error occurred",
+                log_file_path=None,
             ),
         )
         job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
@@ -513,7 +539,8 @@ class TestPythonVenvConfigValidation:
         file_path.write_text("not a directory")
         with pytest.raises(pydantic.ValidationError):
             SerialBashConfig(
-                bash_script="echo hello", python_venv=str(file_path),
+                bash_script="echo hello",
+                python_venv=str(file_path),
             )
 
     def test_python_venv_path_missing(self, tmp_path: Path) -> None:
@@ -521,7 +548,8 @@ class TestPythonVenvConfigValidation:
         missing = tmp_path / "does_not_exist"
         with pytest.raises(pydantic.ValidationError):
             SerialBashConfig(
-                bash_script="echo hello", python_venv=str(missing),
+                bash_script="echo hello",
+                python_venv=str(missing),
             )
 
     def test_python_venv_no_bin_python(self, tmp_path: Path) -> None:
@@ -530,7 +558,8 @@ class TestPythonVenvConfigValidation:
         venv_dir.mkdir()
         with pytest.raises(pydantic.ValidationError):
             SerialBashConfig(
-                bash_script="echo hello", python_venv=str(venv_dir),
+                bash_script="echo hello",
+                python_venv=str(venv_dir),
             )
 
     def test_python_venv_valid_path_accepted(self) -> None:
@@ -547,7 +576,8 @@ class TestPythonVenvConfigValidation:
         assert (stored_path / "bin" / "python").is_file()
 
     def test_python_venv_relative_path_resolved(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """A relative python_venv path is resolved to absolute by the validator."""
         venv_dir = tmp_path / "my_venv"
@@ -562,7 +592,8 @@ class TestPythonVenvConfigValidation:
         os.chdir(tmp_path)
         try:
             cfg = SerialBashConfig(
-                bash_script="echo hello", python_venv="./my_venv",
+                bash_script="echo hello",
+                python_venv="./my_venv",
             )
             assert cfg.python_venv is not None
             assert Path(cfg.python_venv).is_absolute()
@@ -587,9 +618,14 @@ class TestPythonVenvEnvPropagation:
             identifier="test-disp",
         )
         target = "courier.plugins.dispatchers.serial_bash.execute_bash_script"
-        with patch(target, return_value=BashExecResult(
-            return_code=0, stdout="ok", stderr="",
-        )) as mock_exec:
+        with patch(
+            target,
+            return_value=BashExecResult(
+                return_code=0,
+                stdout="ok",
+                stderr="",
+            ),
+        ) as mock_exec:
             job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
             plugin.get_execution_log(job)
 
@@ -615,9 +651,14 @@ class TestPythonVenvEnvPropagation:
             identifier="test-disp",
         )
         target = "courier.plugins.dispatchers.serial_bash.execute_bash_script"
-        with patch(target, return_value=BashExecResult(
-            return_code=0, stdout="ok", stderr="",
-        )) as mock_exec:
+        with patch(
+            target,
+            return_value=BashExecResult(
+                return_code=0,
+                stdout="ok",
+                stderr="",
+            ),
+        ) as mock_exec:
             job = make_job(files=(make_frozen_file(file=Path("/tmp/a.nc")),))
             plugin.get_execution_log(job)
 

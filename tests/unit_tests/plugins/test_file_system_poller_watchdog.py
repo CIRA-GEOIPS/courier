@@ -13,7 +13,6 @@ from courier.plugins.data_monitors.file_system_poller_watchdog import (
 )
 from courier.types.file import File
 
-
 # ─── Fixtures / Helpers ──────────────────────────────────────────────────────
 
 
@@ -25,7 +24,9 @@ def _make_config(tmp_path: Path) -> dict:
 
 
 class TestConstructor:
-    def test_stores_path_and_initial_health(self, mock_service: MagicMock, tmp_path: Path) -> None:
+    def test_stores_path_and_initial_health(
+        self, mock_service: MagicMock, tmp_path: Path
+    ) -> None:
         plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
         assert plugin.path_to_watch == str(tmp_path)
         assert plugin.health is False
@@ -43,7 +44,9 @@ class TestIsHealthy:
         plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
         assert plugin.is_healthy() is False
 
-    def test_health_reflects_attribute(self, mock_service: MagicMock, tmp_path: Path) -> None:
+    def test_health_reflects_attribute(
+        self, mock_service: MagicMock, tmp_path: Path
+    ) -> None:
         plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
         plugin.health = True
         assert plugin.is_healthy() is True
@@ -53,7 +56,9 @@ class TestIsHealthy:
 
 
 class TestFindFile:
-    def test_yields_file_for_event(self, mock_service: MagicMock, tmp_path: Path, mocker) -> None:
+    def test_yields_file_for_event(
+        self, mock_service: MagicMock, tmp_path: Path, mocker
+    ) -> None:
         """A file path enqueued by the watchdog handler must be yielded as a File."""
         plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
 

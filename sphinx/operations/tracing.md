@@ -235,6 +235,7 @@ Courier's test suite uses a custom `_ListExporter` (defined in `tests/unit_tests
 ```python
 from opentelemetry.sdk.trace.export import SpanExportResult, SpanExporter
 
+
 def _make_list_exporter():
     """Create a span exporter + span list pair for round-trip verification."""
     spans: list = []
@@ -270,6 +271,7 @@ The tracing module stores a global `_tracer_provider` singleton. Without cleanup
 **`reset_tracing()`** — clears Courier's own module-level singleton:
 ```python
 from courier.tracing import reset_tracing
+
 reset_tracing()  # calls shutdown_tracing(), clears _tracer_provider
 ```
 
@@ -278,6 +280,7 @@ reset_tracing()  # calls shutdown_tracing(), clears _tracer_provider
 def _force_noop_global_provider():
     from opentelemetry.util._once import Once
     import opentelemetry.trace
+
     opentelemetry.trace._TRACER_PROVIDER_SET_ONCE = Once()
     set_tracer_provider(NoOpTracerProvider())
 ```
@@ -302,6 +305,7 @@ To instrument a new plugin with tracing:
 1. **Get a tracer** at module level or in `__init__`:
    ```python
    from courier.tracing import get_tracer
+
    tracer = get_tracer(__name__)
    ```
 
@@ -344,6 +348,7 @@ The `@trace_plugin_method` decorator wraps a regular (non-generator) method in a
 
 ```python
 from courier.tracing import trace_plugin_method
+
 
 class MyPlugin:
     @trace_plugin_method("my_plugin.process", attributes={"key": "value"})

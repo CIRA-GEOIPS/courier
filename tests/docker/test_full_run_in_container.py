@@ -30,9 +30,9 @@ def test_single_container_pipeline_over_real_amqp(pipeline: Pipeline) -> None:
     pipeline.await_queue(f"{pipeline.namespace}-JobReady-process-files")
     pipeline.await_queue(f"{pipeline.namespace}-DispatcherQueue")
 
-    assert pipeline.seed_until("alpha"), (
-        f"no output produced:\n{container_logs(container)}"
-    )
+    assert pipeline.seed_until(
+        "alpha"
+    ), f"no output produced:\n{container_logs(container)}"
 
 
 def test_split_containers_share_one_config_over_amqp(pipeline: Pipeline) -> None:
@@ -48,16 +48,18 @@ def test_split_containers_share_one_config_over_amqp(pipeline: Pipeline) -> None
     config = build_config(pipeline.namespace, pipeline.broker)
 
     consumer = pipeline.start_courier(
-        "consumer", config, only="create-jobs,process-files",
+        "consumer",
+        config,
+        only="create-jobs,process-files",
     )
     pipeline.await_queue(f"{pipeline.namespace}-JobReady-process-files")
     pipeline.await_queue_matching(f"{pipeline.namespace}-FilesFound")
 
     pipeline.start_courier("producer", config, only="watch-files")
 
-    assert pipeline.seed_until("split"), (
-        f"split deployment produced nothing:\n{container_logs(consumer)}"
-    )
+    assert pipeline.seed_until(
+        "split"
+    ), f"split deployment produced nothing:\n{container_logs(consumer)}"
 
 
 def test_container_exits_promptly_on_sigterm(pipeline: Pipeline) -> None:
@@ -72,15 +74,21 @@ def test_container_exits_promptly_on_sigterm(pipeline: Pipeline) -> None:
 
     # Wait for output first, so every thread is running.
     pipeline.await_queue(f"{pipeline.namespace}-JobReady-process-files")
-    assert pipeline.seed_until("live"), (
-        f"pipeline never produced output:\n{container_logs(container)}"
-    )
+    assert pipeline.seed_until(
+        "live"
+    ), f"pipeline never produced output:\n{container_logs(container)}"
 
     stopped = run(["docker", "stop", "--time", "30", container], timeout=60.0)
     assert stopped.returncode == 0, stopped.stderr
 
     inspected = run(
-        ["docker", "inspect", "-f", "{{.State.ExitCode}} {{.State.OOMKilled}}", container],
+        [
+            "docker",
+            "inspect",
+            "-f",
+            "{{.State.ExitCode}} {{.State.OOMKilled}}",
+            container,
+        ],
     )
     exit_code, oom_killed = inspected.stdout.split()
     assert oom_killed == "false"
@@ -106,10 +114,10 @@ def test_failed_dispatch_does_not_kill_the_service(pipeline: Pipeline) -> None:
         result = run(["docker", "inspect", "-f", "{{.State.Running}}", container])
         return result.stdout.strip() != "true"
 
-    assert stays_false(exited, window=10.0), (
-        f"a failing dispatch stopped the service:\n{container_logs(container)}"
-    )
+    assert stays_false(
+        exited, window=10.0
+    ), f"a failing dispatch stopped the service:\n{container_logs(container)}"
 
-    assert pipeline.seed_until("ok"), (
-        f"service did not recover after a failed dispatch:\n{container_logs(container)}"
-    )
+    assert pipeline.seed_until(
+        "ok"
+    ), f"service did not recover after a failed dispatch:\n{container_logs(container)}"

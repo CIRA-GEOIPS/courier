@@ -32,9 +32,11 @@ of the tests asserted the *shape* of the code rather than what it does:
 def test_dispatcher_has_a_queue():
     assert hasattr(dispatcher, "incoming_queue")
 
+
 def test_emit_is_called():
     builder.emit_job(job)
     assert service.emit.called
+
 
 def test_lru_size():
     assert _DEDUPE_LRU_SIZE == 1000

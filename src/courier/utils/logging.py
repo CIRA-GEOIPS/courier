@@ -120,19 +120,25 @@ class ContextAdapter(logging.LoggerAdapter):
         # Capitalize first letter of source_type for display
         source_type_display = source_type.capitalize()
         if source_type == "" and source_name == "":
-            return f"[] {msg}", kwargs if isinstance(
-                kwargs,
-                dict,
-            ) else {}
-        else:
-            return (
-                f"[{source_type_display}: {source_name}] {msg}",
+            return f"[] {msg}", (
                 kwargs
                 if isinstance(
                     kwargs,
                     dict,
                 )
-                else {},
+                else {}
+            )
+        else:
+            return (
+                f"[{source_type_display}: {source_name}] {msg}",
+                (
+                    kwargs
+                    if isinstance(
+                        kwargs,
+                        dict,
+                    )
+                    else {}
+                ),
             )
 
 

@@ -75,7 +75,9 @@ def mock_logger_adapter() -> ContextAdapter:
         Mocked adapter for testing adaptation.
     """
     mock_logger = MagicMock(spec=logging.Logger)
-    adapter = ContextAdapter(mock_logger, {"source_type": "plugin", "source_name": "test_plugin"})
+    adapter = ContextAdapter(
+        mock_logger, {"source_type": "plugin", "source_name": "test_plugin"}
+    )
     return adapter
 
 
@@ -121,9 +123,9 @@ def test_trace_emits_a_record_through_the_public_logger(
     records = [r for r in caplog.records if r.levelno == TRACE_LEVEL]
     assert records, "no record emitted at TRACE level"
     assert "detailed diagnostic" in records[0].getMessage()
-    assert "[Service: trace-emit]" in records[0].getMessage(), (
-        "trace() must apply the same context prefix as the other levels"
-    )
+    assert (
+        "[Service: trace-emit]" in records[0].getMessage()
+    ), "trace() must apply the same context prefix as the other levels"
 
 
 def test_trace_is_suppressed_above_its_level() -> None:
@@ -181,7 +183,9 @@ class TestContextAdapter:
         assert adapter.extra is None
         assert adapter.logger == mock_logger
 
-    def test_initialization_with_extra(self, mock_logger_adapter: ContextAdapter) -> None:
+    def test_initialization_with_extra(
+        self, mock_logger_adapter: ContextAdapter
+    ) -> None:
         """Test ContextAdapter initialization with provided extra.
 
         Parameters
@@ -198,7 +202,10 @@ class TestContextAdapter:
         AssertionError
             If extra is not set correctly.
         """
-        assert mock_logger_adapter.extra == {"source_type": "plugin", "source_name": "test_plugin"}
+        assert mock_logger_adapter.extra == {
+            "source_type": "plugin",
+            "source_name": "test_plugin",
+        }
 
     @pytest.mark.parametrize(
         ("extra", "msg", "expected_result"),
@@ -206,21 +213,32 @@ class TestContextAdapter:
             (
                 {"source_type": "service", "source_name": "my-service"},
                 "Test message",
-                ("[Service: my-service] Test message", {'extra': {'source_type': 'service', 'source_name': 'my-service'}}),
+                (
+                    "[Service: my-service] Test message",
+                    {"extra": {"source_type": "service", "source_name": "my-service"}},
+                ),
             ),
             (
                 None,
                 "No context message",
-                ("No context message", {'extra': None}),
+                ("No context message", {"extra": None}),
             ),
             (
                 {"source_type": "", "source_name": ""},
                 "Empty context",
-                ("[] Empty context", {'extra': {'source_type': '', 'source_name': ''}}),  # Capitalize on empty string works
+                (
+                    "[] Empty context",
+                    {"extra": {"source_type": "", "source_name": ""}},
+                ),  # Capitalize on empty string works
             ),
         ],
     )
-    def test_process_prepends_context(self, extra: dict[str, str] | None, msg: str, expected_result: tuple[str, dict[str, Any]]) -> None:
+    def test_process_prepends_context(
+        self,
+        extra: dict[str, str] | None,
+        msg: str,
+        expected_result: tuple[str, dict[str, Any]],
+    ) -> None:
         """Test ContextAdapter.process prepends context to messages.
 
         Parameters
@@ -277,13 +295,16 @@ class TestCreateLokiHandler:
 
         result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
 
-        mock_logging_loki.LokiHandler.assert_called_once_with(url="http://test-loki", version="1", tags={})
+        mock_logging_loki.LokiHandler.assert_called_once_with(
+            url="http://test-loki", version="1", tags={}
+        )
         assert result is not None
         assert hasattr(result, "delegate") and result.delegate is mock_handler
 
-
     @patch("courier.utils.logging.logging_loki")
-    def test_create_loki_handler_connection_error(self, mock_logging_loki: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
+    def test_create_loki_handler_connection_error(
+        self, mock_logging_loki: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Test Loki handler creation fails due to connection error.
 
         Parameters
@@ -302,7 +323,9 @@ class TestCreateLokiHandler:
         AssertionError
             If result is not None or warning not logged.
         """
-        mock_logging_loki.LokiHandler.side_effect = ValueError("Unexpected Loki init error")
+        mock_logging_loki.LokiHandler.side_effect = ValueError(
+            "Unexpected Loki init error"
+        )
 
         result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
 
@@ -317,9 +340,24 @@ class TestGetLogger:
     @pytest.mark.parametrize(
         ("source_type", "source_name", "config", "expected_extra"),
         [
-            ("service", "test-service", None, {"source_type": "service", "source_name": "test-service"}),
-            ("plugin", "test-plugin", ServiceConfig(service_id="test", loki_enabled=False), {"source_type": "plugin", "source_name": "test-plugin"}),
-            ("module", __name__, ServiceConfig(), {"source_type": "module", "source_name": __name__}),
+            (
+                "service",
+                "test-service",
+                None,
+                {"source_type": "service", "source_name": "test-service"},
+            ),
+            (
+                "plugin",
+                "test-plugin",
+                ServiceConfig(service_id="test", loki_enabled=False),
+                {"source_type": "plugin", "source_name": "test-plugin"},
+            ),
+            (
+                "module",
+                __name__,
+                ServiceConfig(),
+                {"source_type": "module", "source_name": __name__},
+            ),
         ],
     )
     def test_get_logger_returns_context_adapter(
@@ -357,7 +395,9 @@ class TestGetLogger:
         assert logger.extra == expected_extra
 
     @patch("courier.utils.logging._create_loki_handler")
-    def test_get_logger_with_loki_enabled(self, mock_create_handler: MagicMock, sample_service_config: ServiceConfig) -> None:
+    def test_get_logger_with_loki_enabled(
+        self, mock_create_handler: MagicMock, sample_service_config: ServiceConfig
+    ) -> None:
         """Test get_logger adds Loki handler when enabled.
 
         Parameters
@@ -402,7 +442,9 @@ class TestGetLogger:
         # Verify mock handler was added to the logger
         assert mock_handler in logger.logger.handlers
 
-    def test_get_logger_production_mode_enforces_min_level(self, sample_service_config: ServiceConfig) -> None:
+    def test_get_logger_production_mode_enforces_min_level(
+        self, sample_service_config: ServiceConfig
+    ) -> None:
         """Test get_logger enforces INFO level in production mode with TRACE input.
 
         Parameters
@@ -419,7 +461,9 @@ class TestGetLogger:
         AssertionError
             If log level is not enforced.
         """
-        config = dataclasses.replace(sample_service_config, production_mode=True, log_level="TRACE")
+        config = dataclasses.replace(
+            sample_service_config, production_mode=True, log_level="TRACE"
+        )
 
         logger = get_logger("service", "test", config)
 
@@ -430,10 +474,15 @@ class TestGetLogger:
     @pytest.mark.parametrize(
         ("invalid_config", "expected_exception"),
         [
-            ({"log_level": None}, AttributeError),  # None log_level causes AttributeError on .upper()
+            (
+                {"log_level": None},
+                AttributeError,
+            ),  # None log_level causes AttributeError on .upper()
         ],
     )
-    def test_get_logger_handles_edge_cases(self, invalid_config: dict[str, Any], expected_exception: type[Exception]) -> None:
+    def test_get_logger_handles_edge_cases(
+        self, invalid_config: dict[str, Any], expected_exception: type[Exception]
+    ) -> None:
         """Test get_logger handles edge cases like invalid configs.
 
         Parameters
@@ -456,4 +505,3 @@ class TestGetLogger:
         # Use a unique source_name to avoid the cached-handlers guard skipping config processing.
         with pytest.raises(expected_exception):
             get_logger("service", "edge-case-unique", ServiceConfig(**invalid_config))
-
