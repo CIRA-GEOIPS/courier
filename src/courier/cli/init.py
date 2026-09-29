@@ -55,7 +55,7 @@ class PluginSelection:
     display_label: str  # e.g., "Data Monitor"
     config_model: type[BaseModel] | None
     config_values: dict[str, Any] = field(default_factory=dict)
-    nested_values: list[type[PluginSelection]] = field(default_factory=list)
+    nested_values: list[PluginSelection] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
