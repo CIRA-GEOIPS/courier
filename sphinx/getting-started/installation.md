@@ -54,13 +54,12 @@ cron_glob requires the cron extra: pip install data-courier[cron]
 | `data-courier[s3]` | `boto3`, `botocore` | `s3_poller` data monitor |
 | `data-courier[sftp]` | `paramiko` | `sftp_poller` data monitor |
 | `data-courier[kafka]` | `kafka-python` | `kafka_consumer` data monitor |
-| `data-courier[http]` | `httpx` | `http_dispatcher` |
 | `data-courier[ha]` | `redis` | Multi-instance state sync |
 | `data-courier[grafana]` | `grafanalib` | `courier dashboard` generation |
 | `data-courier[viz]` | `textual`, `httpx` | `courier viz` terminal UI |
 
-`data-courier[all-monitors]` and `data-courier[all-dispatchers]` install every plugin
-dependency for their side of the pipeline.
+`data-courier[all-monitors]` installs every data-monitor plugin dependency at
+once.
 
 The `file_system_poller_watchdog` monitor — the one used in
 {doc}`quick-start` and most examples — needs no extra; `watchdog` is a core

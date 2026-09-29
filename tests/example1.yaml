@@ -30,11 +30,18 @@ spec:
     - this-builds-jobs:
         kind: job_builder
         name: DummyJobBuilder
+        config:
+          targets:
+            - dispatch-those-jobs
+          payload:
+            test-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  echo "This is a test! A Script! A ~SCRIPT~ that does !!~TESTING~!!"
+                  echo {{ files[0].file }} # this is a templated field
+                  python3 -c "print('this is arbitrary python talking about the file {{ files[0].file }}')"
     - dispatch-those-jobs:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            echo "This is a test! A Script! A ~SCRIPT~ that does !!~TESTING~!!"
-            echo {{ files[0].file }} # this is a templated field
-            python3 -c "print('this is arbitrary python talking about the file {{ files[0].file }}')"
+        name: local_dispatcher

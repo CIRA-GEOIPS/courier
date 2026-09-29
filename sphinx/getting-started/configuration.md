@@ -39,13 +39,20 @@ spec:
     - build:
         kind: job_builder
         name: DummyJobBuilder
+        config:
+          targets:
+            - dispatch
+          payload:
+            work:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  echo "Processing {{ files[0].file }}"
 
     - dispatch:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            echo "Processing {{ files[0].file }}"
+        name: local_dispatcher
 ```
 
 To connect to a real broker instead, add connection details. When
@@ -368,7 +375,7 @@ Container 2 picks up those events, builds jobs, and dispatches them.
 **Identifiers, not plugin names.** The values passed to `--only` are
 the YAML keys under `spec.run[]` -- the short, unique names like
 `watch` or `dispatch`. Do not use plugin class names such as
-`file_system_poller_watchdog` or `serial_bash`.
+`file_system_poller_watchdog` or `local_dispatcher`.
 
 **Only runnable kinds may appear in `spec.run`.** Those are
 `data_monitor`, `job_builder`, and `dispatcher`. Metadata configs are
@@ -423,13 +430,20 @@ spec:
     - build:
         kind: job_builder
         name: DummyJobBuilder
+        config:
+          targets:
+            - dispatch
+          payload:
+            work:
+              kind: payload
+              name: bash_payload
+              config:
+                script: |
+                  run_geoips.sh {{ files[0].file }}
 
     - dispatch:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            run_geoips.sh {{ files[0].file }}
+        name: local_dispatcher
 ```
 
 ## Validation
@@ -463,11 +477,18 @@ For example, you can override `max_retries: 5` in the YAML by setting the `BROKE
 
 ## Jinja2 Template Context
 
-The ``serial_bash`` and ``parallel_bash`` dispatchers use
-[Jinja2](https://jinja.palletsprojects.com/) for script templates,
-replacing the legacy ``{file}`` placeholder. Every template has access
-to ``files`` (list of file dicts), ``job`` (metadata), and ``config``
-(convenience alias for ``job.config``). All standard Jinja2 features --
-variables, filters, conditionals, and loops -- are available. Courier catches syntax
-errors at config load time, and undefined variables render
-as empty strings (``DebugUndefined``) rather than raising errors.
+Payloads use [Jinja2](https://jinja.palletsprojects.com/) for script templates.
+Every template has access to ``files`` (list of file dicts), ``job``
+(metadata), and ``config`` (convenience alias for ``job.config``).
+
+A template is rendered in two passes. The job builder renders first, with a
+``builder`` namespace (``name``, ``identifier``, ``targets``); the dispatcher
+then fills in the values only it knows -- ``dispatcher`` (``name``,
+``identifier``, ``config``), ``script_path``, ``hostname`` and, for Slurm,
+``output_dir``. Dispatcher-only values must be simple leaf interpolations
+(``{{ script_path }}``); using one in a conditional, loop or filter raises a
+configuration-time error rather than silently rendering the wrong branch.
+
+Only the marker expressions the builder emitted are evaluated on the
+dispatcher; the rest of the script (including file names and metadata) is never
+re-parsed as a template, so job data cannot inject template syntax.

@@ -3,9 +3,8 @@
 from courier.interfaces.configs import data_monitor_configs
 from courier.interfaces.data_monitors import data_monitors
 from courier.interfaces.dispatchers import dispatchers
-from courier.interfaces.falconers import falconers
-from courier.interfaces.falcons import falcons
 from courier.interfaces.job_builders import job_builders
+from courier.interfaces.payloads import payloads
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.service import Service, create_service_with_plugins
 
@@ -17,8 +16,7 @@ plugin_interfaces: list[str] = [
     "data_monitors",
     "dispatchers",
     "job_builders",
-    "falconers",
-    "falcons",
+    "payloads",
 ]
 config_interfaces: list[str] = [
     "data_monitor_configs",

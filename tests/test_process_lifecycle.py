@@ -78,23 +78,20 @@ def _write_config(tmp_path: Path, input_dir: Path, output_dir: Path) -> Path:
                 - grouper:
                     kind: job_builder
                     name: DummyJobBuilder
+                    config:
+                      targets:
+                        - runner
+                      payload:
+                        identifier: payload-spec
+                        spec:
+                          kind: payload
+                          name: bash_payload
+                          config:
+                            binary: "cp"
+                            suffix_args: ["{{{{ files[0].file }}}}", "{output_dir}"]
                 - runner:
                     kind: dispatcher
-                    name: serial_bash
-                    config:
-                        falconer:
-                            identifier: falconer-spec
-                            spec:
-                                kind: falconer
-                                name: local_falconer
-                        falcon:
-                            identifier: falcon-spec
-                            spec:
-                                kind: falcon
-                                name: bash_falcon
-                                config:
-                                    binary: "cp"
-                                    suffix_args: ["{{{{ files[0].file }}}}", "{output_dir}"]
+                    name: local_dispatcher
             """,
         ),
     )

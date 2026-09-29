@@ -123,7 +123,7 @@ test = [
     "botocore",                  # required by s3_poller tests
     "kafka-python",              # required by kafka_consumer tests
     "croniter",                  # required by cron_glob tests
-    "httpx",                     # required by http_dispatcher tests
+    "httpx",                     # required by viz tests
     "grafanalib",                # required by tests/unit_tests/dashboard/*
     "mutmut",                    # mutation testing; see .github/workflows/mutation.yaml
     "packaging",                 # version comparison in the name/version drift guards
@@ -141,13 +141,11 @@ grafana = [
 s3 = ["boto3", "botocore"]       # Required for the s3_poller data monitor
 kafka = ["kafka-python"]         # Required for the kafka_consumer data monitor
 cron = ["croniter"]              # Required for the cron_glob data monitor
-http = ["httpx"]                 # Required for the http_dispatcher
 viz = [
     "textual",
     "httpx",
 ]
 all-monitors = ["boto3", "botocore", "kafka-python", "croniter"]
-all-dispatchers = ["httpx"]
 
 [tool.poetry.scripts]
 courier = "courier.cli.app:app"
@@ -187,9 +185,7 @@ filter_and_group = "courier.plugins.job_builders.filter_and_group:FilterAndGroup
 metadata_router = "courier.plugins.job_builders.metadata_router:MetadataRouterBuilder"
 
 [tool.poetry.plugins."courier.dispatchers"]
-http_dispatcher = "courier.plugins.dispatchers.http_dispatcher:HttpDispatcher"
-parallel_bash = "courier.plugins.dispatchers.parallel_bash:ParallelBashDispatcher"
-serial_bash = "courier.plugins.dispatchers.serial_bash:SerialBashDispatcher"
+local_dispatcher = "courier.plugins.dispatchers.local_dispatcher:LocalDispatcher"
 slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
 [tool.poetry.plugins."courier.data_monitor_configs"]
@@ -201,14 +197,10 @@ himawari9_ahi = "courier.plugins.data_monitor_configs.himawari9_ahi:CONFIG"
 meteosat10_seviri = "courier.plugins.data_monitor_configs.meteosat10_seviri:CONFIG"
 meteosat9_seviri = "courier.plugins.data_monitor_configs.meteosat9_seviri:CONFIG"
 
-[tool.poetry.plugins."courier.falconers"]
-local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
-slurm_falconer = "courier.plugins.falconers.slurm_falconer:SlurmFalconer"
-
-[tool.poetry.plugins."courier.falcons"]
-shell_falcon = "courier.plugins.falcons.shell_falcon:ShellFalcon"
-bash_falcon = "courier.plugins.falcons.bash_falcon:BashFalcon"
-python_falcon = "courier.plugins.falcons.python_falcon:PythonFalcon"
+[tool.poetry.plugins."courier.payloads"]
+shell_payload = "courier.plugins.payloads.shell_payload:ShellPayload"
+bash_payload = "courier.plugins.payloads.bash_payload:BashPayload"
+python_payload = "courier.plugins.payloads.python_payload:PythonPayload"
 
 [tool.poetry.urls]
 Homepage = "https://github.com/biosafetylvl5/courier"
@@ -290,7 +282,9 @@ ignore_missing_imports = true
 pythonpath = ["."]
 testpaths = ["tests"]
 python_files = "test_*.py"
-norecursedirs = ["xarray_utils"]
+# Setting this replaces pytest's defaults, so re-add the standard ignores
+# (notably ``.*`` for ``.hypothesis`` and VCS dirs) alongside the project's.
+norecursedirs = ["xarray_utils", ".*", "*.egg", "build", "dist", "node_modules", "venv"]
 # Integration tests are deselected by default: they take minutes and need real
 # scheduling, so leaving them in the default run means developers stop running
 # tests locally at all. Opt in with `-m integration`, or run everything with
@@ -517,8 +511,6 @@ ban-relative-imports = "all"
 "tests/**/*" = ["S101"]
 # Ignore import violations in __init__.py files
 "__init__.py" = ["F401"]
-# Docstring RST tables exceed line length; cannot be wrapped
-"src/courier/plugins/dispatchers/serial_bash.py" = ["E501"]
 # Metadata configs are data. A filename regex is one atomic token -- wrapping it
 # means editing the pattern, which is how ABI channels 7-10 got dropped once.
 "src/courier/plugins/data_monitor_configs/*.py" = ["E501"]
@@ -559,20 +551,13 @@ filter_and_group = "courier.plugins.job_builders.filter_and_group:FilterAndGroup
 metadata_router = "courier.plugins.job_builders.metadata_router:MetadataRouterBuilder"
 
 [project.entry-points."courier.dispatchers"]
-http_dispatcher = "courier.plugins.dispatchers.http_dispatcher:HttpDispatcher"
-parallel_bash = "courier.plugins.dispatchers.parallel_bash:ParallelBashDispatcher"
-serial_bash = "courier.plugins.dispatchers.serial_bash:SerialBashDispatcher"
+local_dispatcher = "courier.plugins.dispatchers.local_dispatcher:LocalDispatcher"
 slurm_dispatcher = "courier.plugins.dispatchers.slurm_dispatcher:SlurmDispatcher"
 
-[project.entry-points."courier.falconers"]
-local_falconer = "courier.plugins.falconers.local_falconer:LocalFalconer"
-slurm_falconer = "courier.plugins.falconers.slurm_falconer:SlurmFalconer"
-
-
-[project.entry-points."courier.falcons"]
-shell_falcon = "courier.plugins.falcons.shell_falcon:ShellFalcon"
-bash_falcon = "courier.plugins.falcons.bash_falcon:BashFalcon"
-python_falcon = "courier.plugins.falcons.python_falcon:PythonFalcon"
+[project.entry-points."courier.payloads"]
+shell_payload = "courier.plugins.payloads.shell_payload:ShellPayload"
+bash_payload = "courier.plugins.payloads.bash_payload:BashPayload"
+python_payload = "courier.plugins.payloads.python_payload:PythonPayload"
 
 [project.entry-points."courier.data_monitor_configs"]
 gk2a_ami = "courier.plugins.data_monitor_configs.gk2a_ami:CONFIG"

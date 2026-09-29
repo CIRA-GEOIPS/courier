@@ -32,12 +32,12 @@ spec:
         config: {files_per_job: 1, targets: [runner-a]}
     - runner-a:
         kind: dispatchers
-        name: serial_bash
-        config: {bash_script: "echo a"}
+        name: local_dispatcher
+        config: {}
     - runner-b:
         kind: dispatchers
-        name: serial_bash
-        config: {bash_script: "echo b"}
+        name: local_dispatcher
+        config: {}
 """
 
 

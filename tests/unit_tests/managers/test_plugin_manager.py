@@ -220,6 +220,27 @@ class TestStartPluginEagerHealth:
         assert "boom" in (info.error_message or "")
 
 
+class TestNonThreadedSubPlugin:
+    """Payloads and other sub-plugins have no run loop of their own."""
+
+    def test_non_threaded_plugin_runs_without_a_thread(self) -> None:
+        config = _make_config()
+        manager = PluginManager(config, parent_service=MagicMock())
+        plugin = _make_plugin("payload-one")
+        plugin.threaded = False
+        plugin.start = MagicMock()
+
+        info = PluginStateInfo(plugin=plugin, threaded=False)
+        manager._state = PluginRunState.RUNNING
+        manager._plugins["payload-one"] = info
+
+        manager._start_plugin(info)
+
+        assert info.thread is None
+        assert info.state == PluginRunState.RUNNING
+        plugin.start.assert_called_once()
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # start() — bulk start with verify (ISSUE 13)
 # ═════════════════════════════════════════════════════════════════════════════
@@ -299,6 +320,23 @@ class TestIsHealthy:
 
         barrier.wait()  # release the thread
         info.thread.join()
+
+    def test_running_non_threaded_plugin_is_healthy(self) -> None:
+        """A running non-threaded plugin (payload) counts toward health."""
+        config = _make_config()
+        manager = PluginManager(config, parent_service=MagicMock())
+
+        p = _make_plugin("p-payload", healthy=True)
+        p.threaded = False
+        clazz = _plugin_cls_for(p)
+        manager.register_plugin(clazz, {}, identifier="p-payload")
+
+        info = manager.get_plugins()["p-payload"]
+        info.state = PluginRunState.RUNNING
+        info.thread = None
+        manager._state = PluginRunState.RUNNING
+
+        assert manager.is_healthy()
 
 
 # ═════════════════════════════════════════════════════════════════════════════

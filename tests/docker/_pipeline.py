@@ -939,19 +939,26 @@ def build_config(
                 config:
                   files_per_job: {files_per_job}
                   targets: [process-files]
-            - process-files:
-                kind: dispatcher
-                name: serial_bash
-                config:
-                  bash_script: |
+                  payload:
+                    test-payload:
+                      kind: payload
+                      name: bash_payload
+                      config:
+                        script: |
         """,
     ).strip()
     body = body.replace(
         "    __SERVICE_CONFIG__",
         textwrap.indent(service_config, " " * 4),
     )
-    indented = textwrap.indent(textwrap.dedent(script).strip(), " " * 12)
-    return f"{body}\n{indented}\n"
+    indented = textwrap.indent(textwrap.dedent(script).strip(), " " * 18)
+    dispatcher = (
+        "    - process-files:\n"
+        "        kind: dispatcher\n"
+        "        name: local_dispatcher\n"
+        "        config: {}\n"
+    )
+    return f"{body}\n{indented}\n{dispatcher}"
 
 
 def sample_value(

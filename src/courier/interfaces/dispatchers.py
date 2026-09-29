@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import contextlib
 import os
+import tempfile
 import threading
 import time
 import traceback
 from collections import OrderedDict
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from socket import gethostname
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
@@ -18,13 +23,15 @@ from courier.constants import (
     PluginRunState,
     job_ready_queue_for,
 )
+from courier.dispatchers._output_scanner import _scan_and_emit_output_files
 from courier.errors import CourierError
-from courier.interfaces.discovery import ClassPluginRegistry
-from courier.interfaces.falcons import DispatcherGroupConfig, Falcon
+from courier.interfaces.discovery import ENTRY_POINT_PREFIX, ClassPluginRegistry
+from courier.interfaces.payloads import (
+    DispatcherGroupConfig,
+    Payload,
+    payloads,
+)
 from courier.interfaces.plugin_protocol import ServicePlugin
-
-if TYPE_CHECKING:
-    from courier.interfaces.falconers import Falconer
 from courier.metrics import (
     DISPATCHER_ACTIVE_JOBS,
     DISPATCHER_DEDUPE_SKIPS,
@@ -45,9 +52,9 @@ from courier.tracing import (
     ATTR_PLUGIN_VERSION,
     get_tracer,
 )
-from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
 from courier.utils.decorators import log_execution
+from courier.utils.functional import slugify_for_filename
 from courier.utils.logging import get_logger
 
 _DEDUPE_LRU_SIZE = 1024
@@ -62,12 +69,23 @@ if TYPE_CHECKING:
     import kombu
 
     from courier.service import Service
+    from courier.types.execution_log import ExecutionLog
     from courier.types.file import File
 
 
 # config class for courier init discovery
-class DispatcherConfig(DispatcherGroupConfig): # noqa: D101
+class DispatcherConfig(DispatcherGroupConfig):  # noqa: D101
     pass
+
+
+@dataclass
+class ExecutionPayload:
+    """Command and logging metadata prepared by a dispatcher for execution."""
+
+    command: list[str]
+    file: Path | None
+    log_prefix: str = ""
+    log_file_path: Path | None = None
 
 
 class Dispatcher(ServicePlugin):
@@ -76,6 +94,10 @@ class Dispatcher(ServicePlugin):
     interface: ClassVar[str] = "dispatchers"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "dispatcher"
+
+    #: Payload representation classes this dispatcher can execute. A payload
+    #: lowered to any of these is compatible; the most specific match wins.
+    representations: ClassVar[list[type[Payload]]] = []
 
     def __init__(
         self,
@@ -114,19 +136,29 @@ class Dispatcher(ServicePlugin):
         self._jobs_consumed = DISPATCHER_JOBS_CONSUMED
         self._dispatch_latency = DISPATCHER_DISPATCH_LATENCY_SECONDS
         self._dedupe_skips = DISPATCHER_DEDUPE_SKIPS
-        self.active_job_timestamps = {}  # type: dict[str, float]
+        self._metric_labels = {
+            "dispatcher_name": self.name,
+            "dispatcher_identifier": self.identifier,
+        }
+        self.active_job_timestamps: dict[str, float] = {}
         # Bounded LRU of recently-seen job identifiers. Catches same-replica
         # duplicates; cross-replica strict dedupe is opt-in via state sync.
         # Thread-safe: only touched by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[str, None] = OrderedDict()
-        self.falconer: Falconer
+        # Cache of payload name -> payload class, and of already-validated
+        # (payload name, toolchain) pairs, so a per-job payload does not pay
+        # registry lookup and toolchain probing on every dispatch.
+        self._payload_classes: dict[str, type[Payload]] = {}
+        self._validated_toolchains: set[
+            tuple[str, tuple[str, ...], tuple[str, ...], str | None, str | None]
+        ] = set()
         # Connection this dispatcher uses for its queue-depth probe. Opened
         # lazily by the consumer thread and closed by it, so it is owned by
         # exactly one thread for its whole life; see _emit_queue_depth.
         self._depth_connection: kombu.Connection | None = None
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
-        """Yield ExecutionLogs."""
+        """Resolve the job's payload, prepare its environment, and execute it."""
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "dispatcher.execute_job",
@@ -135,87 +167,204 @@ class Dispatcher(ServicePlugin):
                 ATTR_CORRELATION_ID: job.correlation_id,
             },
         ):
-            self._logger.debug(f"Yielding execution log for job: {job}")
-            return [
-                ExecutionLog(
-                    return_code=None,
-                    stdout=None,
-                    stderr=None,
-                    hostname=None,
-                ),
-            ]
+            payload = self._resolve_job_payload(job)
+            try:
+                env = self.initialize_environment(job, payload)
+            except Exception as e:
+                raise CourierError(
+                    f"Failed to initialize environment for dispatcher "
+                    f"{self.identifier}",
+                    e,
+                ) from e
+            try:
+                self._logger.debug(f"Yielding execution log for job: {job}")
+                logs = self._execute_job(job, payload, env)
+                self._emit_output_files(logs)
+                return logs
+            finally:
+                if env.file is not None:
+                    env.file.unlink(missing_ok=True)
 
-    def _get_compatible_partners(
-        self,
-        falconer: Falconer,
-        falcon: Falcon,
-    ) -> list[type[Falcon]]:
-        """Return the most specific intersection between falconer and falcon.
+    def _emit_output_files(self, logs: list[ExecutionLog]) -> None:
+        """Re-emit output files named in the execution logs into the pipeline.
 
-        Keeps original form.
-
-        Parameters
-        ----------
-        falconer : Falconer
-            The falconer whose supported representations are considered.
-        falcon : Falcon
-            The falcon whose representation hierarchy is inspected.
-
-        Returns
-        -------
-        list[type[Falcon]]
-            Falcon representation classes supported by the falconer, preserving
-            the order of the falcon's representation hierarchy.
+        Chained dispatcher-to-builder workflows depend on this: a script prints
+        the paths it produced, the patterns configured under ``output_files``
+        match them, and each discovered ``File`` is published to the file-found
+        exchange via :meth:`emit_file`.
         """
-        return [
-            x
-            for x in falcon.get_representation_hierarchy()
-            if x in falconer.representations
-        ]
+        if not self.config.output_files:
+            return
+        stdout = "\n".join(log.stdout or "" for log in logs)
+        stderr = "\n".join(log.stderr or "" for log in logs)
+        _scan_and_emit_output_files(
+            stdout=stdout,
+            stderr=stderr,
+            patterns=self.config.output_files,
+            scan_stderr=self.config.scan_stderr,
+            hostname=gethostname(),
+            emit_file=self.emit_file,
+        )
 
-    def ordain_bird_marriage(self, falconer: Falconer, falcon: Falcon) -> Falcon:
-        """Ordain the marriage between the falconer and the falcon.
+    def _execute_job(
+        self,
+        job: Job,
+        payload: Payload,
+        env: ExecutionPayload,
+    ) -> list[ExecutionLog]:
+        """Execute *env*'s command through *payload*.
 
-        Then, keep track of the falconer.
+        The default implementation runs the command on this host.  Dispatchers
+        that manage a scheduler (e.g. Slurm) override this.
+        """
+        return payload.get_payload_from_job(
+            env.command,
+            job,
+            log_prefix=env.log_prefix,
+            log_file_path=env.log_file_path,
+        )
 
-        Parameters
-        ----------
-        falconer : Falconer
-            The falconer to pair with the falcon.
-        falcon : Falcon
-            The falcon whose compatible representation should be selected.
-
-        Returns
-        -------
-        Falcon
-            The selected Falcon representation configured for the dispatcher and
-            paired with the falconer.
+    def _resolve_job_payload(self, job: Job) -> Payload:
+        """Hydrate and validate the payload a job carries.
 
         Raises
         ------
-        ValueError
-            If the falcon and falconer have no compatible representations.
-
+        CourierError
+            If the job carries no payload, no representation of it is
+            compatible with this dispatcher, or its toolchain is unavailable.
         """
-        compatible_partners = self._get_compatible_partners(falconer, falcon)
-        if not compatible_partners:
-            raise ValueError(
-                "The falcon and falconer do not pair.",
+        spec = job.payload
+        if spec is None:
+            raise CourierError(
+                f"Job {job.identifier!r} carries no payload; nothing to execute",
             )
-        best_match = compatible_partners[-1].from_falcon(falcon)
+        payload_cls = self._payload_class(spec.name)
+        compatible = self.compatible_representation(payload_cls)
+        if compatible is None:
+            raise CourierError(
+                f"Dispatcher {self.identifier!r} cannot execute payload "
+                f"{spec.name!r}: no compatible representation "
+                f"(supports {self.supported_representations})",
+            )
+        payload = compatible.from_job_spec(spec, self.parent_service, self.config)
+        self._validate_payload_toolchain(payload)
+        return payload
 
-        if type(best_match) is not type(falcon):
-            self._logger.info(f"{falconer.name} casted to {best_match.name}")
-        # configure each of the pair to fit each other's configuration neatly
-        # marry the pair and keep track of the falconer
-        best_match.base_config = self.config
-        falconer.base_config = self.config
+    def compatible_representation(
+        self,
+        payload_cls: type[Payload],
+    ) -> type[Payload] | None:
+        """Return the most specific representation *payload_cls* shares with us."""
+        return next(
+            (
+                candidate
+                for candidate in reversed(payload_cls.get_representation_hierarchy())
+                if candidate in self.representations
+            ),
+            None,
+        )
 
-        falconer.falcon = best_match
-        self.falconer = falconer
+    @property
+    def supported_representations(self) -> str:
+        """Human-readable list of the representations this dispatcher accepts."""
+        return ", ".join(c.__name__ for c in self.representations) or "(none)"
 
-        # be free
-        return best_match
+    def _payload_class(self, name: str) -> type[Payload]:
+        """Return (and cache) the payload class declared under *name*."""
+        if name not in self._payload_classes:
+            self._payload_classes[name] = payloads.get_plugin(name)
+        return self._payload_classes[name]
+
+    def _validate_payload_toolchain(self, payload: Payload) -> None:
+        """Validate a payload's toolchain on this host, once per configuration.
+
+        Toolchain checks must run where the payload executes, which is now the
+        dispatcher rather than a startup-time pairing.  Results are cached by
+        (payload name, toolchain) so repeated jobs do not re-probe.
+        """
+        key = (
+            payload.name,
+            tuple(payload.config.toolchain),
+            tuple(payload.config.toolchain_prepend),
+            payload.config.binary,
+            payload.config.default_binary,
+        )
+        if key in self._validated_toolchains:
+            return
+        for value in payload.config.toolchain:
+            result = payload.validate_toolchain_arg(value)
+            if not result:
+                raise CourierError(
+                    f"Toolchain validation for {value!r} on dispatcher "
+                    f"{self.identifier!r} produced no result",
+                )
+            if result[0].return_code != 0:
+                raise CourierError(
+                    f"Toolchain validation failed for {value!r} on dispatcher "
+                    f"{self.identifier!r}",
+                    result[0].stderr,
+                )
+        self._validated_toolchains.add(key)
+
+    def _dispatcher_context(self, script_path: Path | None) -> dict[str, Any]:
+        """Context exposed to the payload template during pass two."""
+        return {
+            "dispatcher": {
+                "name": self.name,
+                "identifier": self.identifier,
+                "config": self.config.model_dump(),
+            },
+            "script_path": str(script_path) if script_path is not None else "",
+            "hostname": gethostname(),
+        }
+
+    def initialize_environment(
+        self,
+        job: Job,
+        payload: Payload,
+    ) -> ExecutionPayload:
+        """Prepare the script, command, and logging metadata for *job*.
+
+        This generic implementation runs a payload on the local host.  The
+        builder's deferred markers are resolved here, after the script path is
+        known, so the payload can fill in dispatcher-specific details.
+        """
+        script_path: Path | None = None
+        context = self._dispatcher_context(None)
+        if job.payload is not None and job.payload.script is not None:
+            fd, temp_name = tempfile.mkstemp(
+                suffix=job.payload.suffix,
+                dir="/tmp/",
+            )
+            os.close(fd)
+            script_path = Path(temp_name)
+            context = self._dispatcher_context(script_path)
+            resolved = payload.resolve_deferred_expressions(
+                job.payload.script,
+                job,
+                context,
+                defer_nonce=job.payload.defer_nonce,
+            )
+            script_path = payload.write_script(resolved, script_path)
+        call = payload.generate_calling_method()
+        command = call + [
+            payload.render_script(job, part, context)
+            for part in payload.declare_command(script_path)
+        ]
+        log_prefix = f"[job: {job.identifier}]" if self.config.log_to_logger else ""
+        log_file_path: Path | None = None
+        if self.config.log_to_file:
+            timestamp = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+            safe_id = slugify_for_filename(job.identifier)
+            log_file_path = (
+                Path(self.config.log_dir) / f"dispatch_{safe_id}_{timestamp}.log"
+            )
+        return ExecutionPayload(
+            command=command,
+            file=script_path,
+            log_prefix=log_prefix,
+            log_file_path=log_file_path,
+        )
 
     def emit(self, execution_log: ExecutionLog) -> None:
         """Emit execution log to parent service."""
@@ -356,117 +505,104 @@ class Dispatcher(ServicePlugin):
     def handle_incoming_jobs(self) -> None:
         """Execute given a steady stream of jobs, log and execute them."""
         tracer = get_tracer(__name__)
-        while not self._stop_event.is_set():
-            for job_string, parent_ctx in self.parent_service.consume(
-                self.incoming_queue,
-                stop_event=self._stop_event,
-                on_subscribed=self._subscribed.set,
+        for job_string, parent_ctx in self.parent_service.consume(
+            self.incoming_queue,
+            stop_event=self._stop_event,
+            on_subscribed=self._subscribed.set,
+        ):
+            with contextlib.suppress(Exception):
+                self._emit_queue_depth()
+            job = Job.from_string(str(job_string))
+            with tracer.start_as_current_span(
+                "dispatcher.dispatch_job",
+                context=parent_ctx,
+                attributes={
+                    ATTR_JOB_ID: job.identifier,
+                    ATTR_CORRELATION_ID: job.correlation_id,
+                },
             ):
-                with contextlib.suppress(Exception):
-                    self._emit_queue_depth()
-                job = Job.from_string(str(job_string))
-                with tracer.start_as_current_span(
-                    "dispatcher.dispatch_job",
-                    context=parent_ctx,
-                    attributes={
-                        ATTR_JOB_ID: job.identifier,
-                        ATTR_CORRELATION_ID: job.correlation_id,
-                    },
-                ):
-                    self._logger.debug(
-                        f"Received Job: {job}",
+                self._logger.debug(
+                    f"Received Job: {job}",
+                    extra={"correlation_id": job.correlation_id},
+                )
+                self._jobs_consumed.labels(
+                    dispatcher_identifier=self.identifier,
+                ).inc()
+                if job.emit_time is not None:
+                    self._dispatch_latency.labels(
+                        dispatcher_identifier=self.identifier,
+                    ).observe(time.time() - job.emit_time)
+
+                if self._recently_seen(job.identifier):
+                    self._dedupe_skips.labels(
+                        dispatcher_identifier=self.identifier,
+                    ).inc()
+                    self._logger.info(
+                        f"Duplicate job {job.identifier}; skipping",
                         extra={"correlation_id": job.correlation_id},
                     )
-                    self._jobs_consumed.labels(
-                        dispatcher_identifier=self.identifier,
-                    ).inc()
-                    if job.emit_time is not None:
-                        self._dispatch_latency.labels(
-                            dispatcher_identifier=self.identifier,
-                        ).observe(time.time() - job.emit_time)
+                    continue
 
-                    if self._recently_seen(job.identifier):
-                        self._dedupe_skips.labels(
-                            dispatcher_identifier=self.identifier,
-                        ).inc()
-                        self._logger.info(
-                            f"Duplicate job {job.identifier}; skipping",
-                            extra={"correlation_id": job.correlation_id},
-                        )
-                        continue
+                start_time = time.time()
+                job_id = job.identifier
+                self.active_job_timestamps[job_id] = start_time
+                self._active_jobs.labels(**self._metric_labels).inc()
+                self._queue_wait_duration.labels(**self._metric_labels).observe(
+                    start_time - job.last_modified,
+                )
 
-                    start_time = time.time()
-                    job_id = job.identifier
-                    self.active_job_timestamps[job_id] = start_time
-                    self._active_jobs.labels(
-                        dispatcher_name=self.name,
-                        dispatcher_identifier=self.identifier,
-                    ).inc()
-                    self._queue_wait_duration.labels(
-                        dispatcher_name=self.name,
-                        dispatcher_identifier=self.identifier,
-                    ).observe(start_time - job.last_modified)
-
-                    try:
-                        execution_logs = self.falconer.cast_off_falcon(job)
-                        get_current_span().add_event(
-                            "job.executed",
+                try:
+                    execution_logs = self.get_execution_log(job)
+                    get_current_span().add_event(
+                        "job.executed",
+                        attributes={
+                            ATTR_JOB_ID: job.identifier,
+                            ATTR_CORRELATION_ID: job.correlation_id,
+                        },
+                    )
+                    for ex_log in execution_logs:
+                        with tracer.start_as_current_span(
+                            "dispatcher.emit_execution_log",
                             attributes={
-                                ATTR_JOB_ID: job.identifier,
-                                ATTR_CORRELATION_ID: job.correlation_id,
+                                ATTR_EXECUTION_RETURN_CODE: (
+                                    str(ex_log.return_code)
+                                    if ex_log.return_code is not None
+                                    else ""
+                                ),
                             },
-                        )
-                        for ex_log in execution_logs:
-                            with tracer.start_as_current_span(
-                                "dispatcher.emit_execution_log",
-                                attributes={
-                                    ATTR_EXECUTION_RETURN_CODE: (
-                                        str(ex_log.return_code)
-                                        if ex_log.return_code is not None
-                                        else ""
-                                    ),
-                                },
-                            ):
-                                self.emit(ex_log)
-                            self._execution_logs_emitted.labels(
-                                dispatcher_name=self.name,
-                                dispatcher_identifier=self.identifier,
-                            ).inc()
-
-                        self._jobs_processed.labels(
-                            status="success",
-                            dispatcher_name=self.name,
-                            dispatcher_identifier=self.identifier,
+                        ):
+                            self.emit(ex_log)
+                        self._execution_logs_emitted.labels(
+                            **self._metric_labels,
                         ).inc()
 
-                    except CourierError as exc:
-                        self._logger.exception(
-                            f"Error processing job {job_id}",
-                            extra={"correlation_id": job.correlation_id},
-                        )
-                        span = get_current_span()
-                        span.set_status(Status(StatusCode.ERROR))
-                        span.record_exception(exc)
-                        self._jobs_processed.labels(
-                            status="failure",
-                            dispatcher_name=self.name,
-                            dispatcher_identifier=self.identifier,
-                        ).inc()
+                    self._jobs_processed.labels(
+                        status="success",
+                        **self._metric_labels,
+                    ).inc()
 
-                    finally:
-                        if job_id in self.active_job_timestamps:
-                            execution_time = (
-                                time.time() - self.active_job_timestamps[job_id]
-                            )
-                            self._job_execution_duration.labels(
-                                dispatcher_name=self.name,
-                                dispatcher_identifier=self.identifier,
-                            ).observe(execution_time)
-                            del self.active_job_timestamps[job_id]
-                            self._active_jobs.labels(
-                                dispatcher_name=self.name,
-                                dispatcher_identifier=self.identifier,
-                            ).dec()
+                except CourierError as exc:
+                    self._logger.exception(
+                        f"Error processing job {job_id}",
+                        extra={"correlation_id": job.correlation_id},
+                    )
+                    span = get_current_span()
+                    span.set_status(Status(StatusCode.ERROR))
+                    span.record_exception(exc)
+                    self._jobs_processed.labels(
+                        status="failure",
+                        **self._metric_labels,
+                    ).inc()
+
+                finally:
+                    execution_time = time.time() - self.active_job_timestamps.pop(
+                        job_id,
+                    )
+                    self._job_execution_duration.labels(
+                        **self._metric_labels,
+                    ).observe(execution_time)
+                    self._active_jobs.labels(**self._metric_labels).dec()
+        self._logger.debug("Dispatcher %s consume loop exited", self.name)
 
     @log_execution
     def start(self) -> None:
@@ -486,7 +622,6 @@ class Dispatcher(ServicePlugin):
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()
-        return
 
     @log_execution
     def stop(self) -> None:
@@ -535,7 +670,6 @@ class Dispatcher(ServicePlugin):
 
 dispatchers = ClassPluginRegistry(
     name="dispatchers",
-    group="",
+    group=f"{ENTRY_POINT_PREFIX}.dispatchers",
     expected_base=Dispatcher,
-    nested_values=["falconer", "falcon"],
 )

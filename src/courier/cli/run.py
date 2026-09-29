@@ -15,7 +15,6 @@ import typer
 
 from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import (
-    NECESSARY_REGISTRIES,
     PLUGIN_REGISTRIES,
     RUN_KINDS,
     normalize_kind,
@@ -53,55 +52,42 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     return out
 
 
-def get_registered_plugin(plugin_registrations, entry):
-    """Return registered plugin from the plugin registry or necessary registry."""
+def get_registered_plugin(plugin_registrations, entry, *, nested: bool = False):
+    """Return registered plugin from the plugin registry.
+
+    ``nested`` marks a sub-plugin reached via another plugin's ``nested_values``
+    (e.g. a payload under a job builder).  Those are not runnable steps of their
+    own, so they bypass the :data:`RUN_KINDS` gate that applies to ``spec.run``.
+    """
     kind = normalize_kind(entry.spec.kind)
-    if kind not in RUN_KINDS:
+    if not nested and kind not in RUN_KINDS:
         raise ValueError(
             f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
             f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
         )
 
     cfg = entry.spec.config or {}
-    missing = [
-        k
-        for k in (PLUGIN_REGISTRIES | NECESSARY_REGISTRIES)[kind].nested_values
-        if k not in cfg
-    ]
+    missing = [k for k in PLUGIN_REGISTRIES[kind].nested_values if k not in cfg]
     if missing:
         raise InvalidPluginConfigError(
             f"{entry.identifier!r} is missing required config "
             f"section(s): {', '.join(missing)}",
         )
-    if kind in PLUGIN_REGISTRIES:
-        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
-        plugin_config: dict[str, Any] = (
-            entry.spec.config if entry.spec.config is not None else {}
-        )
+    plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
 
-        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
+    plugin_registrations.append((plugin_class, cfg, entry.identifier))
 
-        for k in PLUGIN_REGISTRIES[kind].nested_values:
-            get_registered_plugin(
-                plugin_registrations,
-                MicroserviceModel.model_validate(entry.spec.config[k]),
+    for k in PLUGIN_REGISTRIES[kind].nested_values:
+        nested_spec = cfg[k]
+        if not isinstance(nested_spec, dict):
+            raise InvalidPluginConfigError(
+                f"{entry.identifier!r}: required config section {k!r} must be "
+                f"a mapping describing the sub-plugin",
             )
-    elif kind in NECESSARY_REGISTRIES:
-        plugin_class = NECESSARY_REGISTRIES[kind].expected_base
-        plugin_config: dict[str, Any] = (
-            entry.spec.config if entry.spec.config is not None else {}
-        )
-
-        plugin_registrations.append((plugin_class, plugin_config, entry.identifier))
-
-        for k in NECESSARY_REGISTRIES[kind].nested_values:
-            get_registered_plugin(
-                plugin_registrations,
-                MicroserviceModel.model_validate(entry.spec.config[k]),
-            )
-    else:
-        raise ValueError(
-            f"{entry.identifier!r}: {entry.spec.kind!r} is not valid",
+        get_registered_plugin(
+            plugin_registrations,
+            MicroserviceModel.model_validate(nested_spec),
+            nested=True,
         )
 
 
@@ -230,27 +216,6 @@ def run_service(
         and (only_set is None or e.identifier in only_set)
     }
 
-    # list[tuple[str, str, str]] of the dispatcher, its falconer, and its falcon.
-    service._falconer_map = []
-    for e in config.spec.run:
-        if normalize_kind(e.spec.kind) != "dispatchers":
-            continue
-
-        if only_set is not None and e.identifier not in only_set:
-            continue
-
-        falconer_id = MicroserviceModel.model_validate(
-            e.spec.config["falconer"],
-        ).identifier
-        falcon_id = MicroserviceModel.model_validate(e.spec.config["falcon"]).identifier
-
-        service._falconer_map.append(
-            (
-                e.identifier,
-                falconer_id,
-                falcon_id,
-            ),
-        )
     # Every job builder in the YAML, regardless of --only: each needs a durable
     # FilesFound-<builder> queue declared by this container, so a producer never
     # publishes into a fanout exchange with nothing bound to it (issue #44).
@@ -271,11 +236,7 @@ def run_service(
     service.configure_routing(
         dispatcher_identifiers=dispatcher_ids,
         builder_targets=builder_targets,
-        allow_implicit_target=getattr(
-            config.spec,
-            "allow_implicit_target",
-            True,
-        ),
+        allow_implicit_target=config.spec.allow_implicit_target,
         builder_identifiers=builder_identifiers,
     )
     service.start()

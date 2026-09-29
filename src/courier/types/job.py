@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 from courier.types.file import File, FrozenFile
+from courier.types.payload import PayloadSpec
 
 _OVERFLOW_SEPARATOR = "_overflow_"
 
@@ -41,7 +42,7 @@ class Job:
         construction when absent so every Job has a stable ID for log
         correlation across the data-monitor → builder → dispatcher
         pipeline.
-    emit_time : float or None, optional
+        emit_time : float or None, optional
         Unix timestamp stamped by the job builder at emit. Used by the
         dispatcher to compute end-to-end routing latency. ``None`` until
         the builder has published the job.
@@ -51,6 +52,11 @@ class Job:
             queue name — but preserved round-trip for debugging and
             provenance. Stored as a tuple so the field remains effectively
             immutable despite the surrounding class being mutable.
+        payload : PayloadSpec or None, optional
+            Serialized description of what the job should execute, attached
+            by the owning job builder at emit. The dispatcher hydrates a
+            payload plugin from it at execution time. ``None`` until the
+            builder attaches it.
 
     Notes
     -----
@@ -71,6 +77,7 @@ class Job:
         correlation_id: str | None = None,
         emit_time: float | None = None,
         targets: tuple[str, ...] | None = None,
+        payload: PayloadSpec | None = None,
     ) -> None:
         self.name = name
         self.identifier = identifier
@@ -85,6 +92,7 @@ class Job:
         self.correlation_id = correlation_id or str(uuid.uuid4())
         self.emit_time = emit_time
         self.targets: tuple[str, ...] = tuple(targets) if targets else ()
+        self.payload = payload
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
@@ -107,6 +115,7 @@ class Job:
                 "correlation_id": self.correlation_id,
                 "emit_time": self.emit_time,
                 "targets": list(self.targets),
+                "payload": self.payload,
             },
             default=_json_default,
         )
@@ -136,6 +145,11 @@ class Job:
             correlation_id=data.get("correlation_id"),
             emit_time=data.get("emit_time"),
             targets=tuple(data.get("targets") or ()),
+            payload=(
+                PayloadSpec.model_validate(data["payload"])
+                if data.get("payload")
+                else None
+            ),
         )
 
     def ready(self) -> bool:

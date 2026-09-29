@@ -231,16 +231,21 @@ def _queue_driven_config(
                     instrument: "{SENSOR}"
                     product: "{PRODUCT}"
                   targets: [process-files]
+                  payload:
+                    ledger-payload:
+                      kind: payload
+                      name: bash_payload
+                      config:
+                        script: |
+                          printf '%s %s %s\\n' \\
+                            '{{{{ files[0].timestamp }}}}' \\
+                            '{{{{ files[0].hostname }}}}' \\
+                            '{{{{ files[0].file }}}}' >> {LEDGER}
+                          cp {{{{ files[0].file }}}} /data/out/
             - process-files:
                 kind: dispatcher
-                name: serial_bash
-                config:
-                  bash_script: |
-                    printf '%s %s %s\\n' \\
-                      '{{{{ files[0].timestamp }}}}' \\
-                      '{{{{ files[0].hostname }}}}' \\
-                      '{{{{ files[0].file }}}}' >> {LEDGER}
-                    cp {{{{ files[0].file }}}} /data/out/
+                name: local_dispatcher
+                config: {{}}
         """,
     ).lstrip()
 

@@ -21,22 +21,13 @@ from courier.cli.init_helpers import (
     get_field_metadata,
     get_plugin_description,
 )
-from courier.cli.plugins import normalize_kind
-from courier.interfaces import (
-    data_monitors,
-    dispatchers,
-    falconers,
-    falcons,
-    job_builders,
-)
+from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from pydantic import BaseModel
-
-    from courier.interfaces.discovery import ClassPluginRegistry
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -71,24 +62,12 @@ class PluginSelection:
 # Kind mapping — interface name (plural) → (display label, singular YAML kind)
 # ---------------------------------------------------------------------------
 
+#: Selectable kinds and their display metadata, derived from the shared kind
+#: table in :mod:`courier.cli.plugins` so the two CLIs cannot drift.
 KIND_MAPPING: dict[str, tuple[str, str]] = {
-    "data_monitors": ("Data Monitor", "data_monitor"),
-    "job_builders": ("Job Builder", "job_builder"),
-    "dispatchers": ("Dispatcher", "dispatcher"),
-    "falconers": ("Falconer", "falconer"),
-    "falcons": ("Falcon", "falcon"),
-}
-
-PLUGIN_REGISTRIES: dict[str, ClassPluginRegistry] = {
-    "data_monitors": data_monitors,
-    "job_builders": job_builders,
-    "falconers": falconers,
-    "falcons": falcons,
-}
-
-# plugins that are necessary to run other plugins - not configurable past its base class
-NECESSARY_REGISTRIES: dict[str, ClassPluginRegistry] = {
-    "dispatchers": dispatchers,
+    key: (label, singular)
+    for key, (label, singular, _color) in KIND_INFO.items()
+    if singular is not None
 }
 
 # Order matters: Data Monitor → Job Builder → Dispatcher
@@ -113,6 +92,17 @@ def _make_identifier(yaml_kind: str, plugin_name: str) -> str:
     sanitized = sanitized[:63]
     sanitized = sanitized.rstrip("-")
     return sanitized
+
+
+def _unique_identifier(sel: PluginSelection, seen: Counter[str]) -> str:
+    """Return a DNS-safe, run-unique identifier for *sel*.
+
+    Collisions on the base identifier get a ``-N`` suffix.  Both the preview
+    and the written config must number identically, so they share this.
+    """
+    base_id = _make_identifier(sel.yaml_kind, sel.plugin_name)
+    seen[base_id] += 1
+    return base_id if seen[base_id] == 1 else f"{base_id}-{seen[base_id]}"
 
 
 def _choice_range(count: int) -> str:
@@ -351,7 +341,7 @@ def prompt_plugin_config(
 # ---------------------------------------------------------------------------
 
 
-def prompt_category( # noqa: PLR0915, PLR0912
+def prompt_category(  # noqa: PLR0912, PLR0915
     kind_name: str,
     registry: Any,
     console: Console,
@@ -390,24 +380,13 @@ def prompt_category( # noqa: PLR0915, PLR0912
     nested_registries = []
     for nested_name in registry.nested_values:
         name = normalize_kind(nested_name)
-        if name in PLUGIN_REGISTRIES:
-            nested_registries.append((name, PLUGIN_REGISTRIES[name]))
-        elif name in NECESSARY_REGISTRIES:
-            nested_registries.append((name, NECESSARY_REGISTRIES[name]))
-        else:
+        if name not in PLUGIN_REGISTRIES:
             raise ValueError(
                 f"Invalid kind: {name}",
             )
+        nested_registries.append((name, PLUGIN_REGISTRIES[name]))
 
-    if kind_name in PLUGIN_REGISTRIES:
-        kind_name = normalize_kind(kind_name)
-        plugins = list(registry.get_plugins())
-    elif kind_name in NECESSARY_REGISTRIES:
-        plugins = [registry.expected_base]
-    else:
-        raise ValueError(
-            f"Invalid kind: {kind_name}",
-        )
+    plugins = list(registry.get_plugins())
     if not plugins:
         console.print(f"  [dim]No {display_label.lower()} plugins found.[/dim]")
         return []
@@ -469,14 +448,21 @@ def prompt_category( # noqa: PLR0915, PLR0912
             config_values = prompt_plugin_config(config_model, console)
 
         nested_selections = []
-        for nested_regitry_name, nested_registry in nested_registries:
-            nested_selections.extend(
-                prompt_category(
-                    nested_regitry_name,
+        parent_is_builder = yaml_kind == "job_builder"
+        for nested_registry_name, nested_registry in nested_registries:
+            required = parent_is_builder and nested_registry_name == "payloads"
+            while True:
+                picked = prompt_category(
+                    nested_registry_name,
                     nested_registry,
                     console,
-                ),
-            )
+                )
+                if picked or not required:
+                    nested_selections.extend(picked)
+                    break
+                console.print(
+                    "  [red]A job builder requires a payload.[/red]",
+                )
         selections.append(
             PluginSelection(
                 plugin_class=matched,
@@ -522,13 +508,7 @@ def show_preview(selections: list[PluginSelection], console: Console) -> None:
 
     seen_ids: Counter[str] = Counter()
     for sel in selections:
-        base_id = _make_identifier(sel.yaml_kind, sel.plugin_name)
-        seen_ids[base_id] += 1
-
-        if seen_ids[base_id] > 1:
-            identifier = f"{base_id}-{seen_ids[base_id]}"
-        else:
-            identifier = base_id
+        identifier = _unique_identifier(sel, seen_ids)
 
         if sel.config_values:
             config_summary = ", ".join(sel.config_values.keys())
@@ -580,13 +560,7 @@ def build_service_config(
     seen_ids: Counter[str] = Counter()
 
     def get_run_entry(sel):
-        base_id = _make_identifier(sel.yaml_kind, sel.plugin_name)
-        seen_ids[base_id] += 1
-
-        if seen_ids[base_id] > 1:
-            identifier = f"{base_id}-{seen_ids[base_id]}"
-        else:
-            identifier = base_id
+        identifier = _unique_identifier(sel, seen_ids)
 
         spec: dict[str, Any] = {
             "kind": sel.yaml_kind,
@@ -598,8 +572,16 @@ def build_service_config(
         if sel.config_values:
             config.update(sel.config_values)
 
+        payload_nested = 0
         for nested_sel in sel.nested_values:
+            payload_nested += nested_sel.yaml_kind == "payload"
             config[nested_sel.yaml_kind] = get_run_entry(nested_sel)
+
+        if sel.yaml_kind == "job_builder" and payload_nested != 1:
+            raise ValueError(
+                f"Job builder {sel.plugin_name!r} must nest exactly one "
+                f"payload; got {payload_nested}.",
+            )
 
         if config:
             spec["config"] = config
@@ -734,11 +716,7 @@ def init(
     all_selections: list[PluginSelection] = []
 
     for kind_name in CATEGORY_ORDER:
-        registry = (
-            PLUGIN_REGISTRIES[kind_name]
-            if kind_name in PLUGIN_REGISTRIES
-            else NECESSARY_REGISTRIES[kind_name]
-        )
+        registry = PLUGIN_REGISTRIES[kind_name]
         category_selections = prompt_category(kind_name, registry, console)
         all_selections.extend(category_selections)
 
@@ -757,9 +735,8 @@ def init(
         raise typer.Exit(0)
 
     # Step 6 — Build & validate
-    config_dict = build_service_config(metadata, all_selections)
-
     try:
+        config_dict = build_service_config(metadata, all_selections)
         config = validate_config(config_dict)
     except Exception as e:
         console.print(f"\n[red]Validation Error:[/red] {e}")

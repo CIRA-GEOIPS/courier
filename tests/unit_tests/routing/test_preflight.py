@@ -49,7 +49,6 @@ def test_implicit_routing_resolves_to_sole_dispatcher(
         builder_targets={"builder": ()},
         allow_implicit_target=True,
     )
-    svc._falconer_map = []
     # Courier loggers don't propagate to root; attach caplog's handler to the
     # actual service logger instance.
     logger = svc._logger.logger  # underlying Logger behind the ContextAdapter
@@ -144,3 +143,76 @@ def test_builder_identifiers_backfilled_from_builder_targets() -> None:
 
     assert "builder" in svc._builder_identifiers  # noqa: SLF001
     assert "t-FilesFound-builder" in svc._broker_manager._queues  # noqa: SLF001
+
+
+# ── builder payload binding and compatibility ───────────────────────────────
+
+
+def _register_payload_builder(svc: Service) -> None:
+    from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
+    from courier.plugins.payloads.bash_payload import BashPayload
+
+    svc.register_plugin(BashPayload, {"script": "echo {{ files[0].file }}"}, identifier="p1")
+    svc.register_plugin(
+        DummyJobBuilder,
+        {
+            "payload": {
+                "p1": {
+                    "kind": "payload",
+                    "name": "bash_payload",
+                    "config": {"script": "echo {{ files[0].file }}"},
+                },
+            },
+        },
+        identifier="b1",
+    )
+
+
+def test_builder_payload_binding_resolves_singleton_form() -> None:
+    """The ``payload: {id: {...}}`` form binds a functional payload instance.
+
+    Proving the binding is real means rendering through it: the bound payload
+    must turn the job's files into a concrete script, not merely be non-None.
+    """
+    from pathlib import Path
+
+    from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
+    from courier.types.file import File
+    from courier.types.job import Job
+
+    svc = _service()
+    _register_payload_builder(svc)
+    svc.register_plugin(LocalDispatcher, {}, identifier="d1")
+    svc.configure_routing(
+        dispatcher_identifiers=["d1"],
+        builder_targets={"b1": ("d1",)},
+    )
+
+    svc.preflight_check()
+
+    builder = svc._plugin_manager.get_plugins()["b1"].plugin  # noqa: SLF001
+    job = Job("n", "job-1", {}, files=[File(file=Path("/d/a.nc")).freeze()])
+    spec = builder.payload.to_job_spec(job, builder=builder)
+
+    assert spec.script == "echo /d/a.nc"
+    assert spec.identifier == "p1"
+
+
+def test_incompatible_payload_fails_preflight() -> None:
+    """A target dispatcher that cannot run the payload's representation fails."""
+    from courier.interfaces.dispatchers import Dispatcher
+
+    class _EmptyDispatcher(Dispatcher):
+        name = "empty_dispatcher"
+        representations: list = []
+
+    svc = _service()
+    _register_payload_builder(svc)
+    svc.register_plugin(_EmptyDispatcher, {}, identifier="d1")
+    svc.configure_routing(
+        dispatcher_identifiers=["d1"],
+        builder_targets={"b1": ("d1",)},
+    )
+
+    with pytest.raises(ConfigurationError, match="not compatible"):
+        svc.preflight_check()

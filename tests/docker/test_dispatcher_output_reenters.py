@@ -45,7 +45,7 @@ re-ingesting its own output and rewriting it as ``.stage1.stage1`` until the
 volume fills. Both halves of that defence are asserted, so neither ``filters:``
 block can be deleted without a red test.
 
-``serial_bash``'s ``output_files`` block is left unset on both dispatchers.
+``local_dispatcher``'s ``output_files`` block is left unset on both dispatchers.
 Setting it makes a dispatcher publish its outputs straight back to the fanout
 exchange, bypassing the filesystem relay this module tests; that is the chaining
 the project documents (``sphinx/api-reference/plugins.md``, "Pipeline Feedback
@@ -57,7 +57,7 @@ The documented path is as covered after this module as it was before it.
 ``tests/unit_tests/plugins/test_output_scanner.py`` drives
 ``_scan_and_emit_output_files`` against a mocked ``emit_file`` callback, and the
 ``if self.validated.output_files`` branch that calls it in
-``src/courier/plugins/dispatchers/serial_bash.py`` has never run through a
+``src/courier/interfaces/dispatchers.py`` has never run through a
 broker, a container or a real dispatcher.
 
 Exactly-once across a chain is uncovered too. Both scripts name their output
@@ -207,12 +207,17 @@ def build_chained_config(namespace: str, broker_host: str) -> str:
                   filters:
                     hostname: source-stage
                   targets: [dispatch-source]
+                  payload:
+                    source-payload:
+                      kind: payload
+                      name: bash_payload
+                      config:
+                        script: |
+        __STAGE_ONE__
             - dispatch-source:
                 kind: dispatcher
-                name: serial_bash
-                config:
-                  bash_script: |
-        __STAGE_ONE__
+                name: local_dispatcher
+                config: {{}}
             - watch-relay:
                 kind: data_monitor
                 name: file_system_poller_watchdog
@@ -227,12 +232,17 @@ def build_chained_config(namespace: str, broker_host: str) -> str:
                   filters:
                     hostname: relay-stage
                   targets: [dispatch-relay]
+                  payload:
+                    relay-payload:
+                      kind: payload
+                      name: bash_payload
+                      config:
+                        script: |
+        __STAGE_TWO__
             - dispatch-relay:
                 kind: dispatcher
-                name: serial_bash
-                config:
-                  bash_script: |
-        __STAGE_TWO__
+                name: local_dispatcher
+                config: {{}}
         """,
     ).strip()
     for marker, script in (
@@ -241,7 +251,7 @@ def build_chained_config(namespace: str, broker_host: str) -> str:
     ):
         body = body.replace(
             marker,
-            textwrap.indent(textwrap.dedent(script).strip(), " " * 12),
+            textwrap.indent(textwrap.dedent(script).strip(), " " * 18),
         )
     return f"{body}\n"
 

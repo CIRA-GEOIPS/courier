@@ -53,9 +53,17 @@ spec:
           min_files: 1
           filters:
             source: goes18 # platform lives in `source`; `instrument` is the sensor (abi)
+          targets:
+            - run-bash-command
+          payload:
+            echo-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                binary: echo
+                suffix_args:
+                  - "This is running on {{ files[0].file }}"
     - run-bash-command:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: |
-            echo "This is running on {{ files[0].file }}"
+        name: local_dispatcher
+        config: {}

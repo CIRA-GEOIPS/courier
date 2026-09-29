@@ -304,8 +304,6 @@ def _build_kind_model(
             model.has_metadata_router and kind is PluginKind.JOB_BUILDER
         ),
         has_slurm=model.has_slurm and kind is PluginKind.DISPATCHER,
-        has_http=model.has_http and kind is PluginKind.DISPATCHER,
-        has_parallel_bash=(model.has_parallel_bash and kind is PluginKind.DISPATCHER),
     )
 
 
@@ -397,10 +395,6 @@ def _build_plugin_model(
         ),
         has_slurm=(
             model.has_slurm and is_dp and plugin.plugin_name == "slurm_dispatcher"
-        ),
-        has_http=(model.has_http and is_dp and plugin.plugin_name == "http_dispatcher"),
-        has_parallel_bash=(
-            model.has_parallel_bash and is_dp and plugin.plugin_name == "parallel_bash"
         ),
     )
 
@@ -506,13 +500,13 @@ def _assemble_unified_panels(  # noqa: PLR0913
         templates.extend(build_prometheus_templates(model))
 
     # -- Sub-section header (when applicable) ------------------------------
-    header = build_subsection_header(model, datasource=datasource)
+    header = build_subsection_header(model)
     if header is not None:
         panel_rows.append(header)
 
     # -- Prometheus panels -------------------------------------------------
     if not only_traces and not only_logs:
-        prom_panels = build_prometheus_panels(model, datasource=datasource)
+        prom_panels = build_prometheus_panels(model)
         # After Task 2.1 reordering, panels[0] and panels[1] are always
         # Service Overview and Pipeline Summary (always generated).
         # Per-plugin rows are conditionally appended thereafter.

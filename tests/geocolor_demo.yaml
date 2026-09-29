@@ -38,8 +38,14 @@ spec:
             instrument: abi
             domain: Full-Disk
             product: CLAVR-x
+          targets:
+            - produce-geocolor-from-abi
+          payload:
+            geocolor-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: "python3 nar-procflow-overcast.py \n"
     - produce-geocolor-from-abi:
         kind: dispatcher
-        name: serial_bash
-        config:
-          bash_script: "python3 nar-procflow-overcast.py \n"
+        name: local_dispatcher

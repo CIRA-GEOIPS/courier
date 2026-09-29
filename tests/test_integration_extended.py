@@ -27,7 +27,7 @@ from courier.constants import (
 from courier.errors import UnknownTargetError
 from courier.managers.plugin_manager import PluginStateInfo
 from courier.plugins.data_monitors.cron_glob import CronGlob
-from courier.plugins.dispatchers.serial_bash import SerialBashDispatcher
+from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
 from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupJobBuilder,
@@ -35,6 +35,7 @@ from courier.plugins.job_builders.filter_and_group import (
 from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
 )
+from courier.plugins.payloads.bash_payload import BashPayload
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
@@ -45,6 +46,28 @@ from tests._helpers import poll_until, stays_false
 # ---------------------------------------------------------------------------
 # Helpers (reused pattern from test_integration.py)
 # ---------------------------------------------------------------------------
+
+
+def _register_payload(
+    service: Service,
+    script: str,
+    identifier: str = "payload",
+) -> dict[str, Any]:
+    """Register a BashPayload sub-plugin and return a builder's nested spec.
+
+    Job builders no longer carry a ``bash_script``; each nests a payload
+    sub-plugin and the dispatcher hydrates it from the job spec.
+    """
+    config = {"script": script}
+    service.register_plugin(BashPayload, config, identifier=identifier)
+    return {
+        "identifier": identifier,
+        "spec": {
+            "kind": "payload",
+            "name": "bash_payload",
+            "config": config,
+        },
+    }
 
 
 def _poll_for_file(path: Path, timeout: float = 45.0) -> bool:
@@ -143,7 +166,6 @@ def _prometheus_cleanup(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 @pytest.mark.integration
 def test_multi_builder_multi_dispatcher_explicit_routing(
     tmp_path: Path,
@@ -166,18 +188,30 @@ def test_multi_builder_multi_dispatcher_explicit_routing(
     test_file.write_text("explicit routing payload")
 
     service = Service(_make_service_config())
-    service.register_plugin(DummyJobBuilder, {}, identifier="builder_a")
-    service.register_plugin(DummyJobBuilder, {}, identifier="builder_b")
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_a) + "/"},
-        identifier="runner_a",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "cp {{ files[0].file }} " + str(output_a) + "/",
+                "payload-a",
+            ),
+        },
+        identifier="builder_a",
     )
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_b) + "/"},
-        identifier="runner_b",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "cp {{ files[0].file }} " + str(output_b) + "/",
+                "payload-b",
+            ),
+        },
+        identifier="builder_b",
     )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner_a")
+    service.register_plugin(LocalDispatcher, {}, identifier="runner_b")
 
     service.configure_routing(
         dispatcher_identifiers=["runner_a", "runner_b"],
@@ -210,7 +244,6 @@ def test_multi_builder_multi_dispatcher_explicit_routing(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_single_builder_fan_out_to_multiple_dispatchers(
     tmp_path: Path,
 ) -> None:
@@ -218,30 +251,32 @@ def test_single_builder_fan_out_to_multiple_dispatchers(
 
     A single file is manually published to FILE_FOUND_EXCHANGE after healthy.
     The single builder fans the job out to both ``runner_a`` and ``runner_b``,
-    so the file appears in two output directories.
+    so the file appears in two output directories.  The payload routes on
+    ``dispatcher.identifier``, which exercises the dispatcher's pass-two
+    resolution of a builder-deferred template value end to end.
     """
     input_dir = tmp_path / "input"
     input_dir.mkdir()
-    output_a = tmp_path / "out_a"
-    output_a.mkdir()
-    output_b = tmp_path / "out_b"
-    output_b.mkdir()
 
     test_file = input_dir / "fanout.dat"
     test_file.write_text("fan-out payload")
 
+    script = (
+        "mkdir -p "
+        + str(tmp_path)
+        + "/{{ dispatcher.identifier }} && cp {{ files[0].file }} "
+        + str(tmp_path)
+        + "/{{ dispatcher.identifier }}/"
+    )
+
     service = Service(_make_service_config())
-    service.register_plugin(DummyJobBuilder, {}, identifier="fanout_builder")
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_a) + "/"},
-        identifier="runner_a",
+        DummyJobBuilder,
+        {"payload": _register_payload(service, script)},
+        identifier="fanout_builder",
     )
-    service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_b) + "/"},
-        identifier="runner_b",
-    )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner_a")
+    service.register_plugin(LocalDispatcher, {}, identifier="runner_b")
 
     service.configure_routing(
         dispatcher_identifiers=["runner_a", "runner_b"],
@@ -262,8 +297,8 @@ def test_single_builder_fan_out_to_multiple_dispatchers(
             message=str(File(file=test_file, hostname="test")),
         )
 
-        file_a = output_a / "fanout.dat"
-        file_b = output_b / "fanout.dat"
+        file_a = tmp_path / "runner_a" / "fanout.dat"
+        file_b = tmp_path / "runner_b" / "fanout.dat"
         assert _poll_for_file(file_a), f"Fan-out to runner_a failed: {file_a}"
         assert _poll_for_file(file_b), f"Fan-out to runner_b failed: {file_b}"
         assert file_a.read_text() == "fan-out payload"
@@ -273,18 +308,17 @@ def test_single_builder_fan_out_to_multiple_dispatchers(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_preflight_rejects_unknown_target() -> None:
     """Preflight raises UnknownTargetError when a builder references a
     dispatcher that was never registered.
     """
     service = Service(_make_service_config())
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "echo ok"},
-        identifier="runner",
+        DummyJobBuilder,
+        {"payload": _register_payload(service, "echo ok")},
+        identifier="bad_builder",
     )
-    service.register_plugin(DummyJobBuilder, {}, identifier="bad_builder")
     service.configure_routing(
         dispatcher_identifiers=["runner"],
         builder_targets={
@@ -302,7 +336,6 @@ def test_preflight_rejects_unknown_target() -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
     """FilterAndGroupJobBuilder groups files into jobs, with overflow.
 
@@ -311,10 +344,8 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
     create one ready job (fast path); the third file triggers an overflow
     job that becomes ready via the reaper (dropout path).
 
-    All three filenames appear in the output.  Because SerialBashDispatcher
-    passes only the first file of a job to the bash script, the script
-    echoes every ``.dat`` file in the watch directory on each invocation
-    so that multi-file job output is not lost.
+    All three filenames appear in the output.  The payload template iterates
+    every file in the job, so a multi-file job's output is not lost.
     """
     watch_dir = tmp_path / "watch"
     watch_dir.mkdir()
@@ -333,22 +364,20 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
                 "seconds": 3600,
                 "start": "2020-01-01 00:00:00",
             },
+            "payload": _register_payload(
+                service,
+                (
+                    "{% for f in files %}"
+                    "echo {{ f.file }} >> "
+                    + str(processed_log)
+                    + ";"
+                    "{% endfor %}"
+                ),
+            ),
         },
         identifier="grouper",
     )
-    service.register_plugin(
-        SerialBashDispatcher,
-        {
-            "bash_script": (
-                "{% for f in files %}"
-                "echo {{ f.file }} >> "
-                + str(processed_log)
-                + ";"
-                "{% endfor %}"
-            ),
-        },
-        identifier="runner",
-    )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
     service.configure_routing(
         dispatcher_identifiers=["runner"],
         builder_targets={"grouper": ("runner",)},
@@ -385,7 +414,6 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_dispatcher_dedupe_lru_prevents_reprocessing(
     tmp_path: Path,
 ) -> None:
@@ -419,12 +447,17 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
             "hostname": "test-host",
         },
     )
-    service.register_plugin(DummyJobBuilder, {})
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "echo {{ files[0].file }} >> " + str(processed_log)},
-        identifier="runner",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "echo {{ files[0].file }} >> " + str(processed_log),
+            ),
+        },
+        identifier="builder",
     )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
 
     thread = threading.Thread(target=service.start, daemon=True)
     thread.start()
@@ -449,6 +482,13 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
             identifier="dedupe-id-001",
             config={},
             files=[synthetic_file],
+        )
+        # A job on the wire must carry its payload; render the bound one so the
+        # dispatcher can execute it.  Dedupe drops the second copy by identifier.
+        builder = service._plugin_manager.get_plugins()["builder"].plugin
+        synthetic_job.payload = builder.payload.to_job_spec(  # type: ignore[union-attr]
+            synthetic_job,
+            builder=builder,
         )
         job_json = str(synthetic_job)
 
@@ -481,7 +521,6 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_execution_log_flows_back(tmp_path: Path) -> None:
     """Every dispatched job produces an ExecutionLog on DISPATCHER_QUEUE.
 
@@ -509,12 +548,17 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
             "hostname": "test-host",
         },
     )
-    service.register_plugin(DummyJobBuilder, {})
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-        identifier="runner",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "cp {{ files[0].file }} " + str(output_dir) + "/",
+            ),
+        },
+        identifier="builder",
     )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
 
     thread = threading.Thread(target=service.start, daemon=True)
     thread.start()
@@ -548,7 +592,6 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
     """Full lifecycle: register plugins, start, become healthy, and shut down.
 
@@ -563,13 +606,17 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
     test_file.write_text("lifecycle")
 
     service = Service(_make_service_config())
-    service.register_plugin(DummyJobBuilder, {})
-    # TODO: add this dispatcher back with falcons
-    #service.register_plugin(
-    #    SerialBashDispatcher,
-    #    {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-    #    identifier="runner",
-    #)
+    service.register_plugin(
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "cp {{ files[0].file }} " + str(output_dir) + "/",
+            ),
+        },
+        identifier="builder",
+    )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
 
     thread = threading.Thread(target=service.start, daemon=True)
     thread.start()
@@ -597,7 +644,6 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_implicit_routing_auto_wires_sole_dispatcher(
     tmp_path: Path,
 ) -> None:
@@ -616,12 +662,17 @@ def test_implicit_routing_auto_wires_sole_dispatcher(
     test_file.write_text("implicit routing")
 
     service = Service(_make_service_config())
-    service.register_plugin(DummyJobBuilder, {})
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-        identifier="runner",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "cp {{ files[0].file }} " + str(output_dir) + "/",
+            ),
+        },
+        identifier="builder",
     )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
     # NOTE: configure_routing is deliberately NOT called.
 
     thread = threading.Thread(target=service.start, daemon=True)
@@ -646,7 +697,6 @@ def test_implicit_routing_auto_wires_sole_dispatcher(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_namespace_isolation_between_services(tmp_path: Path) -> None:
     """Two services with different namespaces do not interfere.
 
@@ -683,19 +733,29 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
     # NOTE: CronGlob deliberately NOT registered --- both services would
     # scan the same input_dir, creating a timing race that obscures the
     # namespace-isolation signal. Files are published manually below.
-    for svc in (service_a, service_b):
-        svc.register_plugin(DummyJobBuilder, {})
-
     service_a.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_a) + "/"},
-        identifier="runner",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service_a,
+                "cp {{ files[0].file }} " + str(output_a) + "/",
+            ),
+        },
+        identifier="builder",
     )
     service_b.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_b) + "/"},
-        identifier="runner",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service_b,
+                "cp {{ files[0].file }} " + str(output_b) + "/",
+            ),
+        },
+        identifier="builder",
     )
+
+    service_a.register_plugin(LocalDispatcher, {}, identifier="runner")
+    service_b.register_plugin(LocalDispatcher, {}, identifier="runner")
 
     # Verify queue names are namespace-prefixed.
     qa = service_a._broker_manager.get_queue_name(FILE_FOUND_EXCHANGE)
@@ -737,7 +797,6 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
     """Plugin monitor transitions a plugin to FAILED when its thread dies.
 
@@ -782,12 +841,17 @@ def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
             "hostname": "test-host",
         },
     )
-    service.register_plugin(DummyJobBuilder, {})
     service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "cp {{ files[0].file }} " + str(output_dir) + "/"},
-        identifier="runner",
+        DummyJobBuilder,
+        {
+            "payload": _register_payload(
+                service,
+                "cp {{ files[0].file }} " + str(output_dir) + "/",
+            ),
+        },
+        identifier="builder",
     )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
 
     thread = threading.Thread(target=service.start, daemon=True)
     thread.start()
@@ -841,7 +905,6 @@ def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="This relies on the old dispatcher paradigm and needs updated")
 def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
     """MetadataRouterBuilder routes files to dispatchers by source attribute.
 
@@ -849,13 +912,14 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
     Files published manually with matching ``source`` metadata are processed
     only by the targeted dispatcher.
     """
-    output_a = tmp_path / "out_a"
-    output_a.mkdir()
-    output_b = tmp_path / "out_b"
-    output_b.mkdir()
+    a_log = tmp_path / "proc_a.log"
+    b_log = tmp_path / "proc_b.log"
 
-    a_log = output_a / "processed.log"
-    b_log = output_b / "processed.log"
+    script = (
+        "echo {{ files[0].file }} >> "
+        + str(tmp_path)
+        + "/{{ dispatcher.identifier }}.log"
+    )
 
     service = Service(_make_service_config())
     service.register_plugin(
@@ -875,18 +939,11 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
                     "targets": ["proc_b"],
                 },
             ],
+            "payload": _register_payload(service, script),
         },
     )
-    service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "echo {{ files[0].file }} >> " + str(a_log)},
-        identifier="proc_a",
-    )
-    service.register_plugin(
-        SerialBashDispatcher,
-        {"bash_script": "echo {{ files[0].file }} >> " + str(b_log)},
-        identifier="proc_b",
-    )
+    service.register_plugin(LocalDispatcher, {}, identifier="proc_a")
+    service.register_plugin(LocalDispatcher, {}, identifier="proc_b")
 
     service.configure_routing(
         dispatcher_identifiers=["proc_a", "proc_b"],
@@ -902,7 +959,7 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
     try:
         assert _wait_for_healthy(service), "Service did not become healthy"
 
-        # Create files on disk so SerialBashDispatcher can process them.
+        # Create files on disk so LocalDispatcher can process them.
         file_a = tmp_path / "sat_a_data.dat"
         file_a.write_text("sat-a-data")
         file_b = tmp_path / "sat_b_data.dat"
