@@ -59,7 +59,7 @@ courier validate my_config.yaml
 
 ### Writing a data monitor
 
-Subclass `DataMonitorBasePlugin` and implement `find_file` as a generator that yields `File` objects. The base class handles threading, metadata enrichment, and queue emission for you.
+Subclass `DataMonitorBasePlugin` and implement `find_file` as a generator that yields `Datum` objects. The base class handles threading, metadata enrichment, and queue emission for you.
 
 ```python
 from collections.abc import Generator
@@ -67,7 +67,7 @@ from pathlib import Path
 
 from courier.interfaces.module_based.data_monitors import DataMonitorBasePlugin
 from courier.service import Service
-from courier.types.file import File
+from courier.types.datum import Datum
 
 interface = "data_monitors"
 family = "standard"
@@ -82,12 +82,12 @@ class MyMonitor(DataMonitorBasePlugin):
         super().__init__(service, config)
         self.watch_dir = Path(config["path"])
 
-    def find_file(self) -> Generator[File, None, None]:
-        # Yield File objects as they appear — the base class
+    def find_file(self) -> Generator[Datum, None, None]:
+        # Yield Datum objects as they appear — the base class
         # handles metadata, emission, and metrics automatically.
         for path in self.watch_dir.iterdir():
             if path.is_file():
-                yield File(file=path, hostname="localhost")
+                yield Datum(file=path, hostname="localhost")
 ```
 
 ## Satellite Data Support

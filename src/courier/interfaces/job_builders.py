@@ -52,7 +52,7 @@ from courier.tracing import (
     ATTR_TARGET,
     get_tracer,
 )
-from courier.types.file import FrozenFile
+from courier.types.datum import FrozenDatum
 from courier.types.payload import PayloadSpec
 from courier.utils.decorators import log_execution, retry_with_backoff
 from courier.utils.logging import get_logger
@@ -698,7 +698,7 @@ class JobBuilder(ServicePlugin):
         else:
             self._logger.error("Exiting handle_incoming_files loop unexpectedly")
 
-    def _dispatch_file(self, file: FrozenFile) -> None:
+    def _dispatch_file(self, file: FrozenDatum) -> None:
         """Hand *file* to every job group; routing builders override this hook."""
         for job_group in self.job_groups:
             self._logger.debug(
@@ -706,16 +706,16 @@ class JobBuilder(ServicePlugin):
             )
             self._process_job_group(job_group, file)
 
-    def _parse_file_message(self, body: str) -> FrozenFile | None:
+    def _parse_file_message(self, body: str) -> FrozenDatum | None:
         """Decode one file-found body; log, count and return ``None`` if unusable.
 
         The catch-all is needed: a body of ``[]``, ``null`` or a bare number
-        raises ``AttributeError`` in ``FrozenFile.from_string``, and on a
+        raises ``AttributeError`` in ``FrozenDatum.from_string``, and on a
         durable queue a body that kills the consumer is redelivered, so one
         malformed message could wedge every replica in turn.
         """
         try:
-            return FrozenFile.from_string(body)
+            return FrozenDatum.from_string(body)
         except Exception:  # parser boundary: anything raised here is poison
             JOB_BUILDER_MALFORMED_MESSAGES.labels(**self._metric_labels).inc()
             self._logger.exception(
@@ -742,7 +742,7 @@ class JobBuilder(ServicePlugin):
         del job_group
         return self.targets
 
-    def _process_job_group(self, job_group: JobGroup, file: FrozenFile) -> None:
+    def _process_job_group(self, job_group: JobGroup, file: FrozenDatum) -> None:
         """Add a file to a group, emit ready jobs, and prune timed-out ones."""
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -809,7 +809,7 @@ class JobBuilder(ServicePlugin):
     def _add_file_locked(
         self,
         job_group: JobGroup,
-        file: FrozenFile,
+        file: FrozenDatum,
     ) -> tuple[bool, list[Job], dict[str, Job]]:
         """Add a file under the group lock; collect ready jobs and sync updates.
 
@@ -836,7 +836,7 @@ class JobBuilder(ServicePlugin):
     def _collect_sync_updates(
         self,
         job_group: JobGroup,
-        file: FrozenFile,
+        file: FrozenDatum,
     ) -> dict[str, Job]:
         """Snapshot jobs affected by the last add_file call for Redis push.
 

@@ -1,7 +1,7 @@
 """Output file scanner for the output of a dispatcher's jobs.
 
 Scans stdout (and optionally stderr) text with regex patterns to discover
-output file paths printed by a job's payload, constructs :class:`File` objects
+output file paths printed by a job's payload, constructs :class:`Datum` objects
 with metadata, and forwards them via an ``emit_file`` callback.
 """
 
@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.utils.datetime_utils import ensure_utc
 
 if TYPE_CHECKING:
@@ -23,13 +23,13 @@ if TYPE_CHECKING:
         OutputFilePattern,
     )
 
-# ── Recognised File field names from OutputFilePattern ──────────────────
+# ── Recognised Datum field names from OutputFilePattern ──────────────────
 # Named regex groups matching these keys are applied as field overrides
 # rather than being placed in metadata.
 #
 # ``timestamp`` was added to support multi-stage pipelines where a downstream
 # ``filter_and_group`` builder uses ``time_grouping`` to pair files by
-# observation time.  Without a timestamp on the re-emitted File object,
+# observation time.  Without a timestamp on the re-emitted Datum object,
 # ``time_grouping`` silently drops the file (``get_job_ids_from_file`` returns
 # ``[]`` when ``timestamp is None``), breaking pairing stages such as the
 # GOES-18 3D cloud pipeline where a CLAVR-x file and its CWC counterpart
@@ -41,7 +41,7 @@ _FILE_FIELD_KEYS: frozenset[str] = frozenset(
 )
 
 
-# ── Case transforms for regex-extracted File field values ──────────────
+# ── Case transforms for regex-extracted Datum field values ──────────────
 # Regex-extracted values receive the same case normalisation that
 # OutputFilePattern's static field validators apply.
 def _parse_compact_timestamp(raw: str) -> datetime | None:
@@ -51,7 +51,7 @@ def _parse_compact_timestamp(raw: str) -> datetime | None:
     follow the naming convention ``{SENSOR}_{PRODUCT}_{YYYYmmdd}T{HHMM}Z[_v{V}].h5``.
     The ``(?P<timestamp>...)`` named group in an output_files pattern captures
     the compact ``YYYYmmddTHHMM`` token; this transform converts it so the
-    re-emitted :class:`File` carries a real timestamp for ``time_grouping``.
+    re-emitted :class:`Datum` carries a real timestamp for ``time_grouping``.
     """
     try:
         parsed = datetime.strptime(raw, "%Y%m%dT%H%M")
@@ -75,10 +75,10 @@ def _collect_updates_from_match(
     entry: OutputFilePattern,
     match_obj: re.Match[str],
 ) -> dict:
-    """Build a dict of :class:`File` field updates from one regex match.
+    """Build a dict of :class:`Datum` field updates from one regex match.
 
     Static metadata fields from *entry* are included first; any named
-    regex groups matching File field keys override them.  All other named
+    regex groups matching Datum field keys override them.  All other named
     groups are placed into ``metadata``, overriding static entry metadata
     on key collision.
     """
@@ -128,9 +128,9 @@ def _scan_and_emit_output_files(  # noqa: PLR0913
     patterns: list[OutputFilePattern],
     scan_stderr: bool = False,
     hostname: str = "",
-    emit_file: Callable[[File], None],
+    emit_file: Callable[[Datum], None],
 ) -> None:
-    r"""Scan dispatcher output text for file paths and emit :class:`File`\s.
+    r"""Scan dispatcher output text for file paths and emit :class:`Datum`\s.
 
     Parameters
     ----------
@@ -143,8 +143,8 @@ def _scan_and_emit_output_files(  # noqa: PLR0913
     scan_stderr : bool
         When ``True``, also scan stderr (appended to stdout).
     hostname : str
-        Hostname assigned to every discovered :class:`File`.
-    emit_file : Callable[[File], None]
+        Hostname assigned to every discovered :class:`Datum`.
+    emit_file : Callable[[Datum], None]
         Side-effect callback invoked once per unique discovered file.
     """
     # ── guard: nothing to scan ──────────────────────────────────────────
@@ -172,8 +172,8 @@ def _scan_and_emit_output_files(  # noqa: PLR0913
                 continue
             seen.add(file_path)
 
-            # Build base File, collect updates, apply atomically
-            file_obj = File(file=Path(file_path), hostname=hostname)
+            # Build base Datum, collect updates, apply atomically
+            file_obj = Datum(file=Path(file_path), hostname=hostname)
             updates = _collect_updates_from_match(entry, match_obj)
             file_obj = file_obj.with_updates(**updates)
             emit_file(file_obj)

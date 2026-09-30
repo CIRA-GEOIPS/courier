@@ -13,12 +13,12 @@ Design decisions
     Fixed-interval sleep was also rejected: cron expressions are more
     expressive (e.g. "weekdays at 08:00") and a well-understood standard.
 
-**File matching — ``pathlib.Path.glob()``**
+**Datum matching — ``pathlib.Path.glob()``**
     Standard library; handles both flat and recursive (``**``) patterns
     with no extra dependencies.
 
 **Deduplication — bounded in-memory ``OrderedDict``**
-    File paths are tracked in an ``OrderedDict`` capped at
+    Datum paths are tracked in an ``OrderedDict`` capped at
     ``max_seen_files`` (default 100 000). The oldest entry is evicted
     when the cap is exceeded. The seen-set is only accessed from the
     single plugin thread, so no lock is needed.
@@ -54,7 +54,7 @@ from courier.metrics import (
     DATA_MONITOR_LAST_SCAN_TIMESTAMP,
     DATA_MONITOR_SCAN_DURATION,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -93,7 +93,7 @@ class CronGlobConfig(BaseModel, frozen=True):
     max_seen_files : int
         Maximum number of file paths to remember for deduplication.
     hostname : str
-        Hostname to set on emitted ``File`` objects.
+        Hostname to set on emitted ``Datum`` objects.
     run_on_start : bool
         Whether to scan immediately on startup before waiting for the
         first cron tick.
@@ -163,13 +163,13 @@ class CronGlob(DataMonitorBasePlugin):
         """Check if the data monitor is healthy."""
         return self.health
 
-    def find_file(self) -> Generator[File, None, None]:
+    def find_file(self) -> Generator[Datum, None, None]:
         """Scan a directory on a cron schedule and yield new files.
 
         Yields
         ------
-        File
-            A ``File`` object for each newly discovered file.
+        Datum
+            A ``Datum`` object for each newly discovered file.
         """
         if not self.scan_path.is_dir():
             msg = f"Directory '{self.scan_path}' does not exist."
@@ -208,7 +208,7 @@ class CronGlob(DataMonitorBasePlugin):
                 count += 1
         self._logger.debug(f"Pre-seeded {count} existing files into seen-set")
 
-    def _scan_directory(self) -> Generator[File, None, None]:
+    def _scan_directory(self) -> Generator[Datum, None, None]:
         """Glob the directory and yield unseen files.
 
         Each newly discovered file is added to the seen-set immediately
@@ -217,8 +217,8 @@ class CronGlob(DataMonitorBasePlugin):
 
         Yields
         ------
-        File
-            A ``File`` object for each new file found.
+        Datum
+            A ``Datum`` object for each new file found.
         """
         scan_start = time.time()
         for path in self.scan_path.glob(self.glob_pattern):
@@ -229,7 +229,7 @@ class CronGlob(DataMonitorBasePlugin):
                 continue
             self._seen[resolved] = None
             self._evict_if_over_cap()
-            yield File(file=resolved, hostname=self.hostname)
+            yield Datum(file=resolved, hostname=self.hostname)
 
         DATA_MONITOR_LAST_SCAN_TIMESTAMP.labels(
             monitor_name=self.name,

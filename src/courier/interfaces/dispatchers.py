@@ -82,8 +82,8 @@ if TYPE_CHECKING:
     import kombu
 
     from courier.service import Service
+    from courier.types.datum import Datum
     from courier.types.execution_log import ExecutionLog
-    from courier.types.file import File
 
 
 # config class for courier init discovery
@@ -582,16 +582,16 @@ class Dispatcher(ServicePlugin):
         self._logger.debug(f"Emitting execution log: {execution_log}")
         self.parent_service.emit(queue=self.queue, message=str(execution_log))
 
-    def emit_file(self, file: File) -> None:
+    def emit_file(self, file: Datum) -> None:
         """Emit output file to the found-file exchange for downstream processing.
 
-        Publishes a :class:`File` to :data:`~courier.constants.FILE_FOUND_EXCHANGE`
+        Publishes a :class:`Datum` to :data:`~courier.constants.FILE_FOUND_EXCHANGE`
         so job builders can pick it up and create new jobs — enabling chained
         dispatcher-to-builder pipeline workflows.
 
         Parameters
         ----------
-        file : File
+        file : Datum
             The output file to feed back into the pipeline.
         """
         self._logger.debug(f"Emitting file: {file}")

@@ -25,7 +25,7 @@ from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobGroup,
 )
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 from courier.utils.datetime_utils import (
     build_timestamp_from_components,
     ensure_utc,
@@ -81,7 +81,7 @@ class TestParseTimestamp:
 
 
 class TestComponentBuiltTimestamps:
-    """Filename-derived timestamps are UTC; satellite names express UTC."""
+    """Datumname-derived timestamps are UTC; satellite names express UTC."""
 
     def test_yyyy_jjj_is_utc(self) -> None:
         built = build_timestamp_from_components(
@@ -103,31 +103,31 @@ class TestComponentBuiltTimestamps:
         assert built == _INSTANT
 
 
-class TestFileNormalisesAtConstruction:
+class TestDatumNormalisesAtConstruction:
     """The invariant is enforced on the type, not just at parse boundaries."""
 
     def test_file_tags_naive_timestamp(self) -> None:
-        f = File(
+        f = Datum(
             file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
         )  # noqa: DTZ001
         assert f.timestamp == _INSTANT
         assert f.timestamp.tzinfo is not None
 
     def test_frozen_file_tags_naive_timestamp(self) -> None:
-        ff = FrozenFile(
+        ff = FrozenDatum(
             file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
         )  # noqa: DTZ001
         assert ff.timestamp == _INSTANT
 
     def test_round_trip_is_identity(self) -> None:
-        """A File that crosses the broker comes back equal to what was sent."""
-        f = File(
+        """A Datum that crosses the broker comes back equal to what was sent."""
+        f = Datum(
             file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
         )  # noqa: DTZ001
-        assert File.from_string(str(f)) == f
+        assert Datum.from_string(str(f)) == f
 
     def test_freeze_preserves_normalised_timestamp(self) -> None:
-        f = File(
+        f = Datum(
             file=Path("/a.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
         )  # noqa: DTZ001
         assert f.freeze().timestamp == _INSTANT
@@ -153,7 +153,7 @@ class TestTimeGroupingBucketsAgree:
         }
         buckets = {
             label: tuple(
-                group.get_job_ids_from_file(File(file=Path("/x.nc"), timestamp=ts)),
+                group.get_job_ids_from_file(Datum(file=Path("/x.nc"), timestamp=ts)),
             )
             for label, ts in candidates.items()
         }
@@ -161,11 +161,11 @@ class TestTimeGroupingBucketsAgree:
 
     def test_bucket_survives_the_broker_round_trip(self) -> None:
         group = self._group()
-        f = File(
+        f = Datum(
             file=Path("/x.nc"), timestamp=datetime(2026, 7, 27, 18, 0)
         )  # noqa: DTZ001
         assert group.get_job_ids_from_file(f) == group.get_job_ids_from_file(
-            File.from_string(str(f)),
+            Datum.from_string(str(f)),
         )
 
     def test_distinct_instants_still_separate(self) -> None:
@@ -173,7 +173,7 @@ class TestTimeGroupingBucketsAgree:
         group = self._group()
         later = _INSTANT + timedelta(minutes=30)
         assert group.get_job_ids_from_file(
-            File(file=Path("/x.nc"), timestamp=_INSTANT),
+            Datum(file=Path("/x.nc"), timestamp=_INSTANT),
         ) != group.get_job_ids_from_file(
-            File(file=Path("/y.nc"), timestamp=later),
+            Datum(file=Path("/y.nc"), timestamp=later),
         )

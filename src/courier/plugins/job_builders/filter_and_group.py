@@ -35,7 +35,7 @@ from courier.utils.datetime_utils import ensure_utc
 
 if TYPE_CHECKING:
     from courier.service import Service
-    from courier.types.file import File, FrozenFile
+    from courier.types.datum import Datum, FrozenDatum
 
 _module_logger = logging.getLogger(__name__)
 
@@ -106,14 +106,14 @@ class FilterAndGroupConfig(BaseModel, frozen=True):
 
 
 def _file_matches_filters(
-    file: File | FrozenFile,
+    file: Datum | FrozenDatum,
     filters: dict[str, str],
 ) -> bool:
     """Return ``True`` if every filter key/value matches the file.
 
     Checks, in order, for each filter key:
     1. ``file.metadata.get(key)`` — metadata dict keys (from field_map extras)
-    2. ``getattr(file, key, None)`` — File dataclass attributes
+    2. ``getattr(file, key, None)`` — Datum dataclass attributes
 
     If the key is found in neither layer, logs a WARNING and returns ``False``.
     """
@@ -123,7 +123,7 @@ def _file_matches_filters(
             if file.metadata[key] != value:
                 return False
             continue
-        # Layer 2: check File dataclass attribute
+        # Layer 2: check Datum dataclass attribute
         attr_value = getattr(file, key, None)
         if attr_value is not None:
             if attr_value != value:
@@ -132,7 +132,7 @@ def _file_matches_filters(
         # Key not found in either layer
         _module_logger.warning(
             "Unknown filter key %r: not found in file metadata or "
-            "File attributes (source, instrument, processing_stage, domain, "
+            "Datum attributes (source, instrument, processing_stage, domain, "
             "hostname, num_expected, timestamp). "
             "Metadata keys: %s",
             key,
@@ -165,7 +165,7 @@ def make_job_class(config: FilterAndGroupConfig) -> type[Job]:
                 and len(self.files) >= config.min_files
             )
 
-        def add_file(self, file: File | FrozenFile) -> bool:
+        def add_file(self, file: Datum | FrozenDatum) -> bool:
             """Add *file* unless filters reject it or the job is already full.
 
             Returns
@@ -201,17 +201,17 @@ class FilterAndGroupJobGroup(JobGroup):
         self.time_grouping = validated.time_grouping
         self.job = make_job_class(validated)
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:
         """Return ``True`` when file metadata satisfies the configured filters."""
         return _file_matches_filters(file, self.filters)
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         """Bucket the file's timestamp into a time-group ID string."""
         if self.time_grouping is None:
             return super().get_job_ids_from_file(file)
         # Coerce up front: .timestamp() reads a naive datetime as *local*
         # time, so mixing naive and aware values here put files representing
-        # the same instant into buckets a whole UTC offset apart. File
+        # the same instant into buckets a whole UTC offset apart. Datum
         # normalises at construction; this also covers directly-built groups.
         file_ts = ensure_utc(file.timestamp)
         if file_ts is None:

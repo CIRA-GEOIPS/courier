@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from courier.interfaces.job_builders import JobBuilder
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 from courier.types.job import Job, JobGroup
 from tests._helpers import with_payload
 
@@ -33,7 +33,7 @@ class _PairJob(Job):
     def ready(self) -> bool:
         return len(self.files) >= 2
 
-    def add_file(self, file: File | FrozenFile) -> bool:
+    def add_file(self, file: Datum | FrozenDatum) -> bool:
         if len(self.files) >= 2:
             return False
         return super().add_file(file)
@@ -46,15 +46,15 @@ class _PairGroup(JobGroup):
         super().__init__("grp", {})
         self.job = _PairJob
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:
         return True
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         return ["bucket"]
 
 
-def _file(name: str) -> FrozenFile:
-    return FrozenFile(file=Path(f"/data/{name}.nc"), hostname="h")
+def _file(name: str) -> FrozenDatum:
+    return FrozenDatum(file=Path(f"/data/{name}.nc"), hostname="h")
 
 
 @pytest.fixture
@@ -78,7 +78,7 @@ def _builder(service: MagicMock, *, peer_owns_claim: bool) -> JobBuilder:
     return builder
 
 
-def _all_files(group: JobGroup) -> set[FrozenFile]:
+def _all_files(group: JobGroup) -> set[FrozenDatum]:
     return {f for job in group.jobs.values() for f in job.files}
 
 

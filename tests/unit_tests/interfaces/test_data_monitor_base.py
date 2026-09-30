@@ -18,7 +18,7 @@ from prometheus_client import REGISTRY
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import PipelineError
 from courier.interfaces.data_monitors import DataMonitorBasePlugin
-from courier.types.file import File
+from courier.types.datum import Datum
 
 
 class _ScriptedMonitor(DataMonitorBasePlugin):
@@ -29,9 +29,9 @@ class _ScriptedMonitor(DataMonitorBasePlugin):
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
-        self.to_yield: list[File] = []
+        self.to_yield: list[Datum] = []
 
-    def find_file(self) -> Generator[File, None, None]:
+    def find_file(self) -> Generator[Datum, None, None]:
         yield from self.to_yield
 
 
@@ -46,9 +46,9 @@ def _monitor(service: MagicMock, identifier: str = "dm-1") -> _ScriptedMonitor:
     return _ScriptedMonitor(service, {}, identifier=identifier)
 
 
-def _emitted_files(service: MagicMock) -> list[File]:
+def _emitted_files(service: MagicMock) -> list[Datum]:
     return [
-        File.from_string(call.kwargs["message"]) for call in service.emit.call_args_list
+        Datum.from_string(call.kwargs["message"]) for call in service.emit.call_args_list
     ]
 
 
@@ -57,7 +57,7 @@ class TestEmission:
 
     def test_yielded_file_is_published(self, service: MagicMock) -> None:
         monitor = _monitor(service)
-        monitor.to_yield = [File(file=Path("/data/a.nc"), hostname="h")]
+        monitor.to_yield = [Datum(file=Path("/data/a.nc"), hostname="h")]
 
         monitor.find_and_emit_files()
 
@@ -67,7 +67,7 @@ class TestEmission:
     def test_every_file_is_published(self, service: MagicMock) -> None:
         """A partial drain would silently lose files mid-scan."""
         monitor = _monitor(service)
-        monitor.to_yield = [File(file=Path(f"/data/{n}.nc")) for n in "abc"]
+        monitor.to_yield = [Datum(file=Path(f"/data/{n}.nc")) for n in "abc"]
 
         monitor.find_and_emit_files()
 
@@ -84,7 +84,7 @@ class TestEmission:
         """Builders filter on these fields; losing them breaks routing."""
         monitor = _monitor(service)
         monitor.to_yield = [
-            File(
+            Datum(
                 file=Path("/data/a.nc"),
                 hostname="host-1",
                 source="goes18",
@@ -115,8 +115,8 @@ class TestEmission:
         """One unparseable file must not abort the rest of the directory."""
         monitor = _monitor(service)
         monitor.to_yield = [
-            File(file=Path("/data/bad.nc")),
-            File(file=Path("/data/good.nc")),
+            Datum(file=Path("/data/bad.nc")),
+            Datum(file=Path("/data/good.nc")),
         ]
         service.emit.side_effect = [PipelineError("bad metadata"), None]
 
@@ -130,7 +130,7 @@ class TestMetrics:
 
     def test_success_is_counted(self, service: MagicMock) -> None:
         monitor = _monitor(service, identifier="dm-success")
-        monitor.to_yield = [File(file=Path("/data/a.nc"))]
+        monitor.to_yield = [Datum(file=Path("/data/a.nc"))]
         labels = {
             "monitor_name": monitor.name,
             "monitor_identifier": "dm-success",
@@ -154,7 +154,7 @@ class TestMetrics:
 
     def test_failure_is_counted_separately(self, service: MagicMock) -> None:
         monitor = _monitor(service, identifier="dm-failure")
-        monitor.to_yield = [File(file=Path("/data/a.nc"))]
+        monitor.to_yield = [Datum(file=Path("/data/a.nc"))]
         service.emit.side_effect = PipelineError("nope")
         labels = {
             "monitor_name": monitor.name,
@@ -180,7 +180,7 @@ class TestMetrics:
     def test_freshness_gauge_advances(self, service: MagicMock) -> None:
         """Dashboards alert on this gauge going stale."""
         monitor = _monitor(service, identifier="dm-fresh")
-        monitor.to_yield = [File(file=Path("/data/a.nc"))]
+        monitor.to_yield = [Datum(file=Path("/data/a.nc"))]
         labels = {"plugin_name": monitor.name, "monitor_identifier": "dm-fresh"}
 
         monitor.find_and_emit_files()

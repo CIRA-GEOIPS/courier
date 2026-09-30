@@ -9,7 +9,7 @@ import pytest
 
 from courier.constants import FILE_FOUND_EXCHANGE
 from courier.interfaces.dispatchers import Dispatcher, _DEDUPE_LRU_SIZE
-from courier.types.file import File
+from courier.types.datum import Datum
 
 
 def _make_dispatcher(
@@ -63,13 +63,13 @@ def test_dedupe_move_to_end_extends_residency(mock_service: MagicMock) -> None:
 
 
 def test_emit_file_publishes_to_file_found_exchange(mock_service: MagicMock) -> None:
-    """``emit_file()`` emits a File to FILE_FOUND_EXCHANGE."""
+    """``emit_file()`` emits a Datum to FILE_FOUND_EXCHANGE."""
     disp = _make_dispatcher(mock_service)
-    file = File(file=Path("/tmp/test.txt"), hostname="test")
+    file = Datum(file=Path("/tmp/test.txt"), hostname="test")
     disp.emit_file(file)
     mock_service.emit.assert_called_once()
     call_args, call_kwargs = mock_service.emit.call_args
     assert call_kwargs["queue"] == FILE_FOUND_EXCHANGE
-    roundtripped = File.from_string(call_kwargs["message"])
+    roundtripped = Datum.from_string(call_kwargs["message"])
     assert roundtripped.file == Path("/tmp/test.txt")
     assert roundtripped.hostname == "test"

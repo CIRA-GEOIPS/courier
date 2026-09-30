@@ -13,7 +13,7 @@ from courier.plugins.data_monitors.s3_poller import (
     S3Poller,
     S3PollerConfig,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -113,7 +113,7 @@ class TestScanBucket:
 
         files = list(plugin._scan_bucket(client))
         assert len(files) == 2
-        assert all(isinstance(f, File) for f in files)
+        assert all(isinstance(f, Datum) for f in files)
         # second scan returns 0 (dedup)
         client.get_paginator.return_value = _make_paginator(pages)
         assert list(plugin._scan_bucket(client)) == []

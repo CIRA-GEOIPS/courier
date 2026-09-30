@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 from courier.types.job import _OVERFLOW_SEPARATOR, Job, JobGroup
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -43,14 +43,14 @@ def simple_job() -> Job:
 
 @pytest.fixture
 def job_with_files() -> Job:
-    """Job containing two FrozenFile instances."""
+    """Job containing two FrozenDatum instances."""
     return Job(
         name="test_job",
         identifier="job-002",
         config=None,
         files={
-            FrozenFile(file=Path("/data/file_a.nc"), hostname="host1", source="goes16"),
-            FrozenFile(file=Path("/data/file_b.nc"), hostname="host1", source="goes16"),
+            FrozenDatum(file=Path("/data/file_a.nc"), hostname="host1", source="goes16"),
+            FrozenDatum(file=Path("/data/file_b.nc"), hostname="host1", source="goes16"),
         },
         last_modified=2000.0,
         timeout=3600.0,
@@ -80,7 +80,7 @@ def test_last_modified_defaults_to_now() -> None:
 def test_add_file_updates_last_modified(simple_job: Job) -> None:
     """add_file() adds the file and updates last_modified."""
     before = time.time()
-    f = FrozenFile(file=Path("/x.nc"))
+    f = FrozenDatum(file=Path("/x.nc"))
     simple_job.add_file(f)
     after = time.time()
 
@@ -121,10 +121,10 @@ def test_round_trip_empty_files(simple_job: Job) -> None:
 
 
 def test_round_trip_with_files(job_with_files: Job) -> None:
-    """Job with FrozenFile instances round-trips correctly."""
+    """Job with FrozenDatum instances round-trips correctly."""
     restored = Job.from_string(str(job_with_files))
     assert _jobs_equal(job_with_files, restored)
-    assert all(isinstance(f, FrozenFile) for f in restored.files)
+    assert all(isinstance(f, FrozenDatum) for f in restored.files)
 
 
 def test_round_trip_null_config() -> None:
@@ -168,7 +168,7 @@ _timestamps = st.one_of(
 )
 
 _frozen_files = st.builds(
-    FrozenFile,
+    FrozenDatum,
     file=st.one_of(
         st.none(),
         st.builds(Path, st.from_regex(r"/[a-zA-Z0-9/\-_\.]{1,60}", fullmatch=True)),
@@ -223,7 +223,7 @@ def test_hypothesis_round_trip(
 def test_job_group_file_not_relevant_by_default() -> None:
     """Base JobGroup raises NotImplementedError for file_is_relevant."""
     group = JobGroup(job_name="g", config=None)
-    f = FrozenFile(file=Path("/x.nc"))
+    f = FrozenDatum(file=Path("/x.nc"))
     with pytest.raises(NotImplementedError):
         group.file_is_relevant(f)
     with pytest.raises(NotImplementedError):
@@ -237,10 +237,10 @@ def test_job_group_file_not_relevant_by_default() -> None:
 class _FixedBucketGroup(JobGroup):
     """Minimal group: every file is relevant and maps to one fixed bucket."""
 
-    def file_is_relevant(self, _file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, _file: Datum | FrozenDatum) -> bool:
         return True
 
-    def get_job_ids_from_file(self, _file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, _file: Datum | FrozenDatum) -> list[str]:
         return ["proto"]
 
 
@@ -254,7 +254,7 @@ class _CapOneGroup(_FixedBucketGroup):
             def ready(self) -> bool:
                 return False
 
-            def add_file(self, file: File | FrozenFile) -> bool:
+            def add_file(self, file: Datum | FrozenDatum) -> bool:
                 if len(self.files) >= 1:
                     return False
                 return super().add_file(file)
@@ -273,22 +273,22 @@ class TestJobIdSequencing:
     def test_first_job_keeps_the_bucket_id(self) -> None:
         """The common case stays readable: no suffix until one is needed."""
         group = _FixedBucketGroup(job_name="g", config=None)
-        assert group.add_file(FrozenFile(file=Path("/data/a.nc"))) is True
+        assert group.add_file(FrozenDatum(file=Path("/data/a.nc"))) is True
         assert "proto" in group.jobs
 
     def test_files_accumulate_into_the_open_job(self) -> None:
-        """Files for one bucket join the same job while it still accepts them."""
+        """Datums for one bucket join the same job while it still accepts them."""
         group = _FixedBucketGroup(job_name="g", config=None)
-        group.add_file(FrozenFile(file=Path("/data/a.nc")))
-        group.add_file(FrozenFile(file=Path("/data/b.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/a.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/b.nc")))
         assert list(group.jobs) == ["proto"]
         assert len(group.jobs["proto"].files) == 2
 
     def test_rejected_file_opens_a_successor_job(self) -> None:
         """A full job is retired and its files kept; the file is not dropped."""
         group = _CapOneGroup()
-        group.add_file(FrozenFile(file=Path("/data/a.nc")))
-        group.add_file(FrozenFile(file=Path("/data/b.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/a.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/b.nc")))
 
         assert sorted(group.jobs) == ["proto", "proto_overflow_1"]
         retained = {str(f.file) for job in group.jobs.values() for f in job.files}
@@ -300,7 +300,7 @@ class TestJobIdSequencing:
         issued: list[str] = []
 
         for i in range(5):
-            group.add_file(FrozenFile(file=Path(f"/data/{i}.nc")))
+            group.add_file(FrozenDatum(file=Path(f"/data/{i}.nc")))
             for job_id in list(group.jobs):
                 issued.append(job_id)
                 del group.jobs[job_id]
@@ -316,11 +316,11 @@ class TestJobIdSequencing:
         accumulating files.
         """
         group = _CapOneGroup()
-        group.add_file(FrozenFile(file=Path("/data/a.nc")))
-        group.add_file(FrozenFile(file=Path("/data/b.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/a.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/b.nc")))
         del group.jobs["proto"]  # timeout discard: no _record_job_emitted
 
-        group.add_file(FrozenFile(file=Path("/data/c.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/c.nc")))
 
         retained = {str(f.file) for job in group.jobs.values() for f in job.files}
         assert "/data/b.nc" in retained
@@ -335,17 +335,17 @@ class TestJobIdSequencing:
         """
 
         class _MultiBucketGroup(JobGroup):
-            def file_is_relevant(self, _file: File | FrozenFile) -> bool:
+            def file_is_relevant(self, _file: Datum | FrozenDatum) -> bool:
                 return True
 
             def get_job_ids_from_file(
                 self,
-                _file: File | FrozenFile,
+                _file: Datum | FrozenDatum,
             ) -> list[str]:
                 return ["alpha", "beta", "gamma"]
 
         group = _MultiBucketGroup(job_name="g", config=None)
-        group.add_file(FrozenFile(file=Path("/data/a.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/a.nc")))
 
         assert sorted(group.jobs) == ["alpha", "beta", "gamma"]
         for job in group.jobs.values():
@@ -360,13 +360,13 @@ class TestJobIdSequencing:
         the timeout-discard path does.
         """
         group = _FixedBucketGroup(job_name="g", config=None)
-        group.add_file(FrozenFile(file=Path("/data/a.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/a.nc")))
         assert group._open_job_ids["proto"] == "proto"
 
         # Timeout discard removes the job but leaves the pointer behind.
         del group.jobs["proto"]
 
-        group.add_file(FrozenFile(file=Path("/data/b.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/b.nc")))
 
         assert len(group.jobs) == 1
         (job,) = group.jobs.values()
@@ -375,7 +375,7 @@ class TestJobIdSequencing:
     def test_record_job_emitted_closes_only_the_matching_job(self) -> None:
         """Retiring a stale ID must not close the bucket's current job."""
         group = _FixedBucketGroup(job_name="g", config=None)
-        group.add_file(FrozenFile(file=Path("/data/a.nc")))
+        group.add_file(FrozenDatum(file=Path("/data/a.nc")))
         assert group._open_job_ids["proto"] == "proto"
 
         group._record_job_emitted("proto_overflow_9")  # not the open job

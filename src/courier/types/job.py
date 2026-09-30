@@ -12,7 +12,7 @@ import pydantic
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 from courier.types.payload import PayloadSpec
 
 _OVERFLOW_SEPARATOR = "_overflow_"
@@ -48,8 +48,8 @@ class Job:
         Unique identifier for this job instance.
     config : Any
         Job configuration.
-    files : Iterable[File | FrozenFile] or None, optional
-        Files associated with this job. None or empty means no initial files.
+    files : Iterable[Datum | FrozenDatum] or None, optional
+        Datums associated with this job. None or empty means no initial files.
     last_modified : float or None, optional
         Unix timestamp of last modification. Defaults to current time.
     timeout : float, optional
@@ -88,7 +88,7 @@ class Job:
         name: str,
         identifier: str,
         config: Any,
-        files: Iterable[File | FrozenFile] | None = None,
+        files: Iterable[Datum | FrozenDatum] | None = None,
         last_modified: float | None = None,
         timeout: float = 60 * 60 * 24,
         correlation_id: str | None = None,
@@ -99,8 +99,8 @@ class Job:
         self.name = name
         self.identifier = identifier
         self.config = config
-        self.files: set[FrozenFile] = (
-            {f.freeze() if isinstance(f, File) else f for f in files}
+        self.files: set[FrozenDatum] = (
+            {f.freeze() if isinstance(f, Datum) else f for f in files}
             if files is not None
             else set()
         )
@@ -148,7 +148,7 @@ class Job:
             name=data["name"],
             identifier=data["identifier"],
             config=data["config"],
-            files={FrozenFile.from_string(f) for f in data.get("files", [])},
+            files={FrozenDatum.from_string(f) for f in data.get("files", [])},
             last_modified=data.get("last_modified"),
             timeout=data.get("timeout", 60 * 60 * 24),
             correlation_id=data.get("correlation_id"),
@@ -165,8 +165,8 @@ class Job:
         """Return true if job is ready to be emitted."""
         return False
 
-    def add_file(self, file: File | FrozenFile) -> bool:
-        """Add file to job (freezes mutable File before adding).
+    def add_file(self, file: Datum | FrozenDatum) -> bool:
+        """Add file to job (freezes mutable Datum before adding).
 
         Returns
         -------
@@ -182,7 +182,7 @@ class Job:
         so that :meth:`JobGroup.add_file` can create overflow jobs for
         rejected files.
         """
-        if not isinstance(file, FrozenFile):
+        if not isinstance(file, FrozenDatum):
             file = file.freeze()
         self.files.add(file)
         self.last_modified = time.time()
@@ -314,15 +314,15 @@ class JobGroup:
         self._open_job_ids[base_id] = job_id
         return job
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:
         """Return true if file is relevant to this job group."""
         raise NotImplementedError
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         """Return job ID from file."""
         return [str(file.file)]
 
-    def add_file(self, file: File | FrozenFile) -> bool:
+    def add_file(self, file: Datum | FrozenDatum) -> bool:
         """Add file to appropriate job in job group.
 
         Return true if file was added to at least one job, false otherwise.

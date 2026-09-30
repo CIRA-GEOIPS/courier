@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 
 from courier.sync.job_builder_state_sync import JobBuilderStateSync
-from courier.types.file import FrozenFile
+from courier.types.datum import FrozenDatum
 from courier.types.job import Job, JobGroup
 from tests._helpers import poll_until
 
@@ -59,13 +59,13 @@ def _decode(value: bytes | str) -> str:
     return value.decode("utf-8") if isinstance(value, bytes) else value
 
 
-def _file(name: str) -> FrozenFile:
+def _file(name: str) -> FrozenDatum:
     """Return a file with a stable, value-comparable identity."""
-    return FrozenFile(file=Path(f"/data/{name}.nc"), hostname="h")
+    return FrozenDatum(file=Path(f"/data/{name}.nc"), hostname="h")
 
 
 def test_two_replicas_converge_on_one_complete_job(redis_config, namespace) -> None:
-    """Files delivered to different replicas end up in one job.
+    """Datums delivered to different replicas end up in one job.
 
     Reverted check: make the write a plain overwrite instead of a server-side
     union. The second replica's write then erases the first replica's file

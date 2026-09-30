@@ -48,8 +48,8 @@ from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
+from courier.types.datum import Datum
 from courier.types.execution_log import ExecutionLog
-from courier.types.file import File
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
 from tests._helpers import consume
@@ -445,10 +445,10 @@ class TestLifecycle:
     ) -> None:
         """Chained pipelines depend on dispatcher output re-entering the front."""
         dispatcher = _dispatcher(service, "life-emit-file")
-        dispatcher.emit_file(File(file=Path("/out/product.nc")))
+        dispatcher.emit_file(Datum(file=Path("/out/product.nc")))
 
         assert service.emit.call_args.kwargs["queue"] == FILE_FOUND_EXCHANGE
-        emitted = File.from_string(service.emit.call_args.kwargs["message"])
+        emitted = Datum.from_string(service.emit.call_args.kwargs["message"])
         assert str(emitted.file) == "/out/product.nc"
 
 

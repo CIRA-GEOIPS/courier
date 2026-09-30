@@ -18,7 +18,7 @@ import pytest
 
 from courier.plugins.job_builders.filter_and_group import FilterAndGroupJobBuilder
 from courier.plugins.job_builders.metadata_router import MetadataRouterBuilder
-from courier.types.file import FrozenFile
+from courier.types.datum import FrozenDatum
 from tests._helpers import with_payload
 
 
@@ -30,8 +30,8 @@ def service() -> MagicMock:
     return svc
 
 
-def _file(name: str) -> FrozenFile:
-    return FrozenFile(file=Path(f"/data/{name}.nc"), hostname="h")
+def _file(name: str) -> FrozenDatum:
+    return FrozenDatum(file=Path(f"/data/{name}.nc"), hostname="h")
 
 
 _FILTER_CONFIG = {
