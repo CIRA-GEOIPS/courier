@@ -28,7 +28,7 @@ Courier runs a central `Service` that coordinates three stages of plugins throug
 ```
 [Data Monitor] → detects new files, emits events
        ↓ (broker queue)
-[Job Builder]  → groups files into complete jobs, attaching the payload (script) to run
+[Job Builder]  → groups files into complete jobs, attaches the runnable payload 
        ↓ (broker queue)
 [Dispatcher]   → executes each job's payload 
 ```
