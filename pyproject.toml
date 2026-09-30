@@ -348,7 +348,7 @@ pytest_add_cli_args_test_selection = ["tests/unit_tests/"]
 also_copy = ["config.yaml"]
 
 [tool.bandit]
-exclude_dirs = ["tests", "docs"]
+exclude_dirs = ["tests"]
 skips = ["B101"]  # Skip assert warnings
 
 # ---------------------------------------------------------------------------

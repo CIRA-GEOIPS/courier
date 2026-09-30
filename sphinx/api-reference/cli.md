@@ -15,7 +15,7 @@ courier --version     # which courier is installed
 courier --help        # the command list
 ```
 
----
+______________________________________________________________________
 
 ## I want to create a service
 
@@ -23,7 +23,8 @@ courier --help        # the command list
 
 Walks through building a config: service metadata, then a numbered table of
 available plugins for each stage. Pick by number, by name, or by an unambiguous
-prefix — `3`, `s3_poller` and `s3` all select the same plugin.
+prefix — `5`, `s3_poller` and `s3` all select the same data monitor. Each job
+builder also asks for the payload its jobs run; see {doc}`../getting-started/init`.
 
 ```bash
 courier init             # writes <name>-service.yaml
@@ -33,7 +34,7 @@ courier init --dry-run   # print the YAML instead of writing it
 Finishes by printing the exact `validate` and `run` commands for what it built.
 It will not overwrite an existing file without asking.
 
----
+______________________________________________________________________
 
 ## I want to check a config before deploying
 
@@ -46,14 +47,25 @@ found so you can confirm it is the pipeline you meant:
 $ courier validate config.yaml
 config.yaml is valid.
   3 pipeline steps: 1 data monitor, 1 job builder, 1 dispatcher
+  just-pass runs payload echo-payload (bash_payload)
   broker: memory
 
 Run it:  courier run config.yaml
 ```
 
 A step count that surprises you is the point — it catches a stage you thought
-you had configured and hadn't. On failure it names each problem by config key
-and exits `1`.
+you had configured and hadn't. Beyond the schema it checks each step's plugin
+is installed, that every job builder nests exactly one payload, the dispatcher
+and payload settings (including keys removed in earlier releases), that each
+payload template compiles, and that each payload can run on the dispatchers
+its builder targets. On failure it names each problem by config key and exits
+`1`; {ref}`validation-errors` lists the common messages.
+
+It creates nothing and connects to nothing. What it can only judge from the
+host where `courier run` will start is printed as a `note:` line, not a
+problem: a template `file` that is not visible here, and a `log_to_file`
+directory that is missing, not writable or not a directory here (see
+[The log directory](dispatchers.md#the-log-directory)).
 
 ### `courier plugins list`
 
@@ -79,7 +91,7 @@ courier queues list config.yaml
 courier queues list config.yaml --json
 ```
 
----
+______________________________________________________________________
 
 ## I want to run a service
 
@@ -102,7 +114,7 @@ courier run config.yaml --only build,dispatch # the processing half
 
 The values are `spec.run` *identifiers* — the YAML keys — not plugin names.
 
----
+______________________________________________________________________
 
 ## I want to see what a running service is doing
 
@@ -130,7 +142,7 @@ courier dashboard config.yaml --live      # detect active plugins from Prometheu
 
 Requires `pip install data-courier[grafana]`.
 
----
+______________________________________________________________________
 
 ## I want to clean up after a topology change
 
@@ -150,15 +162,15 @@ courier queues prune config.yaml --from-file candidates.txt --apply
 Any candidate not in the expected set is an orphan. A non-empty queue is
 reported and left alone unless you pass `--force`.
 
----
+______________________________________________________________________
 
 ## Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Success |
-| `1` | Courier could not do what you asked — missing config, invalid config, failed delete |
-| `2` | The command line itself was wrong — unknown flag, missing argument |
+| Code | Meaning                                                                             |
+| ---- | ----------------------------------------------------------------------------------- |
+| `0`  | Success                                                                             |
+| `1`  | Courier could not do what you asked — missing config, invalid config, failed delete |
+| `2`  | The command line itself was wrong — unknown flag, missing argument                  |
 
 `1` and `2` are distinct on purpose: `2` means fix your typing, `1` means fix
 your config or your broker.
@@ -167,7 +179,7 @@ your config or your broker.
 
 `--log-level` / `-l`
 : `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Also read from
-  `COURIER_LOG_LEVEL`.
+`COURIER_LOG_LEVEL`.
 
 `--version` / `-V`
 : Print the installed version and exit.

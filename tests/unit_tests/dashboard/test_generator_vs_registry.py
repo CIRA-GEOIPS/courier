@@ -23,6 +23,7 @@ from courier.dashboard.prometheus_panels import (
     build_prometheus_panels,
     build_prometheus_templates,
 )
+from courier.dashboard.topology import build_topology_panels
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -37,13 +38,31 @@ _METRIC_PATTERN = re.compile(r"courier_[a-zA-Z_][a-zA-Z0-9_]*")
 
 
 def _iter_target_expressions() -> Iterator[str]:
-    """Yield every PromQL expression from panels generated for demo.yaml."""
+    """Yield every PromQL expression generated for demo.yaml.
+
+    Covers the metric rows and the topology rows (flow rates, dependency
+    health), for the whole pipeline and for a dispatcher-only sub-section, so
+    every conditional row that demo.yaml can produce is scanned.
+    """
     path = _TEST_CONFIG_DIR / "demo.yaml"
-    model = parse_config(str(path))
-    for row in build_prometheus_panels(model):
-        for panel in getattr(row, "panels", []) or []:
-            for target in getattr(panel, "targets", []) or []:
-                yield target.expr
+    models = [
+        parse_config(str(path)),
+        parse_config(str(path), run_identifiers={"run-preprocessing-suite"}),
+    ]
+    for model in models:
+        rows = [*build_prometheus_panels(model), *build_topology_panels(model)]
+        for row in rows:
+            for panel in getattr(row, "panels", []) or []:
+                for target in getattr(panel, "targets", []) or []:
+                    yield target.expr
+
+
+def test_the_expression_scan_covers_payload_and_topology_rows() -> None:
+    """Guard the guard: the conditional rows must actually be scanned."""
+    exprs = list(_iter_target_expressions())
+    assert any("courier_payload_jobs_processed_total" in e for e in exprs)
+    assert any("courier_job_builder_jobs_emitted_total" in e for e in exprs)
+    assert any("courier_plugin_state" in e for e in exprs)
 
 
 def _emitted_metric_families() -> dict[str, frozenset[str]]:

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import BaseModel, Field
 
-from courier.interfaces.job_builders import JobBuilder
+from courier.interfaces.job_builders import PAYLOAD_KEY, JobBuilder
 from courier.types.job import Job, JobGroup
 
 if TYPE_CHECKING:
@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 
 # Module-level logger for DummyJob class (which doesn't inherit from ServicePlugin)
 _module_logger = logging.getLogger(__name__)
+
+#: Builder config keys left out of the group config that every job carries on
+#: the wire: the payload block is the builder's and travels once, as
+#: ``job.payload``, and ``state_sync`` holds the Redis connection settings, a
+#: password among them.
+_BUILDER_ONLY_KEYS = frozenset({PAYLOAD_KEY, "state_sync"})
 
 
 class DummyJobBuilderConfig(BaseModel, frozen=True):
@@ -161,15 +167,19 @@ class DummyJobBuilder(JobBuilder):
         service : Service
             The service instance for the builder.
         config : dict
-            Configuration dictionary for the builder.
+            Configuration dictionary for the builder, including the
+            ``payload`` block every job builder requires.
         identifier : str or None
             Run-step identifier from the service YAML (optional).
         """
         super().__init__(service, config, identifier=identifier)
-        cfg = config or {}
-        self.validated = DummyJobBuilderConfig.model_validate(cfg)
-        self.config = cfg
-        self.job_groups = [DummyJobGroup(self.config)]
+        self.validated = DummyJobBuilderConfig.model_validate(self.config)
+        # Every job carries this group config on the wire.
+        self.job_groups = [
+            DummyJobGroup(
+                {k: v for k, v in self.config.items() if k not in _BUILDER_ONLY_KEYS},
+            ),
+        ]
 
     def is_healthy(self) -> bool:
         """Return the health status of the builder.

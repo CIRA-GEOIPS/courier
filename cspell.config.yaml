@@ -183,6 +183,62 @@ words:
   - recognise
   # British spellings, matching the house style already in this list
   - defence
+  - behaviours
+  - finalisation
+  - humanised
+  # Payloads and dispatchers (ADR-0011)
+  - unexecutable
+  - sandboxed
+  - requeueable
+  - misdeclared
+  - dunders
+  - dummyjobbuilder
+  # POSIX and Python standard library names
+  - fchmod
+  - fspath
+  - mkstemp
+  - WRONLY
+  - CREAT
+  - pids
+  - shutil
+  - setdefault
+  - endswith
+  - frozenset
+  # Python and Sphinx vocabulary used in the docs
+  - getattr
+  - kwarg
+  - noqa
+  - literalinclude
+  - linenos
+  - behavioural
+  - unconfigured
+  # Tracing and operations vocabulary (sphinx/operations/tracing.md)
+  - qualname
+  - daemonset
+  - backpressure
+  - topk
+  - tostring
+  - SIEM
+  # Tools, template keywords and scheduler options named in the docs
+  - gdalinfo
+  - endfor
+  - venvs
+  - gres
+  - cpus
+  - rabbitmqctl
+  # Jinja2 filters and tags, and Slurm and POSIX names used in the tests
+  - tojson
+  - urlencode
+  - endmacro
+  - lipsum
+  - requeue
+  - requeued
+  - slurmctld
+  - slurmstepd
+  - execve
+  - delenv
+  - uncreatable
+  - summarised
 ignoreWords:
   - traceparent
   - includehidden
@@ -254,4 +310,7 @@ ignoreWords:
   - autobuild
   - dedup
   - dedups
+  # Container image namespaces in the tutorials
+  - dgshanee
+  - jaegertracing
 import: []

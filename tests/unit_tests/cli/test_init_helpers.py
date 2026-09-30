@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from courier.cli.init_helpers import (
+    _module_config_model,
     find_config_model,
     get_field_metadata,
     get_plugin_description,
 )
+from courier.interfaces.payloads import Payload, PayloadConfig
 from courier.plugins.data_monitors.s3_poller import S3Poller, S3PollerConfig
 from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
@@ -30,6 +33,32 @@ from courier.plugins.dispatchers.local_dispatcher import (
     LocalDispatcher,
     LocalDispatcherConfig,
 )
+from courier.plugins.dispatchers.slurm_dispatcher import (
+    SlurmDispatcher,
+    SlurmDispatcherConfig,
+)
+from courier.plugins.payloads.bash_payload import BashPayload, BashPayloadConfig
+from courier.plugins.payloads.python_payload import (
+    PythonPayload,
+    PythonPayloadConfig,
+)
+from courier.plugins.payloads.shell_payload import ShellPayload, ShellPayloadConfig
+
+
+class _OddSettings(PayloadConfig):
+    """What ``_OddPayload`` really validates with."""
+
+    extra_option: str = ""
+
+
+class _OddPayloadConfig(BaseModel):
+    """Named like ``_OddPayload``'s companion, but not what it validates with."""
+
+    unrelated: int = 0
+
+
+class _OddPayload(Payload):
+    config_class = _OddSettings
 
 
 class TestFindConfigModel:
@@ -44,6 +73,10 @@ class TestFindConfigModel:
             (DummyJobBuilder, DummyJobBuilderConfig),
             (MetadataRouterBuilder, MetadataRouterConfig),
             (LocalDispatcher, LocalDispatcherConfig),
+            (SlurmDispatcher, SlurmDispatcherConfig),
+            (BashPayload, BashPayloadConfig),
+            (PythonPayload, PythonPayloadConfig),
+            (ShellPayload, ShellPayloadConfig),
         ],
     )
     def test_finds_known_configs(self, plugin_class, expected_config_class):
@@ -54,9 +87,32 @@ class TestFindConfigModel:
             f"{plugin_class.__name__}, got {result}"
         )
 
+    def test_a_declared_config_class_wins_over_the_name_guess(self):
+        """``config_class`` is what the plugin validates with, so init prompts
+        for exactly those fields -- even when a model in the module has the
+        name the guess looks for."""
+        guessed = _module_config_model(_OddPayload)
+        assert guessed is _OddPayloadConfig, "the name guess is not being tested"
+        assert _OddPayloadConfig().unrelated == 0
+
+        found = find_config_model(_OddPayload)
+
+        assert found is _OddSettings
+        assert _OddSettings(binary="true").extra_option == ""
+
 
 class TestGetFieldMetadata:
     """Tests for get_field_metadata()."""
+
+    def test_a_factory_default_is_not_offered_as_a_value(self):
+        """``Field(default_factory=list)`` has no ``default``: pydantic reports
+        ``PydanticUndefined``, which the prompt once offered as the default and
+        wrote into the config as the string "PydanticUndefined"."""
+        fields = get_field_metadata(PayloadConfig)
+        toolchain = next(f for f in fields if f["name"] == "toolchain")
+
+        assert toolchain["required"] is False
+        assert toolchain["default"] is ...
 
     def test_required_field(self):
         """Required fields should have required=True."""

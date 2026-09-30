@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import contextlib
+import enum
 import os
 import threading
 import time
 import traceback
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
+from pydantic import ValidationError
 
 from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import (
+    ConfigurationError,
     FatalBrokerError,
     InvalidPluginConfigError,
     TransientBrokerError,
@@ -21,6 +25,7 @@ from courier.interfaces.discovery import (
     ENTRY_POINT_PREFIX,
     ClassPluginRegistry,
 )
+from courier.interfaces.payloads import Payload
 from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.metrics import (
     JOB_BUILDER_ACTIVE_GROUPS,
@@ -34,6 +39,7 @@ from courier.metrics import (
     JOB_BUILDER_MALFORMED_MESSAGES,
     collect_labeled,
 )
+from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.tracing import (
     ATTR_CORRELATION_ID,
     ATTR_FILE_PATH,
@@ -53,7 +59,6 @@ from courier.utils.logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from courier.interfaces.payloads import Payload
     from courier.service import Service
     from courier.sync.job_builder_state_sync import JobBuilderStateSync
     from courier.types.job import Job, JobGroup
@@ -61,10 +66,177 @@ if TYPE_CHECKING:
 
 #: Bytes of a malformed message body echoed into the error log.
 _MALFORMED_BODY_PREVIEW = 512
+#: File paths of a job that failed to render listed in the error log.
+_RENDER_FAILURE_FILE_PREVIEW = 10
+
+#: Config key under which every job builder nests its payload plugin.
+PAYLOAD_KEY = "payload"
+
+#: The smallest valid ``payload`` block, quoted by every error about one.
+_PAYLOAD_BLOCK_EXAMPLE = """\
+  payload:
+    my-payload:
+      kind: payload
+      name: bash_payload
+      config:
+        script: echo {{ files[0].file }}"""
+
+
+def _payload_block_error(builder: str, problem: str) -> InvalidPluginConfigError:
+    """Return the error for a builder whose ``payload`` block is unusable.
+
+    Parameters
+    ----------
+    builder : str
+        The builder's identifier.
+    problem : str
+        What is wrong, phrased to follow the builder's name.
+
+    Returns
+    -------
+    InvalidPluginConfigError
+        The error, naming the builder and showing a minimal valid block.
+    """
+    return InvalidPluginConfigError(
+        f"Job builder {builder!r} {problem}. Every job builder needs a "
+        "payload block: its config nests exactly one payload plugin under "
+        f"`{PAYLOAD_KEY}:`, which is what its jobs execute. For example:\n"
+        f"{_PAYLOAD_BLOCK_EXAMPLE}",
+    )
+
+
+def block_error_location(
+    raw: Mapping[str, Any],
+    loc: tuple[int | str, ...],
+) -> tuple[int | str, ...]:
+    """Map a :class:`MicroserviceModel` error location onto the keys written.
+
+    The model reads the ``{<identifier>: {kind, name, config}}`` form as the
+    fields ``identifier`` and ``spec``, so pydantic reports ``spec.kind``
+    where the YAML says ``<identifier>.kind``.  The canonical
+    ``identifier:``/``spec:`` form is reported as written.
+
+    Parameters
+    ----------
+    raw : Mapping[str, Any]
+        The block as written.
+    loc : tuple[int | str, ...]
+        A pydantic error location from validating *raw*.
+
+    Returns
+    -------
+    tuple[int | str, ...]
+        *loc*, its first part replaced by the identifier for the short form.
+    """
+    if "identifier" in raw or "spec" in raw or len(raw) != 1:
+        return loc
+    if loc and loc[0] in {"identifier", "spec"}:
+        return (str(next(iter(raw))), *loc[1:])
+    return loc
+
+
+def _summarize(exc: Exception, raw: Mapping[str, Any]) -> str:
+    """Return *exc* on one line: each validation error's location and message."""
+    if not isinstance(exc, ValidationError):
+        return str(exc)
+    parts: list[str] = []
+    for error in exc.errors(include_url=False):
+        message = error["msg"].removeprefix("Value error, ")
+        where = ".".join(map(str, block_error_location(raw, error["loc"])))
+        parts.append(f"{where}: {message}" if where else message)
+    return "; ".join(parts)
+
+
+def parse_payload_block(
+    builder: str,
+    config: Mapping[str, Any] | None,
+) -> MicroserviceModel:
+    """Return the validated ``payload`` block of a job builder's config.
+
+    :class:`JobBuilder` applies this to its own config, and ``courier run``
+    applies it before registering the nested payload plugin, so a missing or
+    malformed block is reported the same way on both paths.
+
+    Parameters
+    ----------
+    builder : str
+        The builder's identifier, for the error message.
+    config : Mapping[str, Any] or None
+        The builder's config.
+
+    Returns
+    -------
+    MicroserviceModel
+        The nested payload plugin: its identifier, kind, name and config.
+
+    Raises
+    ------
+    InvalidPluginConfigError
+        If the block is missing, is not one valid sub-plugin mapping, or nests
+        a plugin whose kind is not ``payload``.
+    """
+    # Imported here: courier.cli.plugins imports every interface, this one too.
+    from courier.cli.plugins import normalize_kind  # noqa: PLC0415
+
+    raw = config.get(PAYLOAD_KEY) if isinstance(config, Mapping) else None
+    if raw is None:
+        raise _payload_block_error(builder, f"has no '{PAYLOAD_KEY}' block")
+    if not isinstance(raw, dict):
+        raise _payload_block_error(
+            builder,
+            f"has a malformed '{PAYLOAD_KEY}' block (a {type(raw).__name__}, "
+            "not a mapping)",
+        )
+    try:
+        block = MicroserviceModel.model_validate(raw)
+    except (ValueError, TypeError) as exc:  # ValidationError subclasses ValueError
+        raise _payload_block_error(
+            builder,
+            f"has a malformed '{PAYLOAD_KEY}' block ({_summarize(exc, raw)})",
+        ) from exc
+    if normalize_kind(block.spec.kind) != "payloads":
+        raise _payload_block_error(
+            builder,
+            f"nests {block.identifier!r} of kind {block.spec.kind!r} under "
+            f"'{PAYLOAD_KEY}', but only kind 'payload' can be nested there",
+        )
+    return block
+
+
+class _EmitOutcome(enum.Enum):
+    """What :meth:`JobBuilder._emit_job` did with a job."""
+
+    #: At least one target took the job.
+    PUBLISHED = "published"
+    #: Never publishable: no targets, or the payload failed to render.
+    DROPPED = "dropped"
+    #: Every target the builder claimed failed with a broker error.
+    FAILED = "failed"
+    #: Every target was already claimed by a peer; the files go back.
+    UNCLAIMED = "unclaimed"
 
 
 class JobBuilder(ServicePlugin):
     """Base data filter plugin.
+
+    Required payload
+    ----------------
+    Every job builder nests exactly one payload plugin under ``payload`` in
+    its ``config``; it is what the builder's jobs execute::
+
+        config:
+          payload:
+            my-payload:
+              kind: payload
+              name: bash_payload
+              config:
+                script: echo {{ files[0].file }}
+
+    The block is validated when the builder is constructed, so a subclass
+    that calls ``super().__init__`` cannot be built without one. Service
+    preflight then binds the payload plugin registered under that identifier
+    (:attr:`payload`); the builder refuses to start without it, and every job
+    it emits carries it.
 
     Optional HA state synchronization
     -----------------------------------
@@ -103,6 +275,16 @@ class JobBuilder(ServicePlugin):
         self.parent_service = service
         self._logger = get_logger("plugin", self.name, service.config)
         self.identifier = identifier or self.name
+        self.config = config or {}
+        #: The validated ``payload`` block from the config. Checked before
+        #: anything else is set up: a builder without one cannot run.
+        self.payload_block: MicroserviceModel = parse_payload_block(
+            self.identifier,
+            self.config,
+        )
+        #: The payload plugin instance, bound by service preflight; read it
+        #: through :attr:`payload`.
+        self._payload: Payload | None = None
         self._state = PluginRunState.STOPPED
         self._main_thread: threading.Thread | None = None
         # Per-instance shutdown signal handed to Service.consume() so the
@@ -119,15 +301,8 @@ class JobBuilder(ServicePlugin):
         # state_sync is enabled. Populated in start() after subclasses set
         # up job_groups. Empty dict = no locking (sync disabled).
         self._group_locks: dict[str, threading.Lock] = {}
-        self.config = config or {}
         self._sync: JobBuilderStateSync | None = self._init_sync(self.config, service)
         self.targets: tuple[str, ...] = tuple(self.config.get("targets") or ())
-        #: Nested payload plugin for this builder; wired by service preflight
-        #: from the ``payload`` block in the builder's config. The builder
-        #: renders it onto every emitted job. ``None`` only in harnesses that
-        #: drive a builder without running preflight; a real service fails
-        #: preflight if the block is absent.
-        self.payload: Payload | None = None
 
         self._files_received = JOB_BUILDER_FILES_RECEIVED
         self._jobs_built = JOB_BUILDER_JOBS_BUILT
@@ -143,14 +318,88 @@ class JobBuilder(ServicePlugin):
         }
 
     # ------------------------------------------------------------------
+    # Payload
+    # ------------------------------------------------------------------
+
+    @property
+    def payload_identifier(self) -> str:
+        """Identifier of the payload plugin the ``payload`` block nests."""
+        return self.payload_block.identifier
+
+    @property
+    def has_payload(self) -> bool:
+        """Whether a payload is bound; unlike :attr:`payload`, never raises."""
+        return self._payload is not None
+
+    @property
+    def payload(self) -> Payload:
+        """The payload plugin this builder renders onto every job it emits.
+
+        Service preflight binds it (``Service._bind_builder_payloads``) to the
+        plugin registered under :attr:`payload_identifier`. A harness that
+        drives a builder without preflight assigns one itself.
+
+        Raises
+        ------
+        ConfigurationError
+            If no payload has been bound.
+        """
+        if self._payload is None:
+            raise self._unbound_payload_error()
+        return self._payload
+
+    @payload.setter
+    def payload(self, payload: Payload) -> None:
+        """Bind *payload*, which must be the one the ``payload`` block names.
+
+        Raises
+        ------
+        ConfigurationError
+            If *payload* is not a :class:`Payload`, or its identifier is not
+            :attr:`payload_identifier`.
+        """
+        if not isinstance(payload, Payload):
+            raise ConfigurationError(
+                f"Job builder {self.identifier!r} can only bind a Payload, "
+                f"not {type(payload).__name__}.",
+            )
+        if payload.identifier != self.payload_identifier:
+            raise ConfigurationError(
+                f"Job builder {self.identifier!r} nests payload "
+                f"{self.payload_identifier!r}, so it cannot bind payload "
+                f"{payload.identifier!r}.",
+            )
+        self._payload = payload
+
+    def _unbound_payload_error(self) -> ConfigurationError:
+        """Return the error for using this builder before its payload is bound."""
+        return ConfigurationError(
+            f"Job builder {self.identifier!r} has no payload bound. Service "
+            "preflight binds the payload plugin registered as "
+            f"{self.payload_identifier!r}, the one its payload block names; "
+            "code that drives a builder without preflight must assign "
+            "builder.payload itself. A job builder cannot start or emit a "
+            "job without its payload.",
+        )
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     @log_execution
     def start(self) -> None:
-        """Start main thread, connecting to Redis first if sync is enabled."""
+        """Start main thread, connecting to Redis first if sync is enabled.
+
+        Raises
+        ------
+        ConfigurationError
+            If no payload is bound. Checked before anything is connected to
+            or consumed: every job the builder built would be unpublishable.
+        """
         if self._state == PluginRunState.RUNNING:
             return
+        if not self.has_payload:
+            raise self._unbound_payload_error()
         # Locks are populated whether or not state sync is configured: the
         # timeout reaper mutates the same groups from its own thread either
         # way. setdefault keeps a dict a subclass built in __init__, whose
@@ -280,8 +529,8 @@ class JobBuilder(ServicePlugin):
         Parameters
         ----------
         job : Job
-            Job to emit.  ``emit_time``, ``targets`` and (when a payload is
-            bound) ``payload`` are populated on the job before publish.
+            Job to emit.  ``emit_time``, ``targets`` and ``payload`` are
+            populated on the job before publish.
         targets : Sequence[str] or None, optional
             Dispatcher identifiers to route to.  ``None`` falls back to
             the builder's ``self.targets`` configured list.  Preflight
@@ -294,14 +543,45 @@ class JobBuilder(ServicePlugin):
             holds its claim, so the job reached no broker.  The caller has
             already removed the job from its group; a ``False`` it ignores
             discards the job's files silently.  See
-            :meth:`_return_files_to_group`.
+            :meth:`_return_files_to_group`.  A job whose payload fails to
+            render returns ``True``: it is dropped, because re-adding its
+            files would only fail the same render again.
+
+        Raises
+        ------
+        ConfigurationError
+            If no payload is bound.  A job without one can never be
+            published; reaching here without one is a wiring error, not a
+            per-job failure, and :meth:`start` refuses to start without it.
 
         Notes
         -----
         Transient broker errors retry with backoff.  Fatal broker errors
         release the per-target claim so a restart can retry.  Partial
         fan-out is logged at ERROR with both succeeded and failed targets.
+
+        A payload render failure (pass one) is contained to the job: it is
+        logged at ERROR and counted under ``reason="render"``, and nothing is
+        published.  Rendering happens before any per-target claim is taken, so
+        there is no claim to release.  ``emit`` never raises for it, so every
+        caller survives: the consume loop, the timeout reapers, the state-sync
+        merge callback and startup hydration.
         """
+        return self._emit_job(job, targets) is not _EmitOutcome.UNCLAIMED
+
+    def _emit_job(
+        self,
+        job: Job,
+        targets: Sequence[str] | None = None,
+    ) -> _EmitOutcome:
+        """Fan out *job* as :meth:`emit` does, reporting what happened to it.
+
+        The builder's own callers use this rather than :meth:`emit` so a
+        dropped or failed job is not counted or traced as an emitted one.
+        """
+        # Outside the render boundary below, which would contain this as a
+        # per-job failure: a builder with no payload can publish nothing.
+        payload = self.payload
         target_list: tuple[str, ...] = (
             tuple(targets) if targets is not None else self.targets
         )
@@ -312,12 +592,14 @@ class JobBuilder(ServicePlugin):
             )
             # Not recoverable by re-adding the files: with no target they
             # would be dropped again on every pass.
-            return True
+            return _EmitOutcome.DROPPED
         job.emit_time = time.time()
         job.targets = target_list
-        if self.payload is not None:
-            job.payload = self.payload.to_job_spec(job, builder=self)
-        message = str(job)
+        message = self._render_message(job, payload, target_list)
+        if message is None:
+            # Not recoverable by re-adding the files either: the same files
+            # render the same way on the next pass.
+            return _EmitOutcome.DROPPED
         succeeded: list[str] = []
         failed: list[tuple[str, str]] = []
         for target in target_list:
@@ -331,7 +613,8 @@ class JobBuilder(ServicePlugin):
                     "job_id": job.identifier,
                 },
             )
-        elif not succeeded:
+            return _EmitOutcome.PUBLISHED if succeeded else _EmitOutcome.FAILED
+        if not succeeded:
             # Every target was a peer's. WARNING because the caller has to act
             # on it; at INFO it read like an ordinary dedup while the job's
             # files were dropped.
@@ -341,13 +624,69 @@ class JobBuilder(ServicePlugin):
                 f"to the group rather than dropping them",
                 extra={"correlation_id": job.correlation_id},
             )
-            return False
-        else:
-            self._logger.info(
-                f"Emitted job {job.identifier} to targets {list(succeeded)}",
+            return _EmitOutcome.UNCLAIMED
+        self._logger.info(
+            f"Emitted job {job.identifier} to targets {list(succeeded)}",
+            extra={"correlation_id": job.correlation_id},
+        )
+        return _EmitOutcome.PUBLISHED
+
+    def _render_message(
+        self,
+        job: Job,
+        payload: Payload,
+        target_list: tuple[str, ...],
+    ) -> str | None:
+        """Render *job* for the wire, containing any failure to this job.
+
+        This is where the bound payload is rendered onto the job (pass one).
+        Rendering depends on the job's data, so a template that is valid for
+        one file can fail for the next: a missing metadata key, a type error
+        in an expression, a dispatcher-only value used in a way two-pass
+        rendering does not support. Serializing the job is covered by the same
+        boundary. Any such failure costs this job and nothing else.
+
+        Parameters
+        ----------
+        job : Job
+            Job about to be published; ``emit_time`` and ``targets`` are set.
+        payload : Payload
+            The builder's bound payload.
+        target_list : tuple[str, ...]
+            Targets the job would have been published to, for the failure
+            counter and the log line.
+
+        Returns
+        -------
+        str or None
+            The serialized job, its payload attached.  ``None`` when rendering
+            failed; the failure has been logged at ERROR and counted once per
+            target under ``reason="render"``.
+        """
+        try:
+            job.payload = payload.to_job_spec(job, builder=self)
+            return str(job)
+        except Exception as exc:  # render boundary: fail this job, not the builder
+            span = get_current_span()
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(exc)
+            files = sorted(str(f.file) for f in job.files)
+            shown = files[:_RENDER_FAILURE_FILE_PREVIEW]
+            more = len(files) - len(shown)
+            self._logger.exception(
+                f"Dropping job {job.identifier}: it failed to render (payload "
+                f"{payload.identifier!r}), so nothing was published to "
+                f"{list(target_list)}. Files ({len(files)}): {shown}"
+                f"{f' and {more} more' if more else ''}",
                 extra={"correlation_id": job.correlation_id},
             )
-        return True
+            for target in target_list:
+                self._emit_failures.labels(
+                    target=target,
+                    reason="render",
+                    **self._metric_labels,
+                ).inc()
+            return None
 
     def _emit_one(
         self,
@@ -589,31 +928,39 @@ class JobBuilder(ServicePlugin):
                         ATTR_CORRELATION_ID: ready_job.correlation_id,
                     },
                 ):
-                    if not self.emit(ready_job, targets):
-                        self._return_files_to_group(job_group, ready_job)
-                    get_current_span().add_event(
-                        "job.ready",
-                        attributes={
-                            ATTR_JOB_ID: ready_job.identifier,
-                            ATTR_CORRELATION_ID: ready_job.correlation_id,
-                        },
-                    )
-                    get_current_span().add_event(
-                        "job.emitted",
-                        attributes={
-                            ATTR_JOB_ID: ready_job.identifier,
-                            ATTR_CORRELATION_ID: ready_job.correlation_id,
-                        },
-                    )
-                self._jobs_built.labels(
-                    status="ready",
-                    **self._metric_labels,
-                ).inc()
-                self._files_per_job.labels(
-                    **self._metric_labels,
-                ).observe(len(ready_job.files))
+                    self._emit_ready_job(job_group, ready_job, targets)
 
             self._cleanup_old_jobs(job_group)
+
+    def _emit_ready_job(
+        self,
+        job_group: JobGroup,
+        job: Job,
+        targets: tuple[str, ...],
+    ) -> None:
+        """Emit one job completed by the file path; trace and count the outcome.
+
+        Only a published job gets the ``job.emitted`` span event.  A job that
+        failed to render (or had no target) was never built into a message,
+        and an unclaimed job's files go back to form a new job, so neither is
+        counted as built; one whose every publish failed still is.
+        """
+        outcome = self._emit_job(job, targets)
+        span = get_current_span()
+        attributes = {
+            ATTR_JOB_ID: job.identifier,
+            ATTR_CORRELATION_ID: job.correlation_id,
+        }
+        span.add_event("job.ready", attributes=attributes)
+        if outcome is _EmitOutcome.UNCLAIMED:
+            self._return_files_to_group(job_group, job)
+            return
+        if outcome is _EmitOutcome.DROPPED:
+            return
+        if outcome is _EmitOutcome.PUBLISHED:
+            span.add_event("job.emitted", attributes=attributes)
+        self._jobs_built.labels(status="ready", **self._metric_labels).inc()
+        self._files_per_job.labels(**self._metric_labels).observe(len(job.files))
 
     @contextlib.contextmanager
     def _group_lock(self, job_group: JobGroup) -> Iterator[None]:
@@ -726,8 +1073,11 @@ class JobBuilder(ServicePlugin):
         Returns
         -------
         list[Job]
-            The jobs that reached a broker. A job every replica skipped is
-            absent, because its files went back into the group.
+            The jobs that were published to at least one target: the timeout
+            reapers count exactly these as timeout emissions.  A job that
+            left the group without being published (no targets, a payload
+            that failed to render, every publish failing) is absent, and so is
+            a job every replica skipped, whose files went back into the group.
         """
         with self._group_lock(job_group):
             ready = self._claim_ready_jobs(job_group)
@@ -738,9 +1088,10 @@ class JobBuilder(ServicePlugin):
         emitted: list[Job] = []
         for job in ready:
             self._logger.info(f"Job {job.identifier} {reason}; emitting")
-            if self.emit(job, targets):
+            outcome = self._emit_job(job, targets)
+            if outcome is _EmitOutcome.PUBLISHED:
                 emitted.append(job)
-            else:
+            elif outcome is _EmitOutcome.UNCLAIMED:
                 self._return_files_to_group(job_group, job)
         return emitted
 
@@ -862,5 +1213,5 @@ job_builders = ClassPluginRegistry(
     name="job_builders",
     group=f"{ENTRY_POINT_PREFIX}.job_builders",
     expected_base=JobBuilder,
-    nested_values=["payload"],
+    nested_values=[PAYLOAD_KEY],
 )

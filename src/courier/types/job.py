@@ -18,6 +18,23 @@ from courier.types.payload import PayloadSpec
 _OVERFLOW_SEPARATOR = "_overflow_"
 
 
+def json_default(obj: Any) -> Any:
+    """Serialize what :func:`json.dumps` cannot: pydantic models, as dicts.
+
+    Used as ``json.dumps(..., default=json_default)`` by :meth:`Job.__str__`,
+    and by anything that must see a job's values exactly as they cross the
+    broker.
+
+    Raises
+    ------
+    TypeError
+        If *obj* is not a pydantic model.
+    """
+    if isinstance(obj, pydantic.BaseModel):
+        return obj.model_dump()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 # Mutable because: Job accumulates files incrementally via add_file() until
 # ready() returns True; single-threaded ownership by the job builder plugin.
 class Job:
@@ -42,28 +59,28 @@ class Job:
         construction when absent so every Job has a stable ID for log
         correlation across the data-monitor → builder → dispatcher
         pipeline.
-        emit_time : float or None, optional
+    emit_time : float or None, optional
         Unix timestamp stamped by the job builder at emit. Used by the
         dispatcher to compute end-to-end routing latency. ``None`` until
         the builder has published the job.
-        targets : tuple[str, ...] or None, optional
-            Observability record of which dispatcher identifiers the builder
-            published this job to. Not used for routing — routing is by
-            queue name — but preserved round-trip for debugging and
-            provenance. Stored as a tuple so the field remains effectively
-            immutable despite the surrounding class being mutable.
-        payload : PayloadSpec or None, optional
-            Serialized description of what the job should execute, attached
-            by the owning job builder at emit. The dispatcher hydrates a
-            payload plugin from it at execution time. ``None`` until the
-            builder attaches it.
+    targets : tuple[str, ...] or None, optional
+        Observability record of which dispatcher identifiers the builder
+        published this job to. Not used for routing — routing is by
+        queue name — but preserved round-trip for debugging and
+        provenance. Stored as a tuple so the field remains effectively
+        immutable despite the surrounding class being mutable.
+    payload : PayloadSpec or None, optional
+        Serialized description of what the job should execute, attached
+        by the owning job builder at emit. The dispatcher hydrates a
+        payload plugin from it at execution time. ``None`` until the
+        builder attaches it.
 
     Notes
     -----
-        ``config`` may be any type, but serialization via :meth:`__str__`
-        converts Pydantic models to plain dicts via ``model_dump()``.
-        Deserialization via :meth:`from_string` reconstructs ``config`` as
-        a dict.  Consumers should be prepared for either form.
+    ``config`` may be any type, but serialization via :meth:`__str__`
+    converts Pydantic models to plain dicts via ``model_dump()``.
+    Deserialization via :meth:`from_string` reconstructs ``config`` as
+    a dict.  Consumers should be prepared for either form.
     """
 
     def __init__(  # noqa: PLR0913, PLR0917
@@ -96,14 +113,6 @@ class Job:
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
-
-        def _json_default(obj: Any) -> Any:
-            if isinstance(obj, pydantic.BaseModel):
-                return obj.model_dump()
-            raise TypeError(
-                f"Object of type {type(obj).__name__} is not JSON serializable",
-            )
-
         return json.dumps(
             {
                 "name": self.name,
@@ -117,7 +126,7 @@ class Job:
                 "targets": list(self.targets),
                 "payload": self.payload,
             },
-            default=_json_default,
+            default=json_default,
         )
 
     @classmethod

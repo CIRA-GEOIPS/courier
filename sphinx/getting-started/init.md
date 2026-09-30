@@ -2,8 +2,8 @@
 
 The `courier init` command creates a new service configuration file through
 an interactive prompt-based workflow. It guides you step-by-step through
-selecting data monitors, job builders, and dispatchers, then generates a
-validated YAML file ready to run.
+selecting data monitors, job builders (each with the payload its jobs run),
+and dispatchers, then generates a validated YAML file ready to run.
 
 ## Usage
 
@@ -14,11 +14,15 @@ courier init
 Follow the prompts:
 
 1. **Service metadata** — name, namespace, and description for your service
-2. **Data monitors** — pick from available monitors like file system pollers,
-   RabbitMQ watchers, S3/SFTP pollers, Kafka consumers, and cron-based triggers
-3. **Job builders** — choose how incoming files are grouped into processing jobs
-4. **Dispatchers** — select how jobs are executed (bash, Slurm, HTTP)
-5. **Review and save** — preview your configuration before writing to disk
+1. **Data monitors** — pick from available monitors like file system pollers,
+   RabbitMQ watchers, S3 pollers, Kafka consumers, and cron-based triggers
+1. **Job builders** — choose how incoming files are grouped into processing
+   jobs. Each job builder then asks for its **payload**, the script its jobs
+   run (`bash_payload`, `python_payload` or `shell_payload`). A job builder
+   needs exactly one, so this prompt cannot be skipped.
+1. **Dispatchers** — select where jobs are executed: on this host
+   (`local_dispatcher`) or on a Slurm cluster (`slurm_dispatcher`)
+1. **Review and save** — preview your configuration before writing to disk
 
 The command generates a `{name}-service.yaml` file ready to run with
 `courier run {name}-service.yaml`.
@@ -36,96 +40,134 @@ prompt you can enter any of:
 
 `s3`
 : Any prefix that matches exactly one plugin. A prefix matching several
-  (`s` → `s3_poller`, `sftp_poller`) is refused and lists the candidates
-  rather than guessing.
+(`fi` → `file_count_builder`, `filter_and_group`) is refused and lists the
+candidates rather than guessing.
 
 Whichever form you use, the resolved plugin name is echoed back before you are
 asked to configure it, so a mistyped number is caught immediately. Press
-{kbd}`Enter` on its own to move to the next category.
+{kbd}`Enter` on its own to move to the next category. The payload prompt is
+the exception: it has no skip, and asks again until you choose one.
 
 ## Options
 
 `--dry-run`
 : Print the generated configuration to stdout without writing a file.
-  Useful for previewing the output before creating a file.
+Useful for previewing the output before creating a file.
 
 ## Walkthrough
 
-Here is a typical session creating a file watcher service:
+Here is a typical session creating a file watcher service (some prompts and
+tables abridged):
 
 ```bash
 $ courier init
 
-╭──────────────────────────────────────────────╮
-│ Courier Init — interactive service config    │
-│ generator                                    │
-╰──────────────────────────────────────────────╯
-
-╭── Service Metadata ──────────────────────────╮
-│ basic information about your service         │
-╰───────────────────────────────────────────────╯
-Service name [my-processor]: my-processor
-Namespace [my-processor]:
-Description [A courier service: my-processor]: Watches for data and processes it
-
-╭── Data Monitors ─────────────────────────────╮
-│ select which data monitor plugins to use     │
-╰───────────────────────────────────────────────╯
-                        Available Data Monitors
-╭───┬─────────────────────────────┬────────────────────────────────────────────╮
-│ # │ Name                        │ Description                                │
-├───┼─────────────────────────────┼────────────────────────────────────────────┤
-│ 1 │ file_system_poller_watchdog │ Watch a directory for new files.           │
-│ 2 │ cron_glob                   │ Emit files matching a glob on a schedule.  │
-│ 3 │ s3_poller                   │ Poll an S3 bucket for new objects.         │
-│ 4 │ rabbit_mq_watcher           │ RabbitMQ Data Monitor Plugin.              │
-│ 5 │ sftp_poller                 │ Poll an SFTP server on an interval.        │
-│ 6 │ kafka_consumer              │ Consume JSON messages from a Kafka topic.  │
-╰───┴─────────────────────────────┴────────────────────────────────────────────╯
-Add a data monitor (1-6, name, or Enter to skip): 1
+╭──────────────────────────────────────────────────────────╮
+│ Courier Init — interactive service config generator      │
+│ Follow the prompts to create your service configuration. │
+╰──────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────────╮
+│ Service Metadata — basic information about your service │
+╰─────────────────────────────────────────────────────────╯
+Service name (my-processor): my-processor
+Namespace (my-processor):
+Description (A courier service: my-processor): Watches for data and processes it
+╭──────────────────────────────────────────────────────────╮
+│ Data Monitors — select which data monitor plugins to use │
+╰──────────────────────────────────────────────────────────╯
+                                         Available Data Monitors
+╭───┬─────────────────────────────┬──────────────────────────────────────────────────────────────────────╮
+│ # │ Name                        │ Description                                                          │
+├───┼─────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
+│ 1 │ cron_glob                   │ Cron-scheduled glob-based data monitor.                              │
+│ 2 │ file_system_poller_watchdog │ File System Polling Data Monitor Plugin.                             │
+│ 3 │ kafka_consumer              │ Consume JSON messages from a Kafka topic and yield ``File`` objects. │
+│ 4 │ rabbit_mq_watcher           │ RabbitMQ Data Monitor Plugin.                                        │
+│ 5 │ s3_poller                   │ Poll an S3 bucket on an interval and emit new object URIs.           │
+╰───┴─────────────────────────────┴──────────────────────────────────────────────────────────────────────╯
+Add a data monitor (1-5, name, or Enter to skip): 2
   ✓ file_system_poller_watchdog
   Configure file_system_poller_watchdog? [y/n] (y): y
+  Configure FileSystemPollerConfig:
     path * (Directory path to watch for new files): /data/incoming
-    hostname (Hostname to attach to emitted files) [localhost]:
+    hostname (Hostname to attach to emitted files) (localhost):
+  ✓ Configuration complete
+  Add another data monitor? [y/n] (n): n
+╭────────────────────────────────────────────────────────╮
+│ Job Builders — select which job builder plugins to use │
+╰────────────────────────────────────────────────────────╯
+Add a job builder (1-4, name, or Enter to skip): 1
+  ✓ DummyJobBuilder
+  Configure DummyJobBuilder? [y/n] (y): y
+  Configure DummyJobBuilderConfig:
+    targets (Optional list of targets to route to): dispatcher-local-dispatcher
+  ✓ Configuration complete
+╭─────────────────────────────────────────────────────────────────╮
+│ Payload — Job Builder DummyJobBuilder needs exactly one payload │
+╰─────────────────────────────────────────────────────────────────╯
+                       Available Payloads
+╭───┬────────────────┬──────────────────────────────────────────╮
+│ # │ Name           │ Description                              │
+├───┼────────────────┼──────────────────────────────────────────┤
+│ 1 │ bash_payload   │ Payload class for Bash script execution. │
+│ 2 │ python_payload │ Payload for Python execution.            │
+│ 3 │ shell_payload  │ Payload class for shell execution.       │
+╰───┴────────────────┴──────────────────────────────────────────╯
+Choose the payload (1-3 or name): 1
+  ✓ bash_payload
+  Configure bash_payload? [y/n] (y): y
+  Configure BashPayloadConfig:
+    file:
+    script: echo "Files assigned: {{ files | length }}"
+    toolchain:
+    ...
+  ✓ Configuration complete
+  Add another job builder? [y/n] (n): n
+╭──────────────────────────────────────────────────────╮
+│ Dispatchers — select which dispatcher plugins to use │
+╰──────────────────────────────────────────────────────╯
+Add a dispatcher (1-2, name, or Enter to skip): 1
+  ✓ local_dispatcher
+  Configure local_dispatcher? [y/n] (y): n
+  Add another dispatcher? [y/n] (n): n
 
-Add another data monitor? [y/n] (n): n
+                                  Configuration Preview
+╭──────────────────────────────────────────┬──────────────┬─────────────────────────────┬────────────────╮
+│ Identifier                               │ Kind         │ Plugin                      │ Config         │
+├──────────────────────────────────────────┼──────────────┼─────────────────────────────┼────────────────┤
+│ data-monitor-file-system-poller-watchdog │ data_monitor │ file_system_poller_watchdog │ path, hostname │
+│ job-builder-dummyjobbuilder              │ job_builder  │ DummyJobBuilder             │ targets        │
+│ └─payload-bash-payload                   │ payload      │ bash_payload                │ script         │
+│ dispatcher-local-dispatcher              │ dispatcher   │ local_dispatcher            │ (defaults)     │
+╰──────────────────────────────────────────┴──────────────┴─────────────────────────────┴────────────────╯
 
-# ... similar for Job Builders and Dispatchers ...
-
-╭── Configuration Preview ─────────────────────╮
-│ ...                                           │
-╰───────────────────────────────────────────────╯
 Proceed with this configuration? [y/n] (y): y
-Output path [./my-processor-service.yaml]:
+Output path (/home/user/my-processor-service.yaml):
 
-✓ Config written to my-processor-service.yaml
-
-╭── Ready! ────────────────────────────────────╮
-│ Next steps:                                  │
-│   Validate: courier validate my-processor-service.yaml
-│   Run:      courier run my-processor-service.yaml
-│                                              │
-│ The default Memory broker works for local    │
-│ testing. To configure AMQP for production,   │
-│ add a broker section to spec in the          │
-│ generated YAML.                              │
-╰──────────────────────────────────────────────╯
+✓ Config written to /home/user/my-processor-service.yaml
 ```
+
+The preview lists each job builder's payload under it. The identifiers are
+derived from the kind and plugin name, so a builder's `targets` can name a
+dispatcher before you have added it (`dispatcher-local-dispatcher` above).
+After the file is written, `courier init` prints the `courier validate` and
+`courier run` commands to try next.
 
 ```{note}
 **Configuration format compatibility**
 
-`courier init` generates pipeline steps using the nested `identifier:` /
-`spec:` format. Other examples throughout these docs use a flat
-`- <name>:` singleton mapping. Both formats are valid. For
-hand-written configurations, use the flat mapping style — it's shorter
-and matches the examples in {doc}`quick-start`, {doc}`configuration`,
-and the tutorials.
+`courier init` generates pipeline steps, and each job builder's payload, using
+the nested `identifier:` / `spec:` format. Other examples throughout these docs
+use a flat `- <name>:` singleton mapping (`payload: {<name>: {...}}` for a
+payload). Both formats are valid. For hand-written configurations, use the
+flat mapping style — it's shorter and matches the examples in
+{doc}`quick-start`, {doc}`configuration`, and the tutorials.
 ```
 
 ## Generated File Structure
 
-The generated YAML follows the `runcourier.dev/v1alpha1` API version:
+The generated YAML follows the `runcourier.dev/v1alpha1` API version. For the
+session above it is:
 
 ```yaml
 apiVersion: runcourier.dev/v1alpha1
@@ -136,33 +178,42 @@ metadata:
   description: Watches for data and processes it
 spec:
   run:
-    - identifier: data-monitor-file-system-poller-watchdog
-      spec:
-        kind: data_monitor
-        name: file_system_poller_watchdog
-        config:
-          path: /data/incoming
-          hostname: localhost
-    - identifier: job-builder-dummy-job-builder
-      spec:
-        kind: job_builder
-        name: DummyJobBuilder
-        config:
-          payload:
-            payload-bash-payload:
-              kind: payload
-              name: bash_payload
-              config:
-                script: echo "Files assigned: {{ files | length }}"
-    - identifier: dispatcher-local-dispatcher
-      spec:
-        kind: dispatcher
-        name: local_dispatcher
+  - identifier: data-monitor-file-system-poller-watchdog
+    spec:
+      kind: data_monitor
+      name: file_system_poller_watchdog
+      config:
+        path: /data/incoming
+        hostname: localhost
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        targets:
+        - dispatcher-local-dispatcher
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: 'echo "Files assigned: {{ files | length }}"'
+  - identifier: dispatcher-local-dispatcher
+    spec:
+      kind: dispatcher
+      name: local_dispatcher
+      config: null
 ```
+
+The written file also spells out every default: `docstring`, `labels` and
+`annotations` under `metadata`, and `broker` (in-memory), `allow_implicit_target`
+and `service_config` under `spec`. They are omitted above.
 
 Each pipeline step has an `identifier` (a DNS-safe name derived from
 the kind and plugin) and a `spec` containing the plugin kind, name, and
-any configuration values you provided during the prompts.
+any configuration values you provided during the prompts. A job builder's
+payload is nested the same way, under `config.payload`.
 
 ## Default Broker
 

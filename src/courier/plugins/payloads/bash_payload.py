@@ -19,3 +19,4 @@ class BashPayload(ShellPayload):
     name: ClassVar[str] = "bash_payload"
     version: ClassVar[str] = "-1"
     default_binary: ClassVar[str] = "bash"
+    config_class: ClassVar[type[PayloadConfig]] = BashPayloadConfig

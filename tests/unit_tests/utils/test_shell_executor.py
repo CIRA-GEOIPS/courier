@@ -18,7 +18,9 @@ import pytest
 from courier.utils.shell_executor import ShellExecResult, execute_shell_script
 
 
-def _run(script: str, timeout_seconds: float = 10.0, **kwargs: object) -> ShellExecResult:
+def _run(
+    script: str, timeout_seconds: float = 10.0, **kwargs: object
+) -> ShellExecResult:
     """Execute *script* through bash exactly as a shell payload would."""
     return execute_shell_script(["/bin/bash", "-c", script], timeout_seconds, **kwargs)  # type: ignore[arg-type]
 
@@ -53,7 +55,9 @@ class TestBasicExecution:
         assert result.return_code == 0
         assert "propagated" in result.stdout
 
-    def test_none_env_inherits_parent_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_none_env_inherits_parent_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("COURIER_TEST_INHERITED", "inherited")
 
         result = _run("echo $COURIER_TEST_INHERITED", env=None)
@@ -75,7 +79,9 @@ class TestLogToLogger:
         )
 
         assert result.return_code == 0
-        debug_calls = [c for c in mock_logger.log.call_args_list if c[0][0] == logging.DEBUG]
+        debug_calls = [
+            c for c in mock_logger.log.call_args_list if c[0][0] == logging.DEBUG
+        ]
         assert any("[job: test]" in str(c) and "hello" in str(c) for c in debug_calls)
 
     def test_stderr_streamed_at_warning(self) -> None:
@@ -88,7 +94,9 @@ class TestLogToLogger:
             log_prefix="[job: test]",
         )
 
-        warning_calls = [c for c in mock_logger.log.call_args_list if c[0][0] == logging.WARNING]
+        warning_calls = [
+            c for c in mock_logger.log.call_args_list if c[0][0] == logging.WARNING
+        ]
         assert any("error" in str(c) for c in warning_calls)
 
 
@@ -137,8 +145,12 @@ class TestLogOnlyErrors:
             log_only_errors=True,
         )
 
-        debug_calls = [c for c in mock_logger.log.call_args_list if c[0][0] == logging.DEBUG]
-        warning_calls = [c for c in mock_logger.log.call_args_list if c[0][0] == logging.WARNING]
+        debug_calls = [
+            c for c in mock_logger.log.call_args_list if c[0][0] == logging.DEBUG
+        ]
+        warning_calls = [
+            c for c in mock_logger.log.call_args_list if c[0][0] == logging.WARNING
+        ]
         assert debug_calls == []
         assert len(warning_calls) >= 1
 
@@ -194,3 +206,47 @@ class TestFailFastGuards:
     def test_log_to_file_without_path_raises(self) -> None:
         with pytest.raises(ValueError, match="log_to_file"):
             _run("echo hi", log_to_file=True, log_file_path=None)
+
+
+class TestCommandsThatCannotStart:
+    """A command that cannot start is a failed result, never an exception."""
+
+    def test_missing_executable_is_reported(self) -> None:
+        result = execute_shell_script(["/nonexistent/courier-no-such-binary"], 5.0)
+
+        assert result.return_code == -1
+        assert "Error executing script" in result.stderr
+
+    def test_embedded_nul_byte_is_reported(self) -> None:
+        result = execute_shell_script(["/bin/echo", "bad\x00arg"], 5.0)
+
+        assert result.return_code == -1
+        assert "Error executing script" in result.stderr
+
+    def test_none_in_argv_is_reported(self) -> None:
+        result = execute_shell_script([None, "-c", "true"], 5.0)  # type: ignore[list-item]
+
+        assert result.return_code == -1
+        assert "Error executing script" in result.stderr
+
+    def test_log_file_that_cannot_be_opened_is_reported(self, tmp_path: Path) -> None:
+        log_path = tmp_path / "missing-dir" / "run.log"
+
+        result = _run("echo hi", log_to_file=True, log_file_path=log_path)
+
+        assert result.return_code == -1
+        assert "Error executing script" in result.stderr
+        assert result.log_file_path is None
+
+
+class TestReportedLogFile:
+    def test_log_file_is_not_reported_when_file_logging_is_off(
+        self, tmp_path: Path
+    ) -> None:
+        log_path = tmp_path / "unused.log"
+
+        result = _run("echo hi", log_file_path=log_path)
+
+        assert result.return_code == 0
+        assert result.log_file_path is None
+        assert not log_path.exists()

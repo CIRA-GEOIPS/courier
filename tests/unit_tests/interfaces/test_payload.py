@@ -137,19 +137,18 @@ def test_conditional_over_dispatcher_value_raises(service, tmp_path) -> None:
 
 
 def test_filter_over_dispatcher_value_raises(service, tmp_path) -> None:
+    """A filter over a dispatcher-only value fails at the builder (pass one).
+
+    It used to slip through pass one and fail -- or silently render the
+    marker's text -- only on the dispatcher.
+    """
     from courier.errors import CourierError
 
     payload = _bash_payload(service, tmp_path, "echo {{ script_path | lower }}")
     job = _job_with_file("/data/a.nc")
-    spec = payload.to_job_spec(job)
 
-    with pytest.raises(CourierError, match="filter"):
-        payload.resolve_deferred_expressions(
-            spec.script,
-            job,
-            {"dispatcher": {"identifier": "ld"}, "script_path": "/tmp/x.sh"},
-            defer_nonce=spec.defer_nonce,
-        )
+    with pytest.raises(CourierError, match="'lower' filter"):
+        payload.to_job_spec(job)
 
 
 def test_forged_deferred_marker_is_refused(service, tmp_path) -> None:

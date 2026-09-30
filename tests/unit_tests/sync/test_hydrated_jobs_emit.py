@@ -21,6 +21,7 @@ import pytest
 from courier.interfaces.job_builders import JobBuilder
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
+from tests._helpers import bind_payload, with_payload
 
 
 class _AlwaysReadyJob(Job):
@@ -52,7 +53,12 @@ def test_a_job_complete_in_the_hash_is_emitted_on_start(
     service: MagicMock,
 ) -> None:
     """Otherwise it waits for an unrelated file, or for job.timeout."""
-    builder = JobBuilder(service, {"targets": ["dp-1"]}, identifier="jb-1")
+    builder = JobBuilder(
+        service,
+        with_payload({"targets": ["dp-1"]}),
+        identifier="jb-1",
+    )
+    bind_payload(builder)
     group = _StubGroup()
     builder.job_groups = [group]
 

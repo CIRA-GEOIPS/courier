@@ -24,6 +24,7 @@ import pytest
 from courier.interfaces.job_builders import JobBuilder
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
+from tests._helpers import bind_payload, with_payload
 
 
 class _PairJob(Job):
@@ -65,7 +66,12 @@ def service() -> MagicMock:
 
 
 def _builder(service: MagicMock, *, peer_owns_claim: bool) -> JobBuilder:
-    builder = JobBuilder(service, {"targets": ["dp-1"]}, identifier="jb-1")
+    builder = JobBuilder(
+        service,
+        with_payload({"targets": ["dp-1"]}),
+        identifier="jb-1",
+    )
+    bind_payload(builder)
     builder.job_groups = [_PairGroup()]
     sync = MagicMock()
     sync.try_claim_emit.return_value = not peer_owns_claim

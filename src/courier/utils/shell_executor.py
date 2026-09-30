@@ -2,8 +2,9 @@
 
 Provides :func:`execute_shell_script` — a single entry-point that runs a command
 and captures stdout/stderr, optionally streaming to a logger and/or
-a log file in real-time. The function **never raises**; all failure modes are
-captured in the returned :class:`ShellExecResult`.
+a log file in real-time. Beyond rejecting inconsistent logging arguments, the
+function **never raises**; all failure modes are captured in the returned
+:class:`ShellExecResult`.
 """
 
 from __future__ import annotations
@@ -63,6 +64,22 @@ def _terminate_process_group(process: subprocess.Popen) -> None:
             process.wait(timeout=5)
 
 
+def _open_log_file(path: Path) -> typing.TextIO:
+    """Open *path* for a fresh dispatch log and write its header line."""
+    log_fh = path.open("w")
+    log_fh.write("# Dispatch log — script started\n")
+    log_fh.flush()
+    return log_fh
+
+
+def _reported_log_path(
+    log_file_path: Path | None,
+    log_fh: typing.TextIO | None,
+) -> str | None:
+    """Return the log path to report: only one that was opened for writing."""
+    return str(log_file_path) if log_fh is not None else None
+
+
 def execute_shell_script(  # noqa: PLR0913
     execution_command: list[str],
     timeout_seconds: float,
@@ -81,7 +98,9 @@ def execute_shell_script(  # noqa: PLR0913
     Depending on flags, output may be streamed to a logger and/or written to a
     file in real-time.
 
-    Never raises — all failure modes are captured in :class:`ShellExecResult`.
+    Never raises once the arguments are valid — every failure to run the
+    command (missing executable, bad argv, a log file that cannot be opened,
+    timeout) is captured in :class:`ShellExecResult`.
 
     Parameters
     ----------
@@ -98,7 +117,8 @@ def execute_shell_script(  # noqa: PLR0913
     log_to_file : bool
         Write stdout and stderr to a file in real-time.
     log_file_path : Path or None
-        Path to the log file (required if ``log_to_file=True``).
+        Path to the log file (required if ``log_to_file=True``; ignored, and
+        not reported in the result, when ``log_to_file`` is False).
     log_only_errors : bool
         If True, discard stdout entirely (not streamed, not written to file,
         not included in returned ``ShellExecResult.stdout``).
@@ -131,9 +151,7 @@ def execute_shell_script(  # noqa: PLR0913
     try:
         # -- Open log file if requested ---------------------------------------
         if log_to_file:
-            log_fh = cast("Path", log_file_path).open("w")
-            log_fh.write("# Dispatch log — script started\n")
-            log_fh.flush()
+            log_fh = _open_log_file(cast("Path", log_file_path))
 
         # -- Launch subprocess with piped stdout/stderr -----------------------
         # start_new_session puts the script in its own process group so a
@@ -208,15 +226,18 @@ def execute_shell_script(  # noqa: PLR0913
             return_code=return_code,
             stdout="".join(stdout_lines),
             stderr="".join(stderr_lines),
-            log_file_path=str(log_file_path) if log_file_path else None,
+            log_file_path=_reported_log_path(log_file_path, log_fh),
         )
 
-    except (OSError, subprocess.SubprocessError) as e:
+    # ValueError/TypeError: Popen rejects an argv it cannot exec (an embedded
+    # NUL byte, a None or non-string entry). Callers rely on this function not
+    # raising for a command that merely cannot run, so report it as a failure.
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError) as e:
         return ShellExecResult(
             return_code=-1,
             stdout="",
             stderr=f"Error executing script: {e!s}",
-            log_file_path=str(log_file_path) if log_file_path else None,
+            log_file_path=_reported_log_path(log_file_path, log_fh),
         )
 
     finally:

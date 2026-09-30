@@ -16,6 +16,7 @@ from courier.plugins.job_builders.file_count_builder import (
     _matches_filters,
     _render_context,
 )
+from tests._helpers import with_payload
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -115,5 +116,5 @@ class TestJobGroup:
 
 class TestConstructor:
     def test_initializes(self, mock_service: MagicMock) -> None:
-        builder = FileCountBuilder(mock_service, {})
+        builder = FileCountBuilder(mock_service, with_payload())
         assert len(builder.job_groups) == 1

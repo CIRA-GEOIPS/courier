@@ -13,6 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from courier.constants import PluginRunState
+from courier.interfaces.job_builders import _EmitOutcome
 from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupConfig,
     FilterAndGroupJobBuilder,
@@ -21,6 +22,7 @@ from courier.plugins.job_builders.filter_and_group import (
     make_job_class,
 )
 from courier.types.file import FrozenFile
+from tests._helpers import with_payload
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -108,7 +110,7 @@ class TestJobGroup:
 
 class TestBuilder:
     def test_initializes_without_reaper(self, mock_service: MagicMock) -> None:
-        builder = FilterAndGroupJobBuilder(mock_service, {})
+        builder = FilterAndGroupJobBuilder(mock_service, with_payload())
         assert builder._reaper_thread is None
 
     def test_reap_group_emits_and_removes(
@@ -116,7 +118,7 @@ class TestBuilder:
     ) -> None:
         builder = FilterAndGroupJobBuilder(
             mock_service,
-            {"files_per_job": 1},
+            with_payload({"files_per_job": 1}),
         )
         group = builder.job_groups[0]
         JobCls = group.job
@@ -124,19 +126,23 @@ class TestBuilder:
         job.add_file(make_frozen_file())
         group.jobs["jid"] = job
 
-        emit = mocker.patch.object(builder, "emit")
+        emit = mocker.patch.object(
+            builder,
+            "_emit_job",
+            return_value=_EmitOutcome.PUBLISHED,
+        )
         builder._reap_group(group)
         emit.assert_called_once()
         assert "jid" not in group.jobs
 
     def test_is_healthy_without_running_state(self, mock_service: MagicMock) -> None:
-        builder = FilterAndGroupJobBuilder(mock_service, {})
+        builder = FilterAndGroupJobBuilder(mock_service, with_payload())
         assert builder.is_healthy() is False
 
     def test_is_healthy_running_no_reaper(
         self, mock_service: MagicMock, mocker
     ) -> None:
-        builder = FilterAndGroupJobBuilder(mock_service, {})
+        builder = FilterAndGroupJobBuilder(mock_service, with_payload())
         mocker.patch.object(builder, "_state", PluginRunState.RUNNING)
         assert builder.is_healthy() is True
 
@@ -149,11 +155,13 @@ class TestBuilder:
         """_reap_group clears the open-job pointer for the popped job's bucket."""
         builder = FilterAndGroupJobBuilder(
             mock_service,
-            {
-                "files_per_job": 1,
-                "min_files": 1,
-                "window_timeout_seconds": 0.01,
-            },
+            with_payload(
+                {
+                    "files_per_job": 1,
+                    "min_files": 1,
+                    "window_timeout_seconds": 0.01,
+                },
+            ),
         )
         group = builder.job_groups[0]
         JobCls = group.job
@@ -162,7 +170,11 @@ class TestBuilder:
         group.jobs["jid_overflow_3"] = job
         group._open_job_ids["jid"] = "jid_overflow_3"
 
-        emit = mocker.patch.object(builder, "emit")
+        emit = mocker.patch.object(
+            builder,
+            "_emit_job",
+            return_value=_EmitOutcome.PUBLISHED,
+        )
         builder._reap_group(group)
         emit.assert_called_once()
         assert "jid_overflow_3" not in group.jobs
@@ -179,7 +191,9 @@ class TestBuilder:
         Regression guard: reusing the ID makes the dispatcher's dedupe LRU
         treat the second job as a duplicate and drop it silently.
         """
-        builder = FilterAndGroupJobBuilder(mock_service, {"files_per_job": 1})
+        builder = FilterAndGroupJobBuilder(
+            mock_service, with_payload({"files_per_job": 1})
+        )
         group = builder.job_groups[0]
         mocker.patch.object(builder, "emit")
 

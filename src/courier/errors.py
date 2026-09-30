@@ -60,6 +60,22 @@ class MetadataConflictError(PipelineError):
         )
 
 
+class UnexecutableJobError(CourierError):
+    """Raised when a dispatcher cannot execute a job it received.
+
+    The failure is about this dispatcher's ability to run the job, not about
+    the job's own run: the message carries no payload (it was published by a
+    job builder from a release that did not attach one), names a payload plugin
+    that is not installed here, has no representation this dispatcher can run,
+    carries an invalid payload spec or config, or needs a toolchain this host
+    lacks.  A message body that is not a job at all is treated the same way.
+
+    A dispatcher parks such a message on its queue's dead-letter queue instead
+    of acknowledging and dropping it, so the job can be re-driven once the
+    deployment is fixed.
+    """
+
+
 class NoMatchError(PipelineError):
     """Raised when no metadata config entry matches a file.
 

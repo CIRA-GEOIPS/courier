@@ -1,15 +1,126 @@
-"""Shared waiting helpers for tests that observe asynchronous behaviour.
+"""Shared test helpers.
 
-Prefer them to a fixed sleep. A sleep long enough to be reliable on a loaded CI
-box wastes time on every run, and a shorter one is flaky.
+Waiting helpers for tests that observe asynchronous behaviour: prefer them to
+a fixed sleep. A sleep long enough to be reliable on a loaded CI box wastes
+time on every run, and a shorter one is flaky.
+
+Payload helpers for tests that build a job builder: every job builder needs a
+``payload`` block in its config, and a bound payload before it can start or
+emit a job.
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, cast
 
-__all__ = ["poll_until", "stays_false"]
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from courier.interfaces.job_builders import JobBuilder
+    from courier.interfaces.payloads import Payload
+
+__all__ = [
+    "DEFAULT_PAYLOAD_ID",
+    "DEFAULT_SCRIPT",
+    "bind_payload",
+    "payload_block",
+    "poll_until",
+    "stays_false",
+    "with_payload",
+]
+
+#: Identifier :func:`payload_block` gives the payload unless told otherwise.
+DEFAULT_PAYLOAD_ID = "test-payload"
+#: Script :func:`payload_block` gives the payload unless told otherwise.
+DEFAULT_SCRIPT = "echo {{ files | length }}"
+
+
+def payload_block(
+    identifier: str = DEFAULT_PAYLOAD_ID,
+    script: str = DEFAULT_SCRIPT,
+    *,
+    name: str = "bash_payload",
+    kind: str = "payload",
+) -> dict[str, Any]:
+    """Return a valid nested ``payload`` block for a job builder's config.
+
+    Parameters
+    ----------
+    identifier : str, optional
+        The payload's identifier.
+    script : str, optional
+        The payload's inline script template.
+    name : str, optional
+        Payload plugin name.  Default ``bash_payload``.
+    kind : str, optional
+        The block's ``kind``.  Default ``payload``.
+
+    Returns
+    -------
+    dict[str, Any]
+        ``{identifier: {kind, name, config: {script}}}``, the singleton form a
+        service YAML uses.
+    """
+    return {
+        identifier: {"kind": kind, "name": name, "config": {"script": script}},
+    }
+
+
+def with_payload(
+    config: dict[str, Any] | None = None,
+    identifier: str = DEFAULT_PAYLOAD_ID,
+    script: str = DEFAULT_SCRIPT,
+) -> dict[str, Any]:
+    """Return a copy of a builder *config* with a :func:`payload_block` added.
+
+    Parameters
+    ----------
+    config : dict[str, Any] or None, optional
+        The rest of the builder's config.
+    identifier : str, optional
+        The payload's identifier.
+    script : str, optional
+        The payload's inline script template.
+
+    Returns
+    -------
+    dict[str, Any]
+        *config* plus ``payload``.
+    """
+    return {**(config or {}), "payload": payload_block(identifier, script)}
+
+
+def bind_payload(builder: JobBuilder, service: Any | None = None) -> Payload:
+    """Construct the payload *builder*'s block describes and bind it.
+
+    What service preflight does for a registered builder, for a test that
+    drives a builder directly.
+
+    Parameters
+    ----------
+    builder : JobBuilder
+        The builder to bind.
+    service : Any or None, optional
+        Service the payload is constructed against (it reads only
+        ``service.config``).  Defaults to the builder's own service.
+
+    Returns
+    -------
+    Payload
+        The bound payload, a real instance of the plugin the block names.
+    """
+    from courier.interfaces.payloads import payloads  # noqa: PLC0415
+
+    block = builder.payload_block
+    payload_cls = cast("type[Payload]", payloads.get_plugin(block.spec.name))
+    payload = payload_cls(
+        service if service is not None else builder.parent_service,
+        block.spec.config,
+        identifier=block.identifier,
+    )
+    builder.payload = payload
+    return payload
 
 
 def poll_until(
