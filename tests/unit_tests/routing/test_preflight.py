@@ -295,17 +295,17 @@ def test_payload_identifier_must_name_a_registered_payload(payload_id: str) -> N
     svc = _service()
     svc.register_plugin(
         DummyJobBuilder,
-        {
-            "payload": {
-                payload_id: {"kind": "payload", "name": "bash_payload"},
-            },
-        },
+        {"payload": payload_block(payload_id)},
         identifier="b1",
     )
     _register_local_dispatcher(svc)
     _route_b1_to_d1(svc)
 
-    with pytest.raises(ConfigurationError, match="is not registered as a payload"):
+    with pytest.raises(
+        ConfigurationError,
+        match=f"Job builder 'b1' nests payload '{payload_id}', which is not "
+        "registered as a payload",
+    ):
         svc.preflight_check()
 
 

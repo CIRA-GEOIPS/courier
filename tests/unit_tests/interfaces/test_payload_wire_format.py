@@ -4,8 +4,8 @@
 ``script`` was sent twice -- raw in ``PayloadSpec.config`` and rendered in
 ``PayloadSpec.script``.  Now the rendered script is the only copy on the wire,
 and a dispatcher hydrating the spec puts it back into ``config.script`` for
-the code that inspects it.  These tests drive a real job builder's emit path
-and a real dispatcher, so the whole round trip is covered.
+the code that inspects it.  These tests drive every in-tree job builder's emit
+path and a real dispatcher, so the whole round trip is covered.
 """
 
 from __future__ import annotations
@@ -13,16 +13,16 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from courier.errors import CourierError
+from courier.interfaces.job_builders import JobBuilder, job_builders
 from courier.interfaces.payloads import _config_from_job_spec
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
-from courier.plugins.job_builders.file_count_builder import FileCountBuilder
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
@@ -84,22 +84,43 @@ def _payload_config(
     return name, {"file": str(path)}, template
 
 
-def _builder(service: MagicMock, name: str, config: dict[str, Any]) -> FileCountBuilder:
-    """Build a file_count_builder whose payload block is *name* / *config*."""
-    builder = FileCountBuilder(
+#: Every in-tree job builder, with the settings besides ``targets`` and
+#: ``payload`` that it needs to emit one job per file.
+_BUILDER_SETTINGS: dict[str, dict[str, Any]] = {
+    "DummyJobBuilder": {},
+    "file_count_builder": {"files_per_job": 1},
+    "filter_and_group": {"files_per_job": 1},
+    "metadata_router": {"routes": [{"name": "all", "files_per_job": 1}]},
+}
+
+
+def test_every_in_tree_builder_is_covered() -> None:
+    """Guard the guard: a builder missing here would go untested."""
+    assert set(_BUILDER_SETTINGS) <= set(job_builders.names())
+
+
+def _builder(
+    service: MagicMock,
+    name: str,
+    config: dict[str, Any],
+    builder: str = "file_count_builder",
+) -> JobBuilder:
+    """Build a *builder* whose payload block is *name* / *config*, and bind it."""
+    builder_cls = cast("type[JobBuilder]", job_builders.get_plugin(builder))
+    instance = builder_cls(
         service,
         {
-            "files_per_job": 1,
+            **_BUILDER_SETTINGS[builder],
             "targets": ["ld"],
             "payload": {"p1": {"kind": "payload", "name": name, "config": config}},
         },
         identifier="b1",
     )
-    bind_payload(builder)
-    return builder
+    bind_payload(instance)
+    return instance
 
 
-def _published_job(service: MagicMock, builder: FileCountBuilder) -> str:
+def _published_job(service: MagicMock, builder: JobBuilder) -> str:
     """Feed one file through *builder*; return the one message it published."""
     builder._dispatch_file(File(file=Path(DATA_FILE)).freeze())
     (call,) = service.emit.call_args_list
@@ -116,6 +137,7 @@ _CASES = [
 
 
 class TestTheTemplateTravelsOnce:
+    @pytest.mark.parametrize("builder", list(_BUILDER_SETTINGS))
     @pytest.mark.parametrize(("kind", "source"), _CASES)
     def test_message_holds_the_rendered_script_only(
         self,
@@ -123,10 +145,11 @@ class TestTheTemplateTravelsOnce:
         tmp_path: Path,
         kind: str,
         source: str,
+        builder: str,
     ) -> None:
         name, config, template = _payload_config(kind, source, tmp_path)
 
-        message = _published_job(service, _builder(service, name, config))
+        message = _published_job(service, _builder(service, name, config, builder))
 
         assert message.count(UNIQUE) == 1
         assert json.dumps(template)[1:-1] not in message, "raw template was sent"
@@ -172,7 +195,36 @@ class TestTheTemplateTravelsOnce:
         )
 
         assert log.return_code == 0, log.stderr
-        assert log.stdout.strip() == _EXPECTED_STDOUT
+        assert (log.stdout or "").strip() == _EXPECTED_STDOUT
+
+    @pytest.mark.parametrize(("kind", "source"), _CASES)
+    def test_an_older_builders_message_still_runs(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+        kind: str,
+        source: str,
+    ) -> None:
+        """A builder that still sends ``config.script`` sends the raw template.
+
+        (``null`` for a file payload.)  The dispatcher runs the rendered copy:
+        the raw one is never rendered or run, even though it still names
+        builder-side values.
+        """
+        name, config, template = _payload_config(kind, source, tmp_path)
+        if kind == "python_payload":
+            config["default_binary"] = sys.executable
+        body = json.loads(_published_job(service, _builder(service, name, config)))
+        body["payload"]["config"]["script"] = template if source == "inline" else None
+        older = json.dumps(body)
+        assert older.count(UNIQUE) == (2 if source == "inline" else 1)
+
+        (log,) = LocalDispatcher(service, {}, identifier="ld").get_execution_log(
+            Job.from_string(older),
+        )
+
+        assert log.return_code == 0, log.stderr
+        assert (log.stdout or "").strip() == _EXPECTED_STDOUT
 
 
 # ── hydration ───────────────────────────────────────────────────────────────

@@ -593,7 +593,11 @@ class TestWrappedSubmission:
         service: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """It only prefixes the toolchain probe, so #SBATCH lines still apply."""
+        """It is never part of a job's command, so #SBATCH lines still apply.
+
+        (A bash payload ignores it; only python_payload uses it, in front of
+        its toolchain probes.)
+        """
         dispatcher = _dispatcher(service, tmp_path)
         job = _wire(
             service,

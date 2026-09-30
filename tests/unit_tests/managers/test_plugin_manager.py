@@ -384,6 +384,37 @@ class TestStartAll:
         finally:
             manager.stop()  # type: ignore[unused-coroutine]
 
+    def test_a_real_builder_with_no_bound_payload_fails_startup(self) -> None:
+        """Started without preflight, a builder refuses before it consumes.
+
+        Its payload is registered beside it but never bound, which is what
+        skipping ``Service.preflight_check`` leaves.  The startup error names
+        the builder and the missing binding.
+        """
+        from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
+        from courier.plugins.payloads.bash_payload import BashPayload
+        from tests._helpers import DEFAULT_PAYLOAD_ID, payload_block, with_payload
+
+        config = _make_config(plugin_health_check_interval=0.5)
+        service = MagicMock(config=config)
+        manager = PluginManager(config, parent_service=service)
+        manager.register_plugin(DummyJobBuilder, with_payload(), identifier="jb")
+        manager.register_plugin(
+            BashPayload,
+            payload_block()[DEFAULT_PAYLOAD_ID]["config"],
+            identifier=DEFAULT_PAYLOAD_ID,
+        )
+
+        try:
+            with pytest.raises(RuntimeError, match="'jb' has no payload bound"):
+                manager.start()
+            info = manager.get_plugins()["jb"]
+            assert info.state == PluginRunState.FAILED
+            assert "has no payload bound" in (info.error_message or "")
+            service.consume.assert_not_called()
+        finally:
+            manager.stop()  # type: ignore[unused-coroutine]
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # is_healthy (ISSUE 14)

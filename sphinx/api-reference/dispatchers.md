@@ -78,10 +78,10 @@ A parked message is kept verbatim, so it can be moved back onto the
 `JobReady` queue once the cause is fixed: install the missing payload plugin
 or tool, or fix the dispatcher's config. `courier queues list <config>` names
 each dead-letter queue; read its depth with the broker's own tools
-(`rabbitmqctl list_queues name messages`, or the management UI). Jobs parked
-because they carry no payload were
-published by a job builder from an older release; see
-{doc}`../getting-started/upgrading` before re-driving them.
+(`rabbitmqctl list_queues name messages`, or the management UI). A job
+parked because it carries no payload was published by a job builder from an
+older release, since every current builder attaches one; see
+{doc}`../getting-started/upgrading` before re-driving it.
 
 ## Options for every dispatcher
 
