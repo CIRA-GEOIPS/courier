@@ -121,11 +121,14 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
 
     for field_name, field_info in model.model_fields.items():
         required = field_info.is_required()
-        # A factory default must not be read from ``field_info.default``: that
-        # is PydanticUndefined, which the prompt then offered as the default
-        # and wrote into the config as the literal string "PydanticUndefined".
-        has_value_default = not required and field_info.default_factory is None
-        default = field_info.default if has_value_default else ...
+        default = None
+        if not required:
+            # required checks if there's a default value or factory,
+            # so this should never resolve to PydanticUndefined unless defined as so.
+            default = field_info.get_default(
+                call_default_factory=True,
+                validated_data=model.model_fields,
+            )
 
         annotation = field_info.annotation
         if annotation is not None:
