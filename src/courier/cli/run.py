@@ -219,7 +219,7 @@ def run_service(
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
         service_id=_resolve_service_id(config),
-        log_level=log_level or None,
+        log_level=log_level or os.environ.get("COURIER_LOG_LEVEL", "DEBUG"),
     )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
