@@ -27,7 +27,7 @@ from courier.constants import FILE_FOUND_EXCHANGE, PluginRunState
 from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.interfaces.job_builders import JobBuilder
 from courier.interfaces.payloads import Payload
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 from courier.types.job import Job, JobGroup
 from tests._helpers import DEFAULT_PAYLOAD_ID, with_payload
 
@@ -43,7 +43,7 @@ class _CountingJob(Job):
     def ready(self) -> bool:
         return len(self.files) >= self.capacity
 
-    def add_file(self, file: File | FrozenFile) -> bool:
+    def add_file(self, file: Datum | FrozenDatum) -> bool:
         if len(self.files) >= self.capacity:
             return False
         return super().add_file(file)
@@ -56,10 +56,10 @@ class _StubGroup(JobGroup):
         super().__init__(name, {})
         self.job = _CountingJob
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:
         return True
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         return ["bucket"]
 
 
@@ -73,8 +73,8 @@ def _builder(service: MagicMock, identifier: str = "jb-1") -> JobBuilder:
     return builder
 
 
-def _file(name: str) -> FrozenFile:
-    return FrozenFile(file=Path(f"/data/{name}.nc"), hostname="h")
+def _file(name: str) -> FrozenDatum:
+    return FrozenDatum(file=Path(f"/data/{name}.nc"), hostname="h")
 
 
 @contextlib.contextmanager
@@ -418,7 +418,7 @@ class TestLifecycle:
         """Each group independently decides relevance; none may be skipped."""
         builder = _builder(service)
         builder.job_groups = [_StubGroup("g1"), _StubGroup("g2")]
-        service.consume.return_value = iter([(str(File(file=Path("/d/x.nc"))), None)])
+        service.consume.return_value = iter([(str(Datum(file=Path("/d/x.nc"))), None)])
 
         builder.handle_incoming_files()
 

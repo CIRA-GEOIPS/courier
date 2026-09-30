@@ -15,7 +15,7 @@ import pytest
 from courier.errors import StateSyncConnectionError
 from courier.schema.v1alpha1.sync_config import RedisStateSyncConfig
 from courier.sync.job_builder_state_sync import JobBuilderStateSync
-from courier.types.file import FrozenFile
+from courier.types.datum import FrozenDatum
 from courier.types.job import Job, JobGroup
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ def _make_job(
     identifier: str = "job-1",
     last_modified: float | None = None,
 ) -> Job:
-    file = FrozenFile(
+    file = FrozenDatum(
         file=None,
         hostname=None,
         source=None,
@@ -58,7 +58,7 @@ def _make_job(
         processing_stage=None,
         domain=None,
     )
-    files: set[FrozenFile] = {file}
+    files: set[FrozenDatum] = {file}
     j = Job(name="test", identifier=identifier, config={}, files=files)
     if last_modified is not None:
         j.last_modified = last_modified

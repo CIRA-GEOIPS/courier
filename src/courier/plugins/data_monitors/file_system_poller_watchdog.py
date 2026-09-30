@@ -1,4 +1,4 @@
-"""File System Polling Data Monitor Plugin for courier."""
+"""Datum System Polling Data Monitor Plugin for courier."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from watchdog.observers import Observer
 
 from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import DATA_MONITOR_LAST_PROCESSED_TIMESTAMP
-from courier.types.file import File
+from courier.types.datum import Datum
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -68,7 +68,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
         """Check if the data monitor is healthy."""
         return self.health
 
-    def find_file(self) -> Generator[File, None, None]:
+    def find_file(self) -> Generator[Datum, None, None]:
         """
         Watches a directory for new files and yields their paths.
 
@@ -120,7 +120,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
                     raw_path = file_queue.get(timeout=1.0)
                 except queue.Empty:
                     continue
-                yield File(
+                yield Datum(
                     file=Path(str(raw_path)),
                     hostname=self.validated.hostname,
                 )

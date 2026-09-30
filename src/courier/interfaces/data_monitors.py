@@ -32,7 +32,7 @@ from courier.tracing import (
     ATTR_PLUGIN_VERSION,
     get_tracer,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
@@ -79,16 +79,16 @@ class DataMonitorBasePlugin(ServicePlugin):
 
         self._files_processed = DATA_MONITOR_FILES_PROCESSED
 
-    def find_file(self) -> Generator[File, None, None]:
-        """Yield File objects."""
-        yield File(file=None, hostname=None)
+    def find_file(self) -> Generator[Datum, None, None]:
+        """Yield Datum objects."""
+        yield Datum(file=None, hostname=None)
 
-    def emit(self, file: File) -> None:
+    def emit(self, file: Datum) -> None:
         """Emit file to parent service."""
         self._logger.debug(f"Emitting file: {file}")
         self.parent_service.emit(queue=self.queue, message=str(file))
 
-    def add_metadata_to_file(self, file: File) -> File:
+    def add_metadata_to_file(self, file: Datum) -> Datum:
         """Add metadata to file before emitting."""
         from courier.utils.metadata import apply_metadata_from_configs  # noqa: PLC0415
 

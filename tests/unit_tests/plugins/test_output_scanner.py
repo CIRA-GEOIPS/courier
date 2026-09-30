@@ -9,7 +9,7 @@ from courier.dispatchers._output_file_pattern import OutputFilePattern
 from courier.dispatchers._output_scanner import (
     _scan_and_emit_output_files,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ class TestBasicScanning:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.file == Path("/tmp/test.nc")
 
     def test_single_pattern_multiple_matches_emits_multiple_files(self) -> None:
@@ -58,7 +58,7 @@ class TestBasicScanning:
         }
 
     def test_static_source_applied_to_emitted_file(self) -> None:
-        """Static pattern fields are applied to emitted File objects."""
+        """Static pattern fields are applied to emitted Datum objects."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="Processed /tmp/test.nc",
@@ -73,12 +73,12 @@ class TestBasicScanning:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.source == "goes16"
         assert emitted.instrument == "abi"
 
     def test_static_processing_stage_and_domain_applied(self) -> None:
-        """Static processing_stage and domain are applied to emitted File."""
+        """Static processing_stage and domain are applied to emitted Datum."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="Processed /tmp/test.nc",
@@ -93,12 +93,12 @@ class TestBasicScanning:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.processing_stage == "l1b"
         assert emitted.domain == "FULL-DISK"
 
     def test_hostname_propagated_to_emitted_file(self) -> None:
-        """The hostname kwarg is assigned to every emitted File."""
+        """The hostname kwarg is assigned to every emitted Datum."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="Processed /tmp/test.nc",
@@ -108,7 +108,7 @@ class TestBasicScanning:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.hostname == "satellite1"
 
 
@@ -153,7 +153,7 @@ class TestMultiplePatterns:
             emit_file=mock_emit,
         )
         assert mock_emit.call_count == 2
-        emitted_by_path: dict[Path, File] = {
+        emitted_by_path: dict[Path, Datum] = {
             call_args[0][0].file: call_args[0][0]
             for call_args in mock_emit.call_args_list
         }
@@ -227,7 +227,7 @@ class TestScanStderr:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.file == Path("/tmp/err.nc")
 
     def test_scan_stderr_false_ignores_stderr(self) -> None:
@@ -253,7 +253,7 @@ class TestScanStderr:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.file == Path("/tmp/from_err.nc")
 
     def test_scan_stderr_true_but_stderr_empty(self) -> None:
@@ -328,7 +328,7 @@ class TestRegexExtractedMetadata:
     """Tests for metadata extracted from additional named regex groups."""
 
     def test_extra_named_group_goes_to_metadata(self) -> None:
-        """Named groups besides 'file' are placed into File.metadata."""
+        """Named groups besides 'file' are placed into Datum.metadata."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="/tmp/test.nc|band=3|channel=vis\n",
@@ -341,7 +341,7 @@ class TestRegexExtractedMetadata:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.metadata == {"band": "3", "channel": "vis"}
 
     def test_regex_metadata_overrides_static_metadata(self) -> None:
@@ -359,7 +359,7 @@ class TestRegexExtractedMetadata:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         # band from regex (4) overrides static metadata band (3)
         # channel from static metadata is preserved
         assert emitted.metadata == {"band": "4", "channel": "ir"}
@@ -379,7 +379,7 @@ class TestRegexExtractedMetadata:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.metadata == {"pipeline": "l1b", "retention": "30d"}
 
 
@@ -387,10 +387,10 @@ class TestRegexExtractedMetadata:
 
 
 class TestRegexFieldOverrides:
-    """Tests for regex groups that match File field names (source, etc.)."""
+    """Tests for regex groups that match Datum field names (source, etc.)."""
 
     def test_regex_source_instrument_groups_populate_file_fields(self) -> None:
-        """Named groups 'source' and 'instrument' populate File fields directly."""
+        """Named groups 'source' and 'instrument' populate Datum fields directly."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="/data/abi/goes16/file.nc\n",
@@ -403,7 +403,7 @@ class TestRegexFieldOverrides:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.source == "goes16"
         assert emitted.instrument == "abi"
 
@@ -422,11 +422,11 @@ class TestRegexFieldOverrides:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.source == "himawari9"
 
     def test_regex_domain_group_populates_file_domain(self) -> None:
-        """Named group 'domain' populates File.domain field."""
+        """Named group 'domain' populates Datum.domain field."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="[full-disk] /tmp/test.nc\n",
@@ -439,11 +439,11 @@ class TestRegexFieldOverrides:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.domain == "FULL-DISK"
 
     def test_regex_processing_stage_group_populates_file_field(self) -> None:
-        """Named group 'processing_stage' populates File.processing_stage."""
+        """Named group 'processing_stage' populates Datum.processing_stage."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="l2 /tmp/test.nc\n",
@@ -456,7 +456,7 @@ class TestRegexFieldOverrides:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.processing_stage == "l2"
 
     def test_regex_field_value_is_case_normalized(self) -> None:
@@ -473,7 +473,7 @@ class TestRegexFieldOverrides:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         # Regex-extracted source is now lowercased for consistency with static field validators
         assert emitted.source == "goes16"
 
@@ -491,7 +491,7 @@ class TestRegexFieldOverrides:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.domain == "FULL-DISK"
 
 
@@ -511,8 +511,8 @@ class TestFileRoundTrip:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
-        reconstituted = File.from_string(str(emitted))
+        emitted: Datum = mock_emit.call_args[0][0]
+        reconstituted = Datum.from_string(str(emitted))
         assert reconstituted.file == emitted.file
         assert reconstituted.hostname == emitted.hostname
         assert reconstituted.source == emitted.source
@@ -523,7 +523,7 @@ class TestFileRoundTrip:
         assert reconstituted.num_expected == emitted.num_expected
 
     def test_from_string_roundtrip_with_all_fields(self) -> None:
-        """File with all fields populated survives roundtrip."""
+        """Datum with all fields populated survives roundtrip."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="/data/abi/goes16/l1b/full-disk/file.nc\n",
@@ -539,12 +539,12 @@ class TestFileRoundTrip:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
-        reconstituted = File.from_string(str(emitted))
+        emitted: Datum = mock_emit.call_args[0][0]
+        reconstituted = Datum.from_string(str(emitted))
         assert reconstituted == emitted
 
     def test_from_string_roundtrip_with_metadata(self) -> None:
-        """File with populated metadata dict survives roundtrip."""
+        """Datum with populated metadata dict survives roundtrip."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="/tmp/test.nc|band=7|mode=scan\n",
@@ -557,8 +557,8 @@ class TestFileRoundTrip:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
-        reconstituted = File.from_string(str(emitted))
+        emitted: Datum = mock_emit.call_args[0][0]
+        reconstituted = Datum.from_string(str(emitted))
         assert reconstituted == emitted
         assert reconstituted.metadata == {"band": "7", "mode": "scan"}
 
@@ -581,7 +581,7 @@ class TestEdgeCases:
         assert mock_emit.call_count == 2
 
     def test_whitespace_in_file_path_preserved(self) -> None:
-        """File path with spaces is captured as-is (though unusual)."""
+        """Datum path with spaces is captured as-is (though unusual)."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="Created '/tmp/my data.nc'\n",
@@ -590,11 +590,11 @@ class TestEdgeCases:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.file == Path("/tmp/my data.nc")
 
     def test_file_path_with_special_regex_chars(self) -> None:
-        """File paths containing regex-special characters are matched literally."""
+        """Datum paths containing regex-special characters are matched literally."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="Output: /tmp/data[2026].nc\n",
@@ -605,11 +605,11 @@ class TestEdgeCases:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.file == Path("/tmp/data[2026].nc")
 
     def test_pattern_without_static_fields_emits_minimal_file(self) -> None:
-        """When no static fields and no extra regex groups, File is minimal."""
+        """When no static fields and no extra regex groups, Datum is minimal."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="/tmp/minimal.nc\n",
@@ -618,7 +618,7 @@ class TestEdgeCases:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         assert emitted.file == Path("/tmp/minimal.nc")
         assert emitted.source is None
         assert emitted.instrument is None
@@ -638,7 +638,7 @@ class TestEdgeCases:
             emit_file=mock_emit,
         )
         mock_emit.assert_called_once()
-        emitted: File = mock_emit.call_args[0][0]
+        emitted: Datum = mock_emit.call_args[0][0]
         # Both band and channel are empty, so they are skipped
         assert emitted.metadata == {}
 

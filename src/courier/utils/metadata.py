@@ -1,7 +1,7 @@
 """Metadata matching and application for data files.
 
 This module provides functions to match filenames against configuration
-patterns and apply metadata to File objects.
+patterns and apply metadata to Datum objects.
 """
 
 import re
@@ -12,7 +12,7 @@ from typing import Any
 
 from courier.errors import MetadataConflictError, NoMatchError
 from courier.schema import DataMonitorConfig, FileMetadataEntry
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.utils.datetime_utils import (
     build_timestamp_from_components,
     extract_date_components_from_regex,
@@ -164,7 +164,7 @@ def _check_field_conflict(
 
 
 def _collect_metadata_from_entry(  # noqa: PLR0913, PLR0917
-    file_obj: File,
+    file_obj: Datum,
     updates: dict[str, Any],
     entry: FileMetadataEntry,
     entry_name: str,
@@ -175,8 +175,8 @@ def _collect_metadata_from_entry(  # noqa: PLR0913, PLR0917
 
     Parameters
     ----------
-    file_obj : File
-        The original File object (read-only).
+    file_obj : Datum
+        The original Datum object (read-only).
     updates : dict[str, Any]
         Accumulated field updates to mutate in place.
     entry : FileMetadataEntry
@@ -261,10 +261,10 @@ def _find_matching_entries(
 
 def apply_metadata_from_configs(
     configs: Sequence[DataMonitorConfig],
-    file_obj: File,
+    file_obj: Datum,
     require_match: bool = True,
-) -> File:
-    """Apply metadata from matching config entries to a File object.
+) -> Datum:
+    """Apply metadata from matching config entries to a Datum object.
 
     Searches through all provided configs and their file-metadata entries,
     applying metadata from any entry whose match patterns match the filename.
@@ -275,15 +275,15 @@ def apply_metadata_from_configs(
     ----------
     configs : Sequence[DataMonitorConfig]
         Sequence of validated config models to search.
-    file_obj : File
-        The File object to enrich with metadata. Not mutated.
+    file_obj : Datum
+        The Datum object to enrich with metadata. Not mutated.
     require_match : bool
         If True, raise NoMatchError if no entries match. Default True.
 
     Returns
     -------
-    File
-        A new File object with applied metadata.
+    Datum
+        A new Datum object with applied metadata.
 
     Raises
     ------
@@ -302,7 +302,7 @@ def apply_metadata_from_configs(
         filename = None
     if not filename:
         raise ValueError(
-            "Cannot apply metadata to a File with no location set "
+            "Cannot apply metadata to a Datum with no location set "
             "(file=None); the matcher has nothing to match against.",
         )
     date_components: dict[str, str] = {}

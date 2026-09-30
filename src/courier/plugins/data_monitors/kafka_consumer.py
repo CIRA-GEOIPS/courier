@@ -1,11 +1,11 @@
-"""Consume messages from a Kafka topic and emit them as File objects.
+"""Consume messages from a Kafka topic and emit them as Datum objects.
 
 Requires the optional ``data-courier[kafka]`` extra (``kafka-python``).
 
 Messages are expected to be JSON-encoded dicts. A ``field_map`` allows the
 operator to translate producer-specific key names into the canonical
-``File`` fields. Uses a daemon listener thread and an internal
-``queue.Queue[File]`` to bridge the Kafka consumer into the
+``Datum`` fields. Uses a daemon listener thread and an internal
+``queue.Queue[Datum]`` to bridge the Kafka consumer into the
 ``DataMonitorBasePlugin`` generator contract, following the same pattern
 as :class:`courier.plugins.modules.data_monitors.rabbit_mq_watcher.RabbitMQWatcher`.
 """
@@ -28,7 +28,7 @@ from courier.metrics import (
     DATA_MONITOR_CONSUMER_LAG,
     DATA_MONITOR_POLL_ERRORS,
 )
-from courier.types.file import File, parse_location
+from courier.types.datum import Datum, parse_location
 from courier.utils.datetime_utils import parse_timestamp
 
 if TYPE_CHECKING:
@@ -95,11 +95,11 @@ class KafkaConsumerConfig(BaseModel, frozen=True):
 
 
 class KafkaConsumer(DataMonitorBasePlugin):
-    """Consume JSON messages from a Kafka topic and yield ``File`` objects.
+    """Consume JSON messages from a Kafka topic and yield ``Datum`` objects.
 
     Thread-safe: the listener thread owns the ``kafka.KafkaConsumer``
     exclusively and communicates with :meth:`find_file` via an internal
-    ``queue.Queue[File]``. Fatal errors are surfaced on a separate error
+    ``queue.Queue[Datum]``. Fatal errors are surfaced on a separate error
     queue and re-raised in the generator thread so dead listeners cannot
     silently stall the pipeline.
     """
@@ -166,8 +166,8 @@ class KafkaConsumer(DataMonitorBasePlugin):
 
         return _KafkaConsumer(self.validated.topic, **kwargs)
 
-    def _message_to_file(self, payload: dict[str, Any]) -> File | None:
-        """Translate a decoded message dict into a :class:`File`."""
+    def _message_to_file(self, payload: dict[str, Any]) -> Datum | None:
+        """Translate a decoded message dict into a :class:`Datum`."""
         fm = self.field_map
         file_raw = payload.get(fm["file"])
         if file_raw is None:
@@ -181,7 +181,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
             if timestamp_raw is not None
             else None
         )
-        # Build metadata from user-override field_map entries not mapped to File attrs
+        # Build metadata from user-override field_map entries not mapped to Datum attrs
         metadata: dict[str, Any] = {}
         for key, msg_key in fm.items():
             if key in _FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA:
@@ -189,7 +189,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
             value = payload.get(msg_key)
             if value is not None:
                 metadata[key] = value
-        return File(
+        return Datum(
             # parse_location keeps URIs verbatim and converts plain
             # filesystem paths to Path.
             file=parse_location(str(file_raw)),
@@ -244,7 +244,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
         except (OSError, ValueError) as exc:
             self._logger.debug(f"Failed to report Kafka lag: {exc}")
 
-    def _consume_loop(self, file_queue: queue.Queue[File]) -> None:
+    def _consume_loop(self, file_queue: queue.Queue[Datum]) -> None:
         """Run the listener loop, reconnecting on transient errors."""
         try:
             from kafka.errors import KafkaError  # noqa: PLC0415
@@ -318,7 +318,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
     def _poll_until_error(
         self,
         consumer: Any,
-        file_queue: queue.Queue[File],
+        file_queue: queue.Queue[Datum],
         kafka_error_cls: type[Exception],
     ) -> None:
         """Poll the consumer, publishing files until an error or stop event."""
@@ -348,10 +348,10 @@ class KafkaConsumer(DataMonitorBasePlugin):
                 error_type="consume",
             ).inc()
 
-    def find_file(self) -> Generator[File, None, None]:
+    def find_file(self) -> Generator[Datum, None, None]:
         """Start the listener thread and yield decoded files from its queue."""
         self._stop_event.clear()
-        file_queue: queue.Queue[File] = queue.Queue()
+        file_queue: queue.Queue[Datum] = queue.Queue()
         listener = threading.Thread(
             target=self._consume_loop,
             args=(file_queue,),

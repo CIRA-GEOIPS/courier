@@ -17,7 +17,7 @@ from courier.plugins.data_monitors.rabbit_mq_watcher import (
     _parse_regex,
     _parse_user_at_host_colon_path,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -303,7 +303,7 @@ class TestRateLimit:
             if delivered >= count:
                 plugin._stop_event.set()
                 raise queue.Empty
-            file = File(file=Path(f"/tmp/f{delivered + 1}.txt"), hostname="h1")
+            file = Datum(file=Path(f"/tmp/f{delivered + 1}.txt"), hostname="h1")
             delivered += 1
             return file
 

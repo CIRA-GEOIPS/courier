@@ -12,7 +12,7 @@ from courier.plugins.data_monitors.cron_glob import (
     CronGlob,
     CronGlobConfig,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@ class TestScanDirectory:
             mock_service, _make_config(tmp_data_dir, hostname="test-host")
         )
         files = list(plugin._scan_directory())
-        assert all(isinstance(f, File) for f in files)
+        assert all(isinstance(f, Datum) for f in files)
         assert all(f.hostname == "test-host" for f in files)
 
 
@@ -240,7 +240,7 @@ class TestSeedSeen:
     def test_seeded_files_are_not_emitted(
         self, mock_service: MagicMock, tmp_data_dir: Path
     ) -> None:
-        """Files present at seed time must not appear in the following scan."""
+        """Datums present at seed time must not appear in the following scan."""
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         plugin._seed_seen()
         assert list(plugin._scan_directory()) == []
@@ -282,7 +282,7 @@ class TestWaitUntil:
 # ─── find_file Integration ──────────────────────────────────────────────────
 
 
-class TestFindFile:
+class TestFindDatum:
     """Integration tests for the find_file generator."""
 
     def test_run_on_start_emits_immediately(
@@ -316,7 +316,7 @@ class TestFindFile:
     def test_ignore_existing_emits_new_files_after_seeding(
         self, mock_service: MagicMock, tmp_data_dir: Path
     ) -> None:
-        """Files added after seeding must be emitted normally."""
+        """Datums added after seeding must be emitted normally."""
         plugin = CronGlob(mock_service, _make_config(tmp_data_dir))
         plugin._seed_seen()  # simulate what ignore_existing does
 

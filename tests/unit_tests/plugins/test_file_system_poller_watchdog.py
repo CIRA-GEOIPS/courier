@@ -11,7 +11,7 @@ import pytest
 from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 # ─── Fixtures / Helpers ──────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ class TestFindFile:
 
         gen = plugin.find_file()
         first = next(gen)
-        assert isinstance(first, File)
+        assert isinstance(first, Datum)
         assert first.file == Path(sample_path)
         assert first.hostname == "localhost"
         assert plugin.health is True

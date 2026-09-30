@@ -20,7 +20,7 @@ from courier.broker.kombu import broker_error_triage
 from courier.errors import FatalBrokerError, TransientBrokerError
 from courier.interfaces.data_monitors import DataMonitorBasePlugin
 from courier.metrics import RABBITMQ_LAST_FILE_EMITTED_TIMESTAMP
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.utils.datetime_utils import parse_timestamp as _parse_timestamp
 
 if TYPE_CHECKING:
@@ -207,7 +207,7 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         return self
 
 
-#: Filename tokens that identify a platform when the message omits one.
+#: Datumname tokens that identify a platform when the message omits one.
 _PATH_SOURCE_HINTS: dict[str, str] = {
     "G16": "goes16",
     "G17": "goes17",
@@ -306,24 +306,24 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
     ~~~~~~~~~~~~~~~~~~~~~~~
     The ``field_map`` dict maps canonical field names to the actual keys in the
     incoming JSON message.  Default keys from ``_DEFAULT_FIELD_MAP`` map
-    directly to :class:`~courier.types.file.File` constructor arguments
+    directly to :class:`~courier.types.datum.Datum` constructor arguments
     (``platform`` → ``source``, ``sensor`` → ``instrument``).  Extra
     user-override keys — those not present in the default map — are collected
-    into the ``metadata`` dict on each ``File`` object.
+    into the ``metadata`` dict on each ``Datum`` object.
 
     Metadata construction
     ~~~~~~~~~~~~~~~~~~~~~
     For each ``field_map`` entry, if the canonical key is in
     ``_FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA`` (currently ``{"platform",
-    "sensor"}``), the resolved value is set as a ``File`` constructor argument.
+    "sensor"}``), the resolved value is set as a ``Datum`` constructor argument.
     All other user-override keys are gathered into a ``metadata`` dict and
-    passed as ``File(metadata={...})``.
+    passed as ``Datum(metadata={...})``.
 
     Debug logging
     ~~~~~~~~~~~~~
     A ``DEBUG``-level log line shows the field_map resolution for every
     message — each canonical key, its resolved value, and whether it was routed
-    to a ``File`` attribute or to ``metadata``.
+    to a ``Datum`` attribute or to ``metadata``.
 
     Usage example
     ~~~~~~~~~~~~~
@@ -512,7 +512,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
     def _listen_to_broker(
         self,
-        file_queue: queue.Queue[File],
+        file_queue: queue.Queue[Datum],
     ) -> None:
         """Listen to the broker queue and place files onto *file_queue*.
 
@@ -570,7 +570,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 return
 
     def _connect_and_consume( # noqa: PLR0915
-        self, file_queue: queue.Queue[File],
+        self, file_queue: queue.Queue[Datum],
     ) -> None:
         """Open a single broker connection and block until consumption ends."""
         url = self._build_broker_url()
@@ -639,7 +639,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
                 timestamp = self._extract_timestamp(file_info)
 
-                # Build metadata from extra field_map entries not directly mapped to File attrs  # noqa: E501
+                # Build metadata from extra field_map entries not directly mapped to Datum attrs  # noqa: E501
                 metadata: dict[str, Any] = {}
                 for key, msg_key in fm.items():
                     if key in _FIELD_MAP_KEYS_EXCLUDED_FROM_METADATA:
@@ -657,7 +657,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 source = file_info.get(fm["platform"])
                 if source is None:
                     source = _infer_source_from_path(str(full_path))
-                file = File(
+                file = Datum(
                     file=full_path,
                     hostname=hostname,
                     source=source,
@@ -699,8 +699,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             # reconnect leaked a socket.
             connection.close()
 
-    def find_file(self) -> Generator[File, None, None]:
-        """Watch the configured RabbitMQ queue and yield :class:`File` objects.
+    def find_file(self) -> Generator[Datum, None, None]:
+        """Watch the configured RabbitMQ queue and yield :class:`Datum` objects.
 
         Starts :meth:`_listen_to_broker` in a background daemon thread.
         Thread errors are surfaced here and re-raised so callers are not
@@ -709,8 +709,8 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
         Yields
         ------
-        File
-            A :class:`File` object constructed from each incoming RabbitMQ message.
+        Datum
+            A :class:`Datum` object constructed from each incoming RabbitMQ message.
 
         Raises
         ------
@@ -718,7 +718,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
             Re-raises any fatal exception that occurred in the listener thread.
         """
         self._stop_event.clear()
-        file_queue: queue.Queue[File] = queue.Queue()
+        file_queue: queue.Queue[Datum] = queue.Queue()
         listener = threading.Thread(
             target=self._listen_to_broker,
             args=(file_queue,),

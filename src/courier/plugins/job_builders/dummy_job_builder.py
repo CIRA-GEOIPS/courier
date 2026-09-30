@@ -12,7 +12,7 @@ from courier.types.job import Job, JobGroup
 
 if TYPE_CHECKING:
     from courier.service import Service
-    from courier.types.file import File, FrozenFile
+    from courier.types.datum import Datum, FrozenDatum
 
 # Module-level logger for DummyJob class (which doesn't inherit from ServicePlugin)
 _module_logger = logging.getLogger(__name__)
@@ -49,12 +49,12 @@ class DummyJob(Job):
         """
         return True  # if len(self.files) > 0 else False
 
-    def add_file(self, file: File | FrozenFile) -> bool:
+    def add_file(self, file: Datum | FrozenDatum) -> bool:
         """Add a file to the job with a maximum limit of one file.
 
         Parameters
         ----------
-        file : File
+        file : Datum
             The file to add to the job.
 
         Returns
@@ -100,12 +100,12 @@ class DummyJobGroup(JobGroup):
         super().__init__("DummyJob", config)
         self.job = DummyJob
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:  # noqa: ARG002
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:  # noqa: ARG002
         """Determine if a file is relevant to this job group.
 
         Parameters
         ----------
-        file : File
+        file : Datum
             The file to check for relevance.
 
         Returns
@@ -115,12 +115,12 @@ class DummyJobGroup(JobGroup):
         """
         return True
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         """Get the job ID associated with a file.
 
         Parameters
         ----------
-        file : File
+        file : Datum
             The file to get the job ID from.
 
         Returns

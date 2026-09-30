@@ -72,7 +72,7 @@ from courier.constants import job_ready_queue_for
 from courier.interfaces.dispatchers import Dispatcher
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 from tests._helpers import poll_until
 
@@ -151,7 +151,7 @@ def _job(dispatcher: str, index: int) -> Job:
         "n",
         f"{dispatcher}-{index}",
         {},
-        files=[File(file=Path(f"/data/{dispatcher}-{index}.nc")).freeze()],
+        files=[Datum(file=Path(f"/data/{dispatcher}-{index}.nc")).freeze()],
     )
 
 

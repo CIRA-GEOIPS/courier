@@ -28,7 +28,7 @@ from courier.plugins.job_builders.filter_and_group import (
 
 if TYPE_CHECKING:
     from courier.service import Service
-    from courier.types.file import FrozenFile
+    from courier.types.datum import FrozenDatum
     from courier.types.job import JobGroup
 
 
@@ -40,7 +40,7 @@ class RouteConfig(BaseModel, frozen=True):
     name : str
         Unique route label (used in metrics and logs).
     filters : dict[str, str]
-        Equality filters checked against File dataclass attributes
+        Equality filters checked against Datum dataclass attributes
         (e.g. ``source``, ``instrument``).
     metadata_filters : dict[str, str]
         Equality filters checked against ``file.metadata`` keys
@@ -108,7 +108,7 @@ class RouteConfig(BaseModel, frozen=True):
         """Project this route onto a :class:`FilterAndGroupConfig`.
 
         Merges ``filters`` and ``metadata_filters`` into a single filter
-        dict so that ``_file_matches_filters`` checks both File dataclass
+        dict so that ``_file_matches_filters`` checks both Datum dataclass
         attributes (e.g. ``source``) and metadata-dict keys (e.g. ``level``).
         """
         merged_filters = {**self.filters, **self.metadata_filters}
@@ -209,12 +209,12 @@ class MetadataRouterBuilder(JobBuilder):
             return False
         return self._reaper_thread is None or self._reaper_thread.is_alive()
 
-    def _dispatch_file(self, file: FrozenFile) -> None:
+    def _dispatch_file(self, file: FrozenDatum) -> None:
         """Send *file* to the first route that claims it.
 
         Parameters
         ----------
-        file : FrozenFile
+        file : FrozenDatum
             The file to route.
         """
         for jg, route_name in zip(self.job_groups, self._route_names, strict=True):

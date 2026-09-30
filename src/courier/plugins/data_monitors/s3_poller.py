@@ -23,7 +23,7 @@ from courier.metrics import (
     DATA_MONITOR_POLL_ERRORS,
     DATA_MONITOR_SCAN_DURATION,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.utils.deduplication import BoundedSeenSet
 from courier.utils.polling import interruptible_sleep
 
@@ -133,8 +133,8 @@ class S3Poller(DataMonitorBasePlugin):
     def _key_to_uri(self, key: str) -> str:
         return f"s3://{self.validated.bucket}/{key}"
 
-    def _scan_bucket(self, client: Any) -> Generator[File, None, None]:
-        """Paginate the bucket; yield File objects for unseen keys."""
+    def _scan_bucket(self, client: Any) -> Generator[Datum, None, None]:
+        """Paginate the bucket; yield Datum objects for unseen keys."""
         scan_start = time.time()
         paginator = client.get_paginator("list_objects_v2")
         for page in paginator.paginate(
@@ -153,7 +153,7 @@ class S3Poller(DataMonitorBasePlugin):
                 timestamp = (
                     last_modified if isinstance(last_modified, datetime) else None
                 )
-                yield File(
+                yield Datum(
                     # Kept as a str: PurePosixPath would collapse "s3://"
                     # into "s3:/" and corrupt the URI.
                     file=uri,
@@ -185,7 +185,7 @@ class S3Poller(DataMonitorBasePlugin):
                 count += 1
         self._logger.debug(f"Pre-seeded {count} existing S3 keys into seen-set")
 
-    def find_file(self) -> Generator[File, None, None]:
+    def find_file(self) -> Generator[Datum, None, None]:
         """Poll the bucket and yield newly discovered object URIs."""
         try:
             from botocore.exceptions import (  # noqa: PLC0415

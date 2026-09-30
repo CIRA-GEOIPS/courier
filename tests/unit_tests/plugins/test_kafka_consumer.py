@@ -13,7 +13,7 @@ from courier.plugins.data_monitors.kafka_consumer import (
     KafkaConsumer,
     KafkaConsumerConfig,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 
 
 def _make_config(**overrides: Any) -> dict[str, Any]:
@@ -122,7 +122,7 @@ class TestDecodeValue:
 # ─── _message_to_file ───────────────────────────────────────────────────────
 
 
-class TestMessageToFile:
+class TestMessageToDatum:
     def test_missing_file_field_returns_none(self, mock_service: MagicMock) -> None:
         plugin = KafkaConsumer(mock_service, _make_config())
         assert plugin._message_to_file({}) is None
@@ -138,7 +138,7 @@ class TestMessageToFile:
                 "timestamp": "2026-01-01T00:00:00",
             },
         )
-        assert isinstance(result, File)
+        assert isinstance(result, Datum)
         assert str(result.file) == "/data/x.nc"
         assert result.hostname == "h1"
         assert result.source == "goes16"

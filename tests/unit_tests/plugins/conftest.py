@@ -12,7 +12,7 @@ import pytest
 from prometheus_client import REGISTRY
 
 from courier.types.execution_log import ExecutionLog
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 
 
 @pytest.fixture(autouse=True)
@@ -56,9 +56,9 @@ def template_config(tmp_path: Path) -> dict[str, Any]:
 
 @pytest.fixture
 def make_file():
-    """Factory that builds a File with sensible test defaults."""
+    """Factory that builds a Datum with sensible test defaults."""
 
-    def _factory(**overrides: Any) -> File:
+    def _factory(**overrides: Any) -> Datum:
         defaults: dict[str, Any] = dict(
             file=Path("/tmp/x.nc"),
             hostname="testhost",
@@ -66,16 +66,16 @@ def make_file():
             instrument="abi",
         )
         defaults.update(overrides)
-        return File(**defaults)
+        return Datum(**defaults)
 
     return _factory
 
 
 @pytest.fixture
 def make_frozen_file():
-    """Factory that builds a FrozenFile with sensible test defaults."""
+    """Factory that builds a FrozenDatum with sensible test defaults."""
 
-    def _factory(**overrides: Any) -> FrozenFile:
+    def _factory(**overrides: Any) -> FrozenDatum:
         defaults: dict[str, Any] = dict(
             file=Path("/tmp/x.nc"),
             hostname="testhost",
@@ -83,14 +83,14 @@ def make_frozen_file():
             instrument="abi",
         )
         defaults.update(overrides)
-        return FrozenFile(**defaults)
+        return FrozenDatum(**defaults)
 
     return _factory
 
 
 __all__ = [
     "ExecutionLog",
-    "FrozenFile",
+    "FrozenDatum",
     "make_file",
     "make_frozen_file",
     "mock_service",

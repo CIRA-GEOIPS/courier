@@ -1,6 +1,6 @@
-"""File dataclass with metadata support for data files.
+"""Datum dataclass with metadata support for data files.
 
-This module provides a File class that stores file information along with metadata.
+This module provides a Datum class that stores data along with metadata.
 """
 
 import json
@@ -10,11 +10,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Generic, Self, TypeVar
 
 __all__ = [
-    "File",
-    "FrozenFile",
+    "Datum",
+    "FrozenDatum",
 ]
 
 #: Matches a URI scheme prefix such as ``s3://`` or ``sftp://``.
@@ -51,8 +51,8 @@ def parse_location(value: Any) -> "Path | str | None":
     return Path(text)
 
 
-def _file_to_dict(obj: "File | FrozenFile") -> dict[str, Any]:
-    """Convert a File or FrozenFile to a dictionary."""
+def _file_to_dict(obj: "Datum | FrozenDatum") -> dict[str, Any]:
+    """Convert a Datum or FrozenDatum to a dictionary."""
     return {
         "file": str(obj.file) if obj.file else None,
         "hostname": obj.hostname,
@@ -69,7 +69,7 @@ def _file_to_dict(obj: "File | FrozenFile") -> dict[str, Any]:
 def _parse_timestamp_field(dt: Any) -> datetime | None:
     """Parse a timestamp value from a dict into an aware UTC datetime.
 
-    Normalising here means a File that crosses the broker comes back with the
+    Normalising here means a Datum that crosses the broker comes back with the
     same timezone semantics it left with, whatever the producer supplied.
     """
     from courier.utils.datetime_utils import ensure_utc  # noqa: PLC0415
@@ -84,7 +84,7 @@ def _parse_timestamp_field(dt: Any) -> datetime | None:
 
 
 def _file_fields_from_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Extract File/FrozenFile constructor kwargs from a dictionary."""
+    """Extract Datum/FrozenDatum constructor kwargs from a dictionary."""
     return {
         "file": parse_location(data.get("file")),
         "hostname": data.get("hostname"),
@@ -97,13 +97,16 @@ def _file_fields_from_dict(data: dict[str, Any]) -> dict[str, Any]:
         "timestamp": _parse_timestamp_field(data.get("timestamp")),
     }
 
+T = TypeVar('T')
 
 @dataclass
-class File:
-    """File dataclass with data metadata.
+class Datum(Generic[T]):
+    """Datum dataclass with data metadata.
 
     Attributes
     ----------
+    data: Generic[type] | None
+        Generic data type for flexible data transportation
     file : Path | str | None
         Location of the file: a ``Path`` for filesystem paths, or the URI
         string verbatim for remote locations (``s3://``, ``sftp://``).
@@ -125,6 +128,7 @@ class File:
         timestamp extracted from filename or manually specified.
     """
 
+    data: T | None = None
     file: Path | str | None = None
     hostname: str | None = None
     source: str | None = None
@@ -151,32 +155,32 @@ class File:
             object.__setattr__(self, "timestamp", normalised)
 
     def __str__(self) -> str:
-        """Convert File to JSON string."""
+        """Convert Datum to JSON string."""
         return json.dumps(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert File to dictionary."""
+        """Convert Datum to dictionary."""
         return _file_to_dict(self)
 
     @classmethod
     def from_string(cls, s: str) -> Self:
-        """Initialize File from JSON string."""
+        """Initialize Datum from JSON string."""
         return cls.from_dict(json.loads(s))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Initialize File from dictionary."""
+        """Initialize Datum from dictionary."""
         return cls(**_file_fields_from_dict(data))
 
-    def freeze(self) -> "FrozenFile":
-        """Create an immutable copy of this File.
+    def freeze(self) -> "FrozenDatum":
+        """Create an immutable copy of this Datum.
 
         Returns
         -------
-        FrozenFile
-            Immutable copy of this File.
+        FrozenDatum
+            Immutable copy of this Datum.
         """
-        return FrozenFile(
+        return FrozenDatum(
             file=self.file,
             hostname=self.hostname,
             source=self.source,
@@ -185,8 +189,8 @@ class File:
             domain=self.domain,
             # Proxy a *copy*: MappingProxyType is a live view, so wrapping
             # self.metadata directly left the "frozen" file mutable through
-            # its origin -- mutating the File afterwards changed the metadata
-            # of every FrozenFile taken from it, including copies already
+            # its origin -- mutating the Datum afterwards changed the metadata
+            # of every FrozenDatum taken from it, including copies already
             # added to a Job.
             metadata=types.MappingProxyType(dict(self.metadata)),
             num_expected=self.num_expected,
@@ -194,7 +198,7 @@ class File:
         )
 
     def with_updates(self, **kwargs: Any) -> Self:
-        """Create a new File with updated fields.
+        """Create a new Datum with updated fields.
 
         Parameters
         ----------
@@ -204,7 +208,7 @@ class File:
         Returns
         -------
         Self
-            New File instance with updated fields.
+            New Datum instance with updated fields.
         """
         return replace(self, **kwargs)
 
@@ -220,7 +224,7 @@ class File:
         num_expected: int | None = None,
         dt: datetime | None = None,
     ) -> Self:
-        """Merge metadata into this File, only updating None fields.
+        """Merge metadata into this Datum, only updating None fields.
 
         Existing non-None values are preserved. This allows layering
         metadata from multiple sources.
@@ -246,7 +250,7 @@ class File:
         Returns
         -------
         Self
-            New File instance with merged metadata.
+            New Datum instance with merged metadata.
         """
         new_metadata = dict(self.metadata)
         if metadata is not None:
@@ -272,11 +276,13 @@ class File:
 
 
 @dataclass(frozen=True)
-class FrozenFile:
+class FrozenDatum(Generic[T]):
     """Immutable file dataclass with data metadata.
 
     Attributes
     ----------
+    data: Generic[type] | None
+        Generic data type for flexible data transportation
     file : Path | str | None
         Location of the file: a ``Path`` for filesystem paths, or the URI
         string verbatim for remote locations (``s3://``, ``sftp://``).
@@ -298,6 +304,7 @@ class FrozenFile:
         datetime extracted from filename or manually specified.
     """
 
+    data: T | None = None
     file: Path | str | None = None
     hostname: str | None = None
     source: str | None = None
@@ -324,32 +331,32 @@ class FrozenFile:
             object.__setattr__(self, "timestamp", normalised)
 
     def __str__(self) -> str:
-        """Convert FrozenFile to JSON string."""
+        """Convert FrozenDatum to JSON string."""
         return json.dumps(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert FrozenFile to dictionary."""
+        """Convert FrozenDatum to dictionary."""
         return _file_to_dict(self)
 
     @classmethod
     def from_string(cls, s: str) -> Self:
-        """Initialize FrozenFile from JSON string."""
+        """Initialize FrozenDatum from JSON string."""
         return cls.from_dict(json.loads(s))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Initialize FrozenFile from dictionary."""
+        """Initialize FrozenDatum from dictionary."""
         return cls(**_file_fields_from_dict(data))
 
-    def thaw(self) -> File:
-        """Create a mutable copy of this FrozenFile.
+    def thaw(self) -> Datum:
+        """Create a mutable copy of this FrozenDatum.
 
         Returns
         -------
-        File
-            Mutable copy of this FrozenFile.
+        Datum
+            Mutable copy of this FrozenDatum.
         """
-        return File(
+        return Datum(
             file=self.file,
             hostname=self.hostname,
             source=self.source,
@@ -362,7 +369,7 @@ class FrozenFile:
         )
 
     def with_updates(self, **kwargs: Any) -> Self:
-        """Create a new FrozenFile with updated fields.
+        """Create a new FrozenDatum with updated fields.
 
         Parameters
         ----------
@@ -372,6 +379,6 @@ class FrozenFile:
         Returns
         -------
         Self
-            New FrozenFile instance with updated fields.
+            New FrozenDatum instance with updated fields.
         """
         return replace(self, **kwargs)

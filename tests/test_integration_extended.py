@@ -37,7 +37,7 @@ from courier.plugins.job_builders.metadata_router import (
 )
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 
 from tests._helpers import payload_block, poll_until, stays_false
@@ -205,7 +205,7 @@ def test_multi_builder_multi_dispatcher_explicit_routing(
 
         service.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=test_file, hostname="test")),
+            message=str(Datum(file=test_file, hostname="test")),
         )
 
         copied_a = output_a / "data.txt"
@@ -269,7 +269,7 @@ def test_single_builder_fan_out_to_multiple_dispatchers(
 
         service.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=test_file, hostname="test")),
+            message=str(Datum(file=test_file, hostname="test")),
         )
 
         file_a = tmp_path / "runner_a" / "fanout.dat"
@@ -367,7 +367,7 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
         for i, name in enumerate(filenames):
             file_path = watch_dir / name
             file_path.write_text(f"content-{name}")
-            f = File(
+            f = Datum(
                 file=file_path,
                 hostname="test",
                 timestamp=datetime(2020, 1, 1, 0, 0, i * 15),
@@ -449,7 +449,7 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
         # Build a synthetic Job referencing a real file on disk.
         dup_file = input_dir / "dup_synthetic.txt"
         dup_file.write_text("duplicate test")
-        synthetic_file = File(file=dup_file, hostname="test").freeze()
+        synthetic_file = Datum(file=dup_file, hostname="test").freeze()
         synthetic_job = Job(
             name="dedupe-job",
             identifier="dedupe-id-001",
@@ -600,7 +600,7 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
         # Emit file manually to avoid fanout-exchange race with CronGlob.
         service.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=test_file, hostname="test-host")),
+            message=str(Datum(file=test_file, hostname="test-host")),
         )
 
         # Confirm the job flowed through.
@@ -657,7 +657,7 @@ def test_implicit_routing_auto_wires_sole_dispatcher(
         # Manually publish to avoid CronGlob race (fanout exchange does not buffer).
         service.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=test_file, hostname="test-host")),
+            message=str(Datum(file=test_file, hostname="test-host")),
         )
 
         output_file = output_dir / "implicit.nc"
@@ -705,7 +705,7 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
 
     # NOTE: CronGlob deliberately NOT registered --- both services would
     # scan the same input_dir, creating a timing race that obscures the
-    # namespace-isolation signal. Files are published manually below.
+    # namespace-isolation signal. Datums are published manually below.
     service_a.register_plugin(
         DummyJobBuilder,
         {
@@ -751,7 +751,7 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
         namespace_file.write_text("namespace isolation test")
         service_a.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=namespace_file, hostname="test")),
+            message=str(Datum(file=namespace_file, hostname="test")),
         )
 
         # Service A should process the file; Service B should not.
@@ -882,7 +882,7 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
     """MetadataRouterBuilder routes files to dispatchers by source attribute.
 
     Two routes: ``sat_a`` → ``proc_a`` and ``sat_b`` → ``proc_b``.
-    Files published manually with matching ``source`` metadata are processed
+    Datums published manually with matching ``source`` metadata are processed
     only by the targeted dispatcher.
     """
     a_log = tmp_path / "proc_a.log"
@@ -938,15 +938,15 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
         file_b = tmp_path / "sat_b_data.dat"
         file_b.write_text("sat-b-data")
 
-        # Publish File with source="sat_a"
+        # Publish Datum with source="sat_a"
         service.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=file_a, hostname="test", source="sat_a")),
+            message=str(Datum(file=file_a, hostname="test", source="sat_a")),
         )
-        # Publish File with source="sat_b"
+        # Publish Datum with source="sat_b"
         service.emit(
             queue=FILE_FOUND_EXCHANGE,
-            message=str(File(file=file_b, hostname="test", source="sat_b")),
+            message=str(Datum(file=file_b, hostname="test", source="sat_b")),
         )
 
         # proc_a should only process sat_a files.

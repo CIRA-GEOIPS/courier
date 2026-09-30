@@ -1,7 +1,7 @@
 """Production-grade count-based job builder with Jinja2 job naming.
 
 Replaces :class:`dummy_job_builder.DummyJobBuilder` for real deployments.
-Files are grouped per rendered job-name template; a job emits as soon as
+Datums are grouped per rendered job-name template; a job emits as soon as
 ``files_per_job`` files have arrived. Supports metadata filters and a
 per-job timeout driven by :class:`Job.is_old`.
 """
@@ -18,7 +18,7 @@ from courier.types.job import Job, JobGroup
 
 if TYPE_CHECKING:
     from courier.service import Service
-    from courier.types.file import File, FrozenFile
+    from courier.types.datum import Datum, FrozenDatum
 
 
 _TEMPLATE_FIELDS = (
@@ -57,13 +57,13 @@ class FileCountBuilderConfig(BaseModel, frozen=True):
         return v
 
 
-def _matches_filters(file: File | FrozenFile, filters: dict[str, str]) -> bool:
+def _matches_filters(file: Datum | FrozenDatum, filters: dict[str, str]) -> bool:
     """Return ``True`` if every filter key/value equals the file's attribute."""
     return all(getattr(file, key, None) == value for key, value in filters.items())
 
 
-def _render_context(file: File | FrozenFile) -> dict[str, Any]:
-    """Build a Jinja2 render context from a :class:`File`."""
+def _render_context(file: Datum | FrozenDatum) -> dict[str, Any]:
+    """Build a Jinja2 render context from a :class:`Datum`."""
     ctx: dict[str, Any] = {}
     for field in _TEMPLATE_FIELDS:
         value = getattr(file, field, None)
@@ -84,7 +84,7 @@ def _build_job_class(config: FileCountBuilderConfig) -> type[Job]:
             """Emit once the configured file count is reached."""
             return len(self.files) >= config.files_per_job
 
-        def add_file(self, file: File | FrozenFile) -> bool:
+        def add_file(self, file: Datum | FrozenDatum) -> bool:
             """Add *file* unless filters reject it or the job is already full.
 
             Returns
@@ -113,11 +113,11 @@ class FileCountJobGroup(JobGroup):
         )
         self.job = _build_job_class(config)
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:
         """Return ``True`` if the file passes configured filters."""
         return _matches_filters(file, self.validated_config.filters)
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         """Render the job-name template; fall back to ``str(file.file)``."""
         try:
             rendered = self._template.render(**_render_context(file)).strip()

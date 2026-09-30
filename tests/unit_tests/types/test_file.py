@@ -1,4 +1,4 @@
-"""Unit tests for src/courier/types/file.py"""
+"""Unit tests for src/courier/types/datum.py"""
 
 import json
 import re
@@ -9,9 +9,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from courier.types.file import (
-    File,
-    FrozenFile,
+from courier.types.datum import (
+    Datum,
+    FrozenDatum,
 )
 from courier.utils.datetime_utils import (
     build_timestamp_from_components,
@@ -34,15 +34,15 @@ def sample_timestamp() -> datetime:
 
 
 @pytest.fixture
-def minimal_file(sample_path: Path) -> File:
-    """Minimal valid File instance."""
-    return File(file=sample_path)
+def minimal_file(sample_path: Path) -> Datum:
+    """Minimal valid Datum instance."""
+    return Datum(file=sample_path)
 
 
 @pytest.fixture
-def full_file(sample_path: Path, sample_timestamp: datetime) -> File:
-    """Fully populated File instance."""
-    return File(
+def full_file(sample_path: Path, sample_timestamp: datetime) -> Datum:
+    """Fully populated Datum instance."""
+    return Datum(
         file=sample_path,
         hostname="testhost",
         source="goes16",
@@ -55,24 +55,24 @@ def full_file(sample_path: Path, sample_timestamp: datetime) -> File:
 
 
 @pytest.fixture
-def frozen_file(full_file: File) -> FrozenFile:
-    """FrozenFile created from a full File."""
+def frozen_file(full_file: Datum) -> FrozenDatum:
+    """FrozenDatum created from a full Datum."""
     return full_file.freeze()
 
 
-# ─── File creation ──────────────────────────────────────────────────────────
+# ─── Datum creation ──────────────────────────────────────────────────────────
 
 
-# ─── Shared behaviour: File and FrozenFile ──────────────────────────────────
+# ─── Shared behaviour: Datum and FrozenDatum ──────────────────────────────────
 #
 # The two types share a serialisation contract, so they are exercised through
 # one parametrised suite rather than two hand-maintained copies. The previous
-# layout duplicated ~50 tests across TestFile*/TestFrozenFile* classes, which
+# layout duplicated ~50 tests across TestDatum*/TestFrozenDatum* classes, which
 # meant every behaviour change had to be made twice and it was easy for the
 # halves to drift.
 
-_TYPES = [File, FrozenFile]
-_TYPE_IDS = ["File", "FrozenFile"]
+_TYPES = [Datum, FrozenDatum]
+_TYPE_IDS = ["Datum", "FrozenDatum"]
 
 _ALL_FIELDS = dict(
     file=Path("/tmp/sample_file.nc"),
@@ -195,25 +195,25 @@ class TestFreezeAndThaw:
     """Conversion between the mutable and immutable forms."""
 
     def test_freeze_preserves_every_field(self) -> None:
-        original = File(**_ALL_FIELDS, metadata={"level": "l1b"})
+        original = Datum(**_ALL_FIELDS, metadata={"level": "l1b"})
         frozen = original.freeze()
         assert frozen.to_dict() == original.to_dict()
 
     def test_thaw_preserves_every_field(self) -> None:
-        frozen = FrozenFile(**_ALL_FIELDS, metadata={"level": "l1b"})
+        frozen = FrozenDatum(**_ALL_FIELDS, metadata={"level": "l1b"})
         assert frozen.thaw().to_dict() == frozen.to_dict()
 
     def test_freeze_thaw_is_a_round_trip(self) -> None:
-        original = File(**_ALL_FIELDS, metadata={"level": "l1b"})
+        original = Datum(**_ALL_FIELDS, metadata={"level": "l1b"})
         assert original.freeze().thaw() == original
 
     def test_frozen_metadata_rejects_writes(self) -> None:
         with pytest.raises(TypeError):
-            File(file=Path("/x.nc"), metadata={"a": 1}).freeze().metadata["b"] = 2
+            Datum(file=Path("/x.nc"), metadata={"a": 1}).freeze().metadata["b"] = 2
 
     def test_freeze_snapshots_rather_than_aliases(self) -> None:
         """Mutating the origin must not reach through to the frozen copy."""
-        original = File(file=Path("/x.nc"), metadata={"level": "l1b"})
+        original = Datum(file=Path("/x.nc"), metadata={"level": "l1b"})
         frozen = original.freeze()
 
         original.metadata["level"] = "TAMPERED"
@@ -221,22 +221,22 @@ class TestFreezeAndThaw:
         assert dict(frozen.metadata) == {"level": "l1b"}
 
     def test_frozen_files_are_hashable(self) -> None:
-        """Jobs hold files in a set, so FrozenFile must hash."""
-        a = FrozenFile(file=Path("/x.nc"), metadata={"k": "v"})
-        b = FrozenFile(file=Path("/x.nc"), metadata={"k": "v"})
+        """Jobs hold files in a set, so FrozenDatum must hash."""
+        a = FrozenDatum(file=Path("/x.nc"), metadata={"k": "v"})
+        b = FrozenDatum(file=Path("/x.nc"), metadata={"k": "v"})
         assert len({a, b}) == 1
 
 
 class TestMergeMetadata:
     """``merge_metadata`` layers metadata without overwriting what is set.
 
-    ``File`` only; ``FrozenFile`` does not expose it. Data monitors call this
+    ``Datum`` only; ``FrozenDatum`` does not expose it. Data monitors call this
     to enrich a file from several config entries in turn, so "existing values
     win" is the property that keeps the first match authoritative.
     """
 
     def test_fills_only_unset_fields(self) -> None:
-        merged = File(file=Path("/x.nc")).merge_metadata(
+        merged = Datum(file=Path("/x.nc")).merge_metadata(
             source="goes16",
             instrument="abi",
             domain="CONUS",
@@ -246,7 +246,7 @@ class TestMergeMetadata:
         assert merged.domain == "CONUS"
 
     def test_existing_values_are_preserved(self) -> None:
-        original = File(file=Path("/x.nc"), source="goes16", instrument="abi")
+        original = Datum(file=Path("/x.nc"), source="goes16", instrument="abi")
         merged = original.merge_metadata(source="himawari9", instrument="ahi")
         assert merged.source == "goes16"
         assert merged.instrument == "abi"
@@ -254,50 +254,50 @@ class TestMergeMetadata:
     def test_num_expected_default_is_replaceable(self) -> None:
         """1 is the unset sentinel for num_expected, so a config may set it."""
         assert (
-            File(file=Path("/x.nc")).merge_metadata(num_expected=16).num_expected == 16
+            Datum(file=Path("/x.nc")).merge_metadata(num_expected=16).num_expected == 16
         )
 
     def test_explicit_num_expected_is_preserved(self) -> None:
-        original = File(file=Path("/x.nc"), num_expected=4)
+        original = Datum(file=Path("/x.nc"), num_expected=4)
         assert original.merge_metadata(num_expected=16).num_expected == 4
 
     def test_timestamp_fills_when_unset(self) -> None:
         moment = datetime(2023, 6, 15, 10, 30, tzinfo=UTC)
-        assert File(file=Path("/x.nc")).merge_metadata(dt=moment).timestamp == moment
+        assert Datum(file=Path("/x.nc")).merge_metadata(dt=moment).timestamp == moment
 
     def test_timestamp_is_preserved_when_set(self) -> None:
         kept = datetime(2023, 1, 1, tzinfo=UTC)
-        original = File(file=Path("/x.nc"), timestamp=kept)
+        original = Datum(file=Path("/x.nc"), timestamp=kept)
         other = datetime(2024, 1, 1, tzinfo=UTC)
         assert original.merge_metadata(dt=other).timestamp == kept
 
     def test_metadata_keys_merge_without_overwriting(self) -> None:
-        original = File(file=Path("/x.nc"), metadata={"level": "l1b"})
+        original = Datum(file=Path("/x.nc"), metadata={"level": "l1b"})
         merged = original.merge_metadata(metadata={"level": "l2", "band": "13"})
         assert merged.metadata == {"level": "l1b", "band": "13"}
 
     def test_metadata_merges_into_an_empty_dict(self) -> None:
-        merged = File(file=Path("/x.nc")).merge_metadata(metadata={"band": "13"})
+        merged = Datum(file=Path("/x.nc")).merge_metadata(metadata={"band": "13"})
         assert merged.metadata == {"band": "13"}
 
     def test_returns_a_new_object(self) -> None:
-        original = File(file=Path("/x.nc"))
+        original = Datum(file=Path("/x.nc"))
         merged = original.merge_metadata(source="goes16")
         assert merged is not original
         assert original.source is None
 
     def test_no_arguments_is_a_no_op(self) -> None:
-        original = File(file=Path("/x.nc"), source="goes16")
+        original = Datum(file=Path("/x.nc"), source="goes16")
         assert original.merge_metadata() == original
 
     def test_with_updates_preserves_metadata(self) -> None:
-        original = File(file=Path("/x.nc"), metadata={"level": "l1b"})
+        original = Datum(file=Path("/x.nc"), metadata={"level": "l1b"})
         assert original.with_updates(source="goes16").metadata == {"level": "l1b"}
 
 
 # ─── Property-based round-trip ──────────────────────────────────────────────
 #
-# There was no property test over File at all: timestamps were covered by
+# There was no property test over Datum at all: timestamps were covered by
 # fourteen hand-written examples, all naive and all in one timezone, which is
 # how a timezone-normalisation bug survived.
 
@@ -546,22 +546,22 @@ class TestLegacyAliasRemoval:
 
     def test_platform_not_fallback_for_source(self) -> None:
         """When 'platform' key is present but 'source' is not, source stays None."""
-        f = File.from_dict({"file": "/tmp/test.nc", "platform": "goes-18"})
+        f = Datum.from_dict({"file": "/tmp/test.nc", "platform": "goes-18"})
         assert f.source is None
 
     def test_sensor_not_fallback_for_instrument(self) -> None:
         """When 'sensor' key is present but 'instrument' is not, instrument stays None."""
-        f = File.from_dict({"file": "/tmp/test.nc", "sensor": "ABI"})
+        f = Datum.from_dict({"file": "/tmp/test.nc", "sensor": "ABI"})
         assert f.instrument is None
 
     def test_level_not_fallback_for_processing_stage(self) -> None:
         """When 'level' key is present but 'processing_stage' is not, processing_stage stays None."""
-        f = File.from_dict({"file": "/tmp/test.nc", "level": "l2"})
+        f = Datum.from_dict({"file": "/tmp/test.nc", "level": "l2"})
         assert f.processing_stage is None
 
     def test_sector_not_fallback_for_domain(self) -> None:
         """When 'sector' key is present but 'domain' is not, domain stays None."""
-        f = File.from_dict({"file": "/tmp/test.nc", "sector": "full-disk"})
+        f = Datum.from_dict({"file": "/tmp/test.nc", "sector": "full-disk"})
         assert f.domain is None
 
     def test_null_source_does_not_fallback(self) -> None:
@@ -571,5 +571,5 @@ class TestLegacyAliasRemoval:
         data = json.loads(
             '{"file": "/tmp/test.nc", "source": null, "platform": "goes-18"}'
         )
-        f = File.from_dict(data)
+        f = Datum.from_dict(data)
         assert f.source is None

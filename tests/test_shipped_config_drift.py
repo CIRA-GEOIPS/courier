@@ -223,7 +223,7 @@ def test_shipped_config_heartbeat_is_plausible_in_seconds(
 
 #: Filter keys removed in 0.2.0, mapped to their canonical replacements.
 #: A filter using one of these silently matches nothing -- the lookup falls
-#: through both the metadata dict and the File attributes and returns False.
+#: through both the metadata dict and the Datum attributes and returns False.
 _REMOVED_FILTER_KEYS = {
     "platform": "source",
     "sensor": "instrument",
@@ -266,15 +266,15 @@ def test_shipped_config_avoids_removed_filter_keys(config_path: Path) -> None:
 def test_shipped_config_filters_reference_real_file_fields(
     config_path: Path,
 ) -> None:
-    """Filter keys must name a ``File`` attribute or be free-form metadata.
+    """Filter keys must name a ``Datum`` attribute or be free-form metadata.
 
     Catches the class of mistake where a config filters on ``instrument:
     goes18`` — a platform value in a sensor field — which only ever matched
     because of a bug in the monitor.
     """
-    from courier.types.file import File
+    from courier.types.datum import Datum
 
-    file_attrs = set(File().__dict__)
+    file_attrs = set(Datum().__dict__)
     platform_like = {"goes16", "goes17", "goes18", "goes19", "himawari9", "gk2a"}
     problems: list[str] = []
 
@@ -703,7 +703,7 @@ def test_pyproject_name_tables_agree() -> None:
 
 
 def _install_instruction_files() -> list[Path]:
-    """Files that tell an operator what to install."""
+    """Datums that tell an operator what to install."""
     paths: list[Path] = [_REPO_ROOT / "README.md"]
     for root in ("src", "sphinx", "examples"):
         directory = _REPO_ROOT / root

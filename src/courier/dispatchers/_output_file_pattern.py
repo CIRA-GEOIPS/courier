@@ -23,7 +23,7 @@ class OutputFilePattern(BaseModel):
 
     The regex ``pattern`` must contain the named group ``(?P<file>...)``
     to identify file paths in dispatcher text output.  Optional static
-    metadata fields mirror the :class:`~courier.types.file.File` schema
+    metadata fields mirror the :class:`~courier.types.datum.Datum` schema
     and are applied to every matched file.
 
     Validation happens at config time (Fail Fast): an invalid regex or

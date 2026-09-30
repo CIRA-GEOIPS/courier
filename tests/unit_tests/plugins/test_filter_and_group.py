@@ -21,7 +21,7 @@ from courier.plugins.job_builders.filter_and_group import (
     _file_matches_filters,
     make_job_class,
 )
-from courier.types.file import FrozenFile
+from courier.types.datum import FrozenDatum
 from tests._helpers import with_payload
 
 
@@ -211,33 +211,33 @@ class TestBuilder:
 # ─── _file_matches_filters ───────────────────────────────────────────────────
 
 
-class TestFileMatchesFilters:
+class TestDatumMatchesFilters:
     """Unit tests for _file_matches_filters with metadata and attribute lookup."""
 
     def test_filter_matches_direct_attribute(self, make_frozen_file) -> None:
-        """Filter key matching a File attribute (e.g., 'source') works."""
+        """Filter key matching a Datum attribute (e.g., 'source') works."""
         f = make_frozen_file(source="goes16")
         assert _file_matches_filters(f, {"source": "goes16"}) is True
 
     def test_filter_mismatches_direct_attribute(self, make_frozen_file) -> None:
-        """Filter key matching a File attribute but wrong value returns False."""
+        """Filter key matching a Datum attribute but wrong value returns False."""
         f = make_frozen_file(source="goes16")
         assert _file_matches_filters(f, {"source": "himawari9"}) is False
 
     def test_filter_matches_metadata_key(self) -> None:
         """Filter key found in metadata dict matches correctly."""
-        f = FrozenFile(file=Path("/tmp/x.nc"), metadata={"location": "ceph-IPs"})
+        f = FrozenDatum(file=Path("/tmp/x.nc"), metadata={"location": "ceph-IPs"})
         assert _file_matches_filters(f, {"location": "ceph-IPs"}) is True
 
     def test_filter_mismatches_metadata_key(self) -> None:
         """Filter key found in metadata but wrong value returns False."""
-        f = FrozenFile(file=Path("/tmp/x.nc"), metadata={"location": "ceph-IPs"})
+        f = FrozenDatum(file=Path("/tmp/x.nc"), metadata={"location": "ceph-IPs"})
         assert _file_matches_filters(f, {"location": "other"}) is False
 
     def test_filter_uses_metadata_over_attribute(self) -> None:
-        """When a key exists in BOTH metadata and File attributes, metadata wins."""
-        # source="himawari9" on the File attribute, but metadata says "goes16"
-        f = FrozenFile(
+        """When a key exists in BOTH metadata and Datum attributes, metadata wins."""
+        # source="himawari9" on the Datum attribute, but metadata says "goes16"
+        f = FrozenDatum(
             file=Path("/tmp/x.nc"),
             source="himawari9",
             metadata={"source": "goes16"},
@@ -249,7 +249,7 @@ class TestFileMatchesFilters:
 
     def test_filter_matches_multiple_keys(self) -> None:
         """Multiple filter keys: some metadata, some attribute, all must match."""
-        f = FrozenFile(
+        f = FrozenDatum(
             file=Path("/tmp/x.nc"),
             source="goes16",
             instrument="abi",
@@ -269,7 +269,7 @@ class TestFileMatchesFilters:
 
     def test_filter_fails_if_any_key_mismatches(self) -> None:
         """All keys must match; one mismatch returns False."""
-        f = FrozenFile(
+        f = FrozenDatum(
             file=Path("/tmp/x.nc"),
             source="goes16",
             metadata={"location": "ceph-IPs"},
@@ -288,7 +288,7 @@ class TestFileMatchesFilters:
     def test_unknown_filter_key_logs_warning_and_returns_false(
         self, caplog, make_frozen_file
     ) -> None:
-        """A filter key not in metadata or File attrs logs a warning and returns False."""
+        """A filter key not in metadata or Datum attrs logs a warning and returns False."""
         caplog.set_level(logging.WARNING)
         f = make_frozen_file(source="goes16")
         result = _file_matches_filters(f, {"nonexistent_key": "any-value"})

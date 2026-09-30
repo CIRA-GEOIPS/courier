@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from courier.interfaces.job_builders import JobBuilder
-from courier.types.file import File, FrozenFile
+from courier.types.datum import Datum, FrozenDatum
 from courier.types.job import Job, JobGroup
 from tests._helpers import with_payload
 
@@ -34,10 +34,10 @@ class _StubGroup(JobGroup):
         super().__init__("grp", {})
         self.job = _AlwaysReadyJob
 
-    def file_is_relevant(self, file: File | FrozenFile) -> bool:
+    def file_is_relevant(self, file: Datum | FrozenDatum) -> bool:
         return True
 
-    def get_job_ids_from_file(self, file: File | FrozenFile) -> list[str]:
+    def get_job_ids_from_file(self, file: Datum | FrozenDatum) -> list[str]:
         return ["bucket"]
 
 
@@ -67,7 +67,7 @@ def test_a_job_complete_in_the_hash_is_emitted_on_start(
     def _hydrate(job_groups: list[JobGroup], _locks: dict) -> None:
         """Stand in for load_remote_state: fills the group, fires nothing."""
         stranded = _AlwaysReadyJob("n", "stranded", {})
-        stranded.add_file(FrozenFile(file=Path("/data/a.nc"), hostname="h"))
+        stranded.add_file(FrozenDatum(file=Path("/data/a.nc"), hostname="h"))
         job_groups[0].jobs["stranded"] = stranded
 
     sync.start.side_effect = _hydrate
