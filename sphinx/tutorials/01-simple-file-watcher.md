@@ -81,8 +81,6 @@ metadata:
     extracts metadata automatically.
 
 spec:
-  heartbeat_interval: 30
-
   broker:
     host: localhost
     port: 5672
@@ -121,15 +119,18 @@ spec:
                   # Optional: Move to processed directory
                   # mv {{ files[0].file }} ./data/processed/
 
-    # Log processing
+    # Run each job's payload and log its output
     - log-files:
         kind: dispatcher
         name: local_dispatcher
+        config:
+          log_to_logger: true
 ```
 
-> **Template syntax:** This tutorial uses `{{ files[0].file }}`. For the
-> two-pass template context (builder and dispatcher values), see the
-> {doc}`../getting-started/configuration` Jinja2 section.
+> **Template syntax:** This tutorial uses `{{ files[0].file }}`. The script
+> is the job builder's `payload`: the builder renders it for each job and the
+> dispatcher runs it. For the full template context, see
+> {doc}`../api-reference/payloads`.
 
 ## Step 4: Validate Configuration
 
@@ -142,7 +143,12 @@ courier validate watcher.yaml
 Expected output:
 
 ```
-Config valid
+watcher.yaml is valid.
+  3 pipeline steps: 1 data monitor, 1 job builder, 1 dispatcher
+  create-jobs runs payload log-payload (bash_payload)
+  broker: amqp
+
+Run it:  courier run watcher.yaml
 ```
 
 If you see errors, check your YAML syntax and indentation.
@@ -155,16 +161,20 @@ Start the service in the foreground:
 courier run watcher.yaml
 ```
 
-You should see startup logs:
+You should see startup logs like these (timestamps, log levels and DEBUG
+lines trimmed):
 
 ```
+[Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
+[Manager: PluginManager] Registered plugin: create-jobs (class=DummyJobBuilder v-1)
+[Manager: PluginManager] Registered plugin: log-payload (class=bash_payload v-1)
+[Manager: PluginManager] Registered plugin: log-files (class=local_dispatcher v-1)
 [Service: tutorial-01-file-watcher] Starting Service tutorial-01-file-watcher
 [Manager: PrometheusManager] Starting Prometheus server on port 8000
-[Manager: RabbitMQManager] Successfully connected to RabbitMQ
-[Manager: PluginManager] Registered plugin: file_system_poller_watchdog v0.0.0
-[Manager: PluginManager] Registered plugin: DummyJobBuilder v-1
-[Manager: PluginManager] Registered plugin: local_dispatcher v-1
-[Plugin: file_system_poller_watchdog] Starting to watch directory: ./data/incoming
+[Plugin: file_system_poller_watchdog] Starting to watch directory: data/incoming
+[Manager: PluginManager] Plugin started successfully: DummyJobBuilder
+[Manager: PluginManager] Plugin started successfully: local_dispatcher
+[Manager: PluginManager] Plugin started successfully: file_system_poller_watchdog
 [Service: tutorial-01-file-watcher] Service tutorial-01-file-watcher started successfully
 ```
 
@@ -178,84 +188,85 @@ In another terminal, copy a file to the watched directory:
 cd ~/tutorial01-file-watcher
 ```
 
-Copy the test file:
+Copy the test file to a new name that still follows the GOES-18 pattern (here,
+channel 02):
 
 ```
 cp data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c20240151209360.nc \
-   data/incoming/test_$(date +%s).nc
+   data/incoming/OR_ABI-L1b-RadF-M6C02_G18_s20240151200000_e20240151209310_c20240151209360.nc
 ```
 
 ```{include} ../includes/watchdog-new-files-only.md
 ```
 
-In the service logs, you'll see:
+In the service logs, you'll see lines like these (courier logs at DEBUG by
+default, which is where the script's output appears):
 
 ```
-[Plugin: file_system_poller_watchdog] Found file: File(
-  file=./data/incoming/test_1705320123.nc,
-  hostname=localhost,
-  platform=goes18,
-  sensor=abi,
-  level=L1B,
-  sector=Full-Disk,
-  num_expected=16,
-  timestamp=2024-01-15 12:00:00
-)
-[Plugin: DummyJobBuilder] Received file from file queue
-[Plugin: DummyJobBuilder] Job job_test_1705320123 is ready; emitting
-[Plugin: local_dispatcher] Executing job
-==========================================
-File detected: ./data/incoming/test_1705320123.nc
-Timestamp: 2024-01-15 12:01:03
-==========================================
+[Plugin: file_system_poller_watchdog] Found file: {"file": "/home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_s20240151200000_e20240151209310_c20240151209360.nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}
+[Plugin: DummyJobBuilder] Job /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_...nc is ready; emitting
+[Plugin: DummyJobBuilder] Emitted job /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_...nc to targets ['log-files']
+[Plugin: bash_payload] [job: /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-...nc] [stdout] ==========================================
+[Plugin: bash_payload] [job: /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-...nc] [stdout] File detected: /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_...nc
+[Plugin: bash_payload] [job: /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-...nc] [stdout] Timestamp: 2024-01-15 12:01:03
+[Plugin: bash_payload] [job: /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-...nc] [stdout] ==========================================
 ```
 
 Success! The file was detected, metadata was extracted, and the
-dispatcher executed.
+dispatcher ran the payload. The `[stdout]` lines appear because the
+dispatcher sets `log_to_logger: true`; without it, a job that succeeds leaves
+no log line of its own, and one whose script fails is logged at ERROR.
 
 ## Step 7: Examine Metadata Extraction
 
 Notice how the service automatically extracted:
 
-- **platform**: goes18 (from G18 in filename)
-- **sensor**: abi (from OR_ABI in filename)
-- **level**: L1B (from L1b in filename)
-- **sector**: Full-Disk (from RadF in filename)
+- **source**: goes18 (from G18 in filename)
+- **instrument**: abi (from OR_ABI in filename)
+- **processing_stage**: l1b (from L1b in filename)
+- **domain**: FULL-DISK (from RadF in filename)
 - **num_expected**: 16 (GOES ABI has 16 channels per full-disk scan)
-- **timestamp**: 2024-01-15 12:00:00 (from s20240151200000 in
+- **timestamp**: 2024-01-15 12:00:00 UTC (from s20240151200000 in
   filename)
 
-This metadata is available to downstream job builders and dispatchers.
+This metadata is available to downstream job builders, and to the payload
+template as `files[0].source`, `files[0].timestamp` and so on.
 
 ## Step 8: Monitor with Prometheus
 
 Open <http://localhost:8000/metrics> in your browser.
 
-Look for these metrics:
+Look for these metrics (labels trimmed):
 
 ### Service health
 
+Set on every heartbeat (every 30 seconds by default):
+
 ```
-service_health 1.0
+courier_service_health 1.0
 ```
 
 ### Files processed
 
 ```
-files_processed_file_system_poller_watchdog{status="success"} 1.0
+courier_data_monitor_files_processed_total{monitor_identifier="watch-files",monitor_name="file_system_poller_watchdog",status="success"} 1.0
 ```
 
 ### Jobs built
 
 ```
-job_builder_jobs_built_total{status="ready",job_builder_name="DummyJobBuilder"} 1.0
+courier_job_builder_jobs_built_total{job_builder_identifier="create-jobs",job_builder_name="DummyJobBuilder",status="ready"} 1.0
 ```
 
 ### Jobs executed
 
 ```
-dispatcher_jobs_processed_total{status="success",dispatcher_name="local_dispatcher"} 1.0
+courier_dispatcher_jobs_processed_total{dispatcher_identifier="log-files",dispatcher_name="local_dispatcher",status="success"} 1.0
+courier_payload_jobs_processed_total{payload_identifier="log-payload",payload_name="bash_payload",status="success"} 1.0
 ```
+
+The dispatcher counts every job it executed; the payload counter's `status`
+reflects the script's exit code.
 
 These metrics update in real-time as files are processed.
 
@@ -278,7 +289,7 @@ Watch the logs as each file is detected and processed.
 Check Prometheus metrics again - counters should have incremented:
 
 ```
-files_processed_file_system_poller_watchdog{status="success"} 6.0
+courier_data_monitor_files_processed_total{monitor_identifier="watch-files",monitor_name="file_system_poller_watchdog",status="success"} 6.0
 ```
 
 ## Step 10: Clean Shutdown
@@ -286,13 +297,13 @@ files_processed_file_system_poller_watchdog{status="success"} 6.0
 Stop the service gracefully with `Ctrl+C`:
 
 ```
-^C[Service: tutorial-01-file-watcher] Received keyboard interrupt
-[Service: tutorial-01-file-watcher] Cleaning up resources...
+^C[Module: signals] Received signal 2, requesting graceful shutdown...
 [Manager: PluginManager] Plugin stopped: file_system_poller_watchdog
 [Manager: PluginManager] Plugin stopped: DummyJobBuilder
+[Manager: PluginManager] Plugin stopped: bash_payload
 [Manager: PluginManager] Plugin stopped: local_dispatcher
 [Manager: PluginManager] Plugin manager stopped
-[Manager: RabbitMQManager] RabbitMQ connection closed
+[Manager: PrometheusManager] Prometheus manager stopped
 [Service: tutorial-01-file-watcher] Service tutorial-01-file-watcher stopped
 ```
 
@@ -314,6 +325,7 @@ Stop the service gracefully with `Ctrl+C`:
 ## What You Learned
 
 You've completed all the learning objectives listed at the start of this tutorial. You can now:
+
 - Create service configurations from scratch
 - Configure the file system poller data monitor
 - Extract metadata from GOES-18 filenames
@@ -325,12 +337,12 @@ You've completed all the learning objectives listed at the start of this tutoria
 
 ## Challenge Exercises
 
-1. **Modify the bash script** to copy processed files to
+1. **Modify the payload script** to copy processed files to
    `data/processed/` instead of just logging them
 1. **Add a second data monitor** watching a different directory (e.g.,
    `data/backup`)
-1. **Change the heartbeat interval** to 10 seconds and observe in
-   Prometheus
+1. **Change the heartbeat interval** to 10 seconds
+   (`spec.service_config.heartbeat_interval: 10`) and observe in Prometheus
 1. **Create a metadata configuration** for a different satellite (if
    you have the data)
 

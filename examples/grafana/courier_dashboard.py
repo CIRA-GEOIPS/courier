@@ -209,12 +209,10 @@ def _templating() -> Templating:
         multi=True,
         refresh=REFRESH_ON_TIME_RANGE_CHANGE,
     )
-    status_code = Template(
-        name="status_code",
-        label="HTTP Status Code",
-        query=(
-            f"label_values({_PREFIX}_dispatcher_http_response_codes_total, status_code)"
-        ),
+    payload = Template(
+        name="payload_name",
+        label="Payload",
+        query=(f"label_values({_PREFIX}_payload_jobs_processed_total, payload_name)"),
         dataSource=_DS,
         includeAll=True,
         multi=True,
@@ -233,7 +231,7 @@ def _templating() -> Templating:
             error_type,
             topic,
             route_name,
-            status_code,
+            payload,
         ],
     )
 
@@ -645,6 +643,7 @@ def _dispatcher_row() -> RowPanel:
     y = _advance(1)
     py = _advance(8)
     lbl = 'dispatcher_name=~"$dispatcher_name"'
+    succeeded = lbl + ', status="success"'
     m_proc = f"{_PREFIX}_dispatcher_jobs_processed_total"
 
     jobs_rate = TimeSeries(
@@ -662,8 +661,7 @@ def _dispatcher_row() -> RowPanel:
         dataSource=_DS,
         targets=[
             _target(
-                f"sum({_rate(m_proc, f'{lbl}, status="success"')})"
-                f" / sum({_rate(m_proc, lbl)})",
+                f"sum({_rate(m_proc, succeeded)}) / sum({_rate(m_proc, lbl)})",
             ),
         ],
         format=PERCENT_FORMAT,
@@ -773,22 +771,6 @@ def _dispatcher_row() -> RowPanel:
         gridPos=GridPos(8, 24, 0, py3),
     )
 
-    # Fourth sub-row — parallel workers active
-    py4 = _advance(8)
-
-    parallel_workers = TimeSeries(
-        title="Parallel Workers Active",
-        description="Number of parallel dispatch workers currently processing.",
-        dataSource=_DS,
-        targets=[
-            _target(
-                f"{_PREFIX}_dispatcher_parallel_workers_active{{{lbl}}}",
-                "{{dispatcher_name}}",
-            ),
-        ],
-        gridPos=GridPos(8, 24, 0, py4),
-    )
-
     return RowPanel(
         title="Dispatchers",
         gridPos=GridPos(1, 24, 0, y),
@@ -799,8 +781,81 @@ def _dispatcher_row() -> RowPanel:
             exec_dur,
             logs_emitted,
             queue_wait,
-            parallel_workers,
         ],
+    )
+
+
+def _payload_row() -> RowPanel:
+    """Row — Payload panels.
+
+    A payload is the script a job builder attaches to every job; the
+    dispatcher that receives the job runs it and records these metrics.
+    Their ``status`` is the payload's own outcome (its exit code).
+    """
+    y = _advance(1)
+    py = _advance(8)
+    lbl = 'payload_name=~"$payload_name"'
+    succeeded = lbl + ', status="success"'
+    m_proc = f"{_PREFIX}_payload_jobs_processed_total"
+    m_dur = f"{_PREFIX}_payload_job_execution_duration_seconds"
+
+    outcomes = TimeSeries(
+        title="Payload Jobs by Outcome",
+        description="Jobs executed per second, by payload and exit status.",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _rate(m_proc, lbl),
+                "{{payload_identifier}} — {{status}}",
+            ),
+        ],
+        stacking={"mode": "normal", "group": "A"},
+        fillOpacity=30,
+        unit="ops",
+        gridPos=GridPos(8, 8, 0, py),
+    )
+
+    success_ratio = GaugePanel(
+        title="Payload Success Ratio",
+        dataSource=_DS,
+        targets=[
+            _target(
+                f"sum({_rate(m_proc, succeeded)}) / sum({_rate(m_proc, lbl)})",
+            ),
+        ],
+        format=PERCENT_FORMAT,
+        min=0,
+        max=100,
+        thresholds=[
+            Threshold("red", 0, 0.0),
+            Threshold("yellow", 1, 80.0),
+            Threshold("green", 2, 95.0),
+        ],
+        gridPos=GridPos(8, 4, 8, py),
+    )
+
+    duration = TimeSeries(
+        title="Payload Execution Duration",
+        dataSource=_DS,
+        targets=[
+            _target(
+                _hq(m_dur, 0.50, lbl),
+                "p50 — {{payload_identifier}}",
+            ),
+            _target(
+                _hq(m_dur, 0.95, lbl),
+                "p95 — {{payload_identifier}}",
+                ref="B",
+            ),
+        ],
+        unit=SECONDS_FORMAT,
+        gridPos=GridPos(8, 12, 12, py),
+    )
+
+    return RowPanel(
+        title="Payloads",
+        gridPos=GridPos(1, 24, 0, y),
+        panels=[outcomes, success_ratio, duration],
     )
 
 
@@ -1223,74 +1278,6 @@ def _slurm_row() -> RowPanel:
     )
 
 
-def _http_row() -> RowPanel:
-    """Row — Dispatcher HTTP metrics (collapsed by default)."""
-    y = _advance(1)
-    py = _advance(8)
-    lbl = 'dispatcher_name=~"$dispatcher_name"'
-    lbl_status = 'dispatcher_name=~"$dispatcher_name", status_code=~"$status_code"'
-
-    http_responses = TimeSeries(
-        title="HTTP Response Codes",
-        dataSource=_DS,
-        targets=[
-            _target(
-                _rate(
-                    f"{_PREFIX}_dispatcher_http_response_codes_total",
-                    lbl_status,
-                ),
-                "{{dispatcher_name}} — {{status_code}}",
-            ),
-        ],
-        stacking={"mode": "normal", "group": "A"},
-        fillOpacity=30,
-        unit="ops",
-        gridPos=GridPos(8, 12, 0, py),
-    )
-
-    http_duration = TimeSeries(
-        title="HTTP Request Duration",
-        dataSource=_DS,
-        targets=[
-            _target(
-                _hq(
-                    f"{_PREFIX}_dispatcher_http_request_duration_seconds",
-                    0.50,
-                    lbl,
-                ),
-                "p50 — {{dispatcher_name}}",
-            ),
-            _target(
-                _hq(
-                    f"{_PREFIX}_dispatcher_http_request_duration_seconds",
-                    0.90,
-                    lbl,
-                ),
-                "p90 — {{dispatcher_name}}",
-                ref="B",
-            ),
-            _target(
-                _hq(
-                    f"{_PREFIX}_dispatcher_http_request_duration_seconds",
-                    0.95,
-                    lbl,
-                ),
-                "p95 — {{dispatcher_name}}",
-                ref="C",
-            ),
-        ],
-        unit=SECONDS_FORMAT,
-        gridPos=GridPos(8, 12, 12, py),
-    )
-
-    return RowPanel(
-        title="Dispatcher — HTTP",
-        collapsed=True,
-        gridPos=GridPos(1, 24, 0, y),
-        panels=[http_responses, http_duration],
-    )
-
-
 def _pipeline_summary() -> RowPanel:
     """Row 7 — end-to-end pipeline throughput overlay."""
     y = _advance(1)
@@ -1363,8 +1350,8 @@ def build_dashboard() -> Dashboard:
     panels.append(_metadata_router_row())
     panels.append(_job_builder_row())
     panels.append(_dispatcher_row())
+    panels.append(_payload_row())
     panels.append(_slurm_row())
-    panels.append(_http_row())
     panels.append(_plugin_manager_row())
     panels.append(_broker_row())
     panels.append(_state_sync_row())

@@ -1,6 +1,9 @@
 {
   "version": "0.2",
   "language": "en",
+  "import": [
+    "./cspell.config.yaml"
+  ],
   "words": [
     "courier",
     "microservice",

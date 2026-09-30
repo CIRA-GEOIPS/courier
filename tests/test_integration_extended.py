@@ -41,7 +41,7 @@ from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from courier.types.job import Job
 
-from tests._helpers import poll_until, stays_false
+from tests._helpers import payload_block, poll_until, stays_false
 
 # ---------------------------------------------------------------------------
 # Helpers (reused pattern from test_integration.py)
@@ -55,19 +55,17 @@ def _register_payload(
 ) -> dict[str, Any]:
     """Register a BashPayload sub-plugin and return a builder's nested spec.
 
-    Job builders no longer carry a ``bash_script``; each nests a payload
-    sub-plugin and the dispatcher hydrates it from the job spec.
+    Dispatchers no longer carry a ``bash_script``; each job builder nests a
+    payload sub-plugin, and the dispatcher hydrates it from the job spec.
+    Service preflight binds the registered payload to the builder.
     """
-    config = {"script": script}
-    service.register_plugin(BashPayload, config, identifier=identifier)
-    return {
-        "identifier": identifier,
-        "spec": {
-            "kind": "payload",
-            "name": "bash_payload",
-            "config": config,
-        },
-    }
+    block = payload_block(identifier, script)
+    service.register_plugin(
+        BashPayload,
+        block[identifier]["config"],
+        identifier=identifier,
+    )
+    return block
 
 
 def _poll_for_file(path: Path, timeout: float = 45.0) -> bool:
@@ -117,7 +115,6 @@ def _shutdown_service(service: Service, thread: threading.Thread) -> None:
         if hasattr(info.plugin, "_stop_event"):
             info.plugin._stop_event.set()
     thread.join(timeout=30)
-
 
 
 def _make_service_config() -> ServiceConfig:
@@ -368,9 +365,7 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
                 service,
                 (
                     "{% for f in files %}"
-                    "echo {{ f.file }} >> "
-                    + str(processed_log)
-                    + ";"
+                    "echo {{ f.file }} >> " + str(processed_log) + ";"
                     "{% endfor %}"
                 ),
             ),
@@ -486,7 +481,7 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
         # A job on the wire must carry its payload; render the bound one so the
         # dispatcher can execute it.  Dedupe drops the second copy by identifier.
         builder = service._plugin_manager.get_plugins()["builder"].plugin
-        synthetic_job.payload = builder.payload.to_job_spec(  # type: ignore[union-attr]
+        synthetic_job.payload = builder.payload.to_job_spec(
             synthetic_job,
             builder=builder,
         )
@@ -583,9 +578,7 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
         assert log_entry is not None, (
             "No ExecutionLog received from DISPATCHER_QUEUE within timeout"
         )
-        assert log_entry.return_code is not None, (
-            "ExecutionLog must have a return_code"
-        )
+        assert log_entry.return_code is not None, "ExecutionLog must have a return_code"
         assert isinstance(log_entry.return_code, int)
     finally:
         _shutdown_service(service, thread)
@@ -632,9 +625,7 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
 
         # Confirm the job flowed through.
         copied = output_dir / "lifecycle.nc"
-        assert _poll_for_file(copied), (
-            f"Pipeline did not produce {copied}"
-        )
+        assert _poll_for_file(copied), f"Pipeline did not produce {copied}"
         assert copied.read_text() == "lifecycle"
     finally:
         _shutdown_service(service, thread)

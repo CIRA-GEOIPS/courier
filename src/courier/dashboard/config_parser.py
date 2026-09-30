@@ -12,7 +12,10 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from courier.cli.config_loader import load_config
+from courier.schema.v1alpha1.service_config import MicroserviceModel
 
 if TYPE_CHECKING:
     from courier.schema.v1alpha1.service_config import ServiceConfigModel
@@ -31,9 +34,38 @@ class PluginKind(Enum):
     DISPATCHER = "dispatcher"
 
 
+#: Config key under which a job builder nests the payload its jobs execute.
+PAYLOAD_KEY = "payload"
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class PayloadInfo:
+    """The payload a job builder attaches to every job it emits.
+
+    Built from the builder's nested ``payload`` block. Payloads are not
+    ``spec.run`` steps: they execute inside whichever dispatcher receives the
+    job, which records the ``courier_payload_*`` metrics for them.
+    """
+
+    identifier: str
+    """The payload block's ``identifier`` -- the ``payload_identifier`` label."""
+
+    plugin_name: str
+    """Payload plugin name, e.g. ``"bash_payload"`` -- the ``payload_name`` label."""
+
+    builder: str
+    """Identifier of the job builder that nests this payload."""
+
+    config: dict[str, Any] = field(default_factory=dict)
+    """Payload configuration dict (empty dict when absent)."""
+
+    targets: list[str] = field(default_factory=list)
+    """Dispatcher identifiers the builder routes this payload's jobs to."""
 
 
 @dataclass
@@ -60,6 +92,10 @@ class PluginInfo:
 
     routes: list[dict[str, Any]] = field(default_factory=list)
     """Raw routing table entries (for ``metadata_router``)."""
+
+    payload: PayloadInfo | None = None
+    """The payload a job builder nests; ``None`` for other kinds, or when the
+    block is missing or malformed (``courier validate`` reports those)."""
 
 
 @dataclass
@@ -99,6 +135,10 @@ class DashboardModel:
 
     has_slurm: bool
     """``True`` when any dispatcher has ``plugin_name == "slurm_dispatcher"``."""
+
+    # ---- Payloads ----------------------------------------------------------
+    payloads: list[PayloadInfo] = field(default_factory=list)
+    """Every job builder's nested payload, in builder declaration order."""
 
     # ---- Sub-section -------------------------------------------------------
     local_identifiers: set[str] | None = None
@@ -199,6 +239,34 @@ def _sanitise_plugin_config(raw_config: Any) -> dict[str, Any]:
     return {}
 
 
+def _extract_payload(
+    builder: str,
+    plugin_config: dict[str, Any],
+    targets: list[str],
+) -> PayloadInfo | None:
+    """Return the payload a builder config nests, or ``None`` if it has none.
+
+    Both nested shapes the schema accepts are understood -- the canonical
+    ``{identifier, spec}`` and the singleton ``{identifier: {kind, name}}``.
+    A malformed block is skipped rather than raised: the dashboard describes a
+    config, and ``courier validate`` is where a broken one is reported.
+    """
+    raw = plugin_config.get(PAYLOAD_KEY)
+    if not isinstance(raw, dict):
+        return None
+    try:
+        nested = MicroserviceModel.model_validate(raw)
+    except (ValidationError, ValueError, TypeError):
+        return None
+    return PayloadInfo(
+        identifier=nested.identifier,
+        plugin_name=nested.spec.name,
+        builder=builder,
+        config=_sanitise_plugin_config(nested.spec.config),
+        targets=list(targets),
+    )
+
+
 def _build_plugins(
     config: ServiceConfigModel,
 ) -> tuple[
@@ -241,6 +309,11 @@ def _build_plugins(
             config=plugin_config,
             targets=targets,
             routes=routes,
+            payload=(
+                _extract_payload(entry.identifier, plugin_config, targets)
+                if kind is PluginKind.JOB_BUILDER
+                else None
+            ),
         )
 
         plugins.append(info)
@@ -258,6 +331,47 @@ def _build_plugins(
 def _build_routing(job_builders: list[PluginInfo]) -> dict[str, list[str]]:
     """Build mapping of builder identifier → target dispatcher identifiers."""
     return {jb.identifier: list(jb.targets) for jb in job_builders}
+
+
+def _collect_payloads(job_builders: list[PluginInfo]) -> list[PayloadInfo]:
+    """Return every builder's payload, in builder declaration order."""
+    return [jb.payload for jb in job_builders if jb.payload is not None]
+
+
+def payloads_reaching(
+    payloads: list[PayloadInfo],
+    dispatchers: list[PluginInfo],
+    *,
+    all_dispatchers: list[PluginInfo],
+) -> list[PayloadInfo]:
+    """Return the payloads whose jobs are routed to any of *dispatchers*.
+
+    A builder that declares no targets is auto-wired to the sole dispatcher
+    when there is exactly one (the ``allow_implicit_target`` default), so its
+    payload reaches that dispatcher too.
+
+    Parameters
+    ----------
+    payloads : list[PayloadInfo]
+        Candidate payloads.
+    dispatchers : list[PluginInfo]
+        Dispatchers of interest.
+    all_dispatchers : list[PluginInfo]
+        Every dispatcher in the config, to resolve implicit routing.
+
+    Returns
+    -------
+    list[PayloadInfo]
+        The matching payloads, in their original order.
+    """
+    wanted = {d.identifier for d in dispatchers}
+    sole = all_dispatchers[0].identifier if len(all_dispatchers) == 1 else None
+    return [
+        payload
+        for payload in payloads
+        if wanted.intersection(payload.targets)
+        or (not payload.targets and sole in wanted)
+    ]
 
 
 def _compute_capability_flags(
@@ -398,6 +512,7 @@ def parse_config(
     # Phase 1 & 2 — build plugin list + routing
     plugins, data_monitors, job_builders, dispatchers = _build_plugins(config)
     routing = _build_routing(job_builders)
+    payloads = _collect_payloads(job_builders)
 
     # Phase 3 — capability flags
     has_metadata_router, has_slurm = _compute_capability_flags(
@@ -420,6 +535,7 @@ def parse_config(
             routing=routing,
             has_metadata_router=has_metadata_router,
             has_slurm=has_slurm,
+            payloads=payloads,
             local_identifiers=None,
             upstream_dependencies=set(),
             downstream_dependencies=set(),
@@ -454,6 +570,7 @@ def parse_config(
         routing=routing,
         has_metadata_router=has_metadata_router,
         has_slurm=has_slurm,
+        payloads=payloads,
         local_identifiers=local_identifiers,
         upstream_dependencies=upstream_deps,
         downstream_dependencies=downstream_deps,

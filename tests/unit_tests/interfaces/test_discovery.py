@@ -350,3 +350,13 @@ class TestCaching:
             sys.path.remove(str(tmp_path))
             sys.modules.pop("fake_courier_plugins", None)
             refresh()
+
+
+def test_a_removed_plugin_is_named_with_its_replacement() -> None:
+    """`courier run` gives the same migration hint as `courier validate`."""
+    from courier.interfaces.dispatchers import dispatchers  # noqa: PLC0415
+
+    with pytest.raises(
+        PluginNotFoundError, match="It was removed: use local_dispatcher"
+    ):
+        dispatchers.get_plugin("serial_bash")

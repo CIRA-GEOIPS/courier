@@ -127,10 +127,10 @@ def test_image_keeps_its_distribution_metadata(docker_image: str) -> None:
     assert "file_system_poller_watchdog" in meta["monitors"]
 
 
-def test_image_provides_bash_at_the_hardcoded_path(docker_image: str) -> None:
-    """``/bin/bash`` exists, because the shell executor execs that path."""
+def test_image_provides_bash_on_path(docker_image: str) -> None:
+    """``bash`` is on PATH, because bash_payload runs its scripts with it."""
     result = run(
-        ["docker", "run", "--rm", docker_image, "/bin/bash", "-c", "echo bash-ok"],
+        ["docker", "run", "--rm", docker_image, "bash", "-c", "echo bash-ok"],
     )
     assert result.returncode == 0, result.stderr
     assert "bash-ok" in result.stdout

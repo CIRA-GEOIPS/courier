@@ -13,7 +13,7 @@ While general-purpose, Courier ships with extra tooling for geolocation data —
 
 ## Design Philosophy
 
-**Plugin-based.** Data monitors, job builders, and dispatchers are all plugins that conform to a simple protocol. Swap a filesystem watcher for a RabbitMQ consumer, or a serial dispatcher for a SLURM submitter, without touching the rest of your pipeline.
+**Plugin-based.** Data monitors, job builders, and dispatchers are all plugins that conform to a simple protocol, and so are the payloads that describe what each job runs. Swap a filesystem watcher for a RabbitMQ consumer, or the local dispatcher for a SLURM submitter, without touching the rest of your pipeline.
 
 **Event-driven.** Plugins communicate through message queues and do not share state[^1]. When a monitor detects a file, it emits an event. A job builder consumes that event, groups files, and emits a job. A dispatcher picks up the job and runs it. Each stage is decoupled and independently scalable and duplicatable.
 
@@ -28,12 +28,14 @@ Courier runs a central `Service` that coordinates three stages of plugins throug
 ```
 [Data Monitor] → detects new files, emits events
        ↓ (broker queue)
-[Job Builder]  → groups files into complete jobs
+[Job Builder]  → groups files into complete jobs, attaching the payload (script) to run
        ↓ (broker queue)
-[Dispatcher]   → executes the processing workflow
+[Dispatcher]   → executes each job's payload: locally, or on SLURM
 ```
 
-Each plugin runs in its own thread with independent health monitoring and automatic restart on failure. Configuration is validated at startup with Pydantic — not halfway through a run.
+Each plugin runs in its own thread with independent health monitoring and automatic restart on failure. Configuration is validated at startup with Pydantic, and every payload's script template is parsed then too — not halfway through a run.
+
+Upgrading from a release with the `serial_bash`, `parallel_bash` or `http_dispatcher` dispatchers? The script now lives on the job builder; see the upgrade guide (`sphinx/getting-started/upgrading.md`) and `RELEASE.md`.
 
 ## Quick Start
 

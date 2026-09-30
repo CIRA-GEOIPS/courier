@@ -15,7 +15,11 @@ from prometheus_client.metrics import MetricWrapperBase
 
 import courier.metrics as metrics_module
 from courier.dashboard.config_parser import PluginKind, _plugin_kind_or_none
-from courier.dashboard.live_detector import _extract_plugin_states
+from courier.dashboard.live_detector import (
+    _parse_prometheus_text,
+    _states_from_metrics,
+    detect_active_plugins,
+)
 from courier.metrics import (
     DATA_MONITOR_FILES_PROCESSED,
     DATA_MONITOR_LAST_SCAN_TIMESTAMP,
@@ -166,6 +170,11 @@ class TestLokiSelectorsMatchHandlerTags:
         assert "{{.message}}" not in source
 
 
+def _extract_plugin_states(text: str) -> dict[str, int]:
+    """Parse *text* the way ``detect_active_plugins`` does and read the states."""
+    return _states_from_metrics(_parse_prometheus_text(text))
+
+
 class TestLiveDetection:
     """``--live`` resolves identifiers, which is what parse_config matches on."""
 
@@ -183,6 +192,49 @@ class TestLiveDetection:
         """Tolerates metrics scraped from a courier predating the label."""
         legacy = 'courier_plugin_state{plugin_name="local_dispatcher"} 3.0\n'
         assert _extract_plugin_states(legacy) == {"local_dispatcher": 3}
+
+    def test_an_out_of_range_state_is_skipped_not_raised(self) -> None:
+        """``1e999`` parses as infinity, and ``int(inf)`` raises OverflowError.
+
+        One bad sample from a buggy or foreign exporter must cost that sample,
+        not the whole detection.
+        """
+        text = (
+            'courier_plugin_state{plugin_identifier="broken"} 1e999\n'
+            'courier_plugin_state{plugin_identifier="fine"} 2.0\n'
+        )
+        assert _extract_plugin_states(text) == {"fine": 2}
+
+    def test_detect_active_plugins_never_raises_on_a_bad_sample(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The documented contract: every error is captured in the result."""
+        import io
+        import urllib.request
+
+        from courier.constants import PluginRunState
+
+        running = PluginRunState.RUNNING.value
+        body = (
+            'courier_plugin_state{plugin_identifier="broken"} 1e999\n'
+            f'courier_plugin_state{{plugin_identifier="running"}} {running}\n'
+        ).encode()
+
+        class _Response(io.BytesIO):
+            status = 200
+
+        monkeypatch.setattr(
+            urllib.request,
+            "urlopen",
+            lambda *_args, **_kwargs: _Response(body),
+        )
+
+        result = detect_active_plugins("metrics.invalid", 1)
+
+        assert result.is_reachable
+        assert result.plugin_states == {"running": running}
+        assert result.identifiers == {"running"}
 
 
 class TestDashboardKindMapping:

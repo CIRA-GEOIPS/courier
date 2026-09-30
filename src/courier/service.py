@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import time
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, cast
 
 from courier.broker.kombu import (
+    PARK_REASON_HEADER,
     MessageBrokerManager,
     declare_fanout_exchange,
     declare_queue,
@@ -23,7 +25,7 @@ from courier.constants import (
     file_found_queue_for,
     job_ready_queue_for,
 )
-from courier.errors import ConfigurationError
+from courier.errors import ConfigurationError, DiscoveryError
 from courier.managers.plugin_manager import PluginManager
 from courier.managers.prometheus_manager import PrometheusManager
 from courier.routing import TargetResolver, build_default_resolver
@@ -37,11 +39,21 @@ from courier.tracing import (
 
 if TYPE_CHECKING:
     import threading
-    from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
+    from collections.abc import (
+        Callable,
+        Generator,
+        Iterable,
+        Iterator,
+        Mapping,
+        Sequence,
+    )
 
+    from courier.interfaces.dispatchers import Dispatcher
+    from courier.interfaces.payloads import Payload
     from courier.interfaces.plugin_protocol import ServicePlugin
     from courier.managers.base import ServiceManager
 from courier.metrics import (
+    BROKER_MESSAGES_DEAD_LETTERED,
     BROKER_MESSAGES_PENDING,
     BROKER_MESSAGES_RECEIVED,
     BROKER_MESSAGES_SENT,
@@ -51,6 +63,73 @@ from courier.metrics import (
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 from courier.utils.signals import SignalHandler
+
+#: Bytes of a parked body echoed into the log line that reports it.
+_PARKED_BODY_PREVIEW = 512
+
+#: Characters of a park reason kept in the message header. The full reason is
+#: logged; the header only has to identify it, and AMQP headers share a frame
+#: with the rest of the message properties, so an unbounded one (a long
+#: validation error, say) could make the park itself fail.
+_PARK_REASON_HEADER_MAX = 1024
+
+
+@dataclass(frozen=True)
+class PipelineTopology:
+    """Plugin names for every step in the service YAML, whatever ``--only`` runs.
+
+    A split deployment runs a job builder and the dispatcher it targets in
+    different processes, so neither has the other registered. This carries
+    what preflight needs to check their payload/dispatcher compatibility from
+    both ends anyway.
+
+    Attributes
+    ----------
+    dispatcher_plugins : Mapping[str, str]
+        Dispatcher identifier to dispatcher plugin name, for every dispatcher.
+    builder_payloads : Mapping[str, str]
+        Job builder identifier to the plugin name of its nested payload, for
+        every builder whose ``payload`` block names one.
+    builder_targets : Mapping[str, tuple[str, ...]]
+        Job builder identifier to its declared targets, for every builder.
+        An empty tuple means the builder relies on implicit routing.
+    """
+
+    dispatcher_plugins: Mapping[str, str] = field(default_factory=dict)
+    builder_payloads: Mapping[str, str] = field(default_factory=dict)
+    builder_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def builders_targeting(
+        self,
+        dispatcher_id: str,
+        *,
+        allow_implicit_target: bool,
+    ) -> list[str]:
+        """Return the job builders whose jobs reach *dispatcher_id*.
+
+        Parameters
+        ----------
+        dispatcher_id : str
+            Dispatcher identifier.
+        allow_implicit_target : bool
+            Whether a builder with no declared targets is auto-wired to the
+            sole dispatcher, mirroring preflight's routing rule.
+
+        Returns
+        -------
+        list[str]
+            Builder identifiers, sorted.
+        """
+        sole = (
+            next(iter(self.dispatcher_plugins))
+            if allow_implicit_target and len(self.dispatcher_plugins) == 1
+            else None
+        )
+        return sorted(
+            builder_id
+            for builder_id, declared in self.builder_targets.items()
+            if dispatcher_id in declared or (not declared and sole == dispatcher_id)
+        )
 
 
 class Service:
@@ -76,6 +155,8 @@ class Service:
         Publish a message to a message broker queue.
     consume(queue)
         Yield messages from a message broker queue.
+    park_message(queue, message, reason)
+        Move a message that can never be processed to its dead-letter queue.
     register_plugin(plugin, config)
         Register a plugin with the service.
     start()
@@ -126,6 +207,7 @@ class Service:
         self._builder_targets: dict[str, tuple[str, ...]] = {}
         self._allow_implicit_target: bool = True
         self._target_resolver: TargetResolver = build_default_resolver(())
+        self._topology = PipelineTopology()
 
         init_tracing(self._config)
 
@@ -558,6 +640,101 @@ class Service:
             return
         ack()
 
+    def park_message(
+        self,
+        queue: str,
+        message: str,
+        reason: str,
+        *,
+        subscriber: str | None = None,
+    ) -> None:
+        """Move *message* to the dead-letter queue :meth:`consume` declares for *queue*.
+
+        For a message this consumer can never process however often it is
+        redelivered, such as a job no local payload can execute. Retrying
+        cannot help and acknowledging it would lose it, so it is parked
+        straight away for an operator, with *reason* recorded in the
+        :data:`~courier.broker.kombu.PARK_REASON_HEADER` header. The caller
+        then returns to the consume loop, which acknowledges the original.
+
+        Parameters
+        ----------
+        queue : str
+            The queue the message was consumed from, named as it was passed
+            to :meth:`consume` (without the namespace prefix).
+        message : str
+            The message body, unchanged.
+        reason : str
+            Why the message was parked. Logged in full; the header keeps the
+            first :data:`_PARK_REASON_HEADER_MAX` characters.
+        subscriber : str or None, optional
+            Job builder identifier, required when *queue* is the file-found
+            exchange, exactly as for :meth:`consume`.
+
+        Raises
+        ------
+        ConfigurationError
+            If *queue* is the file-found exchange and *subscriber* is missing.
+        TransientBrokerError
+            If the publish fails in a way worth retrying.
+        FatalBrokerError
+            If the publish fails in a way retrying cannot fix.
+
+        Notes
+        -----
+        A publish failure propagates on purpose. The caller has not returned
+        to the consume loop, so the original delivery is left unacknowledged
+        and comes back through the redelivery path instead of being lost.
+        """
+        queue_name = self._consumed_queue_name(queue, subscriber)
+        dead_letter_name = dead_letter_queue_for(queue_name)
+        headers = {
+            **inject_trace_headers(),
+            PARK_REASON_HEADER: reason[:_PARK_REASON_HEADER_MAX],
+        }
+        with self._broker_manager.get_connection_context() as conn:
+            dead_letter = declare_queue(
+                conn,
+                dead_letter_name,
+                action="declaring dead-letter queue",
+            )
+            publish(conn, dead_letter, message, headers=headers)
+        BROKER_MESSAGES_DEAD_LETTERED.labels(queue_name=queue_name).inc()
+        self._logger.warning(
+            f"Parked a message from {queue_name!r} on {dead_letter_name!r} "
+            f"without retrying it: {reason}. It needs an operator. First "
+            f"{_PARKED_BODY_PREVIEW} bytes: {message[:_PARKED_BODY_PREVIEW]!r}",
+        )
+
+    def _consumed_queue_name(self, queue: str, subscriber: str | None) -> str:
+        """Return the namespaced queue :meth:`consume` reads for *queue*.
+
+        Parameters
+        ----------
+        queue : str
+            Queue or exchange name as passed to :meth:`consume`.
+        subscriber : str or None
+            Job builder identifier for the file-found exchange.
+
+        Returns
+        -------
+        str
+            The namespaced name of the queue messages are read from.
+
+        Raises
+        ------
+        ConfigurationError
+            If *queue* is the file-found exchange and *subscriber* is missing.
+        """
+        if queue != FILE_FOUND_EXCHANGE:
+            return self._broker_manager.get_queue_name(queue)
+        if subscriber is None:
+            raise ConfigurationError(
+                "The file-found exchange has one queue per job builder; pass "
+                "subscriber=<job builder identifier> to name it.",
+            )
+        return self._broker_manager.get_queue_name(file_found_queue_for(subscriber))
+
     def register_plugin(
         self,
         plugin: type[ServicePlugin],
@@ -619,6 +796,22 @@ class Service:
         self._builder_identifiers = frozenset(builder_identifiers or ())
         self._allow_implicit_target = allow_implicit_target
         self._target_resolver = build_default_resolver(self._dispatcher_identifiers)
+
+    def configure_topology(self, topology: PipelineTopology) -> None:
+        """Record the whole pipeline's plugin names for static checks.
+
+        Called by the CLI with every step in the service YAML, **regardless of
+        ``--only``**, before :meth:`start`.  :meth:`preflight_check` uses it to
+        check payload/dispatcher compatibility for builders and dispatchers
+        that run in other processes.  A harness that never calls this still
+        gets the check for everything registered in-process.
+
+        Parameters
+        ----------
+        topology : PipelineTopology
+            Plugin names for every dispatcher and job builder payload.
+        """
+        self._topology = topology
 
     def preflight_check(self) -> None:
         """Validate everything the service cannot recover from at runtime.
@@ -763,34 +956,24 @@ class Service:
 
         The ``payload`` block in a builder's config is a nested microservice
         that the plugin manager has already registered under its identifier.
-        The builder needs the live instance to render it onto jobs, and the
-        binding also verifies that every builder declared a payload.
+        The builder validated the block when it was constructed (a builder
+        cannot be built without one); it needs the live instance to render it
+        onto jobs, and refuses to start until it has it.
 
         Raises
         ------
         ConfigurationError
-            If a registered job builder has no payload, or the payload
-            identifier from its config is not registered as a payload.
+            If the payload identifier a builder's block names is not
+            registered as a payload.
         """
         from courier.interfaces.job_builders import JobBuilder  # noqa: PLC0415
         from courier.interfaces.payloads import Payload  # noqa: PLC0415
-        from courier.schema.v1alpha1.service_config import (  # noqa: PLC0415
-            MicroserviceModel,
-        )
 
         plugins = self._plugin_manager.get_plugins()
         for registry_key, plugin in self._registered("job_builders"):
             if not isinstance(plugin, JobBuilder):
                 continue
-            try:
-                payload_id = MicroserviceModel.model_validate(
-                    plugin.config.get("payload"),
-                ).identifier
-            except Exception as exc:
-                raise ConfigurationError(
-                    f"Job builder {registry_key!r} has a malformed payload "
-                    f"block: {exc}",
-                ) from exc
+            payload_id = plugin.payload_identifier
             payload_info = plugins.get(payload_id)
             if payload_info is None or not isinstance(payload_info.plugin, Payload):
                 raise ConfigurationError(
@@ -800,35 +983,113 @@ class Service:
             plugin.payload = payload_info.plugin
 
     def _validate_payload_compatibility(self) -> None:
-        """Fail fast when a builder's payload cannot run on a declared target.
+        """Fail fast when a payload cannot run on a dispatcher it will reach.
 
-        Compatibility is checked statically for declared and implicitly
-        resolved targets: the payload's representation hierarchy must intersect
-        the dispatcher's supported representations.  A target that only exists in
-        another container is not registered here and is checked by the dispatcher
-        when it hydrates the payload.
+        The payload's representation hierarchy must intersect the dispatcher's
+        supported representations.  Both ends of every route are checked, so a
+        split deployment (``--only``) is covered from whichever process runs:
+
+        * each job builder registered here, against each resolved target:
+          the registered dispatcher when the target runs here, otherwise the
+          dispatcher class the service YAML names for it;
+        * each dispatcher registered here, against every job builder elsewhere
+          in the YAML whose jobs reach it: the builder's payload plugin must
+          be installed in this process, and compatible.
+
+        Raises
+        ------
+        ConfigurationError
+            If a payload is incompatible with a dispatcher it reaches, or a
+            dispatcher here would receive a payload not installed here.
         """
+        self._check_local_builder_payloads()
+        self._check_remote_builder_payloads()
+
+    def _check_local_builder_payloads(self) -> None:
+        """Check each in-process builder's payload against its targets.
+
+        Runs after :meth:`_bind_builder_payloads`, so every job builder here
+        has its payload bound.
+        """
+        from courier.interfaces.job_builders import JobBuilder  # noqa: PLC0415
+
+        for _registry_key, plugin in self._registered("job_builders"):
+            if not isinstance(plugin, JobBuilder):
+                continue
+            payload = plugin.payload
+            builder_id = plugin.identifier
+            for target in self._builder_targets.get(builder_id, ()):
+                dispatcher_cls = self._dispatcher_class(target)
+                if dispatcher_cls is not None:
+                    _require_compatible(
+                        builder_id,
+                        type(payload),
+                        payload.name,
+                        target,
+                        dispatcher_cls,
+                    )
+
+    def _check_remote_builder_payloads(self) -> None:
+        """Check payloads that builders in other processes send to us."""
         from courier.interfaces.dispatchers import Dispatcher  # noqa: PLC0415
 
-        plugins = self._plugin_manager.get_plugins()
-        for registry_key, plugin in self._registered("job_builders"):
-            payload = getattr(plugin, "payload", None)
-            if payload is None:
+        registered = self._plugin_manager.get_plugins()
+        for registry_key, plugin in self._registered("dispatchers"):
+            if not isinstance(plugin, Dispatcher):
                 continue
-            builder_id = getattr(plugin, "identifier", registry_key)
-            for target in self._builder_targets.get(builder_id, ()):
-                dispatcher_info = plugins.get(target)
-                if dispatcher_info is None:
+            dispatcher_id = getattr(plugin, "identifier", registry_key)
+            for builder_id in self._topology.builders_targeting(
+                dispatcher_id,
+                allow_implicit_target=self._allow_implicit_target,
+            ):
+                payload_name = self._topology.builder_payloads.get(builder_id)
+                # A builder running here was checked from its own side.
+                if builder_id in registered or payload_name is None:
                     continue
-                dispatcher = dispatcher_info.plugin
-                if not isinstance(dispatcher, Dispatcher):
-                    continue
-                if dispatcher.compatible_representation(type(payload)) is None:
-                    raise ConfigurationError(
-                        f"Job builder {builder_id!r} payload {payload.name!r} is "
-                        f"not compatible with dispatcher {target!r} "
-                        f"(supports {dispatcher.supported_representations}).",
-                    )
+                _require_compatible(
+                    builder_id,
+                    _installed_payload(builder_id, payload_name, dispatcher_id),
+                    payload_name,
+                    dispatcher_id,
+                    type(plugin),
+                )
+
+    def _dispatcher_class(self, target: str) -> type[Dispatcher] | None:
+        """Return the dispatcher class that runs *target*, if it can be known.
+
+        Parameters
+        ----------
+        target : str
+            Dispatcher identifier.
+
+        Returns
+        -------
+        type[Dispatcher] or None
+            The registered instance's class when *target* runs here, else the
+            class the service YAML names for it. ``None`` when neither is
+            available here; the dispatcher's own process checks the route.
+        """
+        from courier.interfaces.dispatchers import (  # noqa: PLC0415
+            Dispatcher,
+            dispatchers,
+        )
+
+        info = self._plugin_manager.get_plugins().get(target)
+        if info is not None:
+            plugin = info.plugin
+            return type(plugin) if isinstance(plugin, Dispatcher) else None
+        plugin_name = self._topology.dispatcher_plugins.get(target)
+        if plugin_name is None:
+            return None
+        try:
+            return cast("type[Dispatcher]", dispatchers.get_plugin(plugin_name))
+        except DiscoveryError as exc:
+            self._logger.warning(
+                f"Cannot check payload compatibility with dispatcher {target!r} "
+                f"from this process ({exc}); the process that runs it checks "
+                "the payloads it receives at startup.",
+            )
+            return None
 
     def _predeclare_target_queues(self) -> None:
         """Declare every queue this service or its peers will consume from.
@@ -967,6 +1228,81 @@ class Service:
         shutdown_tracing()
         self._stop_managers()
         self._logger.info(f"Service {self._config.service_id} stopped")
+
+
+def _installed_payload(
+    builder_id: str,
+    payload_name: str,
+    dispatcher_id: str,
+) -> type[Payload]:
+    """Return the payload class a remote builder sends, installed here.
+
+    Parameters
+    ----------
+    builder_id : str
+        Job builder identifier, for the error message.
+    payload_name : str
+        Payload plugin name from the builder's ``payload`` block.
+    dispatcher_id : str
+        Dispatcher that would receive the payload, for the error message.
+
+    Returns
+    -------
+    type[Payload]
+        The payload plugin class.
+
+    Raises
+    ------
+    ConfigurationError
+        If the payload plugin is not installed in this process or cannot be
+        loaded. The dispatcher would otherwise fail every job it receives.
+    """
+    from courier.interfaces.payloads import payloads  # noqa: PLC0415
+
+    try:
+        return cast("type[Payload]", payloads.get_plugin(payload_name))
+    except DiscoveryError as exc:
+        raise ConfigurationError(
+            f"Dispatcher {dispatcher_id!r} receives {payload_name!r} payloads "
+            f"from job builder {builder_id!r}, but that payload plugin is not "
+            f"usable in this process: {exc} Install it wherever "
+            f"{dispatcher_id!r} runs.",
+        ) from exc
+
+
+def _require_compatible(
+    builder_id: str,
+    payload_cls: type[Payload],
+    payload_name: str,
+    dispatcher_id: str,
+    dispatcher_cls: type[Dispatcher],
+) -> None:
+    """Raise unless *dispatcher_cls* can execute *payload_cls*.
+
+    Parameters
+    ----------
+    builder_id : str
+        Job builder identifier, for the error message.
+    payload_cls : type[Payload]
+        Payload class the builder attaches to its jobs.
+    payload_name : str
+        Payload plugin name, for the error message.
+    dispatcher_id : str
+        Dispatcher identifier, for the error message.
+    dispatcher_cls : type[Dispatcher]
+        Class of the dispatcher that receives the jobs.
+
+    Raises
+    ------
+    ConfigurationError
+        If no representation of the payload is one the dispatcher supports.
+    """
+    if dispatcher_cls.compatible_representation(payload_cls) is None:
+        raise ConfigurationError(
+            f"Job builder {builder_id!r} payload {payload_name!r} is not "
+            f"compatible with dispatcher {dispatcher_id!r} "
+            f"(supports {dispatcher_cls.representation_names()}).",
+        )
 
 
 def create_service_with_plugins(

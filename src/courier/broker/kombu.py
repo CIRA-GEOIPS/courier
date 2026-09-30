@@ -46,6 +46,12 @@ _CONFIRM_TIMEOUT = 30.0
 #: container restarts.
 DELIVERY_ATTEMPT_HEADER = "x-courier-delivery-attempt"
 
+#: Header recording why a message was parked on a dead-letter queue without
+#: being retried, set by :meth:`courier.service.Service.park_message`. A message
+#: parked for running out of attempts carries :data:`DELIVERY_ATTEMPT_HEADER`
+#: instead.
+PARK_REASON_HEADER = "x-courier-park-reason"
+
 #: Bytes of a retried or parked body written to the log. Enough to identify the
 #: message without shipping a whole payload on every retry.
 _PARKED_BODY_PREVIEW = 512
@@ -483,12 +489,12 @@ def declare_queue(
     rather than each receiving a copy.
 
     The dead-letter queue is bound to nothing and reachable only through the
-    default exchange, so the only thing that ever writes to it is
-    :func:`redeliver_or_park`. It is declared when a consumer subscribes rather
-    than when the first message is parked: a name that is too long, or a broker
-    user without ``configure`` permission, is then a startup failure instead of
-    a failure at exactly the moment there is a poison message with nowhere to
-    put it.
+    default exchange, so the only things that ever write to it are
+    :func:`redeliver_or_park` and :meth:`courier.service.Service.park_message`.
+    It is declared when a consumer subscribes rather than when the first
+    message is parked: a name that is too long, or a broker user without
+    ``configure`` permission, is then a startup failure instead of a failure at
+    exactly the moment there is a poison message with nowhere to put it.
     """
     with broker_error_triage(conn, name, action):
         q: kombu.Queue = kombu.Queue(name, channel=conn.channel(), **kwargs)

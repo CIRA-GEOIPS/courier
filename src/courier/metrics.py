@@ -136,7 +136,8 @@ JOB_BUILDER_JOBS_EMITTED: Counter = Counter(
 
 JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
     "courier_job_builder_emit_failures_total",
-    "Total number of (job, target) publish failures from a job builder",
+    "Total number of (job, target) pairs a job builder failed to publish, by "
+    "reason (transient, fatal, or render: the payload template failed)",
     ["job_builder_name", "job_builder_identifier", "target", "reason"],
 )
 
@@ -184,12 +185,6 @@ DISPATCHER_QUEUE_WAIT_DURATION: Histogram = Histogram(
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0),
 )
 
-DISPATCHER_PARALLEL_WORKERS_ACTIVE: Gauge = Gauge(
-    "courier_dispatcher_parallel_workers_active",
-    "Number of script execution threads currently active in a parallel dispatcher",
-    ["dispatcher_name", "dispatcher_identifier"],
-)
-
 DISPATCHER_SLURM_JOBS_PENDING: Gauge = Gauge(
     "courier_dispatcher_slurm_jobs_pending",
     "Number of submitted SLURM jobs currently in PENDING or RUNNING state",
@@ -217,8 +212,8 @@ DISPATCHER_DISPATCH_LATENCY_SECONDS: Histogram = Histogram(
 
 DISPATCHER_QUEUE_DEPTH: Gauge = Gauge(
     "courier_dispatcher_queue_depth",
-    "Current depth of a dispatcher's per-identifier queue (poll-based; "
-    "memory transport reports 0 with a documented caveat)",
+    "Messages ready in a dispatcher's per-identifier queue, sampled when it "
+    "receives a job (excludes unacknowledged messages)",
     ["dispatcher_identifier"],
 )
 

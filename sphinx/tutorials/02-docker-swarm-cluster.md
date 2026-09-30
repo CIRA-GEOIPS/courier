@@ -95,8 +95,6 @@ metadata:
     while the job builder and dispatcher share a second container.
 
 spec:
-  heartbeat_interval: 30
-
   broker:
     host: rabbitmq
     port: 5672
@@ -136,6 +134,8 @@ spec:
     - process-files:
         kind: dispatcher
         name: local_dispatcher
+        config:
+          log_to_logger: true
 ```
 
 Key differences from {doc}`01-simple-file-watcher`:
@@ -635,17 +635,21 @@ Check the processor logs:
 docker compose logs courier-processor
 ```
 
-You should see:
+You should see lines like these (timestamps, levels and most DEBUG lines
+trimmed):
 
 ```
-[Plugin: DummyJobBuilder] Received file from file queue
-[Plugin: DummyJobBuilder] Job job_... is ready; emitting
-[Plugin: local_dispatcher] Executing job
-==========================================
-File detected: /data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000...
-Timestamp: 2026-06-12 ...
-==========================================
+[Plugin: DummyJobBuilder] Job /data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc is ready; emitting
+[Plugin: DummyJobBuilder] Emitted job /data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc to targets ['process-files']
+[Plugin: bash_payload] [job: /data/incoming/OR_ABI-...nc] [stdout] ==========================================
+[Plugin: bash_payload] [job: /data/incoming/OR_ABI-...nc] [stdout] File detected: /data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc
+[Plugin: bash_payload] [job: /data/incoming/OR_ABI-...nc] [stdout] Timestamp: 2026-06-12 ...
+[Plugin: bash_payload] [job: /data/incoming/OR_ABI-...nc] [stdout] ==========================================
 ```
+
+The `[stdout]` lines are the payload's output, logged at DEBUG because the
+dispatcher sets `log_to_logger: true`. A job whose script fails is logged at
+ERROR either way.
 
 ### Verify the Trace
 
@@ -657,6 +661,7 @@ both containers:
 - `job_builder.build_job` (from `courier-processor`)
 - `dispatcher.dispatch_job` (from `courier-processor`)
 - `dispatcher.execute_job` (from `courier-processor`)
+- `payload.get_payload_from_job` (from `courier-processor`)
 
 Expand the trace to see span durations and attributes, including
 `courier.correlation_id` and `courier.file.path`.
@@ -683,7 +688,8 @@ A typical trace will appear in the Jaeger UI as:
 │ courier: dispatcher.dispatch_job          28.10s                 │
 ├─────────────────────────────────────────────────────────────────┤
 │  ├─ dispatcher.execute_job                27.80s                 │
-│  │   └─ job.executed                        event                │
+│  │   └─ payload.get_payload_from_job      27.60s                 │
+│  ├─ job.executed                            event                │
 │  └─ dispatcher.emit_execution_log          0.05s                 │
 ├─────────────────────────────────────────────────────────────────┤
 │ Attributes:                                                      │

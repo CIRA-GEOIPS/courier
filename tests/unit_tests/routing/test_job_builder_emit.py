@@ -19,6 +19,7 @@ from courier.plugins.job_builders.filter_and_group import (
     FilterAndGroupJobBuilder,
 )
 from courier.types.job import Job
+from tests._helpers import bind_payload, with_payload
 
 
 def _make_builder(
@@ -30,9 +31,10 @@ def _make_builder(
     mock_service.emit = MagicMock()
     builder = FilterAndGroupJobBuilder(
         mock_service,
-        {"files_per_job": 1, "targets": targets},
+        with_payload({"files_per_job": 1, "targets": targets}),
         identifier="builder",
     )
+    bind_payload(builder)
     builder._sync = None  # no HA state sync in these tests
     return builder
 

@@ -305,19 +305,7 @@ class PluginManager(ServiceManager):
             plugin_info.ready.clear()
 
         if not plugin_info.threaded:
-            # Sub-plugins such as payloads have no run loop; starting them is a
-            # no-op, so registration must not fork a thread that would then sit
-            # in the manager's health loop forever.
-            try:
-                plugin_info.plugin.start()
-            except Exception:
-                self._logger.exception(
-                    f"Plugin {plugin_info.plugin.name} failed to start",
-                )
-                with self._lock:
-                    plugin_info.state = PluginRunState.FAILED
-                return
-            self._mark_running(plugin_info)
+            self._start_non_threaded(plugin_info)
             return
 
         with self._lock:
@@ -328,6 +316,59 @@ class PluginManager(ServiceManager):
             )
 
         plugin_info.thread.start()
+
+    def _start_non_threaded(self, plugin_info: PluginStateInfo) -> None:
+        """Start a sub-plugin that has no run loop, synchronously.
+
+        Sub-plugins such as payloads have no run loop, so forking a thread for
+        them would leave it sitting in the manager's health loop forever. A
+        failure is recorded exactly as the threaded path records one: the
+        error message is kept and the exported state gauge reads FAILED.
+
+        Parameters
+        ----------
+        plugin_info : PluginStateInfo
+            Information about the plugin to start.
+        """
+        try:
+            plugin_info.plugin.start()
+        except Exception as exc:
+            self._logger.exception(
+                f"Plugin {plugin_info.plugin.name} failed to start",
+            )
+            with self._lock:
+                plugin_info.state = PluginRunState.FAILED
+                plugin_info.error_message = (
+                    str(exc)
+                    if isinstance(exc, CourierError)
+                    else f"Unexpected error: {exc}"
+                )
+            self._plugin_state_metric.labels(
+                plugin_name=plugin_info.plugin.name,
+                plugin_identifier=self._plugin_identifier(plugin_info.plugin),
+            ).set(plugin_info.state.value)
+            return
+        self._mark_running(plugin_info)
+
+    @staticmethod
+    def _runnable(plugins: list[PluginStateInfo]) -> list[PluginStateInfo]:
+        """Return the plugins that do work of their own.
+
+        Non-threaded sub-plugins (payloads) have no run loop and report healthy
+        unconditionally, so counting them would let one hide a failed builder
+        from the startup abort and from service health.
+
+        Parameters
+        ----------
+        plugins : list[PluginStateInfo]
+            Plugins to filter.
+
+        Returns
+        -------
+        list[PluginStateInfo]
+            Only the threaded plugins, in their original order.
+        """
+        return [info for info in plugins if info.threaded]
 
     def _stop_plugin(self, plugin_info: PluginStateInfo) -> None:
         """Stop a plugin gracefully.
@@ -555,10 +596,15 @@ class PluginManager(ServiceManager):
             remaining = max(0.0, deadline - time.time())
             plugin_info.ready.wait(timeout=remaining)
 
-        # Phase 3: Verify at least one plugin started successfully.
+        # Phase 3: Verify at least one runnable plugin started successfully.
+        # Non-threaded sub-plugins are always RUNNING once started, so
+        # counting them would keep a container whose builder failed alive.
         with self._lock:
-            running = [info for info in plugins if info.state == PluginRunState.RUNNING]
-            failed = [info for info in plugins if info.state == PluginRunState.FAILED]
+            runnable = self._runnable(plugins)
+            running = [
+                info for info in runnable if info.state == PluginRunState.RUNNING
+            ]
+            failed = [info for info in runnable if info.state == PluginRunState.FAILED]
         if failed and not running:
             names = ", ".join(
                 f"{info.plugin.name}={info.error_message or 'unknown'}"
@@ -606,9 +652,11 @@ class PluginManager(ServiceManager):
     def is_healthy(self) -> bool:
         """Check if plugin manager is healthy.
 
-        Returns True if running and at least one plugin is healthy,
-        or if not running and no plugins are registered, or if no
-        plugins are registered at all.
+        Returns True if running and at least one runnable (threaded) plugin
+        is healthy, or if no plugins are registered at all.  Non-threaded
+        sub-plugins such as payloads are left out: they have no work of their
+        own and always report healthy, so counting them would mask a failed
+        job builder.
 
         Returns
         -------
@@ -626,19 +674,19 @@ class PluginManager(ServiceManager):
                 for info in self._plugins.values()
             ]
             self._logger.debug(", ".join(health))
+            runnable = self._runnable(list(self._plugins.values()))
+            if not runnable:
+                return True
             healthy_plugins = filter_map(
                 lambda info: (
                     info.state in [PluginRunState.RUNNING, PluginRunState.STARTING]
-                    and (
-                        info.thread.is_alive()
-                        if info.thread is not None
-                        else not info.threaded
-                    )
+                    and info.thread is not None
+                    and info.thread.is_alive()
                 ),
                 lambda info: info.plugin.is_healthy(),
-                self._plugins.values(),
+                runnable,
             )
-            return any(healthy_plugins) if self._plugins else True
+            return any(healthy_plugins)
 
     def get_plugin_status(self) -> dict[str, dict[str, Any]]:
         """Get current status of all plugins.
