@@ -347,11 +347,10 @@ the command line take precedence). A Python payload, a payload with a
 submitted with `--wrap`, so those options never reach `sbatch`.
 (`toolchain_prepend` does not force `--wrap`: it is never part of a job's
 command. Only `python_payload` uses it, in front of its toolchain probes, and
-shell and bash payloads ignore it.) `sbatch` runs directly under `submission_timeout_seconds`, never
-through the payload's job-execution path, and a rejection reports its return
-code and stderr. Output
-files are named with the Slurm job id, so two submissions of one job never
-share them. The script is kept whenever the submitted job may still need it
+shell and bash payloads ignore it.) `sbatch` runs directly under
+`submission_timeout_seconds`, never through the payload's job-execution path,
+and a rejection reports its return code and stderr. Output files are named
+with the Slurm job id, so two submissions of one job never share them. The script is kept whenever the submitted job may still need it
 (`keep_file`). In wait mode the payload metrics and the execution log describe
 the Slurm job's outcome, not the `sbatch` call. See
 {doc}`../../api-reference/dispatchers`.

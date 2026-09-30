@@ -283,8 +283,15 @@ preflight assigns the plugin registered under `payload_identifier` to
 `builder.payload`. Until one is bound, `start()` and `emit()` raise
 `ConfigurationError` before consuming or publishing anything, and reading
 `builder.payload` raises too; `builder.has_payload` asks without raising. The
-setter accepts only a `Payload` whose identifier is `payload_identifier`. A
-test that drives a builder without a service binds one itself:
+setter accepts only a `Payload` whose identifier is `payload_identifier`. The
+two errors read:
+
+```text
+Job builder 'build' has no payload bound. Service preflight binds the payload plugin registered as 'convert', the one its payload block names; code that drives a builder without preflight must assign builder.payload itself. A job builder cannot start or emit a job without its payload.
+Job builder 'build' nests payload 'convert', so it cannot bind payload 'other'.
+```
+
+A test that drives a builder without a service binds one itself:
 
 ```python
 # tests/test_netcdf.py

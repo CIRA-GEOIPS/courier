@@ -407,17 +407,7 @@ class JobBuilder(ServicePlugin):
         for group in self.job_groups:
             self._group_locks.setdefault(group.name, threading.Lock())
         self._check_replication_safety()
-        if self._sync is not None:
-            self._sync.connect()  # raises StateSyncConnectionError if unreachable
-            self._sync.set_merge_callback(self._emit_ready_jobs)
-            self._sync.start(self.job_groups, self._group_locks)
-            # Hydration merges the shared hash into the local groups without
-            # firing the merge callback. A job already complete when this
-            # replica starts would otherwise wait for an unrelated file in its
-            # group, or for job.timeout to discard it. That state is reached
-            # when a peer died between push_job_update and push_job_deletion.
-            for group in self.job_groups:
-                self._emit_ready_jobs(group, reason="was complete in shared state")
+        self._start_sync()
         self._stop_event.clear()
         self._subscribed.clear()
         # daemon=True is a backstop only; stop() sets _stop_event and joins.
@@ -428,6 +418,27 @@ class JobBuilder(ServicePlugin):
         )
         self._state = PluginRunState.RUNNING
         self._main_thread.start()
+
+    def _start_sync(self) -> None:
+        """Connect state sync and adopt the shared state, when it is enabled.
+
+        Raises
+        ------
+        StateSyncConnectionError
+            If the Redis server is unreachable.
+        """
+        if self._sync is None:
+            return
+        self._sync.connect()
+        self._sync.set_merge_callback(self._emit_ready_jobs)
+        self._sync.start(self.job_groups, self._group_locks)
+        # Hydration merges the shared hash into the local groups without
+        # firing the merge callback. A job already complete when this replica
+        # starts would otherwise wait for an unrelated file in its group, or
+        # for job.timeout to discard it. That state is reached when a peer
+        # died between push_job_update and push_job_deletion.
+        for group in self.job_groups:
+            self._emit_ready_jobs(group, reason="was complete in shared state")
 
     @log_execution
     def stop(self) -> None:
@@ -604,6 +615,34 @@ class JobBuilder(ServicePlugin):
         failed: list[tuple[str, str]] = []
         for target in target_list:
             self._emit_one(job, target, message, succeeded, failed)
+        return self._fan_out_outcome(job, target_list, succeeded, failed)
+
+    def _fan_out_outcome(
+        self,
+        job: Job,
+        target_list: tuple[str, ...],
+        succeeded: list[str],
+        failed: list[tuple[str, str]],
+    ) -> _EmitOutcome:
+        """Log how *job*'s fan-out went and classify it.
+
+        Parameters
+        ----------
+        job : Job
+            The job that was fanned out.
+        target_list : tuple[str, ...]
+            Every target it was fanned out to.
+        succeeded : list[str]
+            Targets that took the job.
+        failed : list[tuple[str, str]]
+            ``(target, reason)`` for every target whose publish failed.
+
+        Returns
+        -------
+        _EmitOutcome
+            ``PUBLISHED`` if any target took the job, ``FAILED`` if every
+            claimed target failed, ``UNCLAIMED`` if a peer held every claim.
+        """
         if failed:
             self._logger.error(
                 f"partial fan-out for job {job.identifier}: "
