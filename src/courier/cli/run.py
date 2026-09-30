@@ -319,6 +319,7 @@ def run(
     log_level: str | None = typer.Option(
         None,
         "--log-level",
+        "-l",
         help="Set the log level of the service. "
         "Acceptable arguments: TRACE, DEBUG, INFO, "
         "WARNING, ERROR, CRITICAL",
