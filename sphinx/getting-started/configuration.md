@@ -98,17 +98,19 @@ Everything under `spec:` controls runtime behavior.
 
 ```yaml
 spec:
-  heartbeat_interval: 30   # Optional. Seconds between heartbeats. Default: 30.
+  service_config:          # Optional. Service runtime settings.
+    heartbeat_interval: 30 # Optional. Seconds between heartbeats. Default: 30.
   broker: { ... }          # Optional. Defaults to in-memory. See "Broker Configuration" below.
   run: [ ... ]             # Required. At least one pipeline step.
 ```
 
-### `heartbeat_interval`
+### `service_config.heartbeat_interval`
 
 How often the service publishes health metrics, in seconds. Defaults
 to `30` when omitted.
 
 (run-section)=
+
 ### `run`
 
 An ordered list of pipeline steps. Each step is a mapping from an
@@ -116,7 +118,7 @@ identifier (unique within the file) to a plugin definition:
 
 ```yaml
 run:
-  - my_step_name:            # Unique identifier for this step.
+  - my-step-name:            # Unique identifier for this step (lowercase, digits, hyphens).
       kind: data_monitor     # Plugin kind: data_monitor, job_builder, or dispatcher.
       name: plugin_name      # Registered plugin name.
       config: { ... }        # Optional. Plugin-specific configuration. Defaults to null when omitted.
@@ -124,6 +126,34 @@ run:
 
 Step identifiers must be unique. Duplicate identifiers cause a
 validation error.
+
+Every `job_builder` step nests exactly one **payload** under
+`config.payload`: the script its jobs run, and how to launch it. The block is
+required for every job builder: without it `courier validate` reports an
+error and `courier run` does not start (see {ref}`validation-errors`). The
+payload has an identifier of its own, which must also be unique in the file:
+
+```yaml
+- build:
+    kind: job_builder
+    name: DummyJobBuilder
+    config:
+      targets:
+        - dispatch
+      payload:
+        work:                  # Payload identifier.
+          kind: payload        # Must be "payload".
+          name: bash_payload   # Payload plugin: bash_payload, python_payload or shell_payload.
+          config:              # Payload settings: script or file, arguments, toolchain.
+            script: |
+              echo "Processing {{ files[0].file }}"
+```
+
+Dispatchers execute the payload each job carries, and take only execution
+settings (timeout, logging, output scanning). See
+{doc}`../api-reference/payloads` and {doc}`../api-reference/dispatchers`.
+Upgrading a config written for `serial_bash` or `parallel_bash`? See
+{doc}`upgrading`.
 
 ## Broker Configuration
 
@@ -151,7 +181,7 @@ broker:
   password: secret           # Required.
   vhost: /                   # Default: "/". AMQP virtual host.
   ssl: false                 # Default: false. Set true for amqps://.
-  max_retries: 5             # Default: 5. Connection retry attempts (>= 0).
+  max_retries: 5             # Default: 5. Connection retry attempts; -1 retries forever.
 ```
 
 The resulting Kombu URL is:
@@ -446,6 +476,8 @@ spec:
         name: local_dispatcher
 ```
 
+(validation-errors)=
+
 ## Validation
 
 Always validate configuration files before deploying:
@@ -454,15 +486,44 @@ Always validate configuration files before deploying:
 courier validate my_service.yaml
 ```
 
-Common validation errors:
+`courier validate` prints each problem after the location of the offending
+key, for example:
 
-| Error                                        | Cause                          | Fix                                     |
-| -------------------------------------------- | ------------------------------ | --------------------------------------- |
-| `Field 'host' must be a non-empty string`    | Missing or blank `host`        | Add `host: your-broker-hostname`        |
-| `Unable to extract tag using discriminator`  | Invalid `transport` value      | Use `amqp`, `redis`, `memory`, or `url` |
-| `Extra inputs are not permitted`             | Unknown field in broker config | Remove the unrecognized field           |
-| `Duplicate run step identifiers`             | Two steps share the same name  | Rename one of the step identifiers      |
-| `Input should be greater than or equal to 0` | Negative `max_retries` or `db` | Use a non-negative integer              |
+```text
+  dispatch.config.bash_script  no longer supported: the script moved from the dispatcher to the job builder's nested payload block: set it there as `script:` (inline) or `file:` (a template path).
+```
+
+Common messages, as printed after the location (`<...>` stands for a value
+from your config, and `...` for the rest of a longer message):
+
+| Message                                                                                                                                                            | Cause                                                                                                                                           | Fix                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `required, but missing`                                                                                                                                            | A required field is absent, such as the AMQP `host`, `username` or `password`                                                                   | Add the field                                                    |
+| `Field 'host' must be a non-empty string.`                                                                                                                         | A blank `host`                                                                                                                                  | Set `host: your-broker-hostname`                                 |
+| `Input tag '<transport>' found using 'transport' does not match any of the expected tags: 'amqp', 'redis', 'memory', 'url'`                                        | An invalid `transport` value                                                                                                                    | Use `amqp`, `redis`, `memory`, or `url`                          |
+| `not a recognised setting`                                                                                                                                         | An unknown field. In a dispatcher or payload config, `; did you mean '<field>'?` follows when a known field is close                            | Remove the field, or fix its spelling                            |
+| `Duplicate run step identifiers detected: <identifiers>`                                                                                                           | Two steps share the same identifier                                                                                                             | Rename one of the step identifiers                               |
+| `no longer supported: ...`                                                                                                                                         | A key removed in this release                                                                                                                   | Follow the message; see {doc}`upgrading`                         |
+| `not a payload setting; it is a dispatcher setting: put it in the dispatcher's config`                                                                             | A dispatcher setting (`timeout_seconds` etc.) in a payload's config; a key only one dispatcher has names it: `it is a slurm_dispatcher setting` | Move the key to the dispatcher's `config`                        |
+| `not a dispatcher setting; it is a payload setting: put it in the job builder's payload block`                                                                     | A payload setting (`script`, `prefix_args` etc.) in a dispatcher's config                                                                       | Move the key to the builder's `payload` block                    |
+| `` required, but missing: every job builder needs a payload block: its config nests exactly one payload plugin under `payload:`, which is what its jobs execute `` | A job builder with no `payload` block                                                                                                           | Add one; see {ref}`run-section`                                  |
+| `should be a mapping describing one payload plugin`                                                                                                                | `payload` is not a mapping                                                                                                                      | Nest one `<identifier>: {kind: payload, name: ..., config: ...}` |
+| `takes exactly one payload plugin; found <n>...`                                                                                                                   | `payload` nests no plugin, or more than one                                                                                                     | Keep exactly one                                                 |
+| `'<kind>' cannot be nested here; this block takes a payload`                                                                                                       | The nested plugin's `kind` is not `payload`                                                                                                     | Set `kind: payload`                                              |
+| `no payload plugin named '<name>'; available: bash_payload, python_payload, shell_payload`                                                                         | An unknown payload plugin                                                                                                                       | Use an installed payload                                         |
+| `Payload '<identifier>': invalid Jinja template in inline script, line <n>: ...`                                                                                   | A syntax error in an inline `script` (`in template file '<path>'` for a `file`)                                                                 | Fix the template at the line given                               |
+| `Payload '<identifier>': cannot read template file '<path>': ...`                                                                                                  | A template `file` that exists but cannot be read                                                                                                | Fix the path or its permissions                                  |
+| `Input should be greater than or equal to 0`                                                                                                                       | A negative Redis `db`                                                                                                                           | Use a non-negative integer                                       |
+| `Input should be greater than or equal to -1`                                                                                                                      | `max_retries` below `-1` (`-1` retries forever)                                                                                                 | Use `-1` or a non-negative integer                               |
+
+`courier run` rejects the same configs at startup, with the config model's
+wording inside the error it prints: for example
+`'bash_script' is no longer supported: ...`,
+`'timeout_seconds': dispatcher option(s) set in a payload block; move them to the dispatcher's config`,
+`'script', 'prefix_args': payload setting(s) set in a dispatcher block; ...`,
+and, for a builder without a payload,
+`Job builder '<identifier>' has no 'payload' block. Every job builder needs a payload block: ...`
+followed by a minimal example block.
 
 ## Configuration Precedence
 
@@ -477,18 +538,35 @@ For example, you can override `max_retries: 5` in the YAML by setting the `BROKE
 
 ## Jinja2 Template Context
 
-Payloads use [Jinja2](https://jinja.palletsprojects.com/) for script templates.
-Every template has access to ``files`` (list of file dicts), ``job``
-(metadata), and ``config`` (convenience alias for ``job.config``).
+Payload scripts are [Jinja2](https://jinja.palletsprojects.com/) templates.
+Every template has access to `files` (list of file dicts), `job`
+(metadata), and `config` (convenience alias for `job.config`).
 
-A template is rendered in two passes. The job builder renders first, with a
-``builder`` namespace (``name``, ``identifier``, ``targets``); the dispatcher
-then fills in the values only it knows -- ``dispatcher`` (``name``,
-``identifier``, ``config``), ``script_path``, ``hostname`` and, for Slurm,
-``output_dir``. Dispatcher-only values must be simple leaf interpolations
-(``{{ script_path }}``); using one in a conditional, loop or filter raises a
-configuration-time error rather than silently rendering the wrong branch.
+A template is rendered in two passes. The job builder renders it when it emits
+a job, with a `builder` namespace (`name`, `identifier`, `targets`) as well.
+Pass one is strict: a typo, a missing metadata key or an out-of-range index is
+an error, not an empty string, while `| default(...)` and `is defined` work as
+usual for values that are legitimately optional. The dispatcher then fills in
+the values only it knows: `dispatcher` (`name`, `identifier`, `config`),
+`script_path`, `hostname` and, for Slurm, `output_dir`. These four names are
+reserved, and support simple leaf interpolation only (`{{ script_path }}`);
+using one in a filter, test, conditional or loop is an error.
 
-Only the marker expressions the builder emitted are evaluated on the
-dispatcher; the rest of the script (including file names and metadata) is never
-re-parsed as a template, so job data cannot inject template syntax.
+Errors surface at the earliest point that can see them:
+
+- **Startup.** The template is read and parsed when the payload plugin is
+  constructed, as `courier run` starts (and by `courier validate`). An
+  unreadable template file or a Jinja syntax error stops the service with an
+  error naming the file (or "inline script") and the line.
+- **Each job, on the builder.** An error that depends on a job's data, such as
+  a metadata key one file does not have, fails only that job: the builder logs
+  it at ERROR with the job's files, counts it in
+  `courier_job_builder_emit_failures_total{reason="render"}`, publishes
+  nothing for it, and carries on with the next job.
+
+Only the markers the builder emitted for the reserved names are evaluated on
+the dispatcher; the rest of the script (including file names and metadata) is
+never re-parsed as a template, so job data cannot inject template syntax.
+
+The full context, the command-line arguments (`prefix_args`, `suffix_args`,
+`binary`) and every error case are in {doc}`../api-reference/payloads`.

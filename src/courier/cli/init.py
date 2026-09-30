@@ -12,6 +12,7 @@ import typer
 import yaml
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -22,10 +23,11 @@ from courier.cli.init_helpers import (
     get_plugin_description,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
+from courier.cli.validate import check_plugins
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from pydantic import BaseModel
 
@@ -341,7 +343,97 @@ def prompt_plugin_config(
 # ---------------------------------------------------------------------------
 
 
-def prompt_category(  # noqa: PLR0912, PLR0915
+def _nested_registries(registry: Any) -> list[tuple[str, Any]]:
+    """Return ``(registry key, registry)`` for every sub-plugin *registry* nests.
+
+    Raises
+    ------
+    ValueError
+        If a nested value names no known registry.
+    """
+    nested: list[tuple[str, Any]] = []
+    for nested_name in registry.nested_values:
+        name = normalize_kind(nested_name)
+        if name not in PLUGIN_REGISTRIES:
+            raise ValueError(
+                f"Invalid kind: {name}",
+            )
+        nested.append((name, PLUGIN_REGISTRIES[name]))
+    return nested
+
+
+def _show_available(
+    plugins: Sequence[Any],
+    display_label: str,
+    console: Console,
+) -> None:
+    """Render the numbered table of *plugins* the user chooses from.
+
+    The leading number is what the user types at the prompt, so the row order
+    here *is* the selection order -- :func:`_resolve_plugin_choice` indexes the
+    same list.
+    """
+    table = Table(title=f"Available {display_label}s", box=box.ROUNDED)
+    table.add_column("#", style="bold yellow", justify="right")
+    table.add_column("Name", style="cyan")
+    table.add_column("Description", style="dim")
+    for number, plugin in enumerate(plugins, start=1):
+        desc = get_plugin_description(plugin) or "(no description)"
+        if len(desc) > _MAX_DESC_LENGTH:
+            desc = desc[: _MAX_DESC_LENGTH - _TRUNCATE_THRESHOLD] + "..."
+        table.add_row(str(number), plugin.name, desc)
+    console.print(table)
+
+
+def _build_selection(
+    matched: Any,
+    kind_name: str,
+    registry: Any,
+    console: Console,
+) -> PluginSelection:
+    """Configure the plugin the user picked, including its nested sub-plugins.
+
+    Every nested value of *registry* (a job builder's ``payload``) is a
+    required, single sub-plugin -- ``courier run`` rejects a builder without
+    one -- so each is prompted for with :func:`prompt_required_plugin`.
+    """
+    display_label, yaml_kind = KIND_MAPPING[kind_name]
+
+    # Echo the resolved name: when the answer was "3" or a prefix, this is
+    # the only confirmation the user gets that they picked what they meant.
+    console.print(f"  [green]✓[/green] [cyan]{matched.name}[/cyan]")
+
+    # Discover the companion Config model
+    config_model = find_config_model(matched)
+
+    config_values: dict[str, Any] = {}
+    if config_model is not None and Confirm.ask(
+        f"  Configure [cyan]{matched.name}[/cyan]?",
+        default=True,
+    ):
+        config_values = prompt_plugin_config(config_model, console)
+
+    nested_selections = [
+        prompt_required_plugin(
+            nested_name,
+            nested_registry,
+            console,
+            parent=f"{display_label} {matched.name}",
+        )
+        for nested_name, nested_registry in _nested_registries(registry)
+    ]
+    return PluginSelection(
+        plugin_class=matched,
+        plugin_name=matched.name,
+        yaml_kind=yaml_kind,
+        display_label=display_label,
+        config_model=config_model,
+        config_values=config_values,
+        nested_values=nested_selections,
+    )
+
+
+def prompt_category(
     kind_name: str,
     registry: Any,
     console: Console,
@@ -351,7 +443,8 @@ def prompt_category(  # noqa: PLR0912, PLR0915
     Shows a numbered table of the available plugins, lets the user pick which
     ones to add — by number, name, or unambiguous prefix, see
     :func:`_resolve_plugin_choice` — prompts for config on each, and loops
-    until the user is done.
+    until the user is done.  A plugin that nests sub-plugins (a job builder's
+    ``payload``) gets exactly one of each, via :func:`prompt_required_plugin`.
 
     Parameters
     ----------
@@ -367,7 +460,7 @@ def prompt_category(  # noqa: PLR0912, PLR0915
     list[PluginSelection]
         All plugins the user selected for this category.
     """
-    display_label, yaml_kind = KIND_MAPPING[kind_name]
+    display_label, _yaml_kind = KIND_MAPPING[kind_name]
 
     console.print(
         Panel.fit(
@@ -377,33 +470,15 @@ def prompt_category(  # noqa: PLR0912, PLR0915
         ),
     )
 
-    nested_registries = []
-    for nested_name in registry.nested_values:
-        name = normalize_kind(nested_name)
-        if name not in PLUGIN_REGISTRIES:
-            raise ValueError(
-                f"Invalid kind: {name}",
-            )
-        nested_registries.append((name, PLUGIN_REGISTRIES[name]))
+    # Fail on a misdeclared nested kind before the user answers anything.
+    _nested_registries(registry)
 
     plugins = list(registry.get_plugins())
     if not plugins:
         console.print(f"  [dim]No {display_label.lower()} plugins found.[/dim]")
         return []
 
-    # Render the available-plugin table. The leading number is what the user
-    # types at the prompt, so the row order here *is* the selection order —
-    # ``_resolve_plugin_choice`` indexes the same list.
-    table = Table(title=f"Available {display_label}s", box=box.ROUNDED)
-    table.add_column("#", style="bold yellow", justify="right")
-    table.add_column("Name", style="cyan")
-    table.add_column("Description", style="dim")
-    for number, plugin in enumerate(plugins, start=1):
-        desc = get_plugin_description(plugin) or "(no description)"
-        if len(desc) > _MAX_DESC_LENGTH:
-            desc = desc[: _MAX_DESC_LENGTH - _TRUNCATE_THRESHOLD] + "..."
-        table.add_row(str(number), plugin.name, desc)
-    console.print(table)
+    _show_available(plugins, display_label, console)
 
     selections: list[PluginSelection] = []
     choice_range = _choice_range(len(plugins))
@@ -429,56 +504,95 @@ def prompt_category(  # noqa: PLR0912, PLR0915
         matched, problem = _resolve_plugin_choice(answer, plugins)
 
         if matched is None:
-            console.print(f"  [red]{problem}[/red]")
+            console.print(f"  [red]{escape(problem or '')}[/red]")
             continue
 
-        # Echo the resolved name: when the answer was "3" or a prefix, this is
-        # the only confirmation the user gets that they picked what they meant.
-        console.print(f"  [green]✓[/green] [cyan]{matched.name}[/cyan]")
-
-        # Discover the companion Config model
-        config_model = find_config_model(matched)
-
-        # Prompt for config values
-        config_values: dict[str, Any] = {}
-        if config_model is not None and Confirm.ask(
-            f"  Configure [cyan]{matched.name}[/cyan]?",
-            default=True,
-        ):
-            config_values = prompt_plugin_config(config_model, console)
-
-        nested_selections = []
-        parent_is_builder = yaml_kind == "job_builder"
-        for nested_registry_name, nested_registry in nested_registries:
-            required = parent_is_builder and nested_registry_name == "payloads"
-            while True:
-                picked = prompt_category(
-                    nested_registry_name,
-                    nested_registry,
-                    console,
-                )
-                if picked or not required:
-                    nested_selections.extend(picked)
-                    break
-                console.print(
-                    "  [red]A job builder requires a payload.[/red]",
-                )
-        selections.append(
-            PluginSelection(
-                plugin_class=matched,
-                plugin_name=matched.name,
-                yaml_kind=yaml_kind,
-                display_label=display_label,
-                config_model=config_model,
-                config_values=config_values,
-                nested_values=nested_selections,
-            ),
-        )
+        selections.append(_build_selection(matched, kind_name, registry, console))
 
         if not Confirm.ask(f"  Add another {display_label.lower()}?", default=False):
             break
 
     return selections
+
+
+def prompt_required_plugin(
+    kind_name: str,
+    registry: Any,
+    console: Console,
+    *,
+    parent: str,
+) -> PluginSelection:
+    """Prompt for the one sub-plugin *parent* must nest, e.g. its payload.
+
+    Unlike :func:`prompt_category` there is no "skip" and no "add another": a
+    job builder nests exactly one payload, and ``courier run`` rejects any
+    other count.
+
+    Parameters
+    ----------
+    kind_name : str
+        Interface name of the sub-plugin (e.g. ``"payloads"``).
+    registry : BaseClassInterface
+        Plugin registry for that interface.
+    console : Console
+        Rich console for output.
+    parent : str
+        Human name of the plugin being configured, for the prompts.
+
+    Returns
+    -------
+    PluginSelection
+        The configured sub-plugin.
+
+    Raises
+    ------
+    typer.Exit
+        With code 1 when no plugin of this kind is installed: the parent can
+        never be configured, so asking again would only loop.
+    """
+    display_label, _yaml_kind = KIND_MAPPING[kind_name]
+    label = display_label.lower()
+
+    console.print(
+        Panel.fit(
+            f"[bold]{display_label}[/bold] — {escape(parent)} needs exactly one "
+            f"{label}",
+            border_style="magenta",
+        ),
+    )
+
+    plugins = list(registry.get_plugins())
+    if not plugins:
+        console.print(
+            f"\n[red]Error:[/red] {escape(parent)} needs a {label}, but no {label} "
+            "plugins are installed. Reinstall courier so its plugin entry "
+            "points are registered (e.g. [bold]pip install -e .[/bold]), then "
+            "run [bold]courier init[/bold] again.",
+        )
+        raise typer.Exit(1)
+
+    _show_available(plugins, display_label, console)
+    choice_range = _choice_range(len(plugins))
+
+    while True:
+        answer = Prompt.ask(
+            f"Choose the {label} [dim]({choice_range} or name)[/dim]",
+            default="",
+            show_default=False,
+        )
+        if not answer or not answer.strip():
+            console.print(
+                f"  [red]{escape(parent)} requires a {label}; choose one to "
+                "continue.[/red]",
+            )
+            continue
+
+        matched, problem = _resolve_plugin_choice(answer, plugins)
+        if matched is None:
+            console.print(f"  [red]{escape(problem or '')}[/red]")
+            continue
+
+        return _build_selection(matched, kind_name, registry, console)
 
 
 # ---------------------------------------------------------------------------
@@ -498,17 +612,41 @@ def prompt_output_path(service_name: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _walk_selections(
+    selections: list[PluginSelection],
+    depth: int = 0,
+) -> Iterator[tuple[int, PluginSelection]]:
+    """Yield ``(depth, selection)`` parent-first, nested sub-plugins after.
+
+    This is the order :func:`build_service_config` assigns identifiers in, so
+    the preview numbers colliding identifiers exactly as the written config.
+    """
+    for sel in selections:
+        yield depth, sel
+        yield from _walk_selections(sel.nested_values, depth + 1)
+
+
 def show_preview(selections: list[PluginSelection], console: Console) -> None:
-    """Show a summary table of selected plugins before writing."""
+    """Show a summary table of selected plugins before writing.
+
+    Nested sub-plugins are listed under the plugin that nests them: a job
+    builder's payload decides what every job executes, so the confirmation
+    screen must show it.
+    """
     table = Table(title="Configuration Preview", box=box.ROUNDED)
-    table.add_column("Identifier", style="cyan")
+    # Folded rather than truncated: the identifier is what the operator will
+    # look for in the written YAML, so an ellipsis in the middle defeats it.
+    table.add_column("Identifier", style="cyan", overflow="fold")
     table.add_column("Kind", style="dim")
-    table.add_column("Plugin", style="green")
+    table.add_column("Plugin", style="green", overflow="fold")
     table.add_column("Config", style="dim")
 
     seen_ids: Counter[str] = Counter()
-    for sel in selections:
+    for depth, sel in _walk_selections(selections):
         identifier = _unique_identifier(sel, seen_ids)
+        if depth:
+            # No spaces after the marker, so it cannot wrap onto its own line.
+            identifier = f"{'  ' * (depth - 1)}└─{identifier}"
 
         if sel.config_values:
             config_summary = ", ".join(sel.config_values.keys())
@@ -522,10 +660,10 @@ def show_preview(selections: list[PluginSelection], console: Console) -> None:
             )
 
         table.add_row(
-            identifier,
+            escape(identifier),
             sel.yaml_kind,
-            sel.plugin_name,
-            config_summary,
+            escape(sel.plugin_name),
+            escape(config_summary),
         )
 
     console.print(table)
@@ -559,7 +697,7 @@ def build_service_config(
     run_entries: list[dict[str, Any]] = []
     seen_ids: Counter[str] = Counter()
 
-    def get_run_entry(sel):
+    def get_run_entry(sel: PluginSelection) -> dict[str, Any]:
         identifier = _unique_identifier(sel, seen_ids)
 
         spec: dict[str, Any] = {
@@ -621,6 +759,26 @@ def validate_config(config_dict: dict[str, Any]) -> ServiceConfigModel:
     Pure function — no side effects.  Raises ``ValidationError`` on failure.
     """
     return ServiceConfigModel(**config_dict)
+
+
+def show_plugin_problems(
+    problems: list[tuple[str, str]],
+    console: Console,
+) -> None:
+    """Warn about plugin settings ``courier run`` would still reject.
+
+    A config can satisfy the service schema yet not run -- a payload with no
+    ``script``, ``file`` or ``binary``, for instance, when its configuration
+    was skipped. These are the problems ``courier validate`` reports.
+    """
+    if not problems:
+        return
+    console.print(
+        "\n[yellow]Before this config can run, edit these settings "
+        "(then check with [bold]courier validate[/bold]):[/yellow]",
+    )
+    for location, message in problems:
+        console.print(f"  [cyan]{escape(location)}[/cyan]  {escape(message)}")
 
 
 # ---------------------------------------------------------------------------
@@ -739,8 +897,15 @@ def init(
         config_dict = build_service_config(metadata, all_selections)
         config = validate_config(config_dict)
     except Exception as e:
-        console.print(f"\n[red]Validation Error:[/red] {e}")
+        console.print(f"\n[red]Validation Error:[/red] {escape(str(e))}")
         raise typer.Exit(1) from e
+
+    # Not fatal: the file is still written so no answers are lost, but the
+    # operator learns now -- not at `courier run` -- what is left to fill in.
+    check = check_plugins(config)
+    show_plugin_problems(check.problems, console)
+    for note in check.notes:
+        console.print(f"  [dim]note: {escape(note)}[/dim]")
 
     # Step 7 — Output
     if dry_run:

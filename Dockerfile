@@ -47,9 +47,10 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 # runtime -- THE PUBLISHED ARTIFACT, and the default build target
 FROM ${PYTHON_IMAGE} AS runtime
 
-# bash is load-bearing, not the convenience the old comment claimed: the bash
-# and shell payloads emit ``bash -c`` / ``sh -c`` command lines, so they break
-# without it.  (shell_executor.py runs whatever argv it is handed.)
+# bash is load-bearing, not the convenience the old comment claimed:
+# bash_payload runs its scripts with ``bash`` from PATH (``bash -c`` in binary
+# mode), so it breaks without it.  (shell_executor.py runs whatever argv it is
+# handed.)
 # tini reaps the children a local_dispatcher forks and forwards SIGTERM.
 # PID 1 does neither.
 RUN apk add --no-cache bash tini \

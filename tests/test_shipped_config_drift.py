@@ -18,14 +18,22 @@ import sys
 import tomllib
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
+import yaml
 
 from courier.cli.config_loader import load_config
 from courier.cli.plugins import PLUGIN_REGISTRIES, normalize_kind
+from courier.cli.validate import check_plugins
+from courier.errors import ConfigurationError
 from courier.interfaces import data_monitor_configs
 from courier.schema import DataMonitorConfig
+from courier.schema.v1alpha1.service_config import MicroserviceModel
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -56,23 +64,42 @@ def test_shipped_config_validates(config_path: Path) -> None:
         pytest.fail(f"{config_path.name} no longer validates:\n{exc}")
 
 
+def _plugin_entries(
+    entries: Iterable[MicroserviceModel],
+) -> Iterator[MicroserviceModel]:
+    """Yield every step in *entries* and, after each, the sub-plugins it nests.
+
+    A job builder's ``payload`` block is a plugin reference like any step, so
+    a stale name there (``bash_falcon``, say) must be caught the same way.
+    """
+    for entry in entries:
+        yield entry
+        registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
+        config = entry.spec.config if isinstance(entry.spec.config, dict) else {}
+        for key in getattr(registry, "nested_values", []):
+            nested = config.get(key)
+            if isinstance(nested, dict):
+                yield from _plugin_entries([MicroserviceModel.model_validate(nested)])
+
+
 @pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
 def test_shipped_config_references_real_plugins(config_path: Path) -> None:
     """A renamed plugin must not leave a shipped config pointing at nothing.
 
     ``run_service`` skips unknown kinds silently, so a stale plugin name here
-    produces a service that starts up and does nothing at all.
+    produces a service that starts up and does nothing at all. Nested
+    sub-plugins are checked too: every job builder names its payload plugin.
     """
     config = load_config(config_path)
     missing: list[str] = []
 
-    for entry in config.spec.run:
+    for entry in _plugin_entries(config.spec.run):
         kind = normalize_kind(entry.spec.kind)
         registry = PLUGIN_REGISTRIES.get(kind)
         if registry is None:
             missing.append(f"{entry.identifier}: unknown kind {entry.spec.kind!r}")
             continue
-        available = {plugin.name for plugin in registry.get_plugins()}
+        available = set(registry.names())
         if entry.spec.name not in available:
             missing.append(
                 f"{entry.identifier}: {entry.spec.kind}/{entry.spec.name!r} "
@@ -80,6 +107,101 @@ def test_shipped_config_references_real_plugins(config_path: Path) -> None:
             )
 
     assert not missing, "\n".join(missing)
+
+
+def test_the_nested_walk_reaches_payloads() -> None:
+    """Guard the guard: a walk that stopped at the top level would miss them."""
+    kinds = {
+        normalize_kind(entry.spec.kind)
+        for path in _SERVICE_CONFIGS
+        for entry in _plugin_entries(load_config(path).spec.run)
+    }
+    assert "payloads" in kinds
+
+
+@pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
+def test_shipped_config_passes_plugin_checks(config_path: Path) -> None:
+    """Every shipped config must pass the plugin checks ``courier validate`` runs.
+
+    Dispatcher and payload settings are validated against their plugin's
+    config model, which rejects unknown and removed keys, so a shipped example
+    still carrying ``bash_script`` or a typo fails here rather than for the
+    operator who copies it.
+    """
+    check = check_plugins(load_config(config_path))
+
+    assert not check.problems, "\n".join(
+        f"{location}: {message}" for location, message in check.problems
+    )
+
+
+# ---------------------------------------------------------------------------
+# Service configs in the documentation
+#
+# Operators copy these as often as the shipped files, and nothing else loads
+# them. Only complete service documents are checked -- a block that shows the
+# metadata section alone is a fragment, not a config.
+# ---------------------------------------------------------------------------
+
+_DOC_SOURCES = sorted(
+    [
+        _REPO_ROOT / "README.md",
+        *(_REPO_ROOT / "sphinx").rglob("*.md"),
+        *(_REPO_ROOT / "examples").rglob("*.md"),
+    ],
+)
+
+_YAML_FENCE = re.compile(r"^```ya?ml[^\n]*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+
+
+def _documented_service_configs() -> list[tuple[str, str]]:
+    """Return ``(where, text)`` for every complete service config in the docs."""
+    found: list[tuple[str, str]] = []
+    for path in _DOC_SOURCES:
+        text = path.read_text(encoding="utf-8")
+        for match in _YAML_FENCE.finditer(text):
+            block = match.group(1)
+            if not re.search(r"^kind: Service\b", block, re.MULTILINE):
+                continue
+            if not re.search(r"^spec:", block, re.MULTILINE):
+                continue
+            line = text.count("\n", 0, match.start()) + 1
+            found.append((f"{path.relative_to(_REPO_ROOT)}:{line}", block))
+    return found
+
+
+_DOC_CONFIGS = _documented_service_configs()
+
+
+def test_documented_service_configs_were_found() -> None:
+    """Guard the guard: a changed fence style would make the check vacuous."""
+    assert len(_DOC_CONFIGS) >= 3, [where for where, _ in _DOC_CONFIGS]
+
+
+@pytest.mark.parametrize(
+    ("where", "text"),
+    _DOC_CONFIGS,
+    ids=[where for where, _ in _DOC_CONFIGS],
+)
+def test_documented_service_config_validates(
+    where: str,
+    text: str,
+    tmp_path: Path,
+) -> None:
+    """A documented config must load and pass the ``courier validate`` checks."""
+    path = tmp_path / "documented.yaml"
+    path.write_text(text, encoding="utf-8")
+    try:
+        yaml.safe_load(text)
+        config = load_config(path)
+    except (yaml.YAMLError, ConfigurationError, ValueError) as exc:
+        pytest.fail(f"{where} does not load:\n{exc}")
+
+    problems = check_plugins(config).problems
+
+    assert not problems, f"{where}:\n" + "\n".join(
+        f"  {location}: {message}" for location, message in problems
+    )
 
 
 @pytest.mark.parametrize("config_path", _SERVICE_CONFIGS, ids=_IDS)
@@ -484,9 +606,9 @@ def test_optional_dependency_is_declared_as_an_extra(
     """
     extras = _pyproject()["tool"]["poetry"]["extras"]
 
-    assert (
-        extra in extras
-    ), f"{plugin_name} names courier[{extra}], which is not declared"
+    assert extra in extras, (
+        f"{plugin_name} names courier[{extra}], which is not declared"
+    )
     normalised = {name.replace("_", "-").lower() for name in extras[extra]}
     assert package.replace("_", "-") in normalised or any(
         package.replace("_", "-") in n for n in normalised
@@ -668,9 +790,9 @@ def test_version_tuple_matches_version() -> None:
         int(part) for part in courier.__version__.split(".")[:3] if part.isdigit()
     )
 
-    assert (
-        courier.__version_tuple__[: len(expected)] == expected
-    ), f"{courier.__version_tuple__} does not match {courier.__version__}"
+    assert courier.__version_tuple__[: len(expected)] == expected, (
+        f"{courier.__version_tuple__} does not match {courier.__version__}"
+    )
 
 
 # Broker-monitor field maps.

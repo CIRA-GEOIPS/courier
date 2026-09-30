@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+from courier.interfaces.job_builders import JobBuilder
 from courier.plugins.job_builders.dummy_job_builder import (
     DummyJob,
     DummyJobBuilder,
     DummyJobGroup,
 )
+from courier.types.job import Job
+from tests._helpers import bind_payload, with_payload
+
+
+def _builder(service: MagicMock, **config: object) -> DummyJobBuilder:
+    """Build a DummyJobBuilder with a payload block, and bind the payload."""
+    builder = DummyJobBuilder(service, with_payload(dict(config)))
+    bind_payload(builder)
+    return builder
+
 
 # ─── DummyJob ───────────────────────────────────────────────────────────────
 
@@ -41,22 +53,20 @@ class TestDummyJobGroup:
 
 class TestDummyJobBuilder:
     def test_initializes(self, mock_service: MagicMock) -> None:
-        builder = DummyJobBuilder(mock_service, {})
+        builder = _builder(mock_service)
         assert len(builder.job_groups) == 1
         assert isinstance(builder.job_groups[0], DummyJobGroup)
 
     def test_healthy(self, mock_service: MagicMock) -> None:
-        builder = DummyJobBuilder(mock_service, {})
+        builder = _builder(mock_service)
         assert builder.is_healthy() is True
 
     def test_process_job_group_removes_ready_job(
         self, mock_service: MagicMock, make_frozen_file
     ) -> None:
         """Ready jobs are removed from the group after emission."""
-        builder = DummyJobBuilder(mock_service, {})
+        builder = _builder(mock_service)
         group = builder.job_groups[0]
-
-        from pathlib import Path
 
         file1 = make_frozen_file(file=Path("/tmp/a.nc"))
         builder._process_job_group(group, file1)
@@ -66,10 +76,8 @@ class TestDummyJobBuilder:
         self, mock_service: MagicMock, make_frozen_file
     ) -> None:
         """N files should produce exactly N ready jobs, not O(N^2)."""
-        builder = DummyJobBuilder(mock_service, {})
+        builder = _builder(mock_service)
         group = builder.job_groups[0]
-
-        from pathlib import Path
 
         n = 5
         for i in range(n):
@@ -77,6 +85,56 @@ class TestDummyJobBuilder:
             builder._process_job_group(group, file_i)
             # After each file, the group should be empty because
             # the ready job is popped immediately after emission.
-            assert (
-                len(group.jobs) == 0
-            ), f"After file {i}, group should be empty but has {len(group.jobs)} jobs"
+            assert len(group.jobs) == 0, (
+                f"After file {i}, group should be empty but has {len(group.jobs)} jobs"
+            )
+
+    def test_job_config_leaves_out_the_payload_block(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+    ) -> None:
+        """The block is the builder's; the job carries it once, as its payload.
+
+        Copying the raw config into the group config put the payload's whole
+        block, template included, into every job's ``config`` as well.
+        """
+        builder = _builder(mock_service, targets=["dp-1"], extra="kept")
+        builder._process_job_group(
+            builder.job_groups[0],
+            make_frozen_file(file=Path("/tmp/a.nc")),
+        )
+
+        assert builder.job_groups[0].config == {"targets": ["dp-1"], "extra": "kept"}
+        message = mock_service.emit.call_args.kwargs["message"]
+        published = Job.from_string(message)
+        assert "payload" not in published.config
+        assert published.payload is not None
+        assert published.payload.identifier == builder.payload_identifier
+
+    def test_job_config_leaves_out_the_state_sync_block(
+        self,
+        mock_service: MagicMock,
+        make_frozen_file,
+    ) -> None:
+        """``state_sync`` holds Redis credentials; no job may carry them."""
+        state_sync = {"host": "redis", "password": "redis-password-not-for-the-wire"}
+        # No Redis here: construct as a synced builder, then emit unsynced.
+        with patch.object(JobBuilder, "_init_sync", return_value=MagicMock()):
+            builder = _builder(
+                mock_service,
+                targets=["dp-1"],
+                state_sync=state_sync,
+                extra="kept",
+            )
+        builder._sync = None
+        builder._process_job_group(
+            builder.job_groups[0],
+            make_frozen_file(file=Path("/tmp/a.nc")),
+        )
+
+        assert builder.config["state_sync"] == state_sync
+        assert builder.job_groups[0].config == {"targets": ["dp-1"], "extra": "kept"}
+        message = mock_service.emit.call_args.kwargs["message"]
+        assert "redis-password-not-for-the-wire" not in message
+        assert "state_sync" not in Job.from_string(message).config

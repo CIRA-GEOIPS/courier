@@ -22,8 +22,10 @@ from grafanalib.core import (
     Text,
 )
 
+from courier.dashboard.config_parser import PAYLOAD_KEY, PluginKind, payloads_reaching
+
 if TYPE_CHECKING:
-    from courier.dashboard.config_parser import DashboardModel
+    from courier.dashboard.config_parser import DashboardModel, PluginInfo
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +255,13 @@ def _build_topology_row(model: DashboardModel) -> Row:
         else:
             target_cell = f'<span style="color:{COLORS["TEXT_MUTED"]};">\u2014</span>'
 
-        config_summary = _build_config_summary(plugin.config)
+        # A builder's payload has a column of its own; its nested block would
+        # only crowd the summary out as a truncated dict.
+        config_summary = _build_config_summary(
+            plugin.config,
+            skip=(PAYLOAD_KEY,) if plugin.kind is PluginKind.JOB_BUILDER else (),
+        )
+        payload_cell = _build_payload_cell(model, plugin)
         badge = _build_kind_badge(kind_name, kind_color)
 
         # Build the row HTML with f-string for the wrapper, using
@@ -275,6 +283,7 @@ def _build_topology_row(model: DashboardModel) -> Row:
             f"{_html.escape(plugin.identifier)}</td>"
             f"<td style='{_TD_STYLE}'>"
             f"{code_open}{_html.escape(plugin.plugin_name)}{code_close}</td>"
+            f"<td style='{_TD_STYLE}'>{payload_cell}</td>"
             f"<td style='{_TD_STYLE}{td_meta}'>"
             f"{config_summary if config_summary else _EM_DASH}</td>"
             f"<td style='{_TD_STYLE}'>{target_cell}</td>"
@@ -287,6 +296,7 @@ def _build_topology_row(model: DashboardModel) -> Row:
         f"<th style='{_TH_STYLE}width:120px;'>Kind</th>"
         f"<th style='{_TH_STYLE}'>Identifier</th>"
         f"<th style='{_TH_STYLE}'>Plugin</th>"
+        f"<th style='{_TH_STYLE}'>Payload</th>"
         f"<th style='{_TH_STYLE}'>Config</th>"
         f"<th style='{_TH_STYLE}'>Targets</th>"
         "</tr>"
@@ -336,17 +346,20 @@ def _build_flow_rate_row(model: DashboardModel, datasource: str) -> Row:
     # PromQL query returns every active edge at once.
     builder_pattern = "|".join(_re2_escape(builder_id) for builder_id in model.routing)
 
+    # Matched on ``job_builder_identifier``: the routing table is keyed by
+    # YAML identifiers, while ``job_builder_name`` carries the plugin name
+    # ("filter_and_group") and so never matched a single series.
     targets = [
         Target(
             expr=(
                 "rate(courier_job_builder_jobs_emitted_total{"
-                f'job_builder_name=~"{builder_pattern}"'
+                f'job_builder_identifier=~"{builder_pattern}"'
                 "}[5m])"
             ),
             format=TABLE_TARGET_FORMAT,
             instant=True,
             refId="A",
-            legendFormat="{{job_builder_name}} → {{target}}",
+            legendFormat="{{job_builder_identifier}} → {{target}}",
         ),
     ]
 
@@ -550,17 +563,52 @@ def _build_kind_badge(kind_name: str, color: str) -> str:
     )
 
 
-def _build_config_summary(config: dict, max_keys: int = 3) -> str:
+def _build_payload_cell(model: DashboardModel, plugin: PluginInfo) -> str:
+    """Render what *plugin* executes: a builder's payload, or a dispatcher's.
+
+    A job builder names the payload it attaches to every job; a dispatcher
+    runs the payloads of the builders routed to it.  Other kinds (and a
+    builder whose payload block is missing) show an em dash.
+    """
+    if plugin.kind is PluginKind.JOB_BUILDER:
+        carried = [plugin.payload] if plugin.payload is not None else []
+    elif plugin.kind is PluginKind.DISPATCHER:
+        carried = payloads_reaching(
+            model.payloads,
+            [plugin],
+            all_dispatchers=model.dispatchers,
+        )
+    else:
+        carried = []
+    if not carried:
+        return f'<span style="color:{COLORS["TEXT_MUTED"]};">{_EM_DASH}</span>'
+    return ", ".join(
+        f'<code style="font-size:12px;color:{COLORS["TEXT"]};">'
+        f"{_html.escape(payload.identifier)}</code>"
+        f"<span style='color:{COLORS['TEXT_MUTED']};'>"
+        f" ({_html.escape(payload.plugin_name)})</span>"
+        for payload in carried
+    )
+
+
+def _build_config_summary(
+    config: dict,
+    max_keys: int = 3,
+    *,
+    skip: tuple[str, ...] = (),
+) -> str:
     """Summarise a plugin config dict as a compact string.
 
-    Shows the first *max_keys* keys with their values.  Values longer
-    than *_CONFIG_VALUE_MAX_LEN* characters are truncated.
+    Shows the first *max_keys* keys (other than those in *skip*) with their
+    values.  Values longer than *_CONFIG_VALUE_MAX_LEN* characters are
+    truncated.
     """
-    if not config:
+    shown = [(key, value) for key, value in config.items() if key not in skip]
+    if not shown:
         return ""
 
     items: list[str] = []
-    for key, value in list(config.items())[:max_keys]:
+    for key, value in shown[:max_keys]:
         if _is_secret_key(key):
             val_str = _REDACTED
         else:
@@ -625,11 +673,16 @@ def _build_dep_table(
         dataSource=datasource,
         targets=[
             Target(
-                expr=(f'courier_plugin_state{{plugin_name=~"{identifier_pattern}"}}'),
+                # Dependencies are YAML identifiers, which the state gauge
+                # carries as ``plugin_identifier`` (``plugin_name`` is the
+                # plugin type, so matching it found nothing).
+                expr=(
+                    f'courier_plugin_state{{plugin_identifier=~"{identifier_pattern}"}}'
+                ),
                 format=TABLE_TARGET_FORMAT,
                 instant=True,
                 refId="A",
-                legendFormat="{{plugin_name}}",
+                legendFormat="{{plugin_identifier}}",
             ),
         ],
         showHeader=True,

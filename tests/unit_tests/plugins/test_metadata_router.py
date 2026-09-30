@@ -8,11 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
+from courier.interfaces.job_builders import _EmitOutcome
 from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
     MetadataRouterConfig,
     RouteConfig,
 )
+from tests._helpers import with_payload
 
 
 def _route(**overrides: Any) -> dict[str, Any]:
@@ -64,12 +66,14 @@ class TestBuilder:
     def test_initializes_one_group_per_route(self, mock_service: MagicMock) -> None:
         builder = MetadataRouterBuilder(
             mock_service,
-            {
-                "routes": [
-                    _route(name="a"),
-                    _route(name="b", filters={"source": "himawari"}),
-                ],
-            },
+            with_payload(
+                {
+                    "routes": [
+                        _route(name="a"),
+                        _route(name="b", filters={"source": "himawari"}),
+                    ],
+                },
+            ),
         )
         assert len(builder.job_groups) == 2
         assert not builder._has_timeout
@@ -77,7 +81,7 @@ class TestBuilder:
     def test_has_timeout_flag(self, mock_service: MagicMock) -> None:
         builder = MetadataRouterBuilder(
             mock_service,
-            {"routes": [_route(window_timeout_seconds=1.0)]},
+            with_payload({"routes": [_route(window_timeout_seconds=1.0)]}),
         )
         assert builder._has_timeout is True
 
@@ -86,7 +90,7 @@ class TestBuilder:
     ) -> None:
         builder = MetadataRouterBuilder(
             mock_service,
-            {"routes": [_route(files_per_job=1)]},
+            with_payload({"routes": [_route(files_per_job=1)]}),
         )
         group = builder.job_groups[0]
         JobCls = group.job
@@ -94,11 +98,18 @@ class TestBuilder:
         job.add_file(make_frozen_file(source="goes16"))
         group.jobs["jid"] = job
 
-        emit = mocker.patch.object(builder, "emit")
+        emit = mocker.patch.object(
+            builder,
+            "_emit_job",
+            return_value=_EmitOutcome.PUBLISHED,
+        )
         builder._reap_group(group)
         emit.assert_called_once()
         assert "jid" not in group.jobs
 
     def test_is_healthy_without_running(self, mock_service: MagicMock) -> None:
-        builder = MetadataRouterBuilder(mock_service, {"routes": [_route()]})
+        builder = MetadataRouterBuilder(
+            mock_service,
+            with_payload({"routes": [_route()]}),
+        )
         assert builder.is_healthy() is False

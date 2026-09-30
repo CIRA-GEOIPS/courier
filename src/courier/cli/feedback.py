@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING
 import typer
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from courier.schema import ServiceConfigModel
 
 #: Shown when a config is missing or unusable. Kept short: the operator wants
@@ -101,8 +103,27 @@ def load_config_or_exit(path: Path) -> ServiceConfigModel:
         raise typer.Exit(1) from exc
 
 
-def _humanise(location: str, message: str) -> str:
-    """Turn one pydantic error into something an operator can act on."""
+#: pydantic prefixes a message raised from a validator with the exception kind.
+#: The kind is noise to an operator; the text after it is the explanation.
+_VALIDATOR_PREFIXES = ("Value error, ", "Assertion failed, ")
+
+
+def humanise_message(message: str) -> str:
+    """Reword one pydantic error message for someone editing YAML.
+
+    Parameters
+    ----------
+    message : str
+        A pydantic error ``msg``, e.g. ``"Extra inputs are not permitted"``.
+
+    Returns
+    -------
+    str
+        The same problem in operator terms.
+    """
+    for prefix in _VALIDATOR_PREFIXES:
+        if message.startswith(prefix):
+            return message.removeprefix(prefix)
     replacements = (
         ("Field required", "required, but missing"),
         ("Input should be a valid", "should be a"),
@@ -110,18 +131,59 @@ def _humanise(location: str, message: str) -> str:
     )
     for pattern, plain in replacements:
         if message.startswith(pattern):
-            message = message.replace(pattern, plain, 1)
-            break
-    else:
-        # "List should have at least 1 item after validation, not 0"
-        least = re.match(
-            r"List should have at least (\d+) item.* not (\d+)$",
-            message,
-        )
-        if least:
-            wanted, found = least.groups()
-            message = f"needs at least {wanted}, found {found}"
-    return f"  {location:<28} {message}"
+            return message.replace(pattern, plain, 1)
+    # "List should have at least 1 item after validation, not 0"
+    least = re.match(
+        r"List should have at least (\d+) item.* not (\d+)$",
+        message,
+    )
+    if least:
+        wanted, found = least.groups()
+        return f"needs at least {wanted}, found {found}"
+    return message
+
+
+#: Width of the location column in a problem report.
+_LOCATION_WIDTH = 28
+
+
+def problem_line(location: str, message: str) -> str:
+    """Render one ``location  message`` problem line of a report.
+
+    A location too long for its column gets a line of its own, with the
+    message indented under it, so the messages stay in one readable column.
+    """
+    if len(location) <= _LOCATION_WIDTH:
+        return f"  {location:<{_LOCATION_WIDTH}} {message}"
+    return f"  {location}\n  {'':<{_LOCATION_WIDTH}} {message}"
+
+
+def format_problem_report(
+    path: Path,
+    problems: Sequence[tuple[str, str]],
+    next_step: str = _NEXT_STEP,
+) -> str:
+    """Render ``(location, message)`` problems as the standard invalid report.
+
+    Parameters
+    ----------
+    path : Path
+        The config the problems were found in.
+    problems : Sequence[tuple[str, str]]
+        Already-humanised ``(location, message)`` pairs.
+    next_step : str, optional
+        Closing line telling the operator what to do next.
+
+    Returns
+    -------
+    str
+        The report: a header naming the file and the problem count, one line
+        per problem, then *next_step*.
+    """
+    count = len(problems)
+    header = f"{path} is not valid ({count} problem{'s' if count != 1 else ''}):"
+    lines = [problem_line(location, message) for location, message in problems]
+    return "\n".join([header, "", *lines, "", next_step])
 
 
 def shell_quote(path: Path) -> str:
@@ -141,7 +203,7 @@ def format_validation_error(path: Path, error: str) -> str:
     None of that helps someone editing YAML: they need the key and what is
     wrong with it.
     """
-    problems: list[str] = []
+    problems: list[tuple[str, str]] = []
     lines = error.splitlines()
 
     for index, line in enumerate(lines):
@@ -153,13 +215,11 @@ def format_validation_error(path: Path, error: str) -> str:
         detail = lines[index + 1].strip()
         detail = re.sub(r"\s*\[type=.*$", "", detail)
         if detail:
-            problems.append(_humanise(line.strip(), detail))
+            problems.append((line.strip(), humanise_message(detail)))
 
     if not problems:
         # Not a pydantic error -- a YAML syntax error, say, which already
         # names file, line and column. Pass it through untouched.
         return f"{path} could not be loaded.\n\n  {error}"
 
-    count = len(problems)
-    header = f"{path} is not valid ({count} problem{'s' if count != 1 else ''}):"
-    return "\n".join([header, "", *problems, "", _NEXT_STEP])
+    return format_problem_report(path, problems)

@@ -161,7 +161,8 @@ For operational monitoring and tracing workflows, see
 | `job_builder.emit_job`               | `JobBuilder`          | Fan-out emission of a ready job to all targets (child of `process_job_group`) |
 | `job_builder.emit_one`               | `JobBuilder`          | Publishing a job to a single target queue (child of `emit_job`) |
 | `dispatcher.dispatch_job`            | `Dispatcher`          | Consuming a job from the ready queue and orchestrating execution |
-| `dispatcher.execute_job`             | `Dispatcher`          | Running the plugin's `get_execution_log()` logic (child of `dispatch_job`) |
+| `dispatcher.execute_job`             | `Dispatcher`          | Running the plugin's `get_execution_log()` logic: hydrating the job's payload, writing its script, running it (child of `dispatch_job`). Marked as an error when the payload exits non-zero |
+| `payload.get_payload_from_job`       | `Payload`             | Running the payload's command on the dispatcher host (child of `execute_job`). Emitted by `local_dispatcher`; `slurm_dispatcher` submits with `sbatch` instead |
 | `dispatcher.emit_execution_log`      | `Dispatcher`          | Publishing an execution log record (child of `dispatch_job`) |
 | `metadata_router.route_file`         | `MetadataRouterBuilder` | Routing an incoming file to the first matching route's job group |
 
@@ -173,13 +174,13 @@ All Courier-specific attributes use the `courier.*` namespace. Plugin identity a
 
 | Key                              | Type     | Carried By                                                                                             |
 |----------------------------------|----------|--------------------------------------------------------------------------------------------------------|
-| `courier.correlation_id`         | `str`    | `emit_job`, `dispatch_job`, `execute_job`                                                              |
+| `courier.correlation_id`         | `str`    | `emit_job`, `dispatch_job`, `execute_job`, `get_payload_from_job`                                      |
 | `courier.file.path`              | `str`    | `process_file`, `emit_file`, `build_job`, `route_file`                                                 |
 | `courier.file.hostname`          | `str`    | `emit_file`                                                                                            |
 | `courier.file.source`            | `str`    | `process_file`                                                                                         |
 | `courier.file.instrument`        | `str`    | _(reserved — not yet emitted by built-in plugins)_                                                     |
 | `courier.num_matchers`           | `int`    | `add_metadata`                                                                                         |
-| `courier.job.id`                 | `str`    | `emit_job`, `dispatch_job`, `execute_job`                                                              |
+| `courier.job.id`                 | `str`    | `emit_job`, `dispatch_job`, `execute_job`, `get_payload_from_job`                                      |
 | `courier.job.name`               | `str`    | `emit_job`                                                                                             |
 | `courier.job.targets`            | `str`    | _(reserved — intended for multi-target fan-out spans)_                                                 |
 | `courier.job.file_count`         | `int`    | _(reserved — intended for job composition spans)_                                                      |
@@ -208,7 +209,7 @@ Span events represent discrete moments within a span's lifetime. They are additi
 | `file.emitted`               | `DataMonitorBasePlugin.find_and_emit_files()` | File message published to the fanout exchange                       |
 | `job.ready`                  | `JobBuilder._process_job_group()`             | `JobBuilder._claim_ready_jobs()` returned this job as ready for dispatch |
 | `job.emitted`                | `JobBuilder._process_job_group()`             | Job published to all target dispatcher queues                       |
-| `job.executed`               | `Dispatcher.handle_incoming_jobs()`           | `get_execution_log()` returned execution results                    |
+| `job.executed`               | `Dispatcher._run_job()` (on `dispatch_job`)   | `get_execution_log()` returned execution results                    |
 
 **PluginManager events** use standalone spans (`plugin_lifecycle`) rather than being attached to pipeline spans, because plugin lifecycle management is a separate concern from message processing.
 
@@ -398,7 +399,7 @@ Operators can detect slow plugins by filtering spans by duration in their tracin
 | File scan           | `data_monitor.process_file`          | 10 s      | Covers filesystem I/O + metadata enrichment    |
 | Job build           | `job_builder.build_job`              | 5 s       | Covers grouping logic + across all job groups  |
 | Message emit        | `job_builder.emit_one`               | 2 s       | Single broker publish with publisher confirm   |
-| Execution           | `dispatcher.execute_job`             | 30 s      | Plugin execution (e.g. script run, API call)   |
+| Execution           | `dispatcher.execute_job`             | 30 s      | Plugin execution (e.g. script run, Slurm job)  |
 
 These are not hard-coded into Courier; they are recommended query filters for tracing backends (Jaeger, Grafana Tempo, Honeycomb, etc.).
 

@@ -19,10 +19,16 @@ import pytest
 from courier.errors import UnsafeReplicationError
 from courier.interfaces.job_builders import JobBuilder
 from courier.types.job import JobGroup
+from tests._helpers import bind_payload, with_payload
 
 
 def _builder(service: MagicMock, *, files_per_job: int) -> JobBuilder:
-    builder = JobBuilder(service, {"targets": ["dp-1"]}, identifier="jb-1")
+    builder = JobBuilder(
+        service,
+        with_payload({"targets": ["dp-1"]}),
+        identifier="jb-1",
+    )
+    bind_payload(builder)
     group = JobGroup("grp", MagicMock(files_per_job=files_per_job))
     builder.job_groups = [group]
     return builder

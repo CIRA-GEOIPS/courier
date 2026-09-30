@@ -7,6 +7,7 @@ only the relevant panels for the current node.
 
 from __future__ import annotations
 
+import math
 import re
 import urllib.error
 import urllib.request
@@ -228,28 +229,17 @@ def _states_from_metrics(
     metrics scraped from an older courier that predates the identifier label:
     the caller matches these against the YAML ``run[*].identifier``, and
     ``plugin_name`` carries the plugin *class* name ("local_dispatcher").
+
+    A sample whose value is not a finite number (``1e999`` parses as
+    infinity, which no ``int`` can hold) is skipped: :func:`detect_active_plugins`
+    promises never to raise, whatever the endpoint serves.
     """
     states: dict[str, int] = {}
     for entry in metrics.get(_PLUGIN_STATE_METRIC, []):
         labels = entry["labels"]
         identifier = labels.get("plugin_identifier") or labels.get("plugin_name")
-        if identifier is not None:
-            states[identifier] = int(entry["value"])
+        value = entry["value"]
+        if identifier is None or not math.isfinite(value):
+            continue
+        states[identifier] = int(value)
     return states
-
-
-def _extract_plugin_states(text: str) -> dict[str, int]:
-    """Extract plugin states from raw Prometheus exposition text.
-
-    Parameters
-    ----------
-    text : str
-        Raw response body from the ``/metrics`` endpoint.
-
-    Returns
-    -------
-    dict[str, int]
-        Mapping of ``plugin_identifier`` label to ``PluginRunState`` integer
-        value. Returns an empty dict if no plugin-state lines are found.
-    """
-    return _states_from_metrics(_parse_prometheus_text(text))

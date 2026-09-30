@@ -15,13 +15,15 @@ import typer
 
 from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import (
+    KIND_INFO,
     PLUGIN_REGISTRIES,
     RUN_KINDS,
     normalize_kind,
 )
 from courier.errors import InvalidPluginConfigError
+from courier.interfaces.job_builders import PAYLOAD_KEY, parse_payload_block
 from courier.schema.v1alpha1.service_config import MicroserviceModel
-from courier.service import create_service_with_plugins
+from courier.service import PipelineTopology, create_service_with_plugins
 
 logger = logging.getLogger(__name__)
 
@@ -52,43 +54,296 @@ def _collect_builder_targets(config: Any) -> dict[str, tuple[str, ...]]:
     return out
 
 
-def get_registered_plugin(plugin_registrations, entry, *, nested: bool = False):
-    """Return registered plugin from the plugin registry.
+def _collect_topology(config: Any) -> PipelineTopology:
+    """Describe every step in the YAML for preflight's static checks.
 
-    ``nested`` marks a sub-plugin reached via another plugin's ``nested_values``
-    (e.g. a payload under a job builder).  Those are not runnable steps of their
-    own, so they bypass the :data:`RUN_KINDS` gate that applies to ``spec.run``.
+    Unlike plugin registration this ignores ``--only``: a container running
+    only a builder or only a dispatcher still needs to know what runs at the
+    other end of each route to check payload/dispatcher compatibility.
+
+    Parameters
+    ----------
+    config : Any
+        Validated service configuration model.
+
+    Returns
+    -------
+    PipelineTopology
+        Dispatcher plugin names, builder payload plugin names and declared
+        builder targets for the whole YAML.
     """
-    kind = normalize_kind(entry.spec.kind)
-    if not nested and kind not in RUN_KINDS:
-        raise ValueError(
-            f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
-            f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+    return PipelineTopology(
+        dispatcher_plugins={
+            entry.identifier: entry.spec.name
+            for entry in config.spec.run
+            if normalize_kind(entry.spec.kind) == "dispatchers"
+        },
+        builder_payloads={
+            entry.identifier: name
+            for entry in config.spec.run
+            if normalize_kind(entry.spec.kind) == "job_builders"
+            and (name := _payload_plugin_name(entry)) is not None
+        },
+        builder_targets=_collect_builder_targets(config),
+    )
+
+
+def _payload_plugin_name(entry: Any) -> str | None:
+    """Return the plugin name a builder's ``payload`` block names, if valid.
+
+    A missing or malformed block, or one whose kind is not ``payload``, yields
+    ``None``: it is reported as an error by whichever process runs that
+    builder, not misreported as a missing payload plugin by every process
+    reading the YAML.
+    """
+    try:
+        block = parse_payload_block(entry.identifier, entry.spec.config)
+    except InvalidPluginConfigError:
+        return None
+    return str(block.spec.name)
+
+
+def _nested_model(raw: Any) -> MicroserviceModel | None:
+    """Parse a nested sub-plugin block, or return ``None`` if it is not one.
+
+    Parameters
+    ----------
+    raw : Any
+        The value of a nested config section, such as a builder's ``payload``.
+
+    Returns
+    -------
+    MicroserviceModel or None
+        The parsed sub-plugin, or ``None`` for anything that is not a single
+        valid sub-plugin mapping.
+    """
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return MicroserviceModel.model_validate(raw)
+    except (ValueError, TypeError):  # ValidationError subclasses ValueError
+        return None
+
+
+def _check_nested_identifiers(config: Any) -> None:
+    """Reject a nested sub-plugin identifier used anywhere else in the YAML.
+
+    Nested sub-plugins share the plugin manager's keyspace and the
+    ``plugin_identifier`` metric label with run steps. The schema keeps run
+    step identifiers unique; this does the same for nested ones across the
+    whole YAML, ignoring ``--only``, so a collision fails in every container
+    of a split deployment rather than only in one that hosts both plugins.
+
+    Parameters
+    ----------
+    config : Any
+        Validated service configuration model.
+
+    Raises
+    ------
+    InvalidPluginConfigError
+        If a nested identifier repeats a run step's or another nested
+        sub-plugin's.
+    """
+    owners: dict[str, str | None] = {
+        entry.identifier: None for entry in config.spec.run
+    }
+    for entry in config.spec.run:
+        for identifier in _nested_identifiers(entry):
+            if identifier in owners:
+                owner = owners[identifier]
+                taken = (
+                    f"the sub-plugin nested under {owner!r}" if owner else "a run step"
+                )
+                raise InvalidPluginConfigError(
+                    f"{entry.identifier!r}: nested sub-plugin {identifier!r} "
+                    f"reuses the identifier of {taken}. Every run step and "
+                    "nested sub-plugin needs its own identifier.",
+                )
+            owners[identifier] = entry.identifier
+
+
+def _nested_identifiers(entry: Any) -> list[str]:
+    """Return the identifiers of the valid sub-plugins nested in *entry*.
+
+    A missing or malformed nested section is skipped here; registering the
+    step that owns it reports it.
+
+    Parameters
+    ----------
+    entry : Any
+        A ``spec.run`` step.
+
+    Returns
+    -------
+    list[str]
+        One identifier per valid nested section.
+    """
+    registry = PLUGIN_REGISTRIES.get(normalize_kind(entry.spec.kind))
+    keys = registry.nested_values if registry is not None else []
+    cfg = entry.spec.config or {}
+    nested = (_nested_model(cfg.get(key)) for key in keys)
+    return [model.identifier for model in nested if model is not None]
+
+
+def get_registered_plugin(
+    plugin_registrations: list[tuple[type[ServicePlugin], dict[str, Any], str | None]],
+    entry: MicroserviceModel,
+    *,
+    expected_kind: str | None = None,
+    parent: str | None = None,
+) -> None:
+    """Append *entry*'s plugin, and any nested sub-plugins, to the registrations.
+
+    Parameters
+    ----------
+    plugin_registrations : list[tuple[type[ServicePlugin], dict[str, Any], str | None]]
+        Accumulator of ``(plugin_class, config, identifier)`` tuples.
+    entry : MicroserviceModel
+        The step (or nested sub-plugin) to register.
+    expected_kind : str or None, optional
+        Registry key a nested sub-plugin must have, e.g. ``"payloads"`` for
+        the ``payload`` block under a job builder.  ``None`` for a
+        ``spec.run`` step, which must instead be one of :data:`RUN_KINDS`.
+    parent : str or None, optional
+        Identifier of the plugin that nests *entry*, for error messages.
+
+    Raises
+    ------
+    ValueError
+        If a ``spec.run`` step is not a runnable kind.
+    InvalidPluginConfigError
+        If a nested sub-plugin has the wrong kind, a required nested section
+        is missing or is not a mapping, or an identifier is already taken by
+        another plugin in this process.
+    """
+    kind = _checked_kind(entry, expected_kind, parent)
+    if entry.identifier in {registration[2] for registration in plugin_registrations}:
+        where = f"the sub-plugin nested under {parent!r}" if parent else "a run step"
+        raise InvalidPluginConfigError(
+            f"{entry.identifier!r} already identifies another plugin, so "
+            f"{where} cannot reuse it. Every run step and nested sub-plugin "
+            "needs its own identifier.",
         )
 
     cfg = entry.spec.config or {}
-    missing = [k for k in PLUGIN_REGISTRIES[kind].nested_values if k not in cfg]
-    if missing:
-        raise InvalidPluginConfigError(
-            f"{entry.identifier!r} is missing required config "
-            f"section(s): {', '.join(missing)}",
-        )
-    plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(entry.spec.name)
+    registry = PLUGIN_REGISTRIES[kind]
+    # Parsed before anything registers, so a bad section fails the step whole.
+    nested = [
+        (key, _parse_nested_section(kind, entry.identifier, key, cfg))
+        for key in registry.nested_values
+    ]
+    plugin_class = registry.get_plugin(entry.spec.name)
 
     plugin_registrations.append((plugin_class, cfg, entry.identifier))
 
-    for k in PLUGIN_REGISTRIES[kind].nested_values:
-        nested_spec = cfg[k]
-        if not isinstance(nested_spec, dict):
-            raise InvalidPluginConfigError(
-                f"{entry.identifier!r}: required config section {k!r} must be "
-                f"a mapping describing the sub-plugin",
-            )
+    for key, sub_plugin in nested:
         get_registered_plugin(
             plugin_registrations,
-            MicroserviceModel.model_validate(nested_spec),
-            nested=True,
+            sub_plugin,
+            expected_kind=normalize_kind(key),
+            parent=entry.identifier,
         )
+
+
+def _parse_nested_section(
+    kind: str,
+    parent: str,
+    key: str,
+    cfg: dict[str, Any],
+) -> MicroserviceModel:
+    """Parse the required nested section *key* of plugin *parent*.
+
+    A job builder's ``payload`` is parsed by
+    :func:`~courier.interfaces.job_builders.parse_payload_block`, the check
+    :class:`~courier.interfaces.job_builders.JobBuilder` applies to its own
+    config, so ``courier run`` reports a missing or malformed block in the
+    same words as constructing the builder does.
+
+    Parameters
+    ----------
+    kind : str
+        Registry key of the plugin whose config holds the section.
+    parent : str
+        Identifier of the plugin whose config holds the section.
+    key : str
+        Name of the nested section, e.g. ``"payload"``.
+    cfg : dict[str, Any]
+        The plugin's config from the YAML.
+
+    Returns
+    -------
+    MicroserviceModel
+        The nested sub-plugin.
+
+    Raises
+    ------
+    InvalidPluginConfigError
+        If the section is missing, is not a mapping, or is not a valid
+        sub-plugin mapping.
+    """
+    if kind == "job_builders" and key == PAYLOAD_KEY:
+        return parse_payload_block(parent, cfg)
+    raw = cfg.get(key)
+    if raw is None:
+        raise InvalidPluginConfigError(
+            f"{parent!r} is missing required config section {key!r}",
+        )
+    if not isinstance(raw, dict):
+        raise InvalidPluginConfigError(
+            f"{parent!r}: required config section {key!r} must be a mapping "
+            "describing the sub-plugin",
+        )
+    try:
+        return MicroserviceModel.model_validate(raw)
+    except ValueError as exc:  # pydantic's ValidationError subclasses ValueError
+        raise InvalidPluginConfigError(
+            f"{parent!r}: required config section {key!r} must map one "
+            f"identifier to the sub-plugin's kind, name and config: {exc}",
+        ) from exc
+
+
+def _checked_kind(entry: Any, expected_kind: str | None, parent: str | None) -> str:
+    """Return *entry*'s registry key, rejecting a kind that cannot go there.
+
+    Parameters
+    ----------
+    entry : MicroserviceModel
+        The step or nested sub-plugin being registered.
+    expected_kind : str or None
+        Registry key a nested sub-plugin must have; ``None`` for a
+        ``spec.run`` step.
+    parent : str or None
+        Identifier of the nesting plugin, for the error message.
+
+    Returns
+    -------
+    str
+        The normalized registry key.
+
+    Raises
+    ------
+    ValueError
+        If a ``spec.run`` step is not one of :data:`RUN_KINDS`.
+    InvalidPluginConfigError
+        If a nested sub-plugin's kind is not *expected_kind*.
+    """
+    kind = normalize_kind(entry.spec.kind)
+    if expected_kind is None:
+        if kind not in RUN_KINDS:
+            raise ValueError(
+                f"{entry.identifier!r}: {entry.spec.kind!r} is not a runnable "
+                f"kind. Valid kinds: {', '.join(sorted(RUN_KINDS))}.",
+            )
+        return kind
+    if kind != expected_kind:
+        singular = KIND_INFO.get(expected_kind, ("", None, ""))[1] or expected_kind
+        raise InvalidPluginConfigError(
+            f"{parent!r}: sub-plugin {entry.identifier!r} has kind "
+            f"{entry.spec.kind!r}, but only kind {singular!r} can be nested "
+            f"there.",
+        )
+    return kind
 
 
 #: Shape of the identifier ``ServiceConfig`` generates when ``SERVICE_ID`` is
@@ -201,6 +456,7 @@ def run_service(
                 " job_builder, or dispatcher identifiers.",
             )
 
+    _check_nested_identifiers(config)
     for entry in config.spec.run:
         if only_set is not None and entry.identifier not in only_set:
             continue
@@ -239,6 +495,9 @@ def run_service(
         allow_implicit_target=config.spec.allow_implicit_target,
         builder_identifiers=builder_identifiers,
     )
+    # Unfiltered too: lets preflight check payload/dispatcher compatibility
+    # for routes whose other end runs in a different container.
+    service.configure_topology(_collect_topology(config))
     service.start()
 
 

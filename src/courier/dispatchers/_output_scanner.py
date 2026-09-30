@@ -1,7 +1,7 @@
-"""Output file scanner for bash dispatcher plugin output.
+"""Output file scanner for the output of a dispatcher's jobs.
 
 Scans stdout (and optionally stderr) text with regex patterns to discover
-output file paths emitted by a bash script, constructs :class:`File` objects
+output file paths printed by a job's payload, constructs :class:`File` objects
 with metadata, and forwards them via an ``emit_file`` callback.
 """
 

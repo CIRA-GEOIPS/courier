@@ -24,6 +24,7 @@ _IDENTIFIER_LABEL_BY_PREFIX = {
     "courier_rabbitmq_": "monitor_identifier",
     "courier_job_builder_": "job_builder_identifier",
     "courier_dispatcher_": "dispatcher_identifier",
+    "courier_payload_": "payload_identifier",
     "courier_plugin_": "plugin_identifier",
 }
 
@@ -36,6 +37,15 @@ _NOT_PLUGIN_SCOPED = (
 )
 
 
+def _all_metrics() -> list[MetricWrapperBase]:
+    """Every metric object :mod:`courier.metrics` defines."""
+    return [
+        value
+        for value in vars(metrics).values()
+        if isinstance(value, MetricWrapperBase)
+    ]
+
+
 def _plugin_scoped_metrics() -> list[tuple[str, MetricWrapperBase, str]]:
     """Return ``(name, metric, expected_identifier_label)`` for each metric.
 
@@ -43,9 +53,7 @@ def _plugin_scoped_metrics() -> list[tuple[str, MetricWrapperBase, str]]:
     automatically rather than quietly escaping the check.
     """
     found: list[tuple[str, MetricWrapperBase, str]] = []
-    for value in vars(metrics).values():
-        if not isinstance(value, MetricWrapperBase):
-            continue
+    for value in _all_metrics():
         name = value._name
         if name.startswith(_NOT_PLUGIN_SCOPED):
             continue
@@ -80,6 +88,29 @@ def _drive(metric: MetricWrapperBase, labels: dict[str, str]) -> None:
 def test_the_metric_scan_found_something() -> None:
     """Guard the guard: a broken scan would silently test nothing at all."""
     assert len(_METRICS) > 15, f"only discovered {len(_METRICS)} plugin metrics"
+
+
+def test_every_metric_is_classified() -> None:
+    """A metric family neither map knows escapes every check in this file.
+
+    That is how ``courier_payload_*`` went unchecked: the prefix map had no
+    entry for it, so the scan skipped both payload metrics without a word.
+    Classify a new family here -- by its identifier label, or as not
+    plugin-scoped -- rather than letting it fall through.
+    """
+    known = (*_IDENTIFIER_LABEL_BY_PREFIX, *_NOT_PLUGIN_SCOPED)
+    unclassified = sorted(
+        metric._name for metric in _all_metrics() if not metric._name.startswith(known)
+    )
+    assert not unclassified, f"metrics in neither map: {unclassified}"
+
+
+def test_payload_metrics_are_checked() -> None:
+    names = {name for name, _, _ in _METRICS}
+    assert {
+        "courier_payload_jobs_processed",
+        "courier_payload_job_execution_duration_seconds",
+    } <= names
 
 
 @pytest.mark.parametrize(("name", "metric", "identifier_label"), _METRICS, ids=_IDS)

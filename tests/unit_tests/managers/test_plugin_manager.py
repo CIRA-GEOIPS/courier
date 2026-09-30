@@ -6,6 +6,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
+from prometheus_client import REGISTRY
 
 from courier.config import ServiceConfig
 from courier.constants import PluginRunState
@@ -68,6 +69,32 @@ def _failing_plugin_cls(name: str) -> type:
             return instance
 
     return _FakeFailingCls
+
+
+def _non_threaded_plugin_cls(name: str) -> type:
+    """Return a real class whose instances are healthy thread-less sub-plugins."""
+    instance = _make_plugin(name, healthy=True)
+    instance.threaded = False
+    return _plugin_cls_for(instance)
+
+
+def _state_gauge(name: str, identifier: str) -> float | None:
+    """Read ``courier_plugin_state`` for one plugin from the registry."""
+    return REGISTRY.get_sample_value(
+        "courier_plugin_state",
+        {"plugin_name": name, "plugin_identifier": identifier},
+    )
+
+
+def _run_one_monitor_pass(manager: PluginManager) -> None:
+    """Run exactly one iteration of the monitor loop, synchronously."""
+
+    def _stop_after_pass(_seconds: float) -> None:
+        manager._state = PluginRunState.STOPPED
+
+    manager._state = PluginRunState.RUNNING
+    with patch("courier.managers.plugin_manager.time.sleep", _stop_after_pass):
+        manager._monitor_plugins()
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -240,6 +267,64 @@ class TestNonThreadedSubPlugin:
         assert info.state == PluginRunState.RUNNING
         plugin.start.assert_called_once()
 
+    def test_start_failure_records_the_error_and_exports_failed(self) -> None:
+        """A failed sub-plugin reads FAILED everywhere, not STARTING forever."""
+        config = _make_config()
+        manager = PluginManager(config, parent_service=MagicMock())
+        plugin = _make_plugin("bad-payload")
+        plugin.identifier = "bad-payload-id"
+        plugin.threaded = False
+        plugin.start.side_effect = RuntimeError("missing license file")
+        manager.register_plugin(
+            _plugin_cls_for(plugin),
+            {},
+            identifier="bad-payload-id",
+        )
+        info = manager.get_plugins()["bad-payload-id"]
+        manager._state = PluginRunState.RUNNING
+
+        manager._start_plugin(info)
+
+        assert info.thread is None
+        assert info.state == PluginRunState.FAILED
+        assert "missing license file" in (info.error_message or "")
+        assert not info.ready.is_set()
+        assert _state_gauge("bad-payload", "bad-payload-id") == (
+            PluginRunState.FAILED.value
+        )
+
+    def test_monitor_does_not_treat_a_thread_less_sub_plugin_as_dead(self) -> None:
+        """No thread is the normal state of a payload, not a crashed one."""
+        config = _make_config()
+        manager = PluginManager(config, parent_service=MagicMock())
+        plugin = _make_plugin("payload-mon", healthy=True)
+        plugin.threaded = False
+        info = PluginStateInfo(
+            plugin=plugin,
+            state=PluginRunState.RUNNING,
+            threaded=False,
+        )
+        manager._plugins["payload-mon"] = info
+
+        _run_one_monitor_pass(manager)
+
+        assert info.state == PluginRunState.RUNNING
+        assert info.restart_count == 0
+        plugin.stop.assert_not_called()
+        plugin.is_healthy.assert_called()
+
+    def test_monitor_still_reports_a_dead_threaded_plugin(self) -> None:
+        """The exemption is for sub-plugins only; a builder's thread counts."""
+        config = _make_config(plugin_max_restart_attempts=0)
+        manager = PluginManager(config, parent_service=MagicMock())
+        plugin = _make_plugin("builder-mon")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.RUNNING)
+        manager._plugins["builder-mon"] = info
+
+        _run_one_monitor_pass(manager)
+
+        assert info.state == PluginRunState.FAILED
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # start() — bulk start with verify (ISSUE 13)
@@ -272,6 +357,32 @@ class TestStartAll:
             manager.start()
 
         manager.stop()  # type: ignore[unused-coroutine]
+
+    def test_a_running_sub_plugin_does_not_mask_a_failed_builder(self) -> None:
+        """A payload is always RUNNING, so it must not count as a survivor.
+
+        Otherwise every builder container (a builder plus its payload) keeps
+        running with no consumer when the builder refuses to start.
+        """
+        config = _make_config(plugin_health_check_interval=0.5)
+        manager = PluginManager(config, parent_service=MagicMock())
+        manager.register_plugin(_failing_plugin_cls("builder"), {}, identifier="jb")
+        manager.register_plugin(
+            _non_threaded_plugin_cls("payload"),
+            {},
+            identifier="pl",
+        )
+
+        try:
+            with pytest.raises(
+                RuntimeError,
+                match="All plugins failed.*builder=",
+            ) as err:
+                manager.start()
+            assert "payload" not in str(err.value)
+            assert manager.get_plugins()["pl"].state == PluginRunState.RUNNING
+        finally:
+            manager.stop()  # type: ignore[unused-coroutine]
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -321,19 +432,37 @@ class TestIsHealthy:
         barrier.wait()  # release the thread
         info.thread.join()
 
-    def test_running_non_threaded_plugin_is_healthy(self) -> None:
-        """A running non-threaded plugin (payload) counts toward health."""
+    def test_a_running_sub_plugin_does_not_mask_a_failed_builder(self) -> None:
+        """Health reflects runnable plugins; a payload has no work of its own."""
         config = _make_config()
         manager = PluginManager(config, parent_service=MagicMock())
+        manager.register_plugin(
+            _plugin_cls_for(_make_plugin("builder", healthy=True)),
+            {},
+            identifier="jb",
+        )
+        manager.register_plugin(
+            _non_threaded_plugin_cls("payload"),
+            {},
+            identifier="pl",
+        )
+        plugins = manager.get_plugins()
+        plugins["jb"].state = PluginRunState.FAILED
+        plugins["pl"].state = PluginRunState.RUNNING
+        manager._state = PluginRunState.RUNNING
 
-        p = _make_plugin("p-payload", healthy=True)
-        p.threaded = False
-        clazz = _plugin_cls_for(p)
-        manager.register_plugin(clazz, {}, identifier="p-payload")
+        assert not manager.is_healthy()
 
-        info = manager.get_plugins()["p-payload"]
-        info.state = PluginRunState.RUNNING
-        info.thread = None
+    def test_sub_plugins_alone_leave_nothing_to_be_unhealthy(self) -> None:
+        """With no runnable plugin registered there is nothing to fail."""
+        config = _make_config()
+        manager = PluginManager(config, parent_service=MagicMock())
+        manager.register_plugin(
+            _non_threaded_plugin_cls("p-payload"),
+            {},
+            identifier="p-payload",
+        )
+        manager.get_plugins()["p-payload"].state = PluginRunState.RUNNING
         manager._state = PluginRunState.RUNNING
 
         assert manager.is_healthy()

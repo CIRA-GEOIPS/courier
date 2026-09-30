@@ -29,7 +29,14 @@ spec:
     - builder:
         kind: job_builders
         name: filter_pass
-        config: {files_per_job: 1, targets: [runner-a]}
+        config:
+          files_per_job: 1
+          targets: [runner-a]
+          payload:
+            work:
+              kind: payload
+              name: bash_payload
+              config: {script: "echo {{ files | length }}"}
     - runner-a:
         kind: dispatchers
         name: local_dispatcher

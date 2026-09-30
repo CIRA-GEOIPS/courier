@@ -69,9 +69,8 @@ instance/
 .scrapy
 
 # Sphinx documentation
-# docs/ is the COMMITTED build output: 12 MB of a 13.8 MB repo, and nothing in
-# the image or the test suite reads it. Excluding it shrinks the build context
-# by roughly 85%.
+# The published site is built from sphinx/ by CI and is not committed. docs/
+# stays excluded so a local build output there never enters the build context.
 docs/
 sphinx/_build/
 

@@ -27,7 +27,9 @@ at the same data source. Common scenarios:
 - Horizontal scale-out where multiple instances divide a high-volume ingest
   stream across cores or hosts.
 - Rolling deployments where an old and a new instance overlap briefly during
-  a restart.
+  a restart. An overlap is only safe between releases that share the job
+  message format; the release that moved payloads onto jobs does not, see
+  {doc}`../getting-started/upgrading`.
 
 A **single-instance** deployment does not benefit from state sync and should
 leave it unconfigured.
@@ -132,6 +134,13 @@ Add a `state_sync` block to the job builder's `config` section:
         password: "${REDIS_PASS}" # Default: null (no auth).
         ssl: false                # Default: false.
         channel_prefix: courier # Default: "courier".
+      payload:                    # The builder's payload, as usual.
+        work:
+          kind: payload
+          name: bash_payload
+          config:
+            script: |
+              run_geoips.sh {{ files[0].file }}
 ```
 
 ### Field Reference

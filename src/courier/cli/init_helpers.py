@@ -60,14 +60,35 @@ def _resolve_candidate(
     return None
 
 
-def find_config_model(plugin_class: type) -> type[BaseModel] | None:
-    """Find the companion Pydantic Config model for *plugin_class*.
+def _as_model(candidate: object) -> type[BaseModel] | None:
+    """Return *candidate* if it is a pydantic model class, else ``None``."""
+    if isinstance(candidate, type) and issubclass(candidate, BaseModel):
+        return candidate
+    return None
 
-    Scans the plugin's defining module for ``BaseModel`` subclasses,
-    preferring those named ``{PluginClassName}Config``.
 
-    Returns ``None`` if no Config model is found.
+def declared_config_model(plugin_class: type) -> type[BaseModel] | None:
+    """Return the config model *plugin_class* declares it validates with.
+
+    That is its ``config_class`` class attribute, possibly inherited: payloads
+    and dispatchers validate their config block with it. Unlike
+    :func:`find_config_model` this never guesses from names.
+
+    Parameters
+    ----------
+    plugin_class : type
+        A plugin class.
+
+    Returns
+    -------
+    type[BaseModel] or None
+        The declared model, or ``None`` when the class declares none.
     """
+    return _as_model(getattr(plugin_class, "config_class", None))
+
+
+def _module_config_model(plugin_class: type) -> type[BaseModel] | None:
+    """Guess *plugin_class*'s config model from the models its module defines."""
     module = importlib.import_module(plugin_class.__module__)
     candidates: list[type[BaseModel]] = []
 
@@ -89,6 +110,26 @@ def find_config_model(plugin_class: type) -> type[BaseModel] | None:
     return _resolve_candidate(plugin_class, candidates)
 
 
+def find_config_model(plugin_class: type) -> type[BaseModel] | None:
+    """Find the companion Pydantic Config model for *plugin_class*.
+
+    Scans the plugin's defining module for ``BaseModel`` subclasses,
+    preferring those named ``{PluginClassName}Config``.  A model the class
+    declares (see :func:`declared_config_model`) wins over that guess unless
+    the guess is a subclass of it -- a declaration inherited from a base class
+    is less specific than a model the plugin's own module extends it with.
+
+    Returns ``None`` if no Config model is found.
+    """
+    declared = declared_config_model(plugin_class)
+    guessed = _module_config_model(plugin_class)
+    if declared is None:
+        return guessed
+    if guessed is not None and issubclass(guessed, declared):
+        return guessed
+    return declared
+
+
 def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
     """Extract per-field metadata from a Pydantic model for interactive prompting.
 
@@ -96,7 +137,9 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
 
     * ``name`` — field name (``str``)
     * ``type_hint`` — human-readable type string (e.g. ``"str"``, ``"list[str]"``)
-    * ``default`` — the default value, or ``...`` sentinel if required
+    * ``default`` — the default value, or ``...`` sentinel if required or
+      produced by a ``default_factory`` (there is no value to show, and
+      ``field_info.default`` would be pydantic's ``PydanticUndefined``)
     * ``description`` — field description string (``""`` when absent)
     * ``required`` — ``True`` when the field has no default
     """
@@ -104,7 +147,11 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
 
     for field_name, field_info in model.model_fields.items():
         required = field_info.is_required()
-        default = ... if required else field_info.default
+        # A factory default must not be read from ``field_info.default``: that
+        # is PydanticUndefined, which the prompt then offered as the default
+        # and wrote into the config as the literal string "PydanticUndefined".
+        has_value_default = not required and field_info.default_factory is None
+        default = field_info.default if has_value_default else ...
 
         annotation = field_info.annotation
         if annotation is not None:
