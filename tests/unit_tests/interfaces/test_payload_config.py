@@ -15,7 +15,7 @@ import os
 import stat
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -501,7 +501,7 @@ def _install(
     real = discovery._entry_points
 
     def _entry_points(requested: str) -> dict[str, Any]:
-        found = dict(real(requested))
+        found: dict[str, Any] = dict(real(requested))
         if requested == group:
             found.update(
                 {name: _EntryPoint(name, load) for name, load in loaders.items()},
@@ -532,12 +532,26 @@ _PAYLOAD_FIELDS = [
 ]
 
 
+#: The base model and every installed dispatcher's config model.
+_DISPATCHER_MODELS: list[type[DispatcherGroupConfig]] = sorted(
+    {
+        DispatcherGroupConfig,
+        *(
+            cast("type[Dispatcher]", dispatchers.get_plugin(name)).config_class
+            for name in dispatchers.names()
+        ),
+    },
+    key=lambda model: model.__name__,
+)
+
+
 def test_the_misplaced_key_cases_cover_the_slurm_options() -> None:
     """Guard the guard: the derived cases include dispatcher-specific options."""
     fields = {param.values[1] for param in _DISPATCHER_FIELDS}
 
     assert {"partition", "slurm_output_dir", "wait_for_completion"} <= fields
     assert {"timeout_seconds", "log_dir", "output_files"} <= fields
+    assert {LocalDispatcherConfig, SlurmDispatcherConfig} <= set(_DISPATCHER_MODELS)
 
 
 class TestMisplacedKeys:
@@ -564,7 +578,7 @@ class TestMisplacedKeys:
     @pytest.mark.parametrize(("payload", "field"), _PAYLOAD_FIELDS)
     @pytest.mark.parametrize(
         "model",
-        [DispatcherGroupConfig, LocalDispatcherConfig, SlurmDispatcherConfig],
+        _DISPATCHER_MODELS,
         ids=lambda model: model.__name__,
     )
     def test_every_payload_setting_in_a_dispatcher_block_is_explained(

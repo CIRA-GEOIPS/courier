@@ -375,6 +375,24 @@ class TestEmit:
         assert job.payload is None
         assert job.emit_time is None
 
+    @pytest.mark.parametrize("name", IN_TREE_BUILDERS)
+    def test_no_builder_publishes_a_completed_job_while_unbound(
+        self,
+        service: MagicMock,
+        name: str,
+    ) -> None:
+        """A file that completes a job reaches emit, which refuses it."""
+        builder = _builder_class(name)(
+            service,
+            with_payload(_config(name)),
+            identifier="jb-1",
+        )
+
+        with pytest.raises(ConfigurationError, match="'jb-1' has no payload bound"):
+            builder._dispatch_file(_file())
+
+        service.emit.assert_not_called()
+
     def test_every_published_job_carries_the_bound_payload(
         self,
         service: MagicMock,

@@ -67,13 +67,16 @@ A custom builder must call ``super().__init__``, accept the ``payload`` key in
 its own config checks, and must not copy the block into the config its jobs
 carry. ``DummyJobBuilder`` now leaves out both ``payload`` and ``state_sync``
 (which holds the Redis password) from the config its jobs carry; it used to
-copy its whole config there. A builder refuses to start, and to emit a job, until a payload is bound
-(``ConfigurationError``); service preflight binds it, and a test that drives a
+copy its whole config there. A builder refuses to start, and to emit a job,
+until a payload is bound (``ConfigurationError``), so a job without a payload
+is never published; service preflight binds it, and a test that drives a
 builder directly assigns ``builder.payload`` itself.
 
 A job carries its script once: ``PayloadSpec.script`` holds the rendered
-script, and ``PayloadSpec.config`` is sent without the raw ``script``. The
-dispatcher sets the hydrated config's ``script`` to the rendered copy.
+script, and ``PayloadSpec.config`` is sent without the raw ``script`` (``file``
+stays, as a path for information only). The dispatcher sets the hydrated
+config's ``script`` to the rendered copy, so the template file need not exist
+on the dispatcher host.
 
 Removed and replaced plugins [breaking]
 =======================================

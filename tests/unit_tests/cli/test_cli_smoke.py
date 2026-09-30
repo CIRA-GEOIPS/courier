@@ -7,17 +7,20 @@ validate`` accepts, and two example configs named a job builder that does not
 exist. Both were reachable simply by *running the command*.
 
 Every command is run against the configs the project ships, with the real
-registries — no mocking. ``run`` is excluded because it starts a service; its
-lifecycle is covered by ``tests/test_process_lifecycle.py``.
+registries — no mocking. ``run`` starts a service, so it is only run with
+configs it must refuse while building one; its lifecycle is covered by
+``tests/test_process_lifecycle.py``.
 """
 
-# cspell:ignore geteuid summarises uids backticked
+# cspell:ignore geteuid summarises uids backticked usefixtures
 
 from __future__ import annotations
 
 import json
 import os
 import re
+import signal
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -271,6 +274,21 @@ def _installed_fields(registry: Any, other: type[BaseModel]) -> list[Any]:
     ]
 
 
+def _owners(registry: Any, base: type[BaseModel], field: str) -> list[str]:
+    """Name the installed *registry* plugins that define *field*.
+
+    ``[]`` for a field of *base*, which every such plugin accepts -- how the
+    advice words it too.
+    """
+    if field in base.model_fields:
+        return []
+    return sorted(
+        name
+        for name in registry.names()
+        if field in registry.get_plugin(name).config_class.model_fields
+    )
+
+
 @pytest.mark.parametrize(
     ("dispatcher", "field"),
     _installed_fields(dispatchers, PayloadConfig),
@@ -286,13 +304,14 @@ def test_validate_explains_every_dispatcher_setting_in_a_payload_block(
         _service_yaml(_ECHO_PAYLOAD + f"                {field}: x\n"),
     )
 
-    owner = "dispatcher" if field in DispatcherGroupConfig.model_fields else dispatcher
+    owners = _owners(dispatchers, DispatcherGroupConfig, field)
+    assert owners == [] or dispatcher in owners
     assert result.exit_code == 1, result.output
     assert "1 problem" in result.output
     assert f"build.config.payload.echo.config.{field}" in result.output
     assert (
-        f"not a payload setting; it is a {owner} setting: put it in the "
-        "dispatcher's config"
+        f"not a payload setting; it is a {' / '.join(owners) or 'dispatcher'} "
+        "setting: put it in the dispatcher's config"
     ) in result.output
 
 
@@ -305,19 +324,123 @@ def test_validate_explains_every_payload_setting_in_a_dispatcher_block(
     payload: str,
     field: str,
 ) -> None:
-    del payload
     result = _validate(
         tmp_path,
         _service_yaml(_ECHO_PAYLOAD, f"          {field}: x\n"),
     )
 
+    owners = _owners(payloads, PayloadConfig, field)
+    assert owners == [] or payload in owners
     assert result.exit_code == 1, result.output
     assert "1 problem" in result.output
     assert f"work.config.{field}" in result.output
     assert (
-        "not a dispatcher setting; it is a payload setting: put it in the job "
-        "builder's payload block"
+        f"not a dispatcher setting; it is a {' / '.join(owners) or 'payload'} "
+        "setting: put it in the job builder's payload block"
     ) in result.output
+
+
+# ── run: the same advice when the service is built ─────────────────────────
+#
+# `courier run` builds each plugin from its block, and the config models give
+# the advice themselves. Only configs that must be refused while the service
+# is being built are run here: nothing is started.
+
+
+@pytest.fixture
+def _signal_handlers() -> Iterator[None]:
+    """Restore the handlers ``Service`` installs for SIGINT and SIGTERM."""
+    saved = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    yield
+    for sig, handler in saved.items():
+        signal.signal(sig, handler)
+
+
+#: What ``courier run`` logs, with the exception, when it cannot build the
+#: service.
+_RUN_FAILED = "Fatal error in run_service"
+
+
+def _run_error(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    text: str,
+) -> str:
+    """``courier run`` *text* (a :func:`_service_yaml`) on the memory broker.
+
+    Returns
+    -------
+    str
+        The error that stopped it, read from the record ``courier run`` logs
+        it with: the console output does not reliably capture log lines
+        across ``CliRunner`` invocations.
+    """
+    path = tmp_path / "svc.yaml"
+    broker = "\nspec:\n  broker:\n    transport: memory\n"
+    path.write_text(text.replace("\nspec:\n", broker, 1))
+
+    result = runner.invoke(app, ["run", str(path)])
+
+    assert result.exit_code == 1, result.output
+    [record] = [r for r in caplog.records if r.getMessage() == _RUN_FAILED]
+    assert record.exc_info is not None
+    return str(record.exc_info[1])
+
+
+@pytest.mark.usefixtures("_signal_handlers")
+@pytest.mark.timeout(60)
+@pytest.mark.parametrize(
+    ("dispatcher", "field"),
+    _installed_fields(dispatchers, PayloadConfig),
+)
+def test_run_explains_every_dispatcher_setting_in_a_payload_block(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    dispatcher: str,
+    field: str,
+) -> None:
+    """Building the payload gives the advice ``courier validate`` gives."""
+    error = _run_error(
+        tmp_path,
+        caplog,
+        _service_yaml(_ECHO_PAYLOAD + f"                {field}: x\n"),
+    )
+
+    owners = _owners(dispatchers, DispatcherGroupConfig, field)
+    assert owners == [] or dispatcher in owners
+    named = f"{field!r} ({' / '.join(owners)})" if owners else repr(field)
+    assert (
+        f"{named}: dispatcher option(s) set in a payload block; move them to "
+        "the dispatcher's config"
+    ) in error
+
+
+@pytest.mark.usefixtures("_signal_handlers")
+@pytest.mark.timeout(60)
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    _installed_fields(payloads, DispatcherGroupConfig),
+)
+def test_run_explains_every_payload_setting_in_a_dispatcher_block(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    payload: str,
+    field: str,
+) -> None:
+    """Building the dispatcher gives the advice ``courier validate`` gives."""
+    error = _run_error(
+        tmp_path,
+        caplog,
+        _service_yaml(_ECHO_PAYLOAD, f"          {field}: x\n"),
+    )
+
+    owners = _owners(payloads, PayloadConfig, field)
+    assert owners == [] or payload in owners
+    named = f"{field!r} ({' / '.join(owners)})" if owners else repr(field)
+    assert (
+        f"{named}: payload setting(s) set in a dispatcher block; move them to "
+        "the job builder's nested payload block"
+    ) in error
 
 
 def test_validate_rejects_an_unknown_payload_setting(tmp_path: Path) -> None:

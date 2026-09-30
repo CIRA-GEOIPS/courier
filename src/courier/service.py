@@ -977,8 +977,10 @@ class Service:
             payload_info = plugins.get(payload_id)
             if payload_info is None or not isinstance(payload_info.plugin, Payload):
                 raise ConfigurationError(
-                    f"Payload {payload_id!r} for job builder {registry_key!r} "
-                    f"is not registered as a payload.",
+                    f"Job builder {registry_key!r} nests payload {payload_id!r}, "
+                    "which is not registered as a payload. `courier run` "
+                    "registers the plugin a builder's payload block names; code "
+                    "that registers plugins itself must register it too.",
                 )
             plugin.payload = payload_info.plugin
 
