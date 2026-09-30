@@ -309,7 +309,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, only="")
+        cli_run(ctx, config_file, log_level=None, only="")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -335,7 +335,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, only="MY-DM")
+        cli_run(ctx, config_file, log_level=None, only="MY-DM")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -361,7 +361,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, only=" my-dm , my-jb ")
+        cli_run(ctx, config_file, log_level=None, only=" my-dm , my-jb ")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -387,7 +387,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, only="my-dm,my-dm")
+        cli_run(ctx, config_file, log_level=None, only="my-dm,my-dm")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -413,7 +413,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, only="my-dm,")
+        cli_run(ctx, config_file, log_level=None, only="my-dm,")
 
         mock_run_service.assert_called_once_with(
             ANY,

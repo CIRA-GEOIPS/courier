@@ -924,7 +924,7 @@ class MessageBrokerManager(ServiceManager):
                 self._config.broker_url,
                 max_retries=self._config.broker_max_retries,
             )
-            _logger.debug("Successfully connected to broker")
+            self._logger.debug("Successfully connected to broker")
             BROKER_CONNECTIONS.labels(status="success").inc()
             BROKER_CONNECTED.set(1)
         except OperationalError:
