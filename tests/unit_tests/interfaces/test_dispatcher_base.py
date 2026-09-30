@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import stat
+import time
 from pathlib import Path
 from typing import ClassVar
 from unittest.mock import MagicMock, patch
@@ -70,6 +71,22 @@ class _RecordingDispatcher(Dispatcher):
         if self.raise_on_execute is not None:
             raise self.raise_on_execute
         self.executed.append(job)
+        return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
+
+class _TimedDispatcher(_RecordingDispatcher):
+    """Dispatcher that stalls on execution and records execution time."""
+
+    name = "timed_dispatcher"
+    version = "test"
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.execution_times: list[float] = []
+    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+        self.executed.append(job)
+        execution_time = time.time()
+        self.execution_times.append(execution_time)
+        time.sleep(2)
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
 
@@ -354,6 +371,31 @@ class TestJobExecution:
 
         assert exit_.called is exits
 
+    def test_jobs_run_concurrently(
+        self,
+        service: MagicMock,
+    ) -> None:
+        """When `max_workers` is set to be greater than 1, jobs must run concurrently."""
+        dispatcher = _TimedDispatcher(service, {"max_workers": 2}, "timed")
+        consume(dispatcher, _job("job-1"), _job("job-2"))
+
+        assert len(dispatcher.executed) == 2
+        # difference between execution times
+        time_diff = dispatcher.execution_times[1] - dispatcher.execution_times[0]
+        assert time_diff < 2.0
+
+    def test_one_max_worker(
+        self,
+        service: MagicMock,
+    ) -> None:
+        """When `max_workers` is set to be greater than 1, jobs must run concurrently."""
+        dispatcher = _TimedDispatcher(service, {"max_workers": 1}, "timed")
+        consume(dispatcher, _job("job-1"), _job("job-2"))
+
+        assert len(dispatcher.executed) == 2
+        # difference between execution times
+        time_diff = dispatcher.execution_times[1] - dispatcher.execution_times[0]
+        assert time_diff >= 2.0
 
 # ── dedupe ──────────────────────────────────────────────────────────────────
 

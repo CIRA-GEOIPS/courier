@@ -5,11 +5,13 @@ from __future__ import annotations
 import contextlib
 import math
 import os
+import queue
 import tempfile
 import threading
 import time
 import traceback
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -217,6 +219,9 @@ class Dispatcher(ServicePlugin):
         # lazily by the consumer thread and closed by it, so it is owned by
         # exactly one thread for its whole life; see _emit_queue_depth.
         self._depth_connection: kombu.Connection | None = None
+        self._executor: ThreadPoolExecutor = ThreadPoolExecutor(
+            max_workers=self.config.max_workers)
+        self._futures_queue : queue.Queue = queue.Queue()
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Resolve the job's payload, prepare its environment, and execute it.
@@ -727,15 +732,11 @@ class Dispatcher(ServicePlugin):
                 # a thread still using it is the class of bug being fixed.
                 self._close_queue_depth_connection()
 
-    def handle_incoming_jobs(self) -> None:
-        """Consume this dispatcher's job queue and execute each job in turn.
+    def _consume_jobs(self) -> None:
+        """Handle a steady stream of jobs.
 
-        A job that fails is logged and counted as a ``failure``; a message
-        that cannot be executed here at all (not a job, no payload, missing
-        plugin, representation or toolchain) is parked on the dead-letter
-        queue and counted as ``unexecutable``.  Only a failure to consume or
-        to park a message escapes; the message is then left unacknowledged
-        and redelivered.
+        Initialize job processing and add submit a job to be processed in the
+        thread pool.
         """
         for job_string, parent_ctx in self.parent_service.consume(
             self.incoming_queue,
@@ -752,6 +753,15 @@ class Dispatcher(ServicePlugin):
             if job is not None:
                 self._dispatch_job(job, body, parent_ctx)
         self._logger.debug("Dispatcher %s consume loop exited", self.name)
+
+    def handle_incoming_jobs(self) -> None:
+        """Handle the consumption and processing of consumed jobs."""
+        threading.Thread(target=self._consume_jobs).start()
+        while not self._stop_event.is_set():
+            if not self._futures_queue.empty():
+                self._futures_queue.get().result()
+        while not self._futures_queue.empty():
+            self._futures_queue.get().result()
 
     def _parse_job(self, body: str, parent_ctx: Any) -> Job | None:
         """Deserialize a message body; park it and return None if not a job."""
@@ -804,7 +814,10 @@ class Dispatcher(ServicePlugin):
                     extra={"correlation_id": job.correlation_id},
                 )
                 return
-            self._run_job(job, body, key)
+            self._futures_queue.put(
+                self._executor.submit(
+                    self._run_job, job, body, key),
+                )
 
     def _run_job(self, job: Job, body: str, key: tuple[str, str]) -> None:
         """Execute *job*, publish its results, and account for it."""
