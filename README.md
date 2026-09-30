@@ -30,7 +30,7 @@ Courier runs a central `Service` that coordinates three stages of plugins throug
        ↓ (broker queue)
 [Job Builder]  → groups files into complete jobs, attaching the payload (script) to run
        ↓ (broker queue)
-[Dispatcher]   → executes each job's payload: locally, or on SLURM
+[Dispatcher]   → executes each job's payload 
 ```
 
 Each plugin runs in its own thread with independent health monitoring and automatic restart on failure. Configuration is validated at startup with Pydantic, and every payload's script template is parsed then too — not halfway through a run.
