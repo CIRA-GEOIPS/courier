@@ -219,8 +219,10 @@ class Dispatcher(ServicePlugin):
         # lazily by the consumer thread and closed by it, so it is owned by
         # exactly one thread for its whole life; see _emit_queue_depth.
         self._depth_connection: kombu.Connection | None = None
+        # Thread pool for concurrent execution
         self._executor: ThreadPoolExecutor = ThreadPoolExecutor(
             max_workers=self.config.max_workers)
+        # Synchronized queue containing the asynchronous results from the thread pool.
         self._futures_queue : queue.Queue = queue.Queue()
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
