@@ -151,6 +151,7 @@ class DispatcherGroupConfig(BaseModel):
     #: Patterns that discover output files in a job's stdout/stderr; each match
     #: is re-emitted into the file-found exchange so chained pipelines work.
     output_files: list[OutputFilePattern] | None = Field(default=None)
+    max_workers: int = Field(default=1)
 
     @model_validator(mode="before")
     @classmethod
