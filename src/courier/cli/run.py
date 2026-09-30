@@ -219,6 +219,7 @@ def run_service(
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
         service_id=_resolve_service_id(config),
+        log_level=log_level or None,
     )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
@@ -298,7 +299,7 @@ def run_service(
 
 
 def run(
-    ctx: typer.Context,
+    ctx: typer.Context, # noqa: ARG001
     config_file: Annotated[
         Path,
         typer.Argument(
@@ -315,10 +316,16 @@ def run(
         "'courier run config.yaml --only my-builder,my-dispatcher'"
         " for processing.",
     ),
+    log_level: str | None = typer.Option(
+        None,
+        "--log-level",
+        help="Set the log level of the service. "
+        "Acceptable arguments: TRACE, DEBUG, INFO, "
+        "WARNING, ERROR, CRITICAL",
+    ),
 ) -> None:
     """Run the service with a config file."""
     config = load_config_or_exit(config_file)
-    log_level = ctx.obj.get("log_level") if ctx.obj else None
 
     # Parse --only
     if only is None:
