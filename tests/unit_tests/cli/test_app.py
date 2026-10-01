@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from unittest.mock import ANY, MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from courier.cli.app import VALID_LOG_LEVELS, app
@@ -51,3 +53,24 @@ def test_log_level_short_flag() -> None:
     """The short flag ``-l ERROR`` is accepted (exit code 0)."""
     result = runner.invoke(app, ["-l", "ERROR", "--help"])
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("flag", ["--log-level", "-l"])
+def test_log_level_reaches_run(flag: str) -> None:
+    """``courier -l info run CONFIG`` hands ``INFO`` to the service."""
+    with (
+        patch("courier.cli.run.load_config_or_exit", return_value=MagicMock()),
+        patch("courier.cli.run.run_service") as run_service,
+    ):
+        result = runner.invoke(app, [flag, "info", "run", "config.yaml"])
+
+    assert result.exit_code == 0, result.output
+    run_service.assert_called_once_with(ANY, log_level="INFO", only_set=None)
+
+
+def test_run_does_not_take_its_own_log_level() -> None:
+    """The level is a global option, so it goes before ``run``."""
+    result = runner.invoke(app, ["run", "config.yaml", "--log-level", "INFO"])
+
+    assert result.exit_code == 2  # noqa: PLR2004
+    assert "No such option" in _plain(result.output)

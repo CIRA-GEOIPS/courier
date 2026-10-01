@@ -213,13 +213,19 @@ def run_service(
             )
 
     # since ServiceClass is an immutable object, we replace all necessary attributes
-    # from the parent class into the `spec.service_config` overrides
+    # from the parent class into the `spec.service_config` overrides. The log
+    # level is replaced only when --log-level was given, so the YAML's
+    # service_config.log_level (or COURIER_LOG_LEVEL, its default) applies
+    # otherwise.
+    overrides: dict[str, Any] = {}
+    if log_level is not None:
+        overrides["log_level"] = log_level
     service_config = dataclasses.replace(
         config.spec.service_config,
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
         service_id=_resolve_service_id(config),
-        log_level=log_level or os.environ.get("COURIER_LOG_LEVEL", "DEBUG"),
+        **overrides,
     )
     # Build plugin registration tuples from the config's run spec.
     plugin_registrations: list[
@@ -299,7 +305,7 @@ def run_service(
 
 
 def run(
-    ctx: typer.Context, # noqa: ARG001
+    ctx: typer.Context,
     config_file: Annotated[
         Path,
         typer.Argument(
@@ -316,17 +322,10 @@ def run(
         "'courier run config.yaml --only my-builder,my-dispatcher'"
         " for processing.",
     ),
-    log_level: str | None = typer.Option(
-        None,
-        "--log-level",
-        "-l",
-        help="Set the log level of the service. "
-        "Acceptable arguments: TRACE, DEBUG, INFO, "
-        "WARNING, ERROR, CRITICAL",
-    ),
 ) -> None:
     """Run the service with a config file."""
     config = load_config_or_exit(config_file)
+    log_level = ctx.obj.get("log_level") if ctx.obj else None
 
     # Parse --only
     if only is None:
