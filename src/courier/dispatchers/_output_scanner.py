@@ -173,7 +173,7 @@ def _scan_and_emit_output_files(  # noqa: PLR0913
             seen.add(file_path)
 
             # Build base Datum, collect updates, apply atomically
-            file_obj = Datum(file=Path(file_path), hostname=hostname)
+            file_obj: Datum[None] = Datum(file=Path(file_path), hostname=hostname)
             updates = _collect_updates_from_match(entry, match_obj)
             file_obj = file_obj.with_updates(**updates)
             emit_file(file_obj)

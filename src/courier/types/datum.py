@@ -54,6 +54,7 @@ def parse_location(value: Any) -> "Path | str | None":
 def _file_to_dict(obj: "Datum | FrozenDatum") -> dict[str, Any]:
     """Convert a Datum or FrozenDatum to a dictionary."""
     return {
+        "data": obj.data,
         "file": str(obj.file) if obj.file else None,
         "hostname": obj.hostname,
         "source": obj.source,
@@ -86,6 +87,7 @@ def _parse_timestamp_field(dt: Any) -> datetime | None:
 def _file_fields_from_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Extract Datum/FrozenDatum constructor kwargs from a dictionary."""
     return {
+        "data": data.get("data"),
         "file": parse_location(data.get("file")),
         "hostname": data.get("hostname"),
         "source": data.get("source"),
@@ -97,16 +99,21 @@ def _file_fields_from_dict(data: dict[str, Any]) -> dict[str, Any]:
         "timestamp": _parse_timestamp_field(data.get("timestamp")),
     }
 
-T = TypeVar('T')
 
+T = TypeVar("T")
+
+
+# PEP 695 ``class Datum[T]`` is a syntax error on Python 3.11, which courier
+# still supports, so keep ``Generic`` despite ruff's py312 target.
 @dataclass
-class Datum(Generic[T]):
+class Datum(Generic[T]):  # noqa: UP046
     """Datum dataclass with data metadata.
 
     Attributes
     ----------
-    data: Generic[type] | None
-        Generic data type for flexible data transportation
+    data : T | None
+        Payload carried with the datum. It crosses the broker in
+        :meth:`to_dict`, so it must be JSON-serializable to be published.
     file : Path | str | None
         Location of the file: a ``Path`` for filesystem paths, or the URI
         string verbatim for remote locations (``s3://``, ``sftp://``).
@@ -172,7 +179,7 @@ class Datum(Generic[T]):
         """Initialize Datum from dictionary."""
         return cls(**_file_fields_from_dict(data))
 
-    def freeze(self) -> "FrozenDatum":
+    def freeze(self) -> "FrozenDatum[T]":
         """Create an immutable copy of this Datum.
 
         Returns
@@ -181,6 +188,7 @@ class Datum(Generic[T]):
             Immutable copy of this Datum.
         """
         return FrozenDatum(
+            data=self.data,
             file=self.file,
             hostname=self.hostname,
             source=self.source,
@@ -276,13 +284,14 @@ class Datum(Generic[T]):
 
 
 @dataclass(frozen=True)
-class FrozenDatum(Generic[T]):
+class FrozenDatum(Generic[T]):  # noqa: UP046
     """Immutable file dataclass with data metadata.
 
     Attributes
     ----------
-    data: Generic[type] | None
-        Generic data type for flexible data transportation
+    data : T | None
+        Payload carried with the datum. It crosses the broker in
+        :meth:`to_dict`, so it must be JSON-serializable to be published.
     file : Path | str | None
         Location of the file: a ``Path`` for filesystem paths, or the URI
         string verbatim for remote locations (``s3://``, ``sftp://``).
@@ -304,7 +313,9 @@ class FrozenDatum(Generic[T]):
         datetime extracted from filename or manually specified.
     """
 
-    data: T | None = None
+    # Unhashed like ``metadata``: Job.files is a set, and a list or dict
+    # payload would otherwise make the FrozenDatum unhashable.
+    data: T | None = field(default=None, hash=False)
     file: Path | str | None = None
     hostname: str | None = None
     source: str | None = None
@@ -348,7 +359,7 @@ class FrozenDatum(Generic[T]):
         """Initialize FrozenDatum from dictionary."""
         return cls(**_file_fields_from_dict(data))
 
-    def thaw(self) -> Datum:
+    def thaw(self) -> Datum[T]:
         """Create a mutable copy of this FrozenDatum.
 
         Returns
@@ -357,6 +368,7 @@ class FrozenDatum(Generic[T]):
             Mutable copy of this FrozenDatum.
         """
         return Datum(
+            data=self.data,
             file=self.file,
             hostname=self.hostname,
             source=self.source,

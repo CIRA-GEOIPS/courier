@@ -657,7 +657,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
                 source = file_info.get(fm["platform"])
                 if source is None:
                     source = _infer_source_from_path(str(full_path))
-                file = Datum(
+                file: Datum[None] = Datum(
                     file=full_path,
                     hostname=hostname,
                     source=source,
