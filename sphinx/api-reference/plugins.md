@@ -55,7 +55,7 @@ context are in {doc}`payloads`.
 
 All dispatchers inherit `emit_file(file)` from the
 `courier.interfaces.dispatchers.Dispatcher` base class. It publishes an output
-`courier.types.file.File` to the file-found exchange
+`courier.types.datum.Datum` to the file-found exchange
 (`courier.constants.FILE_FOUND_EXCHANGE`), the same fanout exchange that data
 monitors use, so downstream job builders can pick it up and create new jobs.
 The base class calls it, after a job has run, for each file its
@@ -160,7 +160,7 @@ spec:
 The key points:
 
 - Stage 1's dispatcher lists an `output_files` pattern, so each path its
-  script prints after `OUTPUT:` is re-emitted as a `File` with
+  script prints after `OUTPUT:` is re-emitted as a `Datum` with
   `processing_stage: l2`.
 - Every job builder receives every emitted file. Stage 1's builder filters on
   `processing_stage: l1b`, so it ignores its own L2 output; stage 2's builder
@@ -186,7 +186,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
-from courier.types.file import File
+from courier.types.datum import Datum
 
 
 class CalibrateDispatcher(LocalDispatcher):
@@ -200,7 +200,7 @@ class CalibrateDispatcher(LocalDispatcher):
         if all(log.return_code == 0 for log in logs):
             for source in job.files:
                 self.emit_file(
-                    File(
+                    Datum(
                         file=Path("/data/l2") / f"{Path(source.file).stem}_cal.nc",
                         hostname=socket.gethostname(),
                         source=source.source,
@@ -294,10 +294,10 @@ with a **two-layer lookup**:
 
 1. **Metadata layer** — ``file.metadata.get(key)``. Keys stored in the
    metadata dict (populated from ``field_map`` entries that do not map to a
-   named ``File`` attribute) are checked first.
+   named ``Datum`` attribute) are checked first.
 
 2. **Attribute layer** — ``getattr(file, key, None)``. If the key is not
-   found in metadata, the ``File`` dataclass attributes (``source``,
+   found in metadata, the ``Datum`` dataclass attributes (``source``,
    ``instrument``, ``processing_stage``, ``domain``, ``hostname``,
    ``num_expected``, ``timestamp``) are checked.
 
@@ -315,13 +315,13 @@ filters:
 
 #### Breaking Change: Filter Key Names
 
-Filter configurations **must use ``File`` attribute names**, not legacy
+Filter configurations **must use ``Datum`` attribute names**, not legacy
 field_map names. The following legacy keys are no longer recognized:
 
 ```{include} ../includes/breaking-changes.md
 ```
 
-See {doc}`types` for the `File`/`FrozenFile` attribute reference.
+See {doc}`types` for the `Datum`/`FrozenDatum` attribute reference.
 
 **Migration example:**
 
