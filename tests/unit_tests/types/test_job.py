@@ -145,9 +145,10 @@ _json_scalars = st.one_of(
 # Timestamps are generated in every form a monitor can produce -- naive (from
 # a filename regex), aware UTC (from S3 LastModified), and aware non-UTC. They
 # were previously pinned to None here "because test_file.py covers it", but
-# test_file.py had no property test over timestamps either, and the gap between
-# the two files is exactly where a timezone bug hid: naive values were read as
-# host-local, so the same instant produced different time-grouping buckets.
+# test_file.py (now test_datum.py) had no property test over timestamps
+# either, and the gap between the two files is exactly where a timezone bug
+# hid: naive values were read as host-local, so the same instant produced
+# different time-grouping buckets.
 _timestamps = st.one_of(
     st.none(),
     st.datetimes(
