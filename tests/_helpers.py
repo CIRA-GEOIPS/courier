@@ -4,23 +4,42 @@ Prefer them to a fixed sleep. A sleep long enough to be reliable on a loaded CI
 box wastes time on every run, and a shorter one is flaky.
 
 :func:`payload_block` and :func:`with_payload` build the ``payload`` block every
-job builder's config needs; the builder constructs its payload from it.
+job builder's config needs; the builder constructs its payload from it.  The
+remaining helpers carry a payload to a dispatcher and observe what it does.
 """
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
+from courier.plugins.payloads.bash_payload import BashPayload
+from courier.types.file import File
+from courier.types.job import Job
+
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterator, Mapping
+
+    from courier.interfaces.dispatchers import Dispatcher
+    from courier.interfaces.payloads import Payload
+    from courier.types.execution_log import ExecutionLog
 
 __all__ = [
     "DEFAULT_PAYLOAD_ID",
     "DEFAULT_SCRIPT",
+    "IN_TREE_BUILDER_SETTINGS",
+    "captured_records",
+    "consume",
+    "file_job",
     "payload_block",
     "poll_until",
+    "run_locally",
     "stays_false",
+    "wire_job",
     "with_payload",
 ]
 
@@ -28,6 +47,14 @@ __all__ = [
 DEFAULT_PAYLOAD_ID = "test-payload"
 #: Script :func:`payload_block` gives the payload unless told otherwise.
 DEFAULT_SCRIPT = "echo {{ files | length }}"
+#: Every in-tree job builder, with the settings besides ``targets`` and
+#: ``payload`` that it needs to emit one job per file.
+IN_TREE_BUILDER_SETTINGS: dict[str, dict[str, Any]] = {
+    "DummyJobBuilder": {},
+    "file_count_builder": {"files_per_job": 1},
+    "filter_and_group": {"files_per_job": 1},
+    "metadata_router": {"routes": [{"name": "all", "files_per_job": 1}]},
+}
 
 
 def payload_block(
@@ -80,6 +107,78 @@ def with_payload(
     """
     block = payload_block(identifier, script, name=name, settings=settings)
     return {**(config or {}), "payload": block}
+
+
+def file_job(path: Path | str = "/d/a.nc", identifier: str = "job-1") -> Job:
+    """Return a job holding the one file *path*."""
+    return Job("n", identifier, {}, files=[File(file=Path(path)).freeze()])
+
+
+def wire_job(
+    service: Any,
+    payload_config: dict[str, Any],
+    *,
+    payload_cls: type[Payload] = BashPayload,
+    payload_identifier: str = "p1",
+    job: Job | None = None,
+) -> Job:
+    """Return *job* (default :func:`file_job`) carrying a payload, off the wire."""
+    job = job if job is not None else file_job()
+    payload = payload_cls(service, payload_config, payload_identifier)
+    job.payload = payload.to_job_spec(job)
+    return Job.from_string(str(job))
+
+
+def run_locally(
+    service: Any,
+    payload_config: dict[str, Any],
+    dispatcher_config: dict[str, Any] | None = None,
+    *,
+    dispatcher_cls: type[LocalDispatcher] = LocalDispatcher,
+    **wire: Any,
+) -> list[ExecutionLog]:
+    """Run a payload through a real ``LocalDispatcher``; see :func:`wire_job`."""
+    dispatcher = dispatcher_cls(service, dispatcher_config or {}, identifier="ld")
+    return dispatcher.get_execution_log(wire_job(service, payload_config, **wire))
+
+
+def consume(dispatcher: Dispatcher, *jobs: Job) -> None:
+    """Feed *jobs* through *dispatcher*'s consume loop, then let it stop."""
+
+    def _consume(*_args: object, **_kwargs: object) -> Iterator[tuple[str, None]]:
+        for job in jobs:
+            yield str(job), None
+        dispatcher._stop_event.set()  # noqa: SLF001
+
+    dispatcher.parent_service.consume.side_effect = _consume
+    dispatcher.handle_incoming_jobs()
+
+
+@contextlib.contextmanager
+def captured_records(logger_name: str) -> Iterator[list[logging.LogRecord]]:
+    """Collect the records *logger_name* emits, whatever its current setup.
+
+    Courier loggers do not propagate, so ``caplog`` cannot see them, and their
+    level depends on whichever config configured them first.
+    """
+    records: list[logging.LogRecord] = []
+
+    class _Collector(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger(logger_name)
+    handler = _Collector(level=logging.DEBUG)
+    previous_level, previous_disabled = logger.level, logger.disabled
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.disabled = False
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.disabled = previous_disabled
 
 
 def poll_until(

@@ -44,7 +44,7 @@ from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
-from tests.unit_tests.plugins.conftest import consume, file_job, wire_job
+from tests._helpers import consume, file_job, wire_job
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -17,6 +17,5 @@ class BashPayload(ShellPayload):
     interface: ClassVar[str] = "payloads"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "bash_payload"
-    version: ClassVar[str] = "-1"
     default_binary: ClassVar[str] = "bash"
     config_class: ClassVar[type[PayloadConfig]] = BashPayloadConfig

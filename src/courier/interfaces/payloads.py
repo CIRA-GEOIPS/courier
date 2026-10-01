@@ -586,17 +586,7 @@ def _resolve_deferred_expressions(
     context: Mapping[str, Any],
     nonce: str,
 ) -> str:
-    """Replace each marker in *text* that carries *nonce* with its value.
-
-    Everything else, a marker carrying another nonce included, is left as it
-    is; with an empty *nonce* nothing is replaced.
-
-    Raises
-    ------
-    DeferredExpressionError
-        If a marker carrying *nonce* is malformed, or names a value *context*
-        does not define.
-    """
+    """Pass two; see :meth:`Payload.resolve_deferred_expressions`."""
     if not nonce:
         return text
     marker = re.compile(re.escape(f"{_MARKER_START}{nonce}:") + r"([^\x00]*)\x00")
@@ -618,7 +608,8 @@ class Payload:
     ``__init__``**.  Subclasses therefore put per-instance setup in
     :meth:`_configure_from_config`, which both paths run, and declare extra
     config fields on a :class:`PayloadConfig` subclass named by
-    :attr:`config_class`.
+    :attr:`config_class`.  A subclass that overrides ``__init__`` must call
+    ``super().__init__``: it compiles the template :meth:`to_job_spec` renders.
     """
 
     interface: ClassVar[str] = "payloads"

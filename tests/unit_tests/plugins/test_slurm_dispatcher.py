@@ -33,7 +33,7 @@ from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.types.job import Job
-from tests.unit_tests.plugins.conftest import captured_records, wire_job
+from tests._helpers import captured_records, wire_job
 
 if TYPE_CHECKING:
     from pathlib import Path

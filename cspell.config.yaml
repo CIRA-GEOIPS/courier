@@ -245,12 +245,11 @@ words:
   - endfilter
   - endautoescape
   - lipsum
-  - requeue
-  - requeued
   - slurmctld
   - slurmstepd
   - execve
   - delenv
+  - callspec
   - uncreatable
   - summarised
 ignoreWords:

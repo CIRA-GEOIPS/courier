@@ -20,7 +20,7 @@ keys by name, together with their replacement.
 - **Dispatchers only execute.** A dispatcher runs whatever payload each job
   carries, and keeps the execution options: timeout, logging and
   `output_files`. See {doc}`../api-reference/dispatchers`.
-- **Plugins were removed and renamed**, as listed in the table below.
+- **Plugins were removed or replaced**, as listed in the table below.
 - **Extras removed:** `data-courier[http]` and `data-courier[all-dispatchers]`.
   Installing them now installs nothing extra.
 - **Stricter configs.** Dispatcher and payload configs reject unknown keys, so
@@ -33,15 +33,12 @@ keys by name, together with their replacement.
   executed by a new dispatcher. See
   [Upgrading a running deployment](#upgrading-a-running-deployment).
 
-| Before                                           | After                                                                          |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `serial_bash` dispatcher                         | `local_dispatcher`, plus a `bash_payload` on the job builder                   |
-| `parallel_bash` dispatcher                       | `local_dispatcher`, plus a `bash_payload`; no per-file concurrency (see below) |
-| `slurm_dispatcher` with `sbatch_template`        | `slurm_dispatcher` with new options, plus a payload (see below)                |
-| `http_dispatcher`                                | Removed; no replacement                                                        |
-| `local_falconer`, `slurm_falconer` (pre-release) | `local_dispatcher`, `slurm_dispatcher`                                         |
-| `shell_falcon`, `bash_falcon`, `python_falcon`   | `shell_payload`, `bash_payload`, `python_payload`                              |
-| `courier.falconers`, `courier.falcons` groups    | `courier.dispatchers`, `courier.payloads`                                      |
+| Before                                    | After                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| `serial_bash` dispatcher                  | `local_dispatcher`, plus a `bash_payload` on the job builder                   |
+| `parallel_bash` dispatcher                | `local_dispatcher`, plus a `bash_payload`; no per-file concurrency (see below) |
+| `slurm_dispatcher` with `sbatch_template` | `slurm_dispatcher` with new options, plus a payload (see below)                |
+| `http_dispatcher`                         | Removed; no replacement                                                        |
 
 ## Migrating `serial_bash`
 
@@ -191,14 +188,9 @@ The template context changed too:
 | `config`: the dispatcher's | `dispatcher.config`; `config` is now the job's config           |
 | (none)                     | `output_dir`: the dispatcher's `slurm_output_dir`               |
 
-Unlike in `sbatch_template`, `dispatcher.config` and `output_dir` can only be
-used as bare values (`{{ dispatcher.config.partition }}`), not in filters or
-conditions; see [Template changes](#template-changes).
-
 `slurm_output_dir` must be on a filesystem the compute nodes can read: jobs
 submitted with `--wrap` read their script from there, and the dispatcher reads
-the jobs' `.out` and `.err` files from there. The payload's `toolchain` is
-checked on the submit host. The Slurm dispatcher now also accepts
+the jobs' `.out` and `.err` files from there. The Slurm dispatcher now also accepts
 `output_files` and `log_to_logger`, which it applies to the job's output in
 wait mode. Slurm's output files are now named
 `<job id>-<Slurm job id>.out` and `.err` (they were `<job id>.out` and
@@ -208,54 +200,35 @@ wait mode. Slurm's output files are now named
 
 These keys are rejected with a message that says what to do instead:
 
-| Key                  | Where it was                   | Instead                                                                                                                                                                                                                                                                                                                                   |
-| -------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash_script`        | `serial_bash`, `parallel_bash` | `script:` (or `file:`) in the job builder's `payload` block.                                                                                                                                                                                                                                                                              |
-| `max_workers`        | `parallel_bash`                | Per-file parallel execution within one job is not supported. Scale with more dispatcher replicas or smaller jobs.                                                                                                                                                                                                                         |
-| `fail_fast`          | `parallel_bash`                | As for `max_workers`.                                                                                                                                                                                                                                                                                                                     |
-| `python_venv`        | `serial_bash`, `parallel_bash` | Set `python_payload`'s `default_binary` to the environment's interpreter (`/opt/venvs/x/bin/python`), or activate the environment in a shell script. `toolchain_prepend` does not do this: it is never part of a job's command (`python_payload` puts it in front of its `toolchain` probes only, and shell and bash payloads ignore it). |
-| `falcon`, `falconer` | dispatchers (pre-release)      | The falcon is now the job builder's nested `payload`; falconers are now dispatchers.                                                                                                                                                                                                                                                      |
-| `sbatch_template`    | `slurm_dispatcher`             | Use the dispatcher's scheduler options or `sbatch_extra_args`, or put `#SBATCH` directives in a `shell_payload`/`bash_payload` script with no `binary` or `prefix_args` (see {doc}`../api-reference/dispatchers`).                                                                                                                        |
+| Key               | Where it was                   | Instead                                                                                                                                                                                                                               |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash_script`     | `serial_bash`, `parallel_bash` | `script:` (or `file:`) in the job builder's `payload` block.                                                                                                                                                                          |
+| `max_workers`     | `parallel_bash`                | Per-file parallel execution within one job is not supported. Scale with more dispatcher replicas or smaller jobs.                                                                                                                     |
+| `fail_fast`       | `parallel_bash`                | As for `max_workers`.                                                                                                                                                                                                                 |
+| `python_venv`     | `serial_bash`, `parallel_bash` | Set `python_payload`'s `default_binary` to the environment's interpreter (`/opt/venvs/x/bin/python`), or activate the environment in a shell script. `toolchain_prepend` is not a replacement (see {doc}`../api-reference/payloads`). |
+| `sbatch_template` | `slurm_dispatcher`             | Use the dispatcher's scheduler options or `sbatch_extra_args`, or put `#SBATCH` directives in a `shell_payload`/`bash_payload` script with no `binary` or `prefix_args` (see {doc}`../api-reference/dispatchers`).                    |
 
-A setting put in the wrong kind of block is reported with the block it belongs
-in, by `courier validate` and by `courier run` alike:
-
-- **A dispatcher setting in a payload block**: any field of an installed
-  dispatcher's config model. A key that only some dispatchers define is named
-  with them, so `partition` is reported as a `slurm_dispatcher` setting.
-- **A payload setting in a dispatcher block**: any field of an installed
-  payload's config model, such as `script` or `prefix_args`.
-
-One dispatcher's setting in another dispatcher's block (`partition` under a
-`local_dispatcher`) is reported only as unknown: `not a recognised setting`
-from `courier validate`, `Extra inputs are not permitted` from `courier run`.
-
-A removed dispatcher plugin (`serial_bash`, `parallel_bash`,
-`http_dispatcher`) named in a step is reported with its replacement.
-`http_dispatcher` settings have no new home; remove the step.
+An option every dispatcher takes, put in a payload block, or a setting every
+payload takes, put in a dispatcher block, is reported with the block it
+belongs in; any other unknown key is reported only as unknown (see
+{ref}`validation-errors`). A removed dispatcher plugin (`serial_bash`,
+`parallel_bash`, `http_dispatcher`) named in a step is reported with its
+replacement; `http_dispatcher` settings have no new home, so remove the step.
 
 ## Template changes
 
-- **Strict on the builder.** Payload templates are rendered when the job
-  builder emits a job. A name, attribute, key or index that does not exist is
-  an error there, and that job is not published: the builder logs an ERROR
-  with the job's files and counts
-  `courier_job_builder_emit_failures_total{reason="render"}`. `serial_bash`
-  rendered undefined values as empty strings. Use `| default(...)` or
-  `is defined` for values that are legitimately optional.
-- **Checked at startup.** Template files are read, and templates are parsed
-  and checked, when `courier run` starts (and by `courier validate`). A syntax
-  error, or a reserved name used other than as a bare value (below), stops the
-  service at startup.
+- **Strict on the builder.** A name, attribute, key or index that does not
+  exist is an error when the job builder emits the job, and that job is not
+  published (`serial_bash` rendered it as an empty string). Use
+  `| default(...)` or `is defined` for values that are legitimately optional.
+- **Checked at startup.** A template syntax error, or a reserved name used
+  other than as a bare value (below), stops the service at startup, and
+  `courier validate` reports it.
 - **Dispatcher values are reserved names.** `dispatcher` (with
   `dispatcher.config`), `script_path`, `hostname` and `output_dir` are filled
-  in on the dispatcher and can only be used as bare values, with literal text
-  around them: `{{ hostname }}`, `{{ dispatcher.config.log_dir }}/x`,
-  `courier-{{ dispatcher.identifier }}`. Filters, tests, calls and operators
-  over them (`{{ hostname | upper }}`, `{{ "courier-" ~ dispatcher.identifier }}`)
-  are rejected, and so are conditions and loops over them
-  (`{% if dispatcher.config.partition %}`). See
-  {doc}`../api-reference/payloads`.
+  in on the dispatcher and can only be used as bare values, such as
+  `{{ dispatcher.config.log_dir }}/x`, not in filters, operators or
+  conditions. See {doc}`../api-reference/payloads`.
 - **Use `{{ files[0].file }}` for the file.** Older tutorials showed a
   `{file}` placeholder; it was never substituted.
 
@@ -279,9 +252,6 @@ Update dashboards and alerts:
   is counted as soon as `sbatch` accepts a job, and
   `courier_dispatcher_slurm_jobs_pending` covers the whole time a job is queued
   or running in wait mode.
-- **Development builds only:** the `courier_falconer_*` and `courier_falcon_*`
-  metrics are replaced by the `courier_payload_*` and
-  `courier_dispatcher_slurm_*` families.
 - **Traces.** Each payload run is a `payload.get_payload_from_job` span under
   `dispatcher.execute_job`.
 - **`COURIER_METRIC:`** lines are read by `local_dispatcher` only.
@@ -290,23 +260,14 @@ Regenerate generated dashboards with `courier dashboard <config>`.
 
 ## Plugin authors
 
-- The `courier.falconers` and `courier.falcons` entry-point groups are gone.
-  Register payload plugins in `courier.payloads`.
-- **Every job builder requires a payload**, a custom one included.
-  `JobBuilder.__init__` validates the `payload` block and raises
-  `InvalidPluginConfigError` without a valid one, so a custom builder must
-  call `super().__init__` and its configs must nest a payload. It must accept
-  the `payload` key in its own config validation, and must not copy the block
-  into the config its jobs carry. The builder refuses to start, and to emit a
-  job, until a payload is bound (`ConfigurationError`): service preflight
-  binds it, and a test that drives a builder directly assigns
-  `builder.payload` itself.
+- Register payload plugins in `courier.payloads`.
+- **Every job builder requires a payload**, a custom one included: a custom
+  builder must call `super().__init__`, which validates the `payload` block
+  and constructs the payload as `self.payload`, must accept the `payload` key
+  in its own config validation, and must not copy the block into the config
+  its jobs carry.
 - A custom dispatcher must list the payload classes it can run in
   `representations`, or no job builder can target it.
-- A custom dispatcher that emits output files from code overrides
-  `_collect_output_files` rather than calling `emit_file` while the job runs,
-  so a broker fault while publishing is retried instead of being counted as a
-  failed job; see {ref}`pipeline-feedback-example`.
 - A dispatcher or payload with options of its own names its config model in
   `config_class`; unknown keys are rejected against that model.
 
@@ -373,11 +334,8 @@ dispatcher parked there carries no payload either: re-submit its files (see
 rather than moving it back. On another broker, read the same two counts with
 that broker's own tools.
 
-`courier_dispatcher_queue_depth` cannot show this. It is sampled only when a
-dispatcher receives a job, counts only the messages ready at that moment (not
-the job in hand, or any other unacknowledged job), and then keeps that value
-until the next job arrives. A gauge that reads 0 can therefore sit beside a
-job that is still running or a queue that has refilled.
+`courier_dispatcher_queue_depth` cannot show this: it is sampled only when a
+dispatcher receives a job (see {doc}`../api-reference/dispatchers`).
 
 ### Jobs parked or held during the upgrade
 

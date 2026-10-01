@@ -115,16 +115,12 @@ trimmed):
 ```
 [Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
 [Manager: PluginManager] Registered plugin: group-files (class=DummyJobBuilder v-1)
-[Manager: PluginManager] Registered plugin: process-payload (class=bash_payload v-1)
 [Manager: PluginManager] Registered plugin: process-data (class=local_dispatcher v-1)
 [Service: goes18-file-watcher] Starting Service goes18-file-watcher
 [Manager: PrometheusManager] Starting Prometheus server on port 8000
 [Plugin: file_system_poller_watchdog] Starting to watch directory: /home/user/goes18_data/incoming
 [Service: goes18-file-watcher] Service goes18-file-watcher started successfully
 ```
-
-The payload is registered as a plugin of its own (`process-payload`), under
-the job builder that nests it.
 
 ## Step 4: Test with Data
 

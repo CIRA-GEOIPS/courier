@@ -28,7 +28,7 @@ from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.types.file import File
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
-from tests._helpers import with_payload
+from tests._helpers import IN_TREE_BUILDER_SETTINGS, with_payload
 
 if TYPE_CHECKING:
     from courier.interfaces.payloads import Payload
@@ -83,21 +83,6 @@ def _payload_config(
     return name, {"file": str(path)}, template
 
 
-#: Every in-tree job builder, with the settings besides ``targets`` and
-#: ``payload`` that it needs to emit one job per file.
-_BUILDER_SETTINGS: dict[str, dict[str, Any]] = {
-    "DummyJobBuilder": {},
-    "file_count_builder": {"files_per_job": 1},
-    "filter_and_group": {"files_per_job": 1},
-    "metadata_router": {"routes": [{"name": "all", "files_per_job": 1}]},
-}
-
-
-def test_every_in_tree_builder_is_covered() -> None:
-    """Guard the guard: a builder missing here would go untested."""
-    assert set(_BUILDER_SETTINGS) <= set(job_builders.names())
-
-
 def _builder(
     service: MagicMock,
     name: str,
@@ -109,7 +94,7 @@ def _builder(
     return builder_cls(
         service,
         with_payload(
-            {**_BUILDER_SETTINGS[builder], "targets": ["ld"]},
+            {**IN_TREE_BUILDER_SETTINGS[builder], "targets": ["ld"]},
             identifier="p1",
             name=name,
             settings=config,
@@ -135,7 +120,7 @@ _CASES = [
 
 
 class TestTheTemplateTravelsOnce:
-    @pytest.mark.parametrize("builder", list(_BUILDER_SETTINGS))
+    @pytest.mark.parametrize("builder", list(IN_TREE_BUILDER_SETTINGS))
     @pytest.mark.parametrize(("kind", "source"), _CASES)
     def test_message_holds_the_rendered_script_only(
         self,

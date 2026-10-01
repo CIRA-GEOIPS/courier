@@ -176,12 +176,18 @@ def _plugin_kind_or_none(raw_kind: str) -> PluginKind | None:
     """Map a YAML ``kind`` onto a :class:`PluginKind`, or ``None`` if not one.
 
     Accepts both the singular kinds written in configs (``data_monitor``) and
-    the plural interface names (``data_monitors``).
+    the plural interface names (``data_monitors``) that
+    :func:`courier.cli.plugins.normalize_kind` maps them to, so the dashboard
+    understands exactly the set of configs the runtime accepts.
     """
-    try:
-        return PluginKind(raw_kind)
-    except ValueError:
-        pass
+    from courier.cli.plugins import normalize_kind  # noqa: PLC0415
+
+    for candidate in (raw_kind, normalize_kind(raw_kind)):
+        try:
+            return PluginKind(candidate)
+        except ValueError:
+            continue
+    # Plural interface name -> singular enum value (e.g. "dispatchers").
     singular = raw_kind[:-1] if raw_kind.endswith("s") else raw_kind
     try:
         return PluginKind(singular)

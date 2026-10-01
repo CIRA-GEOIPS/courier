@@ -42,7 +42,6 @@ class ShellPayload(Payload):
     interface: ClassVar[str] = "payloads"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "shell_payload"
-    version: ClassVar[str] = "-1"
     default_binary: ClassVar[str] = "sh"
     config_class: ClassVar[type[PayloadConfig]] = ShellPayloadConfig
 

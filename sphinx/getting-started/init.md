@@ -66,36 +66,12 @@ $ courier init
 │ Courier Init — interactive service config generator      │
 │ Follow the prompts to create your service configuration. │
 ╰──────────────────────────────────────────────────────────╯
-╭─────────────────────────────────────────────────────────╮
-│ Service Metadata — basic information about your service │
-╰─────────────────────────────────────────────────────────╯
 Service name (my-processor): my-processor
 Namespace (my-processor):
 Description (A courier service: my-processor): Watches for data and processes it
-╭──────────────────────────────────────────────────────────╮
-│ Data Monitors — select which data monitor plugins to use │
-╰──────────────────────────────────────────────────────────╯
-                                         Available Data Monitors
-╭───┬─────────────────────────────┬──────────────────────────────────────────────────────────────────────╮
-│ # │ Name                        │ Description                                                          │
-├───┼─────────────────────────────┼──────────────────────────────────────────────────────────────────────┤
-│ 1 │ cron_glob                   │ Cron-scheduled glob-based data monitor.                              │
-│ 2 │ file_system_poller_watchdog │ File System Polling Data Monitor Plugin.                             │
-│ 3 │ kafka_consumer              │ Consume JSON messages from a Kafka topic and yield ``File`` objects. │
-│ 4 │ rabbit_mq_watcher           │ RabbitMQ Data Monitor Plugin.                                        │
-│ 5 │ s3_poller                   │ Poll an S3 bucket on an interval and emit new object URIs.           │
-╰───┴─────────────────────────────┴──────────────────────────────────────────────────────────────────────╯
-Add a data monitor (1-5, name, or Enter to skip): 2
-  ✓ file_system_poller_watchdog
-  Configure file_system_poller_watchdog? [y/n] (y): y
-  Configure FileSystemPollerConfig:
-    path * (Directory path to watch for new files): /data/incoming
-    hostname (Hostname to attach to emitted files) (localhost):
-  ✓ Configuration complete
-  Add another data monitor? [y/n] (n): n
-╭────────────────────────────────────────────────────────╮
-│ Job Builders — select which job builder plugins to use │
-╰────────────────────────────────────────────────────────╯
+
+# ... add file_system_poller_watchdog, with path /data/incoming ...
+
 Add a job builder (1-4, name, or Enter to skip): 1
   ✓ DummyJobBuilder
   Configure DummyJobBuilder? [y/n] (y): y
@@ -119,32 +95,11 @@ Choose the payload (1-3 or name): 1
   Configure BashPayloadConfig:
     file:
     script: echo "Files assigned: {{ files | length }}"
-    toolchain:
     ...
   ✓ Configuration complete
   Add another job builder? [y/n] (n): n
-╭──────────────────────────────────────────────────────╮
-│ Dispatchers — select which dispatcher plugins to use │
-╰──────────────────────────────────────────────────────╯
-Add a dispatcher (1-2, name, or Enter to skip): 1
-  ✓ local_dispatcher
-  Configure local_dispatcher? [y/n] (y): n
-  Add another dispatcher? [y/n] (n): n
 
-                                  Configuration Preview
-╭──────────────────────────────────────────┬──────────────┬─────────────────────────────┬────────────────╮
-│ Identifier                               │ Kind         │ Plugin                      │ Config         │
-├──────────────────────────────────────────┼──────────────┼─────────────────────────────┼────────────────┤
-│ data-monitor-file-system-poller-watchdog │ data_monitor │ file_system_poller_watchdog │ path, hostname │
-│ job-builder-dummyjobbuilder              │ job_builder  │ DummyJobBuilder             │ targets        │
-│ └─payload-bash-payload                   │ payload      │ bash_payload                │ script         │
-│ dispatcher-local-dispatcher              │ dispatcher   │ local_dispatcher            │ (defaults)     │
-╰──────────────────────────────────────────┴──────────────┴─────────────────────────────┴────────────────╯
-
-Proceed with this configuration? [y/n] (y): y
-Output path (/home/user/my-processor-service.yaml):
-
-✓ Config written to /home/user/my-processor-service.yaml
+# ... add local_dispatcher, preview and save ...
 ```
 
 The preview lists each job builder's payload under it. The identifiers are

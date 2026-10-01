@@ -39,14 +39,6 @@ from courier.types.payload import PayloadSpec
 _READ_ONLY_DIR_MODE = 0o500
 
 
-@pytest.fixture
-def service() -> MagicMock:
-    svc = MagicMock()
-    svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
-    return svc
-
-
 def _job() -> Job:
     return Job("n", "job-1", {}, files=[File(file=Path("/data/a.nc"))])
 

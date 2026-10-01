@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import json
 import stat
-import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import kombu.exceptions
@@ -53,9 +52,7 @@ from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
+from tests._helpers import consume
 
 
 class _RecordingDispatcher(Dispatcher):
@@ -139,47 +136,8 @@ def _spec(name: str, identifier: str = "payload-1", **config: object) -> Payload
     return PayloadSpec(name=name, identifier=identifier, config=config)
 
 
-@pytest.fixture
-def service() -> MagicMock:
-    svc = MagicMock()
-    svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
-    return svc
-
-
-@pytest.fixture
-def private_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point ``TMPDIR`` at an empty directory, as a deployment would.
-
-    ``tempfile`` caches the temp directory on first use, so the cache is
-    cleared too; monkeypatch restores both afterwards.
-    """
-    directory = tmp_path / "tmpdir"
-    directory.mkdir()
-    monkeypatch.setenv("TMPDIR", str(directory))
-    monkeypatch.setattr(tempfile, "tempdir", None)
-    return directory
-
-
 def _dispatcher(service: MagicMock, identifier: str) -> _RecordingDispatcher:
     return _RecordingDispatcher(service, {}, identifier=identifier)
-
-
-def _feed(dispatcher: Dispatcher, service: MagicMock, *jobs: Job | str) -> None:
-    """Run the consume loop over *jobs* (jobs or raw message bodies), then stop.
-
-    ``Service.consume`` only returns once the stop event is set, so the fake
-    stream sets it after the last message to mirror that; the loop itself does
-    not consult the event.
-    """
-
-    def _consume(*_args: object, **_kwargs: object) -> Iterator[tuple[str, None]]:
-        for job in jobs:
-            yield str(job), None
-        dispatcher._stop_event.set()
-
-    service.consume.side_effect = _consume
-    dispatcher.handle_incoming_jobs()
 
 
 def _processed(dispatcher: Dispatcher, status: str) -> float:
@@ -251,7 +209,7 @@ class TestJobExecution:
         service: MagicMock,
     ) -> None:
         dispatcher = _dispatcher(service, "exec-basic")
-        _feed(dispatcher, service, _job("job-1"))
+        consume(dispatcher, _job("job-1"))
 
         (executed,) = dispatcher.executed
         assert executed.identifier == "job-1"
@@ -260,7 +218,7 @@ class TestJobExecution:
     def test_execution_log_is_published(self, service: MagicMock) -> None:
         """Downstream consumers read execution logs off the dispatcher queue."""
         dispatcher = _dispatcher(service, "exec-log")
-        _feed(dispatcher, service, _job("job-1"))
+        consume(dispatcher, _job("job-1"))
 
         published = [
             ExecutionLog.from_string(call.kwargs["message"])
@@ -294,7 +252,7 @@ class TestJobExecution:
 
         before = _processed(dispatcher, "failure")
         with patch.object(dispatcher, "get_execution_log", side_effect=_flaky):
-            _feed(dispatcher, service, _job("job-1"), _job("job-2"))
+            consume(dispatcher, _job("job-1"), _job("job-2"))
 
         assert calls == ["job-1", "job-2"]
         assert _processed(dispatcher, "failure") == before + 1
@@ -339,7 +297,7 @@ class TestJobExecution:
         failures = _processed(dispatcher, "failure")
         successes = _processed(dispatcher, "success")
 
-        _feed(dispatcher, service, _job("job-1"), _job("job-2"))  # must not raise
+        consume(dispatcher, _job("job-1"), _job("job-2"))  # must not raise
 
         assert [j.identifier for j in dispatcher.executed] == ["job-1", "job-2"]
         assert _processed(dispatcher, "failure") == failures + 1
@@ -359,7 +317,7 @@ class TestJobExecution:
             "courier.interfaces.dispatchers._scan_and_emit_output_files",
             side_effect=TypeError("bad match"),
         ):
-            _feed(dispatcher, service, _bash_job(binary="true"))  # must not raise
+            consume(dispatcher, _bash_job(binary="true"))  # must not raise
 
         assert _processed(dispatcher, "failure") == failures + 1
 
@@ -414,7 +372,7 @@ class TestDedupe:
         metric = "courier_dispatcher_dedupe_skips_total"
         before = REGISTRY.get_sample_value(metric, labels) or 0.0
 
-        _feed(dispatcher, service, _job("dup", payload), _job("dup", payload))
+        consume(dispatcher, _job("dup", payload), _job("dup", payload))
 
         assert len(dispatcher.executed) == 1
         assert REGISTRY.get_sample_value(metric, labels) == before + 1
@@ -422,7 +380,7 @@ class TestDedupe:
     def test_distinct_identifiers_both_run(self, service: MagicMock) -> None:
         """The guard must not swallow genuinely different jobs."""
         dispatcher = _dispatcher(service, "dedupe-distinct")
-        _feed(dispatcher, service, _job("id-a"), _job("id-b"))
+        consume(dispatcher, _job("id-a"), _job("id-b"))
 
         assert [j.identifier for j in dispatcher.executed] == ["id-a", "id-b"]
 
@@ -439,7 +397,7 @@ class TestDedupe:
         archive = _job("/d/a.nc", _spec("bash_payload", "archive", binary="true"))
         process = _job("/d/a.nc", _spec("bash_payload", "process", binary="true"))
 
-        _feed(dispatcher, service, archive, process)
+        consume(dispatcher, archive, process)
 
         assert [j.payload.identifier for j in dispatcher.executed if j.payload] == [
             "archive",
@@ -476,7 +434,7 @@ class TestLifecycle:
     def test_consume_receives_the_stop_event(self, service: MagicMock) -> None:
         """The stop event must reach the broker loop, not just be stored."""
         dispatcher = _dispatcher(service, "life-event")
-        _feed(dispatcher, service)  # empty stream, stops after one pass
+        consume(dispatcher)  # empty stream, stops after one pass
 
         assert service.consume.call_args.kwargs["stop_event"] is dispatcher._stop_event
         assert service.consume.call_args[0][0] == dispatcher.incoming_queue
@@ -729,7 +687,7 @@ class TestUnexecutableJobsAreParked:
         dispatcher = LocalDispatcher(service, {}, identifier="parker")
         before = _processed(dispatcher, "unexecutable")
 
-        _feed(dispatcher, service, body)
+        consume(dispatcher, body)
 
         service.park_message.assert_called_once()
         queue, parked_body, parked_reason = service.park_message.call_args.args
@@ -744,7 +702,7 @@ class TestUnexecutableJobsAreParked:
 
     def test_incompatible_representation_is_parked(self, service: MagicMock) -> None:
         dispatcher = _ForeignOnlyDispatcher(service, {}, identifier="parker")
-        _feed(dispatcher, service, _bash_job(binary="true"))
+        consume(dispatcher, _bash_job(binary="true"))
 
         (_, _, reason) = service.park_message.call_args.args
         assert "no compatible representation" in reason
@@ -761,7 +719,7 @@ class TestUnexecutableJobsAreParked:
             "_validate_payload_toolchain",
             side_effect=[UnexecutableJobError("tool missing"), None],
         ):
-            _feed(dispatcher, service, job, job)
+            consume(dispatcher, job, job)
 
         service.park_message.assert_called_once()
         published = [
@@ -1035,7 +993,7 @@ class TestEndToEndExecution:
         job.payload = payload.to_job_spec(job)
 
         dispatcher = LocalDispatcher(service, {}, identifier="e2e")
-        _feed(dispatcher, service, job)
+        consume(dispatcher, job)
 
         assert destination.exists()
         assert destination.read_text() == "payload-payload-payload"

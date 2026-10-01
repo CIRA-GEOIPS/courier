@@ -25,27 +25,17 @@ from courier.interfaces.job_builders import JobBuilder, job_builders
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.types.file import FrozenFile
 from courier.types.job import Job
-from tests._helpers import DEFAULT_PAYLOAD_ID, payload_block, with_payload
-
-#: Settings besides ``payload`` that an in-tree builder needs, so the payload
-#: block is the only thing wrong with the configs these tests build.  A builder
-#: missing from this table (a third-party one) is given ``{}``: the payload
-#: check runs before a subclass validates anything of its own.
-_OWN_SETTINGS: dict[str, dict[str, Any]] = {
-    "metadata_router": {"routes": [{"name": "all", "files_per_job": 1}]},
-    "filter_and_group": {"files_per_job": 1},
-    "file_count_builder": {"files_per_job": 1},
-}
+from tests._helpers import (
+    DEFAULT_PAYLOAD_ID,
+    IN_TREE_BUILDER_SETTINGS,
+    payload_block,
+    with_payload,
+)
 
 BUILDER_NAMES = job_builders.names()
 
 #: What each in-tree builder is, so a newly registered one cannot be skipped.
-IN_TREE_BUILDERS = [
-    "DummyJobBuilder",
-    "file_count_builder",
-    "filter_and_group",
-    "metadata_router",
-]
+IN_TREE_BUILDERS = list(IN_TREE_BUILDER_SETTINGS)
 
 _UNUSABLE_CONFIGS = [
     pytest.param(None, "has no 'payload' block", id="no-config"),
@@ -101,8 +91,12 @@ def _builder_class(name: str) -> type[JobBuilder]:
 
 
 def _config(name: str, **settings: Any) -> dict[str, Any]:
-    """Return a builder config for *name* with ``targets`` but no payload."""
-    return {"targets": ["dp-1"], **_OWN_SETTINGS.get(name, {}), **settings}
+    """Return a builder config for *name* with ``targets`` but no payload.
+
+    A third-party builder gets no settings of its own: the payload check runs
+    before a subclass validates anything.
+    """
+    return {"targets": ["dp-1"], **IN_TREE_BUILDER_SETTINGS.get(name, {}), **settings}
 
 
 def _file(name: str = "a") -> FrozenFile:

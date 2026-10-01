@@ -25,7 +25,7 @@ from courier.metrics import COURIER_CUSTOM_GAUGE
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.types.file import File
-from tests.unit_tests.plugins.conftest import (
+from tests._helpers import (
     captured_records,
     consume,
     file_job,

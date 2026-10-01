@@ -52,22 +52,17 @@ Both accept `shell_payload`, `bash_payload` and `python_payload`.
    is counted in `courier_payload_jobs_processed_total{status="failure"}`.
 
 If anything else goes wrong while preparing or running a job, or while
-collecting its output files (a dispatcher-only value the template uses that
-this dispatcher does not define, an error rendering the command arguments, a
-script that cannot be written, a bug in a custom dispatcher's hook), the error
-is logged at ERROR with its traceback, the script is removed (unless a
-submitted Slurm job may still read it), and the job counts as
-`status="failure"`. The dispatcher carries on with the next job either way.
+publishing its output files or execution logs (a dispatcher-only value the
+template uses that this dispatcher does not define, an error rendering the
+command arguments, a script that cannot be written, a broker fault, a bug in a
+custom dispatcher), the error is logged at ERROR with its traceback, the
+script is removed (unless a submitted Slurm job may still read it), and the
+job counts as `status="failure"`. Its message is acknowledged, and the
+dispatcher carries on with the next job.
 
-Only a fault the dispatcher cannot pin on one job ends the `courier run`
-process: a failure to publish a job's output files or execution logs
-(`TransientBrokerError`, `FatalBrokerError` or a raw transport error), a
-failure to consume, or a failure to park a message. A publish failure is the
-broker's, not the job's, so the job is counted as neither a success nor a
-failure. The message in hand is not acknowledged as done: it is retried as
-described in {doc}`../concepts/adr/0010-poison-message-handling`. A retried
-job runs again, so output files published before the fault can be published
-twice.
+Only a failure to consume a message, or to park one, ends the `courier run`
+process. The message in hand is then not acknowledged, and is retried as
+described in {doc}`../concepts/adr/0010-poison-message-handling`.
 
 `local_dispatcher` logs nothing at INFO for a job that runs normally
 (`slurm_dispatcher` logs each submission). To follow jobs in the log, set
@@ -90,9 +85,9 @@ from an older release, since every current builder attaches one; see
 These options are accepted by every dispatcher (`DispatcherGroupConfig`).
 Unknown keys are rejected, and keys removed from older dispatchers fail with a
 message that names their replacement (see
-{doc}`../getting-started/upgrading`). A payload setting placed here (a field
-of any installed payload's config model, such as `script` or `prefix_args`)
-is reported as belonging in the job builder's payload block.
+{doc}`../getting-started/upgrading`). A setting every payload takes (such as
+`script` or `prefix_args`; see {doc}`payloads`) placed here is reported as
+belonging in the job builder's payload block.
 
 | Option            | Type                         | Default  | Description                                                                                                                                                                                                                     |
 | ----------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -120,27 +115,14 @@ dispatcher's working directory.
 
 ### The log directory
 
-`log_dir` is checked, and created, only with `log_to_file: true`, which
-requires it (`log_dir is required when log_to_file=True`).
-
-- **`courier run`** prepares it when it builds the dispatcher at startup, on
-  the host (or in the container) the dispatcher runs on, and only in a process
-  that runs that dispatcher step. A missing directory is created, with its
-  parents. Startup fails if the path is not a directory
-  (`log_dir is not a directory: <path>`), cannot be created
-  (`log_dir cannot be created: <path>: <error>`), or is not writable
-  (`log_dir is not writable: <path>`). `slurm_dispatcher` inherits this, so it
-  creates `log_dir` too, although `log_to_file` does not apply to Slurm jobs.
-- **`courier validate`** never creates it, because it usually runs somewhere
-  else. It checks the path where it runs and, when the directory is not
-  usable there, prints one of these notes (a note, not an error: the config
-  is still valid):
-
-```text
-note: process.config.log_dir: /var/log/courier does not exist here; `courier run` creates it when it builds the dispatcher at startup, and fails to start if it cannot create or write it where it runs
-note: process.config.log_dir: /var/log/courier exists here but is not writable; `courier run` does not change its permissions, and fails to start unless it is writable where it runs
-note: process.config.log_dir: /var/log/courier exists here but is not a directory; `courier run` fails to start unless it is a writable directory, or can be created as one, where it runs
-```
+`log_dir` is required with `log_to_file: true`, and used only then.
+`courier run` creates it, with its parents, when it builds the dispatcher at
+startup, on the host (or in the container) that runs that dispatcher step, and
+fails to start if the path is not a directory, cannot be created, or is not
+writable.
+`slurm_dispatcher` inherits this, although `log_to_file` does not apply to
+Slurm jobs. `courier validate` neither creates nor checks it, because it
+usually runs somewhere else.
 
 (output-files)=
 
@@ -214,8 +196,8 @@ courier_custom_gauge{dispatcher_identifier="<dispatcher identifier>", metric_nam
 to the value. Leading and trailing whitespace on the line is ignored,
 `metric_name` is any run of non-space characters, and the value is parsed as a
 float. A line that starts with `COURIER_METRIC:` but does not carry a name and
-a numeric value (`COURIER_METRIC: x abc`, `... 1.2.3`, `... nan`) is skipped
-with a WARNING; it never fails the job. The gauge
+a numeric value is skipped (one whose value `float()` rejects, such as
+`1.2.3`, also logs a WARNING); it never fails the job. The gauge
 keeps its last value until the next job updates it, and is served on the
 service's `/metrics` endpoint with every other courier metric.
 `slurm_dispatcher` does not read these lines, and with `log_only_errors` there
@@ -227,15 +209,6 @@ A bash payload that reports scan-to-product latency:
 NOW=$(date -u +%s)
 SCAN_EPOCH=$(date -u -d "$SCAN_TIME" +%s)
 echo "COURIER_METRIC: scan_to_product_latency_seconds $((NOW - SCAN_EPOCH))"
-```
-
-The same from a Python payload:
-
-```python
-import datetime as dt
-
-latency = (dt.datetime.now(dt.UTC) - scan_time).total_seconds()
-print(f"COURIER_METRIC: scan_to_product_latency_seconds {latency:.1f}")
 ```
 
 Query it by dispatcher and metric name:
@@ -304,16 +277,11 @@ output in wait mode, once the job has finished.
 
 The rendered script is written to `slurm_output_dir` under a new, random name
 that starts with the job identifier, created exclusively. In a payload
-template, the reserved name `output_dir` holds `slurm_output_dir`; like every
-dispatcher-only value it is used as a bare value, `{{ output_dir }}/x`, as
-{doc}`payloads` describes.
+template, `{{ output_dir }}` holds `slurm_output_dir`.
 
 - **As a batch script.** A `shell_payload` or `bash_payload` whose script runs
   directly (no `binary`, no `prefix_args`) is submitted as the batch script
-  itself: `sbatch <options> <script> [suffix_args...]`. (`toolchain_prepend`
-  has no bearing on this: it is never part of a job's command.
-  `python_payload` puts it in front of the interpreter in its `toolchain`
-  probes only, and `shell_payload` and `bash_payload` ignore it.) If the
+  itself: `sbatch <options> <script> [suffix_args...]`. If the
   script has no shebang line, one naming the payload's interpreter is added
   (`#!/usr/bin/env bash`, or `#!<path>` for an absolute `default_binary`).
   `#SBATCH` directives at the top of the script apply, except where the
@@ -354,8 +322,7 @@ logs where the job's output will be.
 When `sbatch` rejects a submission, the rejection is logged at ERROR and
 counted, and the execution log carries `sbatch`'s return code and its stderr.
 
-The payload's `toolchain` is checked on the submit host, not on a compute node,
-with `python_payload`'s `toolchain_prepend` in front of each probe.
+The payload's `toolchain` is checked on the submit host, not on a compute node.
 
 (script-lifetime)=
 
