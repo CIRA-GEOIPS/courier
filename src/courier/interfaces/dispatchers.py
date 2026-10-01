@@ -23,6 +23,7 @@ from courier.constants import (
     FILE_FOUND_EXCHANGE,
     PluginRunState,
     job_ready_queue_for,
+    dead_letter_queue_for,
 )
 from courier.dispatchers._output_scanner import _scan_and_emit_output_files
 from courier.errors import CourierError, UnexecutableJobError
@@ -244,7 +245,6 @@ class Dispatcher(ServicePlugin):
         # exactly one thread for its whole life; see _emit_queue_depth.
         self._depth_connection: kombu.Connection | None = None
         self._bad_jobs: Set = set()
-        self.dlq : list[Job] = []
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Resolve the job's payload, prepare its environment, and execute it.
@@ -1275,7 +1275,7 @@ class Dispatcher(ServicePlugin):
                         f"Job {job.identifier} placed into "
                         "dead-letter queue after exceeding retry count."
                     )
-                    self.dlq.append(job)
+                    self.parent_service.emit(dead_letter_queue_for(self.incoming_queue), str(job))
                 else:
                     self._logger.error(
                         f"Unsavory job {job.identifier} emitted into the consumer queue for retry"
