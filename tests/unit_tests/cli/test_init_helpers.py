@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from courier.cli.init_helpers import (
     _module_config_model,
@@ -104,7 +104,7 @@ class TestFindConfigModel:
 class TestGetFieldMetadata:
     """Tests for get_field_metadata()."""
 
-    def test_a_factory_default_is_not_offered_as_a_value(self):
+    def test_a_factory_default_is_resolved_to_its_value(self):
         """``Field(default_factory=list)`` has no ``default``: pydantic reports
         ``PydanticUndefined``, which the prompt once offered as the default and
         wrote into the config as the string "PydanticUndefined"."""
@@ -112,7 +112,30 @@ class TestGetFieldMetadata:
         toolchain = next(f for f in fields if f["name"] == "toolchain")
 
         assert toolchain["required"] is False
-        assert toolchain["default"] is ...
+        assert toolchain["default"] == []
+
+    def test_a_data_taking_factory_receives_no_field_values(self):
+        """A factory taking validated data gets field values, not FieldInfos.
+
+        No field values exist before prompting, so the factory sees none.
+        """
+
+        def _copy_data(data: dict) -> dict:
+            return dict(data)
+
+        class _Model(BaseModel):
+            seen: dict = Field(default_factory=_copy_data)
+
+        (seen,) = get_field_metadata(_Model)
+
+        assert seen["default"] == {}
+
+    def test_a_required_field_defaults_to_the_sentinel(self):
+        """Required fields report the documented ``...`` sentinel."""
+        fields = get_field_metadata(S3PollerConfig)
+        bucket = next(f for f in fields if f["name"] == "bucket")
+
+        assert bucket["default"] is ...
 
     def test_required_field(self):
         """Required fields should have required=True."""
