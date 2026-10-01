@@ -84,7 +84,6 @@ REMOVED_DISPATCHER_KEYS: dict[str, str] = {
     "bash_script": (
         f"set the script in the job builder's nested payload block ({_UPGRADE_GUIDE})"
     ),
-    "max_workers": _PARALLEL_REMOVED,
     "fail_fast": _PARALLEL_REMOVED,
     "python_venv": (
         f"set the payload's `default_binary` to the venv's interpreter "
@@ -151,7 +150,8 @@ class DispatcherGroupConfig(BaseModel):
     #: Patterns that discover output files in a job's stdout/stderr; each match
     #: is re-emitted into the file-found exchange so chained pipelines work.
     output_files: list[OutputFilePattern] | None = Field(default=None)
-    max_workers: int = Field(default=1)
+    #: How many jobs this dispatcher runs at once.
+    max_workers: int = Field(default=1, ge=1)
 
     @model_validator(mode="before")
     @classmethod

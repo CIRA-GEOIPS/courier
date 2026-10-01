@@ -12,7 +12,7 @@ import threading
 import time
 import traceback
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -202,13 +202,14 @@ class Dispatcher(ServicePlugin):
             "dispatcher_name": self.name,
             "dispatcher_identifier": self.identifier,
         }
-        self.active_job_timestamps: dict[str, float] = {}
         # Bounded LRU of recently-seen jobs, keyed by _dedupe_key. Per replica
         # only: nothing dedupes across replicas, so a job redelivered to
         # another replica runs again. (Builder state sync stops duplicate jobs
-        # being published; it does not dedupe here.) Thread-safe: only touched
-        # by handle_incoming_jobs thread.
+        # being published; it does not dedupe here.) The consumer thread
+        # records keys and job threads forget them, so every access holds
+        # _seen_jobs_lock.
         self._seen_jobs: OrderedDict[Hashable, None] = OrderedDict()
+        self._seen_jobs_lock = threading.Lock()
         # Payload name -> its class and the representation it runs as here,
         # and validated (payload, toolchain) keys, so jobs do not re-pay
         # lookup and probing.
@@ -220,11 +221,14 @@ class Dispatcher(ServicePlugin):
         # lazily by the consumer thread and closed by it, so it is owned by
         # exactly one thread for its whole life; see _emit_queue_depth.
         self._depth_connection: kombu.Connection | None = None
-        # Thread pool for concurrent execution
-        self._executor: ThreadPoolExecutor = ThreadPoolExecutor(
-            max_workers=self.config.max_workers)
+        # Thread pool for concurrent execution. handle_incoming_jobs replaces
+        # it and the futures queue on every run and shuts the pool down as it
+        # leaves, so a restarted dispatcher gets a fresh one.
+        self._executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
         # Synchronized queue containing the asynchronous results from the thread pool.
-        self._futures_queue : queue.Queue = queue.Queue()
+        self._futures_queue: queue.Queue[Future[None]] = queue.Queue()
+        # Held by every submitted job until it finishes, so the consumer stops
+        # taking messages while max_workers jobs are in flight.
         self._slots = threading.BoundedSemaphore(self.config.max_workers)
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
@@ -625,13 +629,14 @@ class Dispatcher(ServicePlugin):
         replica is not in its LRU and runs again. Job builder state sync
         prevents duplicate jobs from being published, upstream of here.
         """
-        if key in self._seen_jobs:
-            self._seen_jobs.move_to_end(key)
-            return True
-        self._seen_jobs[key] = None
-        if len(self._seen_jobs) > _DEDUPE_LRU_SIZE:
-            self._seen_jobs.popitem(last=False)
-        return False
+        with self._seen_jobs_lock:
+            if key in self._seen_jobs:
+                self._seen_jobs.move_to_end(key)
+                return True
+            self._seen_jobs[key] = None
+            if len(self._seen_jobs) > _DEDUPE_LRU_SIZE:
+                self._seen_jobs.popitem(last=False)
+            return False
 
     def _queue_depth_connection(self) -> kombu.Connection:
         """Return this dispatcher's own broker connection, opening it if needed.
@@ -729,18 +734,11 @@ class Dispatcher(ServicePlugin):
                     self.name,
                 )
                 os._exit(1)
-            finally:
-                # This thread opened the probe connection, so this thread
-                # closes it. stop() joins with a timeout and cannot assume
-                # the loop has left, and closing a connection out from under
-                # a thread still using it is the class of bug being fixed.
-                self._close_queue_depth_connection()
 
     def _consume_jobs(self) -> None:
-        """Handle a steady stream of jobs.
+        """Consume this dispatcher's job queue, submitting each job to the pool.
 
-        Initialize job processing and add submit a job to be processed in the
-        thread pool.
+        Runs on the consumer thread.  Returns once the consume loop ends.
         """
         for job_string, parent_ctx in self.parent_service.consume(
             self.incoming_queue,
@@ -759,7 +757,31 @@ class Dispatcher(ServicePlugin):
         self._logger.debug("Dispatcher %s consume loop exited", self.name)
 
     def handle_incoming_jobs(self) -> None:
-        """Handle the consumption and processing of consumed jobs."""
+        """Consume this dispatcher's job queue and run up to ``max_workers`` jobs.
+
+        A consumer thread reads the queue and submits each job to a pool of
+        ``max_workers`` threads; this thread waits on the results, and returns
+        once the consume loop has ended and every submitted job has finished.
+
+        A job that fails is logged and counted as a ``failure``; a message
+        that cannot be executed here at all (not a job, no payload, missing
+        plugin, representation or toolchain) is parked on the dead-letter
+        queue and counted as ``unexecutable``.  Only a failure to consume or
+        to park a message escapes.  A failure in a job thread sets the stop
+        event first, so no more jobs are taken.
+
+        :meth:`~courier.service.Service.consume` acknowledges a message once
+        its job is submitted, not once it has run.  A job still running when
+        the process dies is therefore lost rather than redelivered, and a
+        failure to park a job that parsed cannot leave its message
+        unacknowledged.  A message that is not a job is parked by the consumer
+        thread before it is acknowledged, as before.
+        """
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.config.max_workers,
+            thread_name_prefix=f"{self.name}-job",
+        )
+        self._futures_queue = queue.Queue()
         consumer_errors: queue.Queue[BaseException] = queue.Queue(maxsize=1)
         ctx = contextvars.copy_context()
 
@@ -768,7 +790,12 @@ class Dispatcher(ServicePlugin):
                 self._consume_jobs()
             except BaseException as exc:
                 consumer_errors.put(exc)
-                self._stop_event.set()
+            finally:
+                # The consumer thread opened the probe connection, so it
+                # closes it. stop() joins with a timeout and cannot assume
+                # the loop has left, and closing a connection out from under
+                # a thread still using it is the class of bug being fixed.
+                self._close_queue_depth_connection()
 
         consumer_thread = threading.Thread(
             target=ctx.run,
@@ -778,32 +805,24 @@ class Dispatcher(ServicePlugin):
         )
         consumer_thread.start()
 
-        while not self._stop_event.is_set():
-            try:
-                exc = consumer_errors.get_nowait()
-            except queue.Empty:
-                pass
-            else:
-                raise exc
-
-            try:
-                future = self._futures_queue.get(timeout=0.1)
-            except queue.Empty:
-                continue
-
-            future.result()
-
         try:
-            exc = consumer_errors.get_nowait()
-        except queue.Empty:
-            pass
-        else:
-            raise exc
-
-        while not self._futures_queue.empty():
-            self._futures_queue.get().result()
+            # Every future is queued before the consumer thread ends, so once
+            # it has ended an empty queue means there is nothing left to wait on.
+            while consumer_thread.is_alive() or not self._futures_queue.empty():
+                try:
+                    future = self._futures_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                future.result()
+        except BaseException:
+            self._stop_event.set()
+            raise
+        finally:
+            self._executor.shutdown(wait=False, cancel_futures=True)
 
         consumer_thread.join()
+        if not consumer_errors.empty():
+            raise consumer_errors.get()
 
     def _parse_job(self, body: str, parent_ctx: Any) -> Job | None:
         """Deserialize a message body; park it and return None if not a job."""
@@ -846,8 +865,13 @@ class Dispatcher(ServicePlugin):
                     dispatcher_identifier=self.identifier,
                 ).observe(time.time() - job.emit_time)
 
+            # Take a slot before the dedupe check: a job parked as unexecutable
+            # is forgotten as it finishes, so with one worker a redelivery of
+            # it is checked only after that, as when jobs ran on this thread.
+            self._slots.acquire()
             key = self._dedupe_key(job)
             if self._recently_seen(key):
+                self._slots.release()
                 self._dedupe_skips.labels(
                     dispatcher_identifier=self.identifier,
                 ).inc()
@@ -856,18 +880,14 @@ class Dispatcher(ServicePlugin):
                     extra={"correlation_id": job.correlation_id},
                 )
                 return
-            self._slots.acquire()
             ctx = contextvars.copy_context()
-            future = self._executor.submit(
-                ctx.run, self._run_job, job, body, key)
+            future = self._executor.submit(ctx.run, self._run_job, job, body, key)
             future.add_done_callback(lambda _f: self._slots.release())
             self._futures_queue.put(future)
 
     def _run_job(self, job: Job, body: str, key: tuple[str, str]) -> None:
         """Execute *job*, publish its results, and account for it."""
         start_time = time.time()
-        job_id = job.identifier
-        self.active_job_timestamps[job_id] = start_time
         self._active_jobs.labels(**self._metric_labels).inc()
         self._queue_wait_duration.labels(**self._metric_labels).observe(
             start_time - job.last_modified,
@@ -887,7 +907,8 @@ class Dispatcher(ServicePlugin):
         except UnexecutableJobError as exc:
             # Forget the job, so re-driving it from the dead-letter queue once
             # the deployment is fixed runs it rather than skipping a duplicate.
-            self._seen_jobs.pop(key, None)
+            with self._seen_jobs_lock:
+                self._seen_jobs.pop(key, None)
             self._park_unexecutable(body, job, exc)
         except Exception as exc:  # one bad job must never end the service
             self._logger.exception(
@@ -899,7 +920,7 @@ class Dispatcher(ServicePlugin):
             span.record_exception(exc)
             self._jobs_processed.labels(status="failure", **self._metric_labels).inc()
         finally:
-            execution_time = time.time() - self.active_job_timestamps.pop(job_id)
+            execution_time = time.time() - start_time
             self._job_execution_duration.labels(
                 **self._metric_labels,
             ).observe(execution_time)
@@ -961,9 +982,9 @@ class Dispatcher(ServicePlugin):
         self._stop_event.clear()
         self._subscribed.clear()
         # daemon=True is a backstop, not the shutdown mechanism: stop() sets
-        # _stop_event and joins, which is how the thread is meant to end. If a
-        # job is wedged past the join timeout the interpreter can still exit
-        # rather than hanging forever; the unacked message is redelivered.
+        # _stop_event and joins, which is how the thread is meant to end. It
+        # does not cover the jobs: they run on the pool's threads, which the
+        # interpreter waits for at exit, so a wedged job still holds it up.
         self._main_thread = threading.Thread(
             target=self._run_handle_incoming_jobs,
             name=self.name,
