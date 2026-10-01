@@ -1256,7 +1256,11 @@ class Dispatcher(ServicePlugin):
         job: Job,
         logs: list[ExecutionLog],
     ) -> None:
-        """Process jobs according to their execution logs"""
+        """Process jobs according to their execution logs
+
+        On failure of a job, it is retried if eligible and sent to the 
+        set of bad jobs. If it is ineligible to be retried, the job is sent to the
+        dispatcher's dead-letter queue."""
         for log in logs:
             if log.return_code != 0:
                 self._state = PluginRunState.FAILED
