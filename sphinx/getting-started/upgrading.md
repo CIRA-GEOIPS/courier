@@ -98,13 +98,15 @@ when it fails (at ERROR), or its output line by line with `log_to_logger`.
 
 `parallel_bash` rendered the script once per file and ran up to `max_workers`
 copies at once, with `fail_fast` to stop at the first failure. Nothing replaces
-per-file concurrency inside one dispatcher: each dispatcher runs one job at a
-time. Choose one of:
+per-file concurrency inside one job: a job runs its payload once. A dispatcher
+can run several jobs at once, but its `max_workers` now counts jobs, not files
+(see {doc}`../api-reference/dispatchers`). Choose one of:
 
 - **One file per job, several replicas.** Set `files_per_job: 1` on the
   builder, use `{{ files[0].file }}` where the old script used
   `{{ file.file }}`, and run as many replicas of the dispatcher as you want
-  concurrent runs (each with `--only <dispatcher>`, against the same broker).
+  concurrent runs (each with `--only <dispatcher>`, against the same broker),
+  or set the dispatcher's `max_workers` to that number.
 - **One job, parallel inside the script.** Keep the files together and start
   them in the background from the script:
 
@@ -203,8 +205,7 @@ These keys are rejected with a message that says what to do instead:
 | Key               | Where it was                   | Instead                                                                                                                                                                                                                               |
 | ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bash_script`     | `serial_bash`, `parallel_bash` | `script:` (or `file:`) in the job builder's `payload` block.                                                                                                                                                                          |
-| `max_workers`     | `parallel_bash`                | Per-file parallel execution within one job is not supported. Scale with more dispatcher replicas or smaller jobs.                                                                                                                     |
-| `fail_fast`       | `parallel_bash`                | As for `max_workers`.                                                                                                                                                                                                                 |
+| `fail_fast`       | `parallel_bash`                | Per-file parallel execution within one job is not supported. Scale with more dispatcher replicas or smaller jobs.                                                                                                                     |
 | `python_venv`     | `serial_bash`, `parallel_bash` | Set `python_payload`'s `default_binary` to the environment's interpreter (`/opt/venvs/x/bin/python`), or activate the environment in a shell script. `toolchain_prepend` is not a replacement (see {doc}`../api-reference/payloads`). |
 | `sbatch_template` | `slurm_dispatcher`             | Use the dispatcher's scheduler options or `sbatch_extra_args`, or put `#SBATCH` directives in a `shell_payload`/`bash_payload` script with no `binary` or `prefix_args` (see {doc}`../api-reference/dispatchers`).                    |
 

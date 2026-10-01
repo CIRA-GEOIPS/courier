@@ -61,8 +61,30 @@ job counts as `status="failure"`. Its message is acknowledged, and the
 dispatcher carries on with the next job.
 
 Only a failure to consume a message, or to park one, ends the `courier run`
-process. The message in hand is then not acknowledged, and is retried as
-described in {doc}`../concepts/adr/0010-poison-message-handling`.
+process. A failure to consume leaves the message in hand unacknowledged, and
+it is retried as described in
+{doc}`../concepts/adr/0010-poison-message-handling`; so does a failure to park
+a message that is not a job. A job that parsed has already been acknowledged
+(see {ref}`dispatcher-concurrency`), so a failure to park it loses the job.
+
+(dispatcher-concurrency)=
+
+### Running jobs concurrently
+
+A dispatcher runs up to `max_workers` jobs at once (one by default). It reads
+its queue on one thread, and runs each job from step 3 on in a pool of
+`max_workers` threads; while all of them are busy it reads no further message.
+With `max_workers: 1` jobs run one after another, in the order received.
+
+A message is acknowledged as soon as its job is handed to the pool, not once
+the job has run. A job still running when the process stops or dies is
+therefore not redelivered, and `courier_dispatcher_active_jobs`, not the
+queue's unacknowledged count, shows the jobs in progress. To scale without
+this, run more replicas of the dispatcher instead (each with
+`--only <dispatcher>`, against the same broker).
+
+Jobs in the pool share the dispatcher's process, which waits for them to
+finish before it exits.
 
 `local_dispatcher` logs nothing at INFO for a job that runs normally
 (`slurm_dispatcher` logs each submission). To follow jobs in the log, set
@@ -98,6 +120,7 @@ belonging in the job builder's payload block.
 | `log_only_errors` | `bool`                       | `false`  | Discard the payload's stdout entirely: it is not logged, not written to the log file, and not kept in the execution log. `COURIER_METRIC:` lines are then never seen, and `output_files` can only match stderr (`scan_stderr`). |
 | `scan_stderr`     | `bool`                       | `false`  | Also scan stderr for `output_files` patterns.                                                                                                                                                                                   |
 | `output_files`    | list of patterns (see below) | `None`   | Patterns that find output files in the payload's output and feed them back into the pipeline.                                                                                                                                   |
+| `max_workers`     | `int` >= 1                   | `1`      | How many jobs the dispatcher runs at once. See [Running jobs concurrently](#dispatcher-concurrency).                                                                                                                            |
 
 The payload process inherits the dispatcher's environment, and runs with the
 dispatcher's working directory.
