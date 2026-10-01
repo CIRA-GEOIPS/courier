@@ -17,7 +17,7 @@ import re
 from importlib.metadata import PackageNotFoundError, version
 
 #: PyPI distribution name. Differs from the import package (``courier``)
-#: because ``courier`` was already taken; see RELEASE.md.
+#: because ``courier`` was already taken.
 DISTRIBUTION_NAME = "data-courier"
 
 try:

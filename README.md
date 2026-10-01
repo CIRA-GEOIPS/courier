@@ -35,7 +35,7 @@ Courier runs a central `Service` that coordinates three stages of plugins throug
 
 Each plugin runs in its own thread with independent health monitoring and automatic restart on failure. Configuration is validated at startup with Pydantic, and every payload's script template is parsed then too — not halfway through a run.
 
-Upgrading from a release with the `serial_bash`, `parallel_bash` or `http_dispatcher` dispatchers? The script now lives on the job builder; see the upgrade guide (`sphinx/getting-started/upgrading.md`) and `RELEASE.md`.
+Upgrading from a release with the `serial_bash`, `parallel_bash` or `http_dispatcher` dispatchers? The script now lives on the job builder; see the upgrade guide (`sphinx/getting-started/upgrading.md`).
 
 ## Quick Start
 
