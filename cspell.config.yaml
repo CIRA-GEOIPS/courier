@@ -1,4 +1,5 @@
 version: "0.2"
+language: en
 ignorePaths:
   - "node_modules/**"
   - ".venv/**"
@@ -166,6 +167,11 @@ words:
   - envvar
   - AMQP
   - TTL
+  - microservice
+  - dmc
+  - namespace
+  - ruff
+  - cspell
   # Lua standard library, from the server-side union script in
   # courier.sync.job_builder_state_sync
   - cjson
