@@ -111,9 +111,8 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
 
     * ``name`` — field name (``str``)
     * ``type_hint`` — human-readable type string (e.g. ``"str"``, ``"list[str]"``)
-    * ``default`` — the default value, or ``...`` sentinel if required or
-      produced by a ``default_factory`` (there is no value to show, and
-      ``field_info.default`` would be pydantic's ``PydanticUndefined``)
+    * ``default`` — the default value (a ``default_factory`` is called to
+      produce it), or ``...`` sentinel if required
     * ``description`` — field description string (``""`` when absent)
     * ``required`` — ``True`` when the field has no default
     """
@@ -121,13 +120,16 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
 
     for field_name, field_info in model.model_fields.items():
         required = field_info.is_required()
-        default = None
+        default: Any = ...
         if not required:
-            # required checks if there's a default value or factory,
-            # so this should never resolve to PydanticUndefined unless defined as so.
+            # ``field_info.default`` is PydanticUndefined for a factory default,
+            # which the prompt once offered and wrote into the config as the
+            # literal string "PydanticUndefined"; ask pydantic to resolve it.
+            # ``validated_data`` is the field *values* a factory taking data
+            # receives -- none exist before prompting, so pass an empty dict.
             default = field_info.get_default(
                 call_default_factory=True,
-                validated_data=model.model_fields,
+                validated_data={},
             )
 
         annotation = field_info.annotation
