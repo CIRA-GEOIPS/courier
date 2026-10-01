@@ -13,6 +13,7 @@ from courier.types.datum import (
     Datum,
     FrozenDatum,
 )
+from courier.types.job import Job
 from courier.utils.datetime_utils import (
     build_timestamp_from_components,
     extract_datetime_from_regex,
@@ -75,6 +76,7 @@ _TYPES = [Datum, FrozenDatum]
 _TYPE_IDS = ["Datum", "FrozenDatum"]
 
 _ALL_FIELDS = dict(
+    data={"band": 13, "scan_lines": [1, 2]},
     file=Path("/tmp/sample_file.nc"),
     hostname="testhost",
     source="goes16",
@@ -92,6 +94,7 @@ class TestConstruction:
 
     def test_defaults_are_empty(self, cls: type) -> None:
         obj = cls()
+        assert obj.data is None
         assert obj.file is None
         assert obj.hostname is None
         assert obj.source is None
@@ -121,6 +124,7 @@ class TestSerialization:
 
     def test_to_dict_exposes_every_field(self, cls: type) -> None:
         result = cls(**_ALL_FIELDS).to_dict()
+        assert result["data"] == _ALL_FIELDS["data"]
         assert result["file"] == str(_ALL_FIELDS["file"])
         assert result["hostname"] == "testhost"
         assert result["source"] == "goes16"
@@ -132,6 +136,7 @@ class TestSerialization:
 
     def test_to_dict_of_empty_object_is_all_none(self, cls: type) -> None:
         result = cls().to_dict()
+        assert result["data"] is None
         assert result["file"] is None
         assert result["timestamp"] is None
 
@@ -225,6 +230,19 @@ class TestFreezeAndThaw:
         a = FrozenDatum(file=Path("/x.nc"), metadata={"k": "v"})
         b = FrozenDatum(file=Path("/x.nc"), metadata={"k": "v"})
         assert len({a, b}) == 1
+
+    def test_frozen_files_with_unhashable_data_are_hashable(self) -> None:
+        """A list or dict payload must not stop a FrozenDatum joining a Job."""
+        a = FrozenDatum(file=Path("/x.nc"), data={"values": [1, 2]})
+        b = FrozenDatum(file=Path("/x.nc"), data={"values": [1, 2]})
+        assert len({a, b}) == 1
+
+    def test_data_survives_freezing_into_a_job(self) -> None:
+        """Job.add_file freezes its input, so the payload must come along."""
+        job = Job("n", "job-1", {})
+        job.add_file(Datum(file=Path("/x.nc"), data=[1, 2]))
+        (frozen,) = job.files
+        assert frozen.data == [1, 2]
 
 
 class TestMergeMetadata:
