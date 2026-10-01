@@ -1,17 +1,18 @@
 # Types API Reference
 
 The core data types that flow through Courier's pipeline:
-:class:`~courier.types.file.File` (mutable) and
-:class:`~courier.types.file.FrozenFile` (immutable). Each job also carries
+:class:`~courier.types.datum.Datum` (mutable) and
+:class:`~courier.types.datum.FrozenDatum` (immutable). Each job also carries
 the payload it executes, as a [PayloadSpec](#payloadspec).
 
-## File
+## Datum
 
-:class:`~courier.types.file.File`
+:class:`~courier.types.datum.Datum`
 
-Represents a single data file with its associated metadata. ``File`` is a
+Represents a single data file with its associated metadata. ``Datum`` is a
 mutable :py:func:`dataclasses.dataclass` -- it is created by data monitors,
-enriched by job builders, and consumed by dispatchers.
+enriched by job builders, and consumed by dispatchers. It is generic over the
+type ``T`` of its optional ``data`` payload.
 
 .. list-table:: Attributes
    :header-rows: 1
@@ -19,6 +20,9 @@ enriched by job builders, and consumed by dispatchers.
    * - Attribute
      - Type
      - Description
+   * - ``data``
+     - ``T`` | ``None``
+     - Optional payload carried with the datum. It is serialized by ``to_dict``, so it must be JSON-serializable to be published. Defaults to ``None``.
    * - ``file``
      - :py:class:`pathlib.Path` | ``None``
      - Absolute path to the data file on disk.
@@ -39,7 +43,7 @@ enriched by job builders, and consumed by dispatchers.
      - Domain or sector (e.g. ``"full-disk"``, ``"conus"``).
    * - ``metadata``
      - ``dict[str, Any]``
-     - Arbitrary key-value pairs from ``field_map`` entries that do not map to a named ``File`` constructor attribute. Defaults to ``{}``.
+     - Arbitrary key-value pairs from ``field_map`` entries that do not map to a named ``Datum`` constructor attribute. Defaults to ``{}``.
    * - ``num_expected``
      - ``int``
      - Expected number of files for this dataset. Defaults to ``1``.
@@ -47,10 +51,10 @@ enriched by job builders, and consumed by dispatchers.
      - :py:class:`datetime.datetime` | ``None``
      - Timestamp extracted from the filename or set manually.
 
-.. literalinclude:: ../../../src/courier/types/file.py
+.. literalinclude:: ../../../src/courier/types/datum.py
    :language: python
    :start-after: @dataclass
-   :end-before:     file: Path | None = None
+   :end-before: data: T | None
    :linenos:
 
 ### Key Methods
@@ -60,24 +64,24 @@ enriched by job builders, and consumed by dispatchers.
 
    * - Method
      - Description
-   * - :func:`~courier.types.file.File.to_dict`
+   * - :func:`~courier.types.datum.Datum.to_dict`
      - Serialize to a ``dict`` with keys matching the attribute names. The ``metadata`` dict is copied (not shared) and ``timestamp`` is ISO-8601 formatted.
-   * - :func:`~courier.types.file.File.from_dict`
-     - Deserialize from a ``dict``. Only recognized keys (``source``, ``instrument``, ``processing_stage``, ``domain``, ``hostname``, ``file``, ``metadata``, ``num_expected``, ``timestamp``) are used; extraneous keys are silently ignored. Legacy keys (``platform``, ``sensor``, ``level``, ``sector``) are **not** recognized.
-   * - :func:`~courier.types.file.File.from_string`
-     - Deserialize from a JSON string via :func:`~courier.types.file.File.from_dict`.
-   * - :func:`~courier.types.file.File.freeze`
-     - Convert to an immutable :class:`~courier.types.file.FrozenFile`. The ``metadata`` dict is wrapped with :py:class:`types.MappingProxyType` for true immutability.
-   * - :func:`~courier.types.file.File.merge_metadata`
+   * - :func:`~courier.types.datum.Datum.from_dict`
+     - Deserialize from a ``dict``. Only recognized keys (``data``, ``source``, ``instrument``, ``processing_stage``, ``domain``, ``hostname``, ``file``, ``metadata``, ``num_expected``, ``timestamp``) are used; extraneous keys are silently ignored. Legacy keys (``platform``, ``sensor``, ``level``, ``sector``) are **not** recognized.
+   * - :func:`~courier.types.datum.Datum.from_string`
+     - Deserialize from a JSON string via :func:`~courier.types.datum.Datum.from_dict`.
+   * - :func:`~courier.types.datum.Datum.freeze`
+     - Convert to an immutable :class:`~courier.types.datum.FrozenDatum`. The ``metadata`` dict is wrapped with :py:class:`types.MappingProxyType` for true immutability.
+   * - :func:`~courier.types.datum.Datum.merge_metadata`
      - Shallow-merge metadata into the file. Only ``None`` or default fields are overwritten; existing values are preserved. Accepts a ``metadata={...}`` kwarg that shallow-merges into ``self.metadata`` (existing keys kept, new keys added).
-   * - :func:`~courier.types.file.File.with_updates`
-     - Create a new ``File`` with updated fields via :py:func:`dataclasses.replace`.
+   * - :func:`~courier.types.datum.Datum.with_updates`
+     - Create a new ``Datum`` with updated fields via :py:func:`dataclasses.replace`.
 
-## FrozenFile
+## FrozenDatum
 
-:class:`~courier.types.file.FrozenFile`
+:class:`~courier.types.datum.FrozenDatum`
 
-Immutable (``frozen=True``) counterpart of :class:`~courier.types.file.File`.
+Immutable (``frozen=True``) counterpart of :class:`~courier.types.datum.Datum`.
 It is the form carried through the pipeline once a job is built.
 All attributes are read-only after construction.
 
@@ -87,6 +91,9 @@ All attributes are read-only after construction.
    * - Attribute
      - Type
      - Description
+   * - ``data``
+     - ``T`` | ``None``
+     - Optional payload carried with the datum. Excluded from the hash, like ``metadata``, so a list or dict payload does not make the datum unhashable.
    * - ``file``
      - :py:class:`pathlib.Path` | ``None``
      - Absolute path to the data file on disk.
@@ -107,7 +114,7 @@ All attributes are read-only after construction.
      - Domain or sector.
    * - ``metadata``
       - :py:class:`collections.abc.Mapping`\ ``[str, Any]``
-      - Metadata dictionary. When the ``FrozenFile`` is created via :py:func:`~courier.types.file.File.freeze`, metadata is wrapped with :py:class:`types.MappingProxyType` for true immutability. When created directly or via :py:func:`~courier.types.file.FrozenFile.from_dict`, metadata is stored as a plain ``dict``. Calling :py:func:`~courier.types.file.FrozenFile.thaw` unwraps any ``MappingProxyType`` back to a mutable ``dict``.
+      - Metadata dictionary. When the ``FrozenDatum`` is created via :py:func:`~courier.types.datum.Datum.freeze`, metadata is wrapped with :py:class:`types.MappingProxyType` for true immutability. When created directly or via :py:func:`~courier.types.datum.FrozenDatum.from_dict`, metadata is stored as a plain ``dict``. Calling :py:func:`~courier.types.datum.FrozenDatum.thaw` unwraps any ``MappingProxyType`` back to a mutable ``dict``.
    * - ``num_expected``
      - ``int``
      - Expected number of files.
@@ -115,10 +122,10 @@ All attributes are read-only after construction.
      - :py:class:`datetime.datetime` | ``None``
      - Timestamp extracted from filename or set manually.
 
-.. literalinclude:: ../../../src/courier/types/file.py
+.. literalinclude:: ../../../src/courier/types/datum.py
    :language: python
    :start-after: @dataclass(frozen=True)
-   :end-before:     file: Path | None = None
+   :end-before: data: T | None
    :linenos:
 
 ### Key Methods
@@ -128,16 +135,16 @@ All attributes are read-only after construction.
 
    * - Method
      - Description
-   * - :func:`~courier.types.file.FrozenFile.to_dict`
-     - Same serialization as :func:`~courier.types.file.File.to_dict`.
-   * - :func:`~courier.types.file.FrozenFile.from_dict`
-     - Same deserialization as :func:`~courier.types.file.File.from_dict`.
-   * - :func:`~courier.types.file.FrozenFile.from_string`
-     - Same JSON deserialization as :func:`~courier.types.file.File.from_string`.
-   * - :func:`~courier.types.file.FrozenFile.thaw`
-     - Convert back to a mutable :class:`~courier.types.file.File`. The ``metadata`` field becomes a plain ``dict`` (the ``MappingProxyType`` is unwrapped).
-   * - :func:`~courier.types.file.FrozenFile.with_updates`
-     - Create a new ``FrozenFile`` with updated fields via :py:func:`dataclasses.replace`.
+   * - :func:`~courier.types.datum.FrozenDatum.to_dict`
+     - Same serialization as :func:`~courier.types.datum.Datum.to_dict`.
+   * - :func:`~courier.types.datum.FrozenDatum.from_dict`
+     - Same deserialization as :func:`~courier.types.datum.Datum.from_dict`.
+   * - :func:`~courier.types.datum.FrozenDatum.from_string`
+     - Same JSON deserialization as :func:`~courier.types.datum.Datum.from_string`.
+   * - :func:`~courier.types.datum.FrozenDatum.thaw`
+     - Convert back to a mutable :class:`~courier.types.datum.Datum`. The ``metadata`` field becomes a plain ``dict`` (the ``MappingProxyType`` is unwrapped).
+   * - :func:`~courier.types.datum.FrozenDatum.with_updates`
+     - Create a new ``FrozenDatum`` with updated fields via :py:func:`dataclasses.replace`.
 
 ## PayloadSpec
 
@@ -155,11 +162,11 @@ of the following, update to the canonical attribute names:
 ```{include} ../includes/breaking-changes.md
 ```
 
-The table below maps legacy metadata keys to the current `File` attribute
+The table below maps legacy metadata keys to the current `Datum` attribute
 names. These legacy keys are no longer recognized by the field access
 helper.
 
-Only ``source``, ``instrument``, ``processing_stage``, ``domain``,
+Only ``data``, ``source``, ``instrument``, ``processing_stage``, ``domain``,
 ``hostname``, ``file``, ``metadata``, ``num_expected``, and ``timestamp``
-are recognized by :func:`~courier.types.file.File.from_dict` and
-:func:`~courier.types.file.FrozenFile.from_dict`.
+are recognized by :func:`~courier.types.datum.Datum.from_dict` and
+:func:`~courier.types.datum.FrozenDatum.from_dict`.
