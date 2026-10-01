@@ -8,13 +8,13 @@ different code path, which this module switches off.
 A unit test cannot stand in for this one. The hand-off crosses a process and a
 thread boundary: the first dispatcher forks ``bash``, ``bash`` creates a file,
 an inotify observer in another thread has to already be armed on that
-directory, and the resulting ``File`` has to survive a round trip through a
+directory, and the resulting ``Datum`` has to survive a round trip through a
 fanout exchange before a second builder will look at it.
 
 The bug class this catches is a wired chain that nothing crosses: a second
 monitor whose directory did not exist and whose thread died at start-up,
 a second builder whose subscription never bound, routing that collapsed both
-chains onto one dispatcher, or a ``File`` whose attributes did not survive
+chains onto one dispatcher, or a ``Datum`` whose attributes did not survive
 serialisation so the second builder rejected everything. Each of those leaves a
 service that looks healthy and produces the first artefact.
 

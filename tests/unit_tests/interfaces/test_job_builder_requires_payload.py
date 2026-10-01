@@ -23,7 +23,7 @@ from pydantic import ValidationError
 from courier.errors import InvalidPluginConfigError, PluginNotFoundError
 from courier.interfaces.job_builders import JobBuilder, job_builders
 from courier.plugins.payloads.bash_payload import BashPayload
-from courier.types.file import FrozenFile
+from courier.types.datum import FrozenDatum
 from courier.types.job import Job
 from tests._helpers import (
     DEFAULT_PAYLOAD_ID,
@@ -99,8 +99,8 @@ def _config(name: str, **settings: Any) -> dict[str, Any]:
     return {"targets": ["dp-1"], **IN_TREE_BUILDER_SETTINGS.get(name, {}), **settings}
 
 
-def _file(name: str = "a") -> FrozenFile:
-    return FrozenFile(
+def _file(name: str = "a") -> FrozenDatum:
+    return FrozenDatum(
         file=Path(f"/data/{name}.nc"),
         hostname="h",
         source="goes16",

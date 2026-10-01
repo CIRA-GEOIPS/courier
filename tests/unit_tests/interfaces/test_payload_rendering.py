@@ -39,7 +39,7 @@ from courier.interfaces.payloads import (
     _resolve_deferred_expressions,
 )
 from courier.plugins.payloads.bash_payload import BashPayload
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
 
@@ -62,7 +62,7 @@ def _job(
         "n",
         "job-1",
         config if config is not None else {},
-        files=[File(file=Path(f), metadata=dict(metadata or {})) for f in files],
+        files=[Datum(file=Path(f), metadata=dict(metadata or {})) for f in files],
         targets=("ld",),
     )
 

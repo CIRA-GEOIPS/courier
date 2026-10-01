@@ -127,7 +127,7 @@ def _job(identifier: str = "job-1", payload: PayloadSpec | None = None) -> Job:
         "n",
         identifier,
         {},
-        files=[File(file=Path("/d/a.nc")).freeze()],
+        files=[Datum(file=Path("/d/a.nc")).freeze()],
         payload=payload,
     )
 
@@ -990,7 +990,7 @@ class TestEndToEndExecution:
             "n",
             "job-e2e",
             {},
-            files=[File(file=source).freeze()],
+            files=[Datum(file=source).freeze()],
         )
         job.payload = payload.to_job_spec(job)
 

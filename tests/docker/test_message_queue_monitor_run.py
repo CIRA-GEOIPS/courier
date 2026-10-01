@@ -7,7 +7,7 @@ project's own configurations use a different monitor. ``config.yaml`` and
 which takes its input from a JSON notification on a broker queue and never
 looks at a directory. That path had no end-to-end coverage. The bugs this
 module catches all live in the queue-driven topology: a notification that
-parses into an unusable File, a location that reassembles into the wrong path,
+parses into an unusable Datum, a location that reassembles into the wrong path,
 a timestamp or metadata field dropped between the monitor and the job
 builder's filters, one notification dispatched twice, or a monitor that
 connects to its own broker while its service never reaches AMQP.
@@ -29,7 +29,7 @@ file and ``listdir('/data/out')`` reads the same either way. That is the trap
 Duplicate delivery is a common regression for a queue-driven monitor: a
 reconnect with an unacknowledged message, a requeue-on-error branch,
 ``max_retries: -1``. The script here appends before it copies, and the line it
-appends carries the three values that have to survive the trip: the File's
+appends carries the three values that have to survive the trip: the Datum's
 timestamp, its hostname and its reassembled path.
 
 The topology under test is the shipped one, and the two shipped config files
@@ -37,7 +37,7 @@ now agree with it. They did not when this module was written.
 ``timestamp_field: time_range`` was a silent no-op: ``_extract_timestamp``
 handed the ``time_range`` dict to
 :func:`courier.utils.datetime_utils.parse_timestamp`, which returns ``None``
-for anything that is not a string, a number or a datetime, so every File those
+for anything that is not a string, a number or a datetime, so every Datum those
 configs built carried ``timestamp=None``. ``dir_path: dir_ath`` in
 ``tests/cira-data-inventory-example.yaml`` mapped the canonical ``dir_path``
 onto a message key no producer sends, so the reassembly raised ``KeyError`` on
@@ -59,7 +59,7 @@ place. Each was run against this module and produced the failure described.
   ``application/json``, the watcher's callback takes its ``body.decode``
   branch, raises ``AttributeError`` and rejects the message without
   requeueing, and no output is produced.
-* Publish the accepted notification twice. Each delivery builds its own File,
+* Publish the accepted notification twice. Each delivery builds its own Datum,
   the builder opens a successor job for the second (a fresh identifier, so the
   dispatcher's LRU dedupe does not absorb it), and the ledger holds two lines.
   The exactly-once assertion fails.
@@ -99,7 +99,7 @@ PLATFORM = "himawari9"
 SENSOR = "ahi"
 
 #: The third filter value.  ``product`` is absent from the watcher's default
-#: field map, so it is gathered into ``File.metadata`` instead of a ``File``
+#: field map, so it is gathered into ``Datum.metadata`` instead of a ``Datum``
 #: attribute, and the builder matches it through the metadata layer of
 #: ``_file_matches_filters``.  Under the default field map that dict is empty,
 #: so filtering on ``product`` is what covers the metadata hand-off from the
@@ -129,7 +129,7 @@ RESOLVED_DIR = "/data/in"
 #: The notification's ``time_range``.  ``timestamp_field`` is left unset, so
 #: the watcher reads ``lower`` through its documented default; ``upper`` is
 #: carried to show the default picks the lower bound.  The dispatcher's
-#: template renders ``File.to_dict``, so the expected value is what that
+#: template renders ``Datum.to_dict``, so the expected value is what that
 #: produces after ``ensure_utc`` tags the naive value as UTC.
 TIME_RANGE_LOWER = "2026-01-29T09:10:00"
 TIME_RANGE_UPPER = "2026-01-29T09:18:00"
@@ -151,7 +151,7 @@ def _queue_driven_config(
     ``timestamp_field`` is omitted where the shipped configs set it to
     ``time_range``, which is a silent no-op, so the plugin's documented
     ``time_range.lower`` default runs.  ``field_map`` carries one extra key,
-    ``product``, the only way to put anything into ``File.metadata``.
+    ``product``, the only way to put anything into ``Datum.metadata``.
     ``tracing_enabled`` is false; otherwise the process spends its shutdown
     retrying an OTLP collector that is not there.  ``targets`` is explicit, so
     the run does not depend on the implicit-target policy.
@@ -262,7 +262,7 @@ def _notification(
         Basename the notification points at, relative to the reassembled
         directory.
     platform : str, optional
-        Value for ``platform_name``, which becomes ``File.source``.  Default
+        Value for ``platform_name``, which becomes ``Datum.source``.  Default
         :data:`PLATFORM`, the value the builder's filter admits; pass
         :data:`REJECTED_PLATFORM` for a notification the filter must drop.
 
@@ -340,14 +340,14 @@ def test_one_broker_notification_produces_exactly_one_dispatch(
     the dispatch copies nothing.  The hostname is the one the location parser
     split out.  The timestamp is the one the plugin's ``time_range.lower``
     default produced, normalised to UTC; nothing else downstream reads
-    ``File.timestamp``, so the ledger is the only place that branch is covered.
+    ``Datum.timestamp``, so the ledger is the only place that branch is covered.
 
     The rejected notification is published first and travels the same queue, so
     by the time the admitted one has been dispatched the builder has already
     seen and refused it.  The admitted one gets through because three values
     survived the trip: ``platform_name`` and ``source_name`` into
-    ``File.source`` and ``File.instrument``, and ``product_name`` into
-    ``File.metadata``, which is a different layer of the filter and a different
+    ``Datum.source`` and ``Datum.instrument``, and ``product_name`` into
+    ``Datum.metadata``, which is a different layer of the filter and a different
     branch of the watcher's field-map split.  None of the three is recoverable
     from the path.
     """

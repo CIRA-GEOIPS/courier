@@ -495,14 +495,14 @@ class TestRegexFieldOverrides:
         assert emitted.domain == "FULL-DISK"
 
 
-# ─── File Roundtrip ──────────────────────────────────────────────────────────
+# ─── Datum Roundtrip ──────────────────────────────────────────────────────────
 
 
 class TestFileRoundTrip:
-    """Verify emitted File objects survive serialization roundtrip."""
+    """Verify emitted Datum objects survive serialization roundtrip."""
 
     def test_from_string_roundtrip_simple_file(self) -> None:
-        """Emitted File can be roundtripped through str → from_string."""
+        """Emitted Datum can be roundtripped through str → from_string."""
         mock_emit = MagicMock()
         _scan_and_emit_output_files(
             stdout="Processed /tmp/test.nc\n",

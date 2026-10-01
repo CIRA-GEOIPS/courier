@@ -24,7 +24,7 @@ from courier.errors import CourierError
 from courier.metrics import COURIER_CUSTOM_GAUGE
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.payloads.python_payload import PythonPayload
-from courier.types.file import File
+from courier.types.datum import Datum
 from tests._helpers import (
     captured_records,
     consume,
@@ -300,7 +300,7 @@ def _emitted_files(
     dispatcher = LocalDispatcher(service, dispatcher_config or {}, identifier="ld")
     consume(dispatcher, wire_job(service, {"script": script}))
     return [
-        str(File.from_string(call.kwargs["message"]).file)
+        str(Datum.from_string(call.kwargs["message"]).file)
         for call in service.emit.call_args_list
         if call.kwargs.get("queue") == FILE_FOUND_EXCHANGE
     ]

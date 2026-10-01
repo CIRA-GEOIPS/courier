@@ -59,7 +59,7 @@ class TestHelpers:
     def test_render_context_timestamp_iso(self, make_frozen_file) -> None:
         """Job-name templates render the normalised (UTC-aware) timestamp.
 
-        FrozenFile tags naive input as UTC at construction, so the rendered
+        FrozenDatum tags naive input as UTC at construction, so the rendered
         value carries a ``+00:00`` offset rather than the bare naive form.
         """
         ts = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)

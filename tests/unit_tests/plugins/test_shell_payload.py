@@ -15,7 +15,7 @@ from courier.plugins.payloads.shell_payload import (
     ShellPayload,
     ShellPayloadConfig,
 )
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 from tests._helpers import file_job, run_locally
 
@@ -449,8 +449,8 @@ class TestBinaryModeThroughLocalDispatcher:
             "job-1",
             {},
             files=[
-                File(file=Path("/d/a.nc")).freeze(),
-                File(file=Path("/d/b.nc")).freeze(),
+                Datum(file=Path("/d/a.nc")).freeze(),
+                Datum(file=Path("/d/b.nc")).freeze(),
             ],
         )
 
@@ -476,7 +476,7 @@ class TestBinaryModeThroughLocalDispatcher:
             "n",
             "job-1",
             {"none": ""},
-            files=[File(file=Path("/d/a.nc")).freeze()],
+            files=[Datum(file=Path("/d/a.nc")).freeze()],
         )
 
         logs = run_locally(

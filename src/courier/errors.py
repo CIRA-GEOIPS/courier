@@ -35,7 +35,7 @@ class MetadataConflictError(PipelineError):
     field_name : str
         Name of the conflicting field.
     existing_value : object
-        The existing value in the File.
+        The existing value in the Datum.
     new_value : object
         The new value that conflicts.
     entry_name : str

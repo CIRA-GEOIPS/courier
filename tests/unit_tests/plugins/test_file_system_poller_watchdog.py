@@ -59,7 +59,7 @@ class TestFindFile:
     def test_yields_file_for_event(
         self, mock_service: MagicMock, tmp_path: Path, mocker
     ) -> None:
-        """A file path enqueued by the watchdog handler must be yielded as a File."""
+        """A file path enqueued by the watchdog handler must be yielded as a Datum."""
         plugin = FileSystemPoller(mock_service, _make_config(tmp_path))
 
         observer_instance = MagicMock()
