@@ -113,6 +113,12 @@ courier run config.yaml --only build,dispatch # the processing half
 
 The values are `spec.run` *identifiers* — the YAML keys — not plugin names.
 
+The log level is a [global option](#global-options), so it goes before `run`:
+
+```bash
+courier -l INFO run config.yaml
+```
+
 ______________________________________________________________________
 
 ## I want to see what a running service is doing
@@ -177,8 +183,10 @@ your config or your broker.
 ## Global options
 
 `--log-level` / `-l`
-: `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Also read from
-`COURIER_LOG_LEVEL`.
+: `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. For
+`courier run`, it takes precedence over `spec.service_config.log_level` in
+the config, which takes precedence over `COURIER_LOG_LEVEL`; the default is
+`DEBUG`.
 
 `--version` / `-V`
 : Print the installed version and exit.
