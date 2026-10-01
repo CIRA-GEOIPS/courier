@@ -321,11 +321,19 @@ class TestDispatcherConfigKeys:
     def test_every_removed_key_is_reported_at_once(self) -> None:
         with pytest.raises(ValidationError) as info:
             DispatcherGroupConfig.model_validate(
-                {"bash_script": "echo", "max_workers": 4, "python_venv": "/v"},
+                {"bash_script": "echo", "fail_fast": True, "python_venv": "/v"},
             )
 
-        for key in ("bash_script", "max_workers", "python_venv"):
+        for key in ("bash_script", "fail_fast", "python_venv"):
             assert repr(key) in str(info.value)
+
+    def test_max_workers_sets_how_many_jobs_run_at_once(self) -> None:
+        assert DispatcherGroupConfig().max_workers == 1
+        assert DispatcherGroupConfig(max_workers=2).max_workers == 2  # noqa: PLR2004
+
+    def test_max_workers_below_one_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="max_workers"):
+            DispatcherGroupConfig(max_workers=0)
 
     def test_log_dir_that_cannot_be_created_is_a_validation_error(
         self,

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import stat
+import threading
 import time
 from pathlib import Path
 from typing import ClassVar
@@ -73,20 +74,37 @@ class _RecordingDispatcher(Dispatcher):
         self.executed.append(job)
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
-class _TimedDispatcher(_RecordingDispatcher):
-    """Dispatcher that stalls on execution and records execution time."""
 
-    name = "timed_dispatcher"
-    version = "test"
+class _ConcurrencyDispatcher(_RecordingDispatcher):
+    """Dispatcher that records how many of its jobs run at once.
+
+    With a *barrier* each job waits for the others to arrive, so the jobs
+    finish only if they all run together; without one each job holds its
+    worker briefly, giving a second job the chance to overlap it.
+    """
+
+    name = "concurrency_dispatcher"
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
-        self.execution_times: list[float] = []
+        self.barrier: threading.Barrier | None = None
+        self.running = 0
+        self.most_running = 0
+        self._lock = threading.Lock()
+
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
-        self.executed.append(job)
-        execution_time = time.time()
-        self.execution_times.append(execution_time)
-        time.sleep(2)
+        with self._lock:
+            self.executed.append(job)
+            self.running += 1
+            self.most_running = max(self.most_running, self.running)
+        try:
+            if self.barrier is not None:
+                self.barrier.wait(timeout=5)
+            else:
+                time.sleep(0.05)
+        finally:
+            with self._lock:
+                self.running -= 1
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
 
 
@@ -371,31 +389,110 @@ class TestJobExecution:
 
         assert exit_.called is exits
 
-    def test_jobs_run_concurrently(
+
+# -- concurrency -------------------------------------------------------------
+
+
+class TestConcurrency:
+    def test_jobs_run_concurrently_up_to_max_workers(
         self,
         service: MagicMock,
     ) -> None:
-        """When `max_workers` is set to be greater than 1, jobs must run concurrently."""
-        dispatcher = _TimedDispatcher(service, {"max_workers": 2}, "timed")
-        consume(dispatcher, _job("job-1"), _job("job-2"))
+        jobs = [_job("job-1"), _job("job-2")]
+        dispatcher = _ConcurrencyDispatcher(
+            service,
+            {"max_workers": len(jobs)},
+            "conc",
+        )
+        dispatcher.barrier = threading.Barrier(len(jobs))
+        before = _processed(dispatcher, "success")
 
-        assert len(dispatcher.executed) == 2
-        # difference between execution times
-        time_diff = dispatcher.execution_times[1] - dispatcher.execution_times[0]
-        assert time_diff < 2.0
+        consume(dispatcher, *jobs)
 
-    def test_one_max_worker(
+        assert dispatcher.most_running == len(jobs)
+        assert _processed(dispatcher, "success") - before == len(jobs)
+
+    def test_one_max_worker_runs_jobs_one_at_a_time(
         self,
         service: MagicMock,
     ) -> None:
-        """When `max_workers` is set to be greater than 1, jobs must run concurrently."""
-        dispatcher = _TimedDispatcher(service, {"max_workers": 1}, "timed")
-        consume(dispatcher, _job("job-1"), _job("job-2"))
+        dispatcher = _ConcurrencyDispatcher(service, {"max_workers": 1}, "serial")
 
-        assert len(dispatcher.executed) == 2
-        # difference between execution times
-        time_diff = dispatcher.execution_times[1] - dispatcher.execution_times[0]
-        assert time_diff >= 2.0
+        jobs = [_job("job-1"), _job("job-2"), _job("job-3")]
+
+        consume(dispatcher, *jobs)
+
+        assert [job.identifier for job in dispatcher.executed] == [
+            job.identifier for job in jobs
+        ]
+        assert dispatcher.most_running == 1
+
+    def test_no_more_than_max_workers_jobs_are_in_flight(
+        self,
+        service: MagicMock,
+    ) -> None:
+        max_workers = 2
+        dispatcher = _ConcurrencyDispatcher(
+            service,
+            {"max_workers": max_workers},
+            "bounded",
+        )
+        jobs = [_job(f"job-{n}") for n in range(3 * max_workers)]
+
+        consume(dispatcher, *jobs)
+
+        assert len(dispatcher.executed) == len(jobs)
+        assert dispatcher.most_running <= max_workers
+
+    def test_returns_when_the_consume_loop_ends(self, service: MagicMock) -> None:
+        dispatcher = _dispatcher(service, "ends")
+        service.consume.return_value = iter([(str(_job()), None)])
+
+        dispatcher.handle_incoming_jobs()
+
+        assert [job.identifier for job in dispatcher.executed] == ["job-1"]
+
+    def test_a_consume_failure_escapes_after_submitted_jobs_finish(
+        self,
+        service: MagicMock,
+    ) -> None:
+        dispatcher = _dispatcher(service, "consume-fails")
+
+        def _consume(*_args: object, **_kwargs: object):
+            yield str(_job()), None
+            raise kombu.exceptions.OperationalError("broker gone")
+
+        service.consume.side_effect = _consume
+
+        with pytest.raises(kombu.exceptions.OperationalError, match="broker gone"):
+            dispatcher.handle_incoming_jobs()
+        assert [job.identifier for job in dispatcher.executed] == ["job-1"]
+
+    def test_a_park_failure_in_a_job_thread_stops_consuming(
+        self,
+        service: MagicMock,
+    ) -> None:
+        dispatcher = _dispatcher(service, "park-fails")
+        dispatcher.raise_on_execute = UnexecutableJobError("tool missing")
+        service.park_message.side_effect = ConnectionError("DLQ gone")
+        service.consume.return_value = iter([(str(_job()), None)])
+
+        with pytest.raises(ConnectionError, match="DLQ gone"):
+            dispatcher.handle_incoming_jobs()
+        assert dispatcher._stop_event.is_set()
+
+    def test_a_restarted_dispatcher_gets_a_fresh_pool(
+        self,
+        service: MagicMock,
+    ) -> None:
+        dispatcher = _dispatcher(service, "restart")
+        consume(dispatcher, _job("job-1"))
+        dispatcher._stop_event.clear()
+
+        consume(dispatcher, _job("job-2"))
+
+        assert [job.identifier for job in dispatcher.executed] == ["job-1", "job-2"]
+
 
 # ── dedupe ──────────────────────────────────────────────────────────────────
 
