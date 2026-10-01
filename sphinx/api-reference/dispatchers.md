@@ -291,9 +291,10 @@ template, `{{ output_dir }}` holds `slurm_output_dir`.
   when configured, and `sbatch` lets command-line options override `#SBATCH`
   lines.
 - **With `--wrap`.** Everything else is submitted as a wrapped command:
-  `python_payload`, payloads with a `binary`, and payloads with
+  `python_payload`, payloads with a `binary`, payloads with
   `prefix_args`, whose interpreter options must never be read as `sbatch`
-  options. The wrapped command is the argv a `local_dispatcher` would run,
+  options, and payloads run as a lower representation (see
+  [Representations and lowering](payloads.md#representations-and-lowering)). The wrapped command is the argv a `local_dispatcher` would run,
   each argument shell-quoted (an argument that renders to an empty string
   stays an empty argument). It reads the script from `slurm_output_dir` when
   the job starts, so the directory must be visible from the compute nodes,

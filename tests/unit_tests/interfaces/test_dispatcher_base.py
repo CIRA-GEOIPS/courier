@@ -516,7 +516,9 @@ class TestPayloadResolution:
             first = dispatcher._resolve_job_payload(job)
             dispatcher._resolve_job_payload(job)
 
-        assert type(first) is BashPayload
+        assert type(first) is _CustomBashPayload
+        assert first.representation is BashPayload
+        assert first.lowered
         assert first.payload_name == "custom_bash_payload"
         registry.get_plugin.assert_called_once_with("custom_bash_payload")
 

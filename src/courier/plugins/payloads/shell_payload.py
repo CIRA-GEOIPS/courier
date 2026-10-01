@@ -45,6 +45,24 @@ class ShellPayload(Payload):
     default_binary: ClassVar[str] = "sh"
     config_class: ClassVar[type[PayloadConfig]] = ShellPayloadConfig
 
+    @classmethod
+    def wrap_command(cls, command: list[str]) -> list[str]:
+        """Run another payload's argv with this class's interpreter.
+
+        ``<interpreter> -c RUN_ARGV_SCRIPT <interpreter> <command...>``: the
+        shell executes *command* as given, without re-parsing any of it.
+
+        Raises
+        ------
+        UnexecutableJobError
+            If this class has no ``default_binary``.
+        """
+        if not cls.default_binary:
+            raise UnexecutableJobError(
+                f"{cls.__name__} has no default_binary to run a lowered payload with",
+            )
+        return [cls.default_binary, "-c", RUN_ARGV_SCRIPT, cls.default_binary, *command]
+
     def _interpreter(self) -> str:
         """Return the interpreter; UnexecutableJobError (park) if none is set."""
         if not self._default_binary:

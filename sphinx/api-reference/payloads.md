@@ -69,9 +69,17 @@ Payload classes form a hierarchy: `PythonPayload` is a `BashPayload`, which is
 a `ShellPayload`. A dispatcher lists the classes it can execute in
 `representations`, and runs a job's payload as the most specific class in the
 payload's hierarchy that it lists. Both shipped dispatchers list all three
-classes, so a shipped payload always runs as itself. A third-party payload
-that subclasses one of them, sent to a dispatcher that does not list it, runs
-as the nearest shipped class, with that class's interpreter and command.
+classes, so a shipped payload always runs as itself.
+
+A payload run as an ancestor is **lowered**: it still runs with its own
+interpreter, launched by the ancestor's. The dispatcher builds the payload's
+own command and passes it to `Payload.render_script`, which hands it to the
+ancestor's `wrap_command`. A `python_payload` on a dispatcher that lists only
+`BashPayload` runs as
+`bash -c '"$@"' bash python [prefix_args...] <script> [suffix_args...]`, and
+one lowered to `PythonPayload` runs from `python -c` with `subprocess.run`.
+Each argument stays a separate argument. The `toolchain` check is lowered the
+same way. A payload class can override `render_script` to lower differently.
 
 Preflight checks every builder's payload against every dispatcher it targets,
 including dispatchers that run in another container of a split `--only`

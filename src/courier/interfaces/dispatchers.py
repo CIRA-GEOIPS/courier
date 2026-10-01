@@ -204,11 +204,12 @@ class Dispatcher(ServicePlugin):
         # same-replica duplicates; cross-replica strict dedupe is opt-in via
         # state sync. Thread-safe: only touched by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[Hashable, None] = OrderedDict()
-        # Payload name -> representation it runs as here, and validated
-        # (payload, toolchain) keys, so jobs do not re-pay lookup and probing.
-        self._representations: dict[str, type[Payload]] = {}
+        # Payload name -> its class and the representation it runs as here,
+        # and validated (payload, toolchain) keys, so jobs do not re-pay
+        # lookup and probing.
+        self._representations: dict[str, tuple[type[Payload], type[Payload]]] = {}
         self._validated_toolchains: set[
-            tuple[str, tuple[str, ...], tuple[str, ...], str | None, str | None]
+            tuple[str, str, tuple[str, ...], tuple[str, ...], str | None, str | None]
         ] = set()
         # Connection this dispatcher uses for its queue-depth probe. Opened
         # lazily by the consumer thread and closed by it, so it is owned by
@@ -328,11 +329,12 @@ class Dispatcher(ServicePlugin):
                 f"separator or NUL",
             )
         try:
-            representation = self._representation_for(spec.name)
-            payload = representation.from_job_spec(
+            payload_cls, representation = self._representation_for(spec.name)
+            payload = payload_cls.from_job_spec(
                 spec,
                 self.parent_service,
                 self.config,
+                representation=representation,
             )
             self._validate_payload_toolchain(payload)
         except UnexecutableJobError:
@@ -345,8 +347,12 @@ class Dispatcher(ServicePlugin):
             ) from exc
         return payload
 
-    def _representation_for(self, name: str) -> type[Payload]:
-        """Return (and cache) the representation payload plugin *name* runs as."""
+    def _representation_for(self, name: str) -> tuple[type[Payload], type[Payload]]:
+        """Return (and cache) payload plugin *name*'s class and representation.
+
+        The payload is hydrated as its own class and runs as the
+        representation, which :meth:`Payload.render_script` lowers it to.
+        """
         if name not in self._representations:
             # ClassPluginRegistry has already checked the Payload subclass.
             payload_cls = cast("type[Payload]", payloads.get_plugin(name))
@@ -357,7 +363,7 @@ class Dispatcher(ServicePlugin):
                     f"{name!r}: no compatible representation "
                     f"(supports {self.representation_names()})",
                 )
-            self._representations[name] = compatible
+            self._representations[name] = (payload_cls, compatible)
         return self._representations[name]
 
     @classmethod
@@ -394,6 +400,7 @@ class Dispatcher(ServicePlugin):
         """
         key = (
             payload.name,
+            payload.representation.__name__,
             tuple(payload.config.toolchain),
             tuple(payload.config.toolchain_prepend),
             payload.config.binary,
@@ -507,12 +514,16 @@ class Dispatcher(ServicePlugin):
         """Render the payload's argument templates and splice in *script_path*.
 
         The path is never rendered, so a ``{{`` in ``TMPDIR`` is not evaluated.
+        The result is lowered by :meth:`Payload.render_script` when the payload
+        runs as a lower representation.
         """
         rendered = payload.with_rendered_arguments(job, context)
-        return [
-            *rendered.generate_calling_method(),
-            *rendered.declare_command(script_path),
-        ]
+        return rendered.render_script(
+            [
+                *rendered.generate_calling_method(),
+                *rendered.declare_command(script_path),
+            ],
+        )
 
     def _log_destination(self, job: Job) -> tuple[str, Path | None]:
         """Return the log prefix and log file path configured for *job*."""

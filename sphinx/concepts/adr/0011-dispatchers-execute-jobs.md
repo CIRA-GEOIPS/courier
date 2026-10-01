@@ -203,7 +203,10 @@ with its extras and metrics. `python_venv` and `sbatch_template` are removed.
   job *data* from being evaluated as template syntax. It does not authenticate
   the message, and anyone who can publish to a `JobReady` queue can run code on
   that queue's dispatchers. Broker credentials must be treated accordingly.
-- **Lowering uses the lower class's command.** A payload hydrated as a lower
-  representation (a third-party `BashPayload` subclass on a dispatcher that
-  lists only `BashPayload`) runs with that lower class's interpreter and
-  command construction.
+- **Lowering wraps the payload's own command.** A payload run as a lower
+  representation (a `python_payload` on a dispatcher that lists only
+  `BashPayload`) is still hydrated as its own class. Its own command is
+  passed through `Payload.render_script`, which by default hands it to the
+  lower class's `wrap_command`, so the lower interpreter launches the
+  payload's interpreter rather than reading its script. Slurm submits a
+  lowered payload with `--wrap`, never as the batch script.

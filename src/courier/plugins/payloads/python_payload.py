@@ -36,6 +36,14 @@ class PythonPayload(BashPayload):
     file_suffix: ClassVar[str] = ".py"
     config_class: ClassVar[type[PayloadConfig]] = PythonPayloadConfig
 
+    @classmethod
+    def wrap_command(cls, command: list[str]) -> list[str]:
+        """Run another payload's argv from Python: ``python -c SUBPROCESS_WRAPPER ...``.
+
+        A failing *command* surfaces as return code 1.
+        """
+        return [cls.default_binary, "-c", SUBPROCESS_WRAPPER, *command]
+
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
         """Validate that a value exists on the runtime PATH.
 
