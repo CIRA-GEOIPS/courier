@@ -297,14 +297,16 @@ class SlurmDispatcher(Dispatcher):
         """Return whether *job*'s script is submitted as the batch script itself.
 
         Only a non-Python script with no ``binary`` and no ``prefix_args``
-        (which ``sbatch`` would read as its own options) is; Python must run
-        under its own interpreter.  Everything else uses ``--wrap``.
+        (which ``sbatch`` would read as its own options), run as its own
+        class, is; Python must run under its own interpreter, and a lowered
+        payload under its lowered command.  Everything else uses ``--wrap``.
         """
         spec = job.payload
         config = payload.config
         return (
             spec is not None
             and spec.script is not None
+            and not payload.lowered
             and not isinstance(payload, PythonPayload)
             and not (config.binary or config.prefix_args)
             and len(payload.generate_calling_method()) == 1

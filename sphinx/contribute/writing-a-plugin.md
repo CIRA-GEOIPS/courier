@@ -66,8 +66,12 @@ Two rules apply to every payload class:
 A dispatcher runs a payload as the most specific class in its hierarchy that
 the dispatcher lists in `representations`. The shipped dispatchers list
 `ShellPayload`, `BashPayload` and `PythonPayload`, so they would run a
-`zsh_payload` as a `ShellPayload`, with `sh`. To run it as itself, a dispatcher
-must list `ZshPayload`, like the one below.
+`zsh_payload` lowered to a `ShellPayload`: its own command, `zsh <script>`,
+launched by `sh` (`sh -c '"$@"' sh zsh <script>`). `Payload.render_script` does
+the lowering, and a payload class can override it. To run it as itself, a
+dispatcher must list `ZshPayload`, like the one below. A class that a
+dispatcher lists must implement the `wrap_command` classmethod, which runs
+another payload's argv; `ShellPayload` and `PythonPayload` do.
 
 ## A dispatcher, end to end
 

@@ -85,7 +85,7 @@ class TestCommandRendering:
 
         script = tmp_path / "rendered.sh"
         script.write_text(
-            payload.render_script(job, template_config["file"].read_text()),
+            payload.render_template(job, template_config["file"].read_text()),
         )
         command = payload.generate_calling_method() + payload.declare_command(script)
 

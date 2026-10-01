@@ -52,7 +52,7 @@ from pydantic import (
 )
 
 from courier.dispatchers._output_file_pattern import OutputFilePattern  # noqa: TC001
-from courier.errors import CourierError
+from courier.errors import CourierError, UnexecutableJobError
 from courier.interfaces.discovery import ENTRY_POINT_PREFIX, ClassPluginRegistry
 from courier.metrics import PAYLOAD_JOB_EXECUTION_DURATION, PAYLOAD_JOBS_PROCESSED
 from courier.types.execution_log import ExecutionLog
@@ -627,8 +627,11 @@ class Payload:
     config: PayloadConfig
     base_config: DispatcherGroupConfig
     #: Entry-point name of the payload plugin that was configured.  It labels
-    #: the metrics, also when a dispatcher hydrates a lower representation.
+    #: the metrics, also when a dispatcher runs it as a lower representation.
     payload_name: str
+    #: Class in this payload's hierarchy that the dispatcher runs it as: its
+    #: own class, or a lower representation (see :meth:`render_script`).
+    representation: type[Payload]
     #: Compiled pass-one template; ``None`` for a binary-only payload and for
     #: an instance hydrated from a job spec.
     _template: jinja2.Template | None = None
@@ -667,6 +670,7 @@ class Payload:
         """Initialize the state both construction paths share."""
         self.identifier = identifier
         self.payload_name = payload_name or self.name
+        self.representation = type(self)
         self._logger = get_logger("plugin", self.name, service.config)
         self.config = config
         self.base_config = (
@@ -690,15 +694,16 @@ class Payload:
         spec: PayloadSpec,
         service: Service,
         base_config: DispatcherGroupConfig | None = None,
+        representation: type[Payload] | None = None,
     ) -> Self:
         """Hydrate a payload from a job's serialized spec, without ``__init__``.
 
-        Keys :attr:`config_class` does not define are dropped first (a
-        dispatcher may hydrate a lower representation than the builder
-        configured), and ``config.script`` is set to the builder-rendered
-        ``spec.script``, replacing any raw template an older builder sent.  The
-        template file need not exist on this host.  The result executes that
-        script; it cannot render a job (:meth:`to_job_spec` refuses).
+        Keys :attr:`config_class` does not define are dropped first (a builder
+        running another version of the plugin may send more), and
+        ``config.script`` is set to the builder-rendered ``spec.script``,
+        replacing any raw template an older builder sent.  The template file
+        need not exist on this host.  The result executes that script; it
+        cannot render a job (:meth:`to_job_spec` refuses).
 
         Parameters
         ----------
@@ -709,6 +714,9 @@ class Payload:
         base_config : DispatcherGroupConfig or None, optional
             The dispatcher's config (timeouts, logging flags); defaults to a
             default :class:`DispatcherGroupConfig`.
+        representation : type[Payload] or None, optional
+            The class in this payload's hierarchy the dispatcher runs it as;
+            defaults to this class.  See :meth:`render_script`.
 
         Returns
         -------
@@ -720,7 +728,14 @@ class Payload:
         ------
         pydantic.ValidationError
             If ``spec.config`` is not a valid :attr:`config_class`.
+        TypeError
+            If *representation* is not in this class's hierarchy.
         """
+        if representation is not None and not issubclass(cls, representation):
+            raise TypeError(
+                f"{cls.__name__} cannot run as {representation.__name__}: it is "
+                f"not in its representation hierarchy",
+            )
         fields = cls.config_class.model_fields
         config = {
             key: value
@@ -737,6 +752,8 @@ class Payload:
             payload_name=spec.name,
             base_config=base_config,
         )
+        if representation is not None:
+            instance.representation = representation
         instance._hydrated = True
         return instance
 
@@ -770,8 +787,61 @@ class Payload:
         """
         return []
 
+    @property
+    def lowered(self) -> bool:
+        """Whether the dispatcher runs this payload as a lower representation."""
+        return self.representation is not type(self)
+
+    @classmethod
+    def wrap_command(cls, command: list[str]) -> list[str]:  # noqa: ARG003
+        """Return an argv that runs *command*, another payload's argv, as this class.
+
+        A class that a dispatcher can list in ``representations`` implements
+        this, so a payload lowered to it still runs with its own interpreter.
+        Every element of *command* must stay a separate argument: it is never
+        joined into one string to be parsed again.
+
+        Raises
+        ------
+        UnexecutableJobError
+            Always, here: the base class cannot run anything.
+        """
+        raise UnexecutableJobError(
+            f"{cls.__name__} cannot run the command of another payload",
+        )
+
+    def render_script(self, command: list[str]) -> list[str]:
+        """Rewrite *command*, this payload's own argv, to run as :attr:`representation`.
+
+        The lowering hook.  A payload run as its own class returns *command*
+        unchanged.  One lowered to an ancestor (a ``python_payload`` on a
+        dispatcher that lists only ``BashPayload``) still has to run with its
+        own interpreter, so by default *command* is handed to that ancestor's
+        :meth:`wrap_command`: ``bash -c '"$@"' bash python <script>``.  The
+        dispatcher passes every command it runs for the payload through here,
+        the job's and each toolchain probe's.  Override it to lower a payload
+        differently.
+
+        Parameters
+        ----------
+        command : list[str]
+            The argv that runs this payload as its own class.
+
+        Returns
+        -------
+        list[str]
+            The argv the dispatcher runs.
+        """
+        if not self.lowered:
+            return command
+        return self.representation.wrap_command(command)
+
     def _probe_toolchain(self, command: list[str]) -> list[ExecutionLog]:
-        """Run a toolchain probe (``probe=True``: no log file, no job metrics)."""
+        """Run a toolchain probe (``probe=True``: no log file, no job metrics).
+
+        *command* is this payload's own; it is lowered like a job's command.
+        """
+        command = self.render_script(command)
         payload = self.get_payload_from_job(command, probe=True)
         self._logger.debug(
             f"Toolchain validation command {command} returned:"
@@ -966,7 +1036,7 @@ class Payload:
                 context.setdefault(name, _DeferredValue(defer_nonce, (name,)))
         return template.render(context)
 
-    def render_script(
+    def render_template(
         self,
         job: Job,
         script: str,

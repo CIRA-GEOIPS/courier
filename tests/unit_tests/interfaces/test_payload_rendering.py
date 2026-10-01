@@ -4,7 +4,7 @@ Pass one (the job builder) must behave like a strict single-pass render for
 every name the builder owns, and defer only the names in
 ``DISPATCHER_CONTEXT_NAMES``.  A template may use those only as bare values;
 anything else is rejected when the template is checked -- when the payload is
-built, and whenever ``render_script`` renders pass one.  Pass two (the
+built, and whenever ``render_template`` renders pass one.  Pass two (the
 dispatcher) must evaluate nothing: it looks up the access path of each marker
 carrying the job's nonce in its own context and leaves every other character
 alone.  These tests pin both halves, and in particular the injection that the
@@ -212,13 +212,13 @@ class TestBuilderNamesAreStrict:
         payload = _payload(service, "echo x")
 
         with pytest.raises(jinja2.UndefinedError):
-            payload.render_script(_job(), "echo {{ script_path }}")
+            payload.render_template(_job(), "echo {{ script_path }}")
 
     def test_invalid_nonce_is_rejected(self, service: MagicMock) -> None:
         payload = _payload(service, "echo x")
 
         with pytest.raises(ValueError, match="defer_nonce"):
-            payload.render_script(_job(), "echo x", defer_nonce="NOT-HEX")
+            payload.render_template(_job(), "echo x", defer_nonce="NOT-HEX")
 
 
 class TestBuilderValuesUseStockJinja:
@@ -490,13 +490,13 @@ class TestBareValues:
             "cd /shared/slurm"
         )
 
-    def test_render_script_pass_one_renders_bare_values(
+    def test_render_template_pass_one_renders_bare_values(
         self,
         service: MagicMock,
     ) -> None:
         payload = _payload(service, "echo x")
 
-        rendered = payload.render_script(
+        rendered = payload.render_template(
             _job(),
             "{% for f in files %}{{ f.file }} {{ hostname }}{% endfor %}",
             defer_nonce=NONCE,
@@ -512,7 +512,7 @@ class TestBareValues:
     ) -> None:
         payload = _payload(service, "echo x")
 
-        rendered = payload.render_script(
+        rendered = payload.render_template(
             _job(),
             "{{ hostname }} {{ script_path }}",
             {"hostname": "given"},
@@ -761,13 +761,13 @@ class TestRejectedForms:
         assert f"line 2: dispatcher-only name {reported} {problem}" in message
         assert "bare value" in message
 
-    def test_rejected_by_render_script_in_pass_one(self, service: MagicMock) -> None:
+    def test_rejected_by_render_template_in_pass_one(self, service: MagicMock) -> None:
         """The same check as at construction; the table above covers its rules."""
         payload = _payload(service, "echo ok")
         expected = "line 2: dispatcher-only name 'hostname' is used other than"
 
         with pytest.raises(DeferredExpressionError, match=re.escape(expected)):
-            payload.render_script(
+            payload.render_template(
                 _job(), "#!/bin/sh\n{{ hostname | upper }}\n", defer_nonce=NONCE
             )
 
@@ -852,7 +852,7 @@ class TestRejectedForms:
         """Without a nonce every name is the caller's, so stock Jinja applies."""
         payload = _payload(service, "echo x")
 
-        rendered = payload.render_script(
+        rendered = payload.render_template(
             _job(),
             "{{ hostname | upper }} {{ script_path ~ '.log' }}",
             {"hostname": "node-1", "script_path": "/s"},
@@ -1277,7 +1277,7 @@ class TestEnvironment:
     ) -> None:
         payload = _payload(service, "echo x")
 
-        rendered = payload.render_script(
+        rendered = payload.render_template(
             _job(),
             "{{ files[0].file }} {{ script_path }} {{ dispatcher.identifier }}",
             {"script_path": SCRIPT_PATH, "dispatcher": {"identifier": "ld"}},
@@ -1297,7 +1297,7 @@ class TestEnvironment:
 
         payload = _payload(service, "echo x")
 
-        assert payload.render_script(_job(), "{{ v }}", {"v": NoEquality()}) == (
+        assert payload.render_template(_job(), "{{ v }}", {"v": NoEquality()}) == (
             "no-equality"
         )
 

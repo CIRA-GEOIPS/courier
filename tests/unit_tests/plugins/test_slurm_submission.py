@@ -34,14 +34,16 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 from prometheus_client import REGISTRY
 
 from courier.constants import FILE_FOUND_EXCHANGE
 from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
+from courier.interfaces.payloads import Payload
 from courier.plugins.payloads.python_payload import PythonPayload
+from courier.plugins.payloads.shell_payload import RUN_ARGV_SCRIPT, ShellPayload
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
 from tests._helpers import consume, file_job, wire_job
@@ -574,6 +576,41 @@ class TestWrappedJobs:
         release.touch()
         assert fake_slurm.wait_until_done(submitted["id"]) == "COMPLETED"
         assert Path(submitted["output"]).read_text() == "late but fine\n"
+
+    def test_lowered_payload_is_wrapped_and_run_by_its_own_interpreter(
+        self,
+        service: MagicMock,
+        out_dir: Path,
+        fake_slurm: FakeSlurm,
+    ) -> None:
+        """A bash script lowered to sh is not the batch script: sh would run it."""
+
+        class ShellOnlySlurm(SlurmDispatcher):
+            representations: ClassVar[list[type[Payload]]] = [ShellPayload]
+
+        dispatcher = ShellOnlySlurm(
+            service,
+            {
+                "slurm_output_dir": str(out_dir),
+                "poll_interval_seconds": 0.05,
+                "submission_timeout_seconds": 10,
+            },
+            identifier="sd",
+        )
+        job = wire_job(
+            service,
+            {"script": 'if [[ -n "$BASH_VERSION" ]]; then echo bash; fi'},
+        )
+
+        (log,) = dispatcher.get_execution_log(job)
+
+        submitted = fake_slurm.only_job()
+        assert submitted["script"] is None
+        argv = shlex.split(submitted["wrap"])
+        assert argv[:5] == ["sh", "-c", RUN_ARGV_SCRIPT, "sh", "bash"]
+        assert Path(argv[5]).parent == out_dir
+        assert log.return_code == 0, log.stderr
+        assert log.stdout == "bash\n"
 
     def test_untrusted_file_names_are_not_run_by_the_wrap_shell(
         self,
