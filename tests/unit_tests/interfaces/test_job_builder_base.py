@@ -543,8 +543,8 @@ def _bash_payload(service: MagicMock, script: str) -> Any:
     return BashPayload(service, {"script": script}, identifier=DEFAULT_PAYLOAD_ID)
 
 
-def _meta_file(name: str, **metadata: Any) -> FrozenFile:
-    return FrozenFile(file=Path(f"/data/{name}.nc"), hostname="h", metadata=metadata)
+def _meta_file(name: str, **metadata: Any) -> FrozenDatum:
+    return FrozenDatum(file=Path(f"/data/{name}.nc"), hostname="h", metadata=metadata)
 
 
 def _published_scripts(service: MagicMock) -> list[str | None]:

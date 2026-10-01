@@ -1,7 +1,7 @@
 """Pydantic validators for data monitor configuration files.
 
 This module provides validation for YAML configuration files that define
-metadata for Files (and files).
+metadata for Datums (and files).
 """
 
 import re

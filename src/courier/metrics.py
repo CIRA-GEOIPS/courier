@@ -144,7 +144,7 @@ JOB_BUILDER_EMIT_FAILURES: Counter = Counter(
 JOB_BUILDER_MALFORMED_MESSAGES: Counter = Counter(
     "courier_job_builder_malformed_messages_total",
     "File-found messages acknowledged and dropped because the body would "
-    "not parse as a File",
+    "not parse as a Datum",
     ["job_builder_name", "job_builder_identifier"],
 )
 

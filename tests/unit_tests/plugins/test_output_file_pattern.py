@@ -35,7 +35,7 @@ class TestValidPattern:
         assert isinstance(entry.metadata, dict)
 
     def test_extra_named_groups_are_captured_as_metadata(self) -> None:
-        """A pattern's non-``file`` groups must reach the emitted File.
+        """A pattern's non-``file`` groups must reach the emitted Datum.
 
         Asserting ``entry.pattern is not None`` only proved construction did
         not crash — it said nothing about whether the extra group is ever
@@ -69,7 +69,7 @@ class TestValidPattern:
     def test_named_groups_matching_file_fields_populate_those_fields(
         self,
     ) -> None:
-        """``source``/``instrument`` groups set File attributes, not metadata.
+        """``source``/``instrument`` groups set Datum attributes, not metadata.
 
         This routing decision is what downstream filters depend on; a test
         that only checks the pattern constructs cannot see it go wrong.

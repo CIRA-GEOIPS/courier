@@ -25,7 +25,7 @@ from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
 from tests._helpers import IN_TREE_BUILDER_SETTINGS, with_payload
@@ -105,7 +105,7 @@ def _builder(
 
 def _published_job(service: MagicMock, builder: JobBuilder) -> str:
     """Feed one file through *builder*; return the one message it published."""
-    builder._dispatch_file(File(file=Path(DATA_FILE)).freeze())
+    builder._dispatch_file(Datum(file=Path(DATA_FILE)).freeze())
     (call,) = service.emit.call_args_list
     message: str = call.kwargs["message"]
     service.emit.reset_mock()
@@ -287,7 +287,7 @@ class TestHydration:
 
 def _wire_job(payload: Payload) -> Job:
     """Return a job carrying *payload*'s spec, as a dispatcher receives it."""
-    job = Job("n", "job-1", {}, files=[File(file=Path(DATA_FILE)).freeze()])
+    job = Job("n", "job-1", {}, files=[Datum(file=Path(DATA_FILE)).freeze()])
     job.targets = ("sd",)
     job.payload = payload.to_job_spec(job)
     return Job.from_string(str(job))

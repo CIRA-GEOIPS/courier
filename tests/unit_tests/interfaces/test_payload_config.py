@@ -31,7 +31,7 @@ from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcherConfig
 from courier.plugins.payloads.bash_payload import BashPayload, BashPayloadConfig
 from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.types.execution_log import ExecutionLog
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
 
@@ -40,7 +40,7 @@ _READ_ONLY_DIR_MODE = 0o500
 
 
 def _job() -> Job:
-    return Job("n", "job-1", {}, files=[File(file=Path("/data/a.nc"))])
+    return Job("n", "job-1", {}, files=[Datum(file=Path("/data/a.nc"))])
 
 
 # ── the template is read and compiled once, at construction ─────────────────

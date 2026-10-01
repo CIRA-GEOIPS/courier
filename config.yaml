@@ -7,7 +7,7 @@ metadata:
   docstring: |
     This service listens to the nrt_file_notif_queue RabbitMQ queue for incoming
     files that were ingested by the CIRA data inventory. Each notification
-    is parsed into a File object annotated with platform, sensor, and timestamp
+    is parsed into a Datum object annotated with platform, sensor, and timestamp
     metadata. Downstream job builders and dispatchers can filter and act on these
     files as they arrive.
 spec:
@@ -43,7 +43,7 @@ spec:
           # No timestamp_field: the three time_range_* keys above are what
           # resolve the timestamp. timestamp_field names a *flat* key holding
           # the value itself, so pointing it at the time_range dict resolves to
-          # a dict, which is not a parseable timestamp -- every File would then
+          # a dict, which is not a parseable timestamp -- every Datum would then
           # silently carry timestamp=None and time_grouping would never bucket.
     - just-pass:
         kind: job_builder

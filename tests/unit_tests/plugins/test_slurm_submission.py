@@ -45,7 +45,7 @@ from courier.interfaces.payloads import Payload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import RUN_ARGV_SCRIPT, ShellPayload
 from courier.types.execution_log import ExecutionLog
-from courier.types.file import File
+from courier.types.datum import Datum
 from tests._helpers import consume, file_job, wire_job
 
 if TYPE_CHECKING:
@@ -458,7 +458,7 @@ class TestWaitMode:
         )
 
         emitted = [
-            File.from_string(call.kwargs["message"]).file
+            Datum.from_string(call.kwargs["message"]).file
             for call in service.emit.call_args_list
             if call.kwargs.get("queue") == FILE_FOUND_EXCHANGE
         ]

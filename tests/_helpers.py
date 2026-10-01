@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.payloads.bash_payload import BashPayload
-from courier.types.file import File
+from courier.types.datum import Datum
 from courier.types.job import Job
 
 if TYPE_CHECKING:
@@ -111,7 +111,7 @@ def with_payload(
 
 def file_job(path: Path | str = "/d/a.nc", identifier: str = "job-1") -> Job:
     """Return a job holding the one file *path*."""
-    return Job("n", identifier, {}, files=[File(file=Path(path)).freeze()])
+    return Job("n", identifier, {}, files=[Datum(file=Path(path)).freeze()])
 
 
 def wire_job(
