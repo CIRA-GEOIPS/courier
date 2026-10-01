@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import ANY, MagicMock, patch
 
 import pytest
@@ -10,6 +12,9 @@ import pytest
 from courier.cli.run import run as cli_run
 from courier.cli.run import run_service
 from courier.config import ServiceConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _make_entry(identifier: str, kind: str, name: str, config: dict | None = None):
@@ -309,7 +314,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, log_level=None, only="")
+        cli_run(ctx, config_file, only="")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -335,7 +340,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, log_level=None, only="MY-DM")
+        cli_run(ctx, config_file, only="MY-DM")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -361,7 +366,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, log_level=None, only=" my-dm , my-jb ")
+        cli_run(ctx, config_file, only=" my-dm , my-jb ")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -387,7 +392,7 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, log_level=None, only="my-dm,my-dm")
+        cli_run(ctx, config_file, only="my-dm,my-dm")
 
         mock_run_service.assert_called_once_with(
             ANY,
@@ -413,12 +418,69 @@ class TestRunCLIOnlyParsing:
         config_file = MagicMock(spec=Path)
         config_file.exists.return_value = True
 
-        cli_run(ctx, config_file, log_level=None, only="my-dm,")
+        cli_run(ctx, config_file, only="my-dm,")
 
         mock_run_service.assert_called_once_with(
             ANY,
             log_level=None,
             only_set={"my-dm"},
+        )
+
+
+class TestLogLevel:
+    """``--log-level`` reaches the service, and only when it was given."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_root_level(self) -> Iterator[None]:
+        """``run_service`` sets the root logger's level; put it back."""
+        root = logging.getLogger()
+        level = root.level
+        yield
+        root.setLevel(level)
+
+    @staticmethod
+    def _service_config(mock_create_svc: MagicMock) -> ServiceConfig:
+        return mock_create_svc.call_args[0][0]
+
+    @patch("courier.cli.run.create_service_with_plugins")
+    @patch("courier.cli.run.PLUGIN_REGISTRIES", _plugin_registries_fixture())
+    def test_given_level_reaches_the_service_config(self, mock_create_svc):
+        """A --log-level replaces the service config's level."""
+        config = _make_config(TestOnlyFlag._entries())
+
+        run_service(config, log_level="WARNING")
+
+        assert self._service_config(mock_create_svc).log_level == "WARNING"
+
+    @patch("courier.cli.run.create_service_with_plugins")
+    @patch("courier.cli.run.PLUGIN_REGISTRIES", _plugin_registries_fixture())
+    def test_without_a_level_the_configured_one_is_kept(self, mock_create_svc):
+        """Without --log-level, the YAML's service_config.log_level is kept."""
+        config = _make_config(TestOnlyFlag._entries())
+        config.spec.service_config = ServiceConfig(log_level="ERROR")
+
+        run_service(config, log_level=None)
+
+        assert self._service_config(mock_create_svc).log_level == "ERROR"
+
+    @patch("courier.cli.run.run_service")
+    @patch("courier.cli.run.load_config_or_exit")
+    def test_run_passes_on_the_global_level(
+        self,
+        mock_load_config,
+        mock_run_service,
+    ):
+        """``courier run`` reads the level the root callback stored."""
+        mock_load_config.return_value = MagicMock()
+        ctx = MagicMock()
+        ctx.obj = {"log_level": "INFO"}
+
+        cli_run(ctx, MagicMock(spec=Path), only=None)
+
+        mock_run_service.assert_called_once_with(
+            ANY,
+            log_level="INFO",
+            only_set=None,
         )
 
 
