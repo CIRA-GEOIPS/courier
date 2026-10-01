@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import math
 import os
 import queue
@@ -224,6 +225,7 @@ class Dispatcher(ServicePlugin):
             max_workers=self.config.max_workers)
         # Synchronized queue containing the asynchronous results from the thread pool.
         self._futures_queue : queue.Queue = queue.Queue()
+        self._slots = threading.BoundedSemaphore(self.config.max_workers)
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Resolve the job's payload, prepare its environment, and execute it.
@@ -758,12 +760,48 @@ class Dispatcher(ServicePlugin):
 
     def handle_incoming_jobs(self) -> None:
         """Handle the consumption and processing of consumed jobs."""
-        threading.Thread(target=self._consume_jobs).start()
+        consumer_errors: queue.Queue[BaseException] = queue.Queue(maxsize=1)
+
+        def consume() -> None:
+            try:
+                self._consume_jobs()
+            except BaseException as exc:
+                consumer_errors.put(exc)
+                self._stop_event.set()
+
+        consumer_thread = threading.Thread(
+            target=consume,
+            name=f"{self.name}-consumer",
+            daemon=True,
+        )
+        consumer_thread.start()
+
         while not self._stop_event.is_set():
-            if not self._futures_queue.empty():
-                self._futures_queue.get().result()
+            try:
+                exc = consumer_errors.get_nowait()
+            except queue.Empty:
+                pass
+            else:
+                raise exc
+
+            try:
+                future = self._futures_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            future.result()
+
+        try:
+            exc = consumer_errors.get_nowait()
+        except queue.Empty:
+            pass
+        else:
+            raise exc
+
         while not self._futures_queue.empty():
             self._futures_queue.get().result()
+
+        consumer_thread.join()
 
     def _parse_job(self, body: str, parent_ctx: Any) -> Job | None:
         """Deserialize a message body; park it and return None if not a job."""
@@ -816,10 +854,12 @@ class Dispatcher(ServicePlugin):
                     extra={"correlation_id": job.correlation_id},
                 )
                 return
-            self._futures_queue.put(
-                self._executor.submit(
-                    self._run_job, job, body, key),
-                )
+            self._slots.acquire()
+            ctx = contextvars.copy_context()
+            future = self._executor.submit(
+                ctx.run, self._run_job, job, body, key)
+            future.add_done_callback(lambda _f: self._slots.release())
+            self._futures_queue.put(future)
 
     def _run_job(self, job: Job, body: str, key: tuple[str, str]) -> None:
         """Execute *job*, publish its results, and account for it."""
