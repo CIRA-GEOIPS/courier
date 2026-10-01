@@ -95,6 +95,7 @@ class Job:
         emit_time: float | None = None,
         targets: tuple[str, ...] | None = None,
         payload: PayloadSpec | None = None,
+        execution_count : int = 0,
     ) -> None:
         self.name = name
         self.identifier = identifier
@@ -110,6 +111,7 @@ class Job:
         self.emit_time = emit_time
         self.targets: tuple[str, ...] = tuple(targets) if targets else ()
         self.payload = payload
+        self.execution_count = execution_count
 
     def __str__(self) -> str:
         """Convert Job to JSON string."""
@@ -125,6 +127,7 @@ class Job:
                 "emit_time": self.emit_time,
                 "targets": list(self.targets),
                 "payload": self.payload,
+                "execution_count": self.execution_count,
             },
             default=json_default,
         )
@@ -159,6 +162,7 @@ class Job:
                 if data.get("payload")
                 else None
             ),
+            execution_count=data.get("execution_count", 0),
         )
 
     def ready(self) -> bool:

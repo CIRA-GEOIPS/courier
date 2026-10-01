@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from socket import gethostname
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Set, cast
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
 
@@ -243,6 +243,8 @@ class Dispatcher(ServicePlugin):
         # lazily by the consumer thread and closed by it, so it is owned by
         # exactly one thread for its whole life; see _emit_queue_depth.
         self._depth_connection: kombu.Connection | None = None
+        self._bad_jobs: Set = set()
+        self.dlq : list[Job] = []
 
     def get_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Resolve the job's payload, prepare its environment, and execute it.
@@ -1138,11 +1140,9 @@ class Dispatcher(ServicePlugin):
         try:
             results = self._execute_contained(job, body, key)
             if results is not None:
-                self._publish_results(key, *results)
-                self._jobs_processed.labels(
-                    status="success",
-                    **self._metric_labels,
-                ).inc()
+                logs, files = results
+                self._post_execution_health_check(job, logs)
+                self._publish_results(key, logs, files)
         finally:
             execution_time = time.time() - self.active_job_timestamps.pop(
                 job_id,
@@ -1250,6 +1250,50 @@ class Dispatcher(ServicePlugin):
         except BaseException:
             self._seen_jobs.pop(key, None)
             raise
+
+    def _post_execution_health_check(
+        self,
+        job: Job,
+        logs: list[ExecutionLog],
+    ) -> None:
+        """Process jobs according to their execution logs
+
+        On failure of a job, it is retried if eligible and sent to the 
+        set of bad jobs. If it is ineligible to be retried, the job is sent to the
+        dispatcher's dead-letter queue."""
+        for log in logs:
+            if log.return_code != 0:
+                self._state = PluginRunState.FAILED
+                self._jobs_processed.labels(
+                    status="failed",
+                    **self._metric_labels,
+                ).inc()
+                job.execution_count += 1
+                self._bad_jobs.add(job.identifier)
+                if job.execution_count > self.config.retries:
+                    self._logger.error(
+                        f"Job {job.identifier} placed into "
+                        "dead-letter queue after exceeding retry count."
+                    )
+                    self.dlq.append(job)
+                else:
+                    self._logger.error(
+                        f"Unsavory job {job.identifier} emitted into the consumer queue for retry"
+                    )
+                    self._seen_jobs.pop(self._dedupe_key(job), None)
+                    self.parent_service.emit(
+                        self.incoming_queue,
+                        str(job)
+                    )
+            else:
+                if job.identifier in self._bad_jobs:
+                    self._bad_jobs.remove(job.identifier)
+                    if len(self._bad_jobs) == 0:
+                        self._state = PluginRunState.RUNNING
+                        self._jobs_processed.labels(
+                            status = "success",
+                            **self._metric_labels,
+                        ).inc()
 
     def _contained_execution_log(self, job: Job) -> list[ExecutionLog]:
         """Call :meth:`get_execution_log`, converting stray errors to CourierError.
