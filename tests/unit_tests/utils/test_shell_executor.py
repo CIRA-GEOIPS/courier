@@ -122,15 +122,10 @@ class TestLogToFile:
 class TestLogOnlyErrors:
     """``log_only_errors`` must suppress stdout everywhere."""
 
-    def test_stdout_captured_is_empty(self) -> None:
-        result = _run("echo hello; echo world", log_only_errors=True)
-
-        assert result.return_code == 0
-        assert result.stdout == ""
-
-    def test_stderr_is_still_captured(self) -> None:
+    def test_only_stderr_is_captured(self) -> None:
         result = _run("echo error >&2; echo ok", log_only_errors=True)
 
+        assert result.return_code == 0
         assert result.stdout == ""
         assert "error" in result.stderr
 

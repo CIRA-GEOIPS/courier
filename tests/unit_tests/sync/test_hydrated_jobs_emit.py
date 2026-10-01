@@ -21,7 +21,7 @@ import pytest
 from courier.interfaces.job_builders import JobBuilder
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
-from tests._helpers import bind_payload, with_payload
+from tests._helpers import with_payload
 
 
 class _AlwaysReadyJob(Job):
@@ -58,7 +58,6 @@ def test_a_job_complete_in_the_hash_is_emitted_on_start(
         with_payload({"targets": ["dp-1"]}),
         identifier="jb-1",
     )
-    bind_payload(builder)
     group = _StubGroup()
     builder.job_groups = [group]
 

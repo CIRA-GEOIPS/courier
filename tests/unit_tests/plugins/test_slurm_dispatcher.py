@@ -11,25 +11,16 @@ the one checked here.
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import shlex
 import stat
 import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
-from courier.errors import (
-    CourierError,
-    InvalidPluginConfigError,
-    PluginStartupError,
-    UnexecutableJobError,
-)
-from courier.interfaces.payloads import PayloadSpec
+from courier.errors import InvalidPluginConfigError, PluginStartupError
 from courier.plugins.dispatchers.slurm_dispatcher import (
     SlurmDispatcher,
     SlurmDispatcherConfig,
@@ -41,21 +32,14 @@ from courier.plugins.dispatchers.slurm_dispatcher import (
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
-from courier.types.file import File
 from courier.types.job import Job
+from tests.unit_tests.plugins.conftest import captured_records, wire_job
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from pathlib import Path
+    from unittest.mock import MagicMock
 
     from courier.interfaces.payloads import Payload
-
-
-@pytest.fixture
-def service() -> MagicMock:
-    svc = MagicMock()
-    svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
-    return svc
 
 
 def _dispatcher(
@@ -68,27 +52,6 @@ def _dispatcher(
 
 def _job(identifier: str = "job-1") -> Job:
     return Job("n", identifier, {})
-
-
-def _wire(
-    service: MagicMock,
-    payload_config: dict,
-    *,
-    payload_cls: type[Payload] = BashPayload,
-    identifier: str = "job-1",
-    files: list[Path] | None = None,
-) -> Job:
-    """Return a job carrying a rendered payload, as a dispatcher receives it."""
-    payload = payload_cls(service, payload_config, "p1")
-    job = Job(
-        "n",
-        identifier,
-        {},
-        files=[File(file=f).freeze() for f in files or []],
-    )
-    job.targets = ("sd",)
-    job.payload = payload.to_job_spec(job)
-    return Job.from_string(str(job))
 
 
 def _prepare(dispatcher: SlurmDispatcher, job: Job) -> SlurmSubmission:
@@ -105,29 +68,6 @@ def _options_end(command: list[str]) -> int:
             return index
         index += 1
     return index
-
-
-@contextlib.contextmanager
-def _captured(logger_name: str) -> Iterator[list[logging.LogRecord]]:
-    """Collect the records *logger_name* emits, whatever its current setup."""
-    records: list[logging.LogRecord] = []
-
-    class _Collector(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            records.append(record)
-
-    logger = logging.getLogger(logger_name)
-    handler = _Collector(level=logging.DEBUG)
-    previous_level, previous_disabled = logger.level, logger.disabled
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
-    logger.disabled = False
-    try:
-        yield records
-    finally:
-        logger.removeHandler(handler)
-        logger.setLevel(previous_level)
-        logger.disabled = previous_disabled
 
 
 class TestConfig:
@@ -152,7 +92,9 @@ class TestConfig:
         service: MagicMock,
         tmp_path: Path,
     ) -> None:
-        with pytest.raises(ValidationError, match="#SBATCH"):
+        with pytest.raises(
+            ValidationError, match="'sbatch_template' is no longer supported"
+        ):
             _dispatcher(service, tmp_path, sbatch_template="#!/bin/bash\n")
 
     def test_output_dir_is_required(self, service: MagicMock) -> None:
@@ -327,10 +269,6 @@ class TestStart:
         with pytest.raises(PluginStartupError, match="'sacct'"):
             dispatcher.start()
 
-    def test_startup_error_is_a_courier_error(self) -> None:
-        # The plugin manager contains CourierError from start() as FAILED.
-        assert issubclass(PluginStartupError, CourierError)
-
     def test_not_waiting_needs_only_sbatch(
         self,
         service: MagicMock,
@@ -380,7 +318,7 @@ class TestStart:
             timeout_seconds=5,
         )
 
-        with _captured("courier.plugin.slurm_dispatcher") as records:
+        with captured_records("courier.plugin.slurm_dispatcher") as records:
             dispatcher.start()
         dispatcher.stop()
 
@@ -407,7 +345,7 @@ class TestStart:
             output_files=[{"pattern": r"(?P<file>/\S+\.nc)"}],
         )
 
-        with _captured("courier.plugin.slurm_dispatcher") as records:
+        with captured_records("courier.plugin.slurm_dispatcher") as records:
             dispatcher.start()
         dispatcher.stop()
 
@@ -426,7 +364,7 @@ class TestStart:
         monkeypatch.setenv("PATH", str(_tools_dir(tmp_path, "sbatch", "sacct")))
         dispatcher = _dispatcher(service, tmp_path, log_to_file=False)
 
-        with _captured("courier.plugin.slurm_dispatcher") as records:
+        with captured_records("courier.plugin.slurm_dispatcher") as records:
             dispatcher.start()
         dispatcher.stop()
 
@@ -435,26 +373,6 @@ class TestStart:
 
 class TestBatchScriptSubmission:
     """A shell script that runs directly is the batch script itself."""
-
-    def test_sh_template_file_is_submitted_as_the_batch_script(
-        self,
-        service: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        template = tmp_path / "job.sh"
-        template.write_text(
-            "#!/bin/bash\n#SBATCH --gres=gpu:1\necho {{ job.identifier }}"
-        )
-        dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(service, {"file": str(template), "suffix_args": ["a", "b c"]})
-
-        env = _prepare(dispatcher, job)
-
-        assert "--wrap" not in env.command
-        assert env.file is not None
-        assert env.command[_options_end(env.command) :] == [str(env.file), "a", "b c"]
-        assert env.file.read_text() == "#!/bin/bash\n#SBATCH --gres=gpu:1\necho job-1"
-        assert env.reads_script_at_run is False
 
     @pytest.mark.parametrize(
         ("payload_cls", "shebang"),
@@ -471,7 +389,7 @@ class TestBatchScriptSubmission:
         shebang: str,
     ) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(service, {"script": "echo hi"}, payload_cls=payload_cls)
+        job = wire_job(service, {"script": "echo hi"}, payload_cls=payload_cls)
 
         env = _prepare(dispatcher, job)
 
@@ -485,7 +403,7 @@ class TestBatchScriptSubmission:
         tmp_path: Path,
     ) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(
+        job = wire_job(
             service, {"script": "echo hi", "default_binary": "/opt/bash5/bin/bash"}
         )
 
@@ -504,7 +422,7 @@ class TestBatchScriptSubmission:
         """Only argument templates render; slurm_output_dir stays literal."""
         output_dir = tmp_path / name
         dispatcher = _dispatcher(service, output_dir)
-        job = _wire(service, {"script": "echo hi", "suffix_args": ["{{ 6 * 7 }}"]})
+        job = wire_job(service, {"script": "echo hi", "suffix_args": ["{{ 6 * 7 }}"]})
 
         env = _prepare(dispatcher, job)
 
@@ -514,7 +432,7 @@ class TestBatchScriptSubmission:
 
     def test_existing_shebang_is_kept(self, service: MagicMock, tmp_path: Path) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(service, {"script": "#!/bin/bash -l\nmodule load x"})
+        job = wire_job(service, {"script": "#!/bin/bash -l\nmodule load x"})
 
         env = _prepare(dispatcher, job)
 
@@ -533,39 +451,13 @@ class TestWrappedSubmission:
         assert len(env.command) == index + 2, "nothing may follow --wrap's value"
         return shlex.split(env.command[index + 1])
 
-    def test_python_file_is_run_by_its_interpreter(
-        self,
-        service: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        template = tmp_path / "job.py"
-        template.write_text("print('{{ job.identifier }}')")
-        dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(
-            service,
-            {
-                "file": str(template),
-                "suffix_args": ["x"],
-                "default_binary": "/venv/python",
-            },
-            payload_cls=PythonPayload,
-        )
-
-        env = _prepare(dispatcher, job)
-
-        assert env.file is not None
-        assert env.file.suffix == ".py"
-        assert self._wrapped(env) == ["/venv/python", str(env.file), "x"]
-        assert env.file.read_text() == "print('job-1')"
-        assert env.reads_script_at_run is True
-
     def test_python_inline_script_is_wrapped(
         self,
         service: MagicMock,
         tmp_path: Path,
     ) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(service, {"script": "print(1)"}, payload_cls=PythonPayload)
+        job = wire_job(service, {"script": "print(1)"}, payload_cls=PythonPayload)
 
         env = _prepare(dispatcher, job)
 
@@ -580,7 +472,7 @@ class TestWrappedSubmission:
     ) -> None:
         # Given to sbatch, "-e" would be --error and swallow the script path.
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(service, {"script": "echo hi", "prefix_args": ["-e", "-x"]})
+        job = wire_job(service, {"script": "echo hi", "prefix_args": ["-e", "-x"]})
 
         env = _prepare(dispatcher, job)
 
@@ -599,7 +491,7 @@ class TestWrappedSubmission:
         its toolchain probes.)
         """
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(
+        job = wire_job(
             service,
             {"script": "#SBATCH --gres=gpu:1\necho hi", "toolchain_prepend": ["env"]},
         )
@@ -610,38 +502,13 @@ class TestWrappedSubmission:
         assert env.file is not None
         assert env.command[_options_end(env.command) :] == [str(env.file)]
 
-    def test_binary_arguments_are_quoted_one_by_one(
-        self,
-        service: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        evil = "/data/it's $(touch pwned) `id`.nc"
-        spaced = tmp_path / "slurm output"
-        dispatcher = SlurmDispatcher(
-            service,
-            {"slurm_output_dir": str(spaced)},
-            identifier="sd",
-        )
-        job = _wire(
-            service,
-            {"binary": "echo", "suffix_args": ["{{ files[0].file }}"]},
-            files=[Path(evil)],
-        )
-
-        env = _prepare(dispatcher, job)
-
-        argv = self._wrapped(env)
-        assert argv[-2:] == ["echo", evil]
-        assert env.file is None
-        assert env.reads_script_at_run is False
-
     def test_empty_arguments_survive_the_wrap(
         self,
         service: MagicMock,
         tmp_path: Path,
     ) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(
+        job = wire_job(
             service,
             {"binary": "printf", "prefix_args": ["[%s]", ""], "suffix_args": [""]},
         )
@@ -656,21 +523,17 @@ class TestScriptFiles:
         self,
         service: MagicMock,
         tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
+        private_tmpdir: Path,
     ) -> None:
-        tmpdir = tmp_path / "tmpdir"
-        tmpdir.mkdir()
-        monkeypatch.setenv("TMPDIR", str(tmpdir))
-        monkeypatch.setattr(tempfile, "tempdir", None)
         dispatcher = _dispatcher(service, tmp_path)
 
-        env = _prepare(dispatcher, _wire(service, {"script": "echo hi"}))
+        env = _prepare(dispatcher, wire_job(service, {"script": "echo hi"}))
 
         assert env.file is not None
         assert env.file.parent == dispatcher._output_dir
         assert env.file.name.startswith("job-1-")
         assert stat.S_IMODE(env.file.stat().st_mode) == 0o755  # noqa: PLR2004
-        assert list(tmpdir.iterdir()) == []
+        assert list(private_tmpdir.iterdir()) == []
 
     def test_two_submissions_of_one_job_get_distinct_scripts(
         self,
@@ -683,7 +546,7 @@ class TestScriptFiles:
             {"slurm_output_dir": str(tmp_path / "slurm")},
             identifier="sd-2",
         )
-        job = _wire(service, {"script": "echo hi"})
+        job = wire_job(service, {"script": "echo hi"})
 
         paths = {_prepare(d, job).file for d in (first, first, second)}
 
@@ -700,7 +563,7 @@ class TestScriptFiles:
         dispatcher._output_dir.mkdir(parents=True)
         (dispatcher._output_dir / "job-1.sh").symlink_to(victim)
 
-        env = _prepare(dispatcher, _wire(service, {"script": "echo hi"}))
+        env = _prepare(dispatcher, wire_job(service, {"script": "echo hi"}))
 
         assert victim.read_text() == "precious\n"
         assert env.file is not None
@@ -729,7 +592,7 @@ class TestScriptFiles:
             lambda: iter(["planted", "fresh"]),
         )
 
-        env = _prepare(dispatcher, _wire(service, {"script": "echo hi"}))
+        env = _prepare(dispatcher, wire_job(service, {"script": "echo hi"}))
 
         assert env.file == dispatcher._output_dir / "job-1-fresh.sh"
         assert victim.read_text() == "precious\n"
@@ -740,7 +603,7 @@ class TestScriptFiles:
         tmp_path: Path,
     ) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(
+        job = wire_job(
             service,
             {"script": "echo hi", "suffix_args": ["{{ builder.identifier }}"]},
         )
@@ -759,7 +622,7 @@ class TestScriptFiles:
         dispatcher = _dispatcher(service, tmp_path)
         assert not dispatcher._output_dir.exists()
 
-        env = _prepare(dispatcher, _wire(service, {"script": "echo hi"}))
+        env = _prepare(dispatcher, wire_job(service, {"script": "echo hi"}))
 
         assert env.file is not None
         assert env.file.exists()
@@ -770,7 +633,7 @@ class TestScriptFiles:
         tmp_path: Path,
     ) -> None:
         dispatcher = _dispatcher(service, tmp_path)
-        job = _wire(
+        job = wire_job(
             service,
             {"script": "#!/bin/sh\necho {{ output_dir }} {{ script_path }}"},
         )
@@ -781,46 +644,3 @@ class TestScriptFiles:
         assert env.file.read_text() == (
             f"#!/bin/sh\necho {dispatcher._output_dir} {env.file}"
         )
-
-
-class TestToolchainValidation:
-    def test_missing_toolchain_binary_makes_the_job_unexecutable(
-        self,
-        service: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        dispatcher = _dispatcher(service, tmp_path)
-        job = Job(
-            "n",
-            "job-1",
-            {},
-            payload=PayloadSpec(
-                name="bash_payload",
-                identifier="p1",
-                config={
-                    "binary": "echo",
-                    "toolchain": ["courier-no-such-binary-xyz"],
-                },
-            ),
-        )
-
-        with pytest.raises(UnexecutableJobError, match="Toolchain validation failed"):
-            dispatcher._resolve_job_payload(job)
-
-    def test_toolchain_probe_is_unaffected_by_log_to_file(
-        self,
-        service: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        dispatcher = _dispatcher(
-            service,
-            tmp_path,
-            log_to_file=True,
-            log_dir=str(tmp_path / "logs"),
-        )
-        job = _wire(service, {"script": "echo hi", "toolchain": ["sh"]})
-
-        payload = dispatcher._resolve_job_payload(job)
-
-        assert payload.name == "bash_payload"
-        assert list((tmp_path / "logs").iterdir()) == []

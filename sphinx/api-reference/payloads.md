@@ -52,14 +52,17 @@ build.config.payload         required, but missing: every job builder needs a pa
 and `courier run` refuses to start with an `InvalidPluginConfigError` that
 names the builder and shows a minimal block (see
 {doc}`plugins`). A block that is not a mapping, nests no plugin or more than
-one, or nests a plugin whose `kind` is not `payload` is rejected the same way.
+one, nests a plugin whose `kind` is not `payload`, or gives that plugin
+settings (`config`) that are not a mapping is rejected the same way.
 At startup, service preflight binds the payload plugin to its builder; a
 builder refuses to start without it, and every job it emits carries it.
 
 The payload plugin is constructed when `courier run` starts the job builder.
-Construction reads the template (`file`, or the inline `script`) once and
-parses it; editing the file afterwards takes effect on the next restart. A
-template that cannot be read, or that has a Jinja syntax error, stops
+Construction reads the template (`file`, or the inline `script`) once, parses
+it and checks it; editing the file afterwards takes effect on the next
+restart. A template that cannot be read, that has a Jinja syntax error, or
+that uses a dispatcher-only name other than as a bare value (see
+[Values only the dispatcher knows](#values-only-the-dispatcher-knows)) stops
 `courier run` at startup with an error naming the payload, the file (or
 "inline script") and the line. `courier validate` builds the payload the same
 way, so it reports the same errors, as well as unknown config keys and a
@@ -178,8 +181,10 @@ string is passed as an empty argument, not dropped.
 
 ## Template context
 
-A payload template is rendered in two passes: once by the builder when it emits
-the job, and once by the dispatcher when it writes the script.
+A payload template is rendered with Jinja once, by the builder, when it emits
+the job. Where the template uses a value that only the dispatcher knows, the
+builder leaves a placeholder, and the dispatcher fills the placeholders in when
+it writes the script, without rendering the script again.
 
 ### Pass one: the builder
 
@@ -201,7 +206,7 @@ string. Jinja's own tools for optional values work as usual on these names:
 
 `None` and an empty list render as an empty string.
 
-### Pass two: the dispatcher
+### Values only the dispatcher knows
 
 Four names are reserved for values only the dispatcher knows:
 
@@ -212,68 +217,105 @@ Four names are reserved for values only the dispatcher knows:
 | `hostname`    | Host name of the dispatcher.                                                                                         |
 | `output_dir`  | `slurm_dispatcher` only: its `slurm_output_dir`.                                                                     |
 
-In pass one each reserved name renders as an opaque marker, and the dispatcher
-replaces the markers when it writes the script. Nothing else in the script is
-re-rendered: `{{` or `{%` that arrives in a file name or in metadata stays
-literal text.
-
-Reserved names support **leaf interpolation** only:
+A template can use these names in one way only: as a **bare value**. That is
+a `{{ ... }}` that holds the name and nothing else, or a path below
+`dispatcher` made of attribute names that do not start with `_` (`.log_dir`)
+and string or integer literals in brackets (`['log_dir']`, `[0]`).
+`script_path`, `hostname` and `output_dir` are strings, so nothing follows
+them. Text next to the value is written as literal template text:
 
 ```jinja
 echo "running {{ script_path }} on {{ hostname }}"
+exec > {{ script_path }}.log 2>&1
 log={{ dispatcher.config.log_dir }}/{{ job.identifier }}.log
-tag={{ "courier-" ~ dispatcher.identifier }}
+log={{ dispatcher.config['log_dir'] }}/{{ job.identifier }}.log
+tag=courier-{{ dispatcher.identifier }}
+process --out={{ output_dir }}/{{ files[0].metadata.band }}
 ```
 
-Anything that would need the value on the builder is rejected when the builder
-renders the job: filters (`{{ hostname | upper }}`), tests
-(`{% if output_dir is defined %}`), `| default`, conditionals
-(`{% if script_path %}`), loops, arithmetic, comparisons, calling it or one of
-its methods (`{{ hostname.upper() }}`), and changing the rendered text around
-one (`{% filter upper %}`, slicing). Decide such things in the script itself,
-at run time.
+A bare value can stand at the top level of the template, in any branch of an
+`{% if %}` (`{% elif %}` and `{% else %}` included), or in the body or
+`{% else %}` of a `{% for %}` loop that is not `recursive`, nested to any
+depth. The condition and the loop's iterable use builder values only:
 
-A string built from a reserved name with `~` (`output_dir ~ "/x"`) is treated
-the same way: filters, tests, its methods (`.replace(...)`) and subscripts
-are rejected, as are `%` and `str.format` conversions other than a plain `%s`
-or `{}` (a width, precision or conversion such as `'%5s'`, `'{:>9}'` or
-`'{!r}'`, or a `%(...)` key that contains a parenthesis).
+```jinja
+{% if config.keep_log | default(false) %}
+exec > {{ dispatcher.config.log_dir }}/{{ job.identifier }}.log 2>&1
+{% endif %}
+{% for f in files %}
+cp "{{ f.file }}" "{{ output_dir }}/"
+{% endfor %}
+```
 
-A call may receive a reserved value, or a string built from one, when it only
-stores or returns it: a macro argument, `namespace(p=hostname)`,
-`dict(p=hostname)`, `cycler(hostname, "x")` and `loop.cycle(...)`,
-`joiner(hostname)`, `list.append(hostname)`, and the default of
-`dict.get(key, hostname)`. A call that would compute with it is rejected:
-passing it to a string method (`"a/b".split(x)`, `" ".join(x)`) or using it as
-the key of `get`, `pop` or `setdefault`.
+Every other use of a reserved name is rejected:
 
-The rendered job is checked too. Every marker in it must be one this render
-emitted, unchanged, so a reserved value that was escaped or rewritten on the
-way out (`| tojson` or `| urlencode` over a dictionary holding one) fails the
-job at the builder rather than reaching the script. A NUL character is how a
-truncated marker shows, so when a template interpolates a reserved value, a
-NUL anywhere else in the rendered script fails the job too: job data that
-contains a NUL is refused in such a script, and passes through unchanged in
-one that uses no reserved value.
+- a filter, a test or a call: `{{ hostname | upper }}`,
+  `{{ output_dir | default("/tmp") }}`, `{% if output_dir is defined %}`,
+  `{{ hostname.upper() }}`, `{{ namespace(h=hostname) }}`;
+- an operator: `~`, `+`, `%`, a comparison, `in`, `not`, `and`, `or`, or an
+  inline `... if ... else ...`, as in `{{ "courier-" ~ dispatcher.identifier }}`
+  or `{{ output_dir ~ "/x" }}`;
+- a slice, or a subscript that is not a literal: `{{ script_path[:-3] }}`,
+  `{{ dispatcher.config[key] }}`;
+- an attribute or subscript after `script_path`, `hostname` or `output_dir`:
+  `{{ hostname[0] }}`, `{{ output_dir.parent }}`;
+- a condition or a loop over one: `{% if script_path %}`,
+  `{% for d in dispatcher.config.dirs %}`;
+- any use inside another tag, such as `{% set %}` (inline or as a block),
+  `{% with %}`, `{% block %}`, `{% macro %}`, `{% call %}`, `{% filter %}`,
+  `{% autoescape %}` or a `recursive` loop, even as a bare value;
+- binding a reserved name yourself: `{% set hostname = "x" %}`,
+  `{% for output_dir in ... %}`, a macro parameter, a `{% with %}` target or
+  an import alias. The four names always mean the dispatcher's values;
+- spelling a reserved name with look-alike non-ASCII letters, such as
+  fullwidth letters. Python, which runs the compiled template, reads such a
+  name as the plain one, so the check compares names in that form (NFKC) and
+  refuses the look-alike.
 
-What the builder cannot catch is *inspecting* such a string: comparisons
-(`==`, `in`), truthiness, iteration, sorting, de-duplication and searching
-(`list.count`) see a placeholder, not the dispatcher's value, so never branch
-on them.
+The rule is checked on the template's text when the payload plugin is
+constructed, so it covers every branch, whether or not any job takes it. A
+template that breaks it stops `courier run` at startup, and `courier validate`
+reports it. The error names the reserved name and the line it is used on, and
+says how to write it instead: the name as a bare value, with any text around
+it written literally. For example, `tag={{ "courier-" ~ dispatcher.identifier }}`
+becomes `tag=courier-{{ dispatcher.identifier }}`. Anything that has to be
+decided from a dispatcher's value, such as a branch, a default or a
+transformation, belongs in the script itself, at run time, or in the
+[command arguments](#command-arguments), which the dispatcher renders with its
+real values.
 
-A reserved name the receiving dispatcher does not define, such as
-`{{ output_dir }}` sent to a `local_dispatcher`, fails that job on the
-dispatcher.
+### Pass two: the dispatcher
+
+In pass one each bare value renders as an opaque marker that holds a random
+nonce issued for the job and the value's path (`dispatcher`, `config`,
+`log_dir`). When the dispatcher writes the script, it replaces each marker
+that carries the job's nonce with the value from its own context. Each step of
+the path is looked up as a key, so `.log_dir` and `['log_dir']` find the same
+value, or as an index into a list; nothing is called. The value is rendered as
+in pass one: `None` and an empty list become an empty string.
+
+Nothing else in the script changes, and nothing in it is rendered as a
+template again. A `{{` or `{%` that arrives in a file name or in metadata stays
+literal text, and so does a NUL character or text that looks like a marker but
+does not carry the job's nonce.
+
+A reserved name or key the receiving dispatcher does not define, such as
+`{{ output_dir }}` sent to a `local_dispatcher` or
+`{{ dispatcher.config.no_such_option }}`, fails that job on the dispatcher. So
+does a step below a value that is not a dictionary or a list, such as
+`{{ dispatcher.config.log_dir.parent }}`: the error says which value it is.
 
 ### Command arguments
 
 `binary`, `prefix_args` and `suffix_args` are rendered only on the dispatcher,
 in one strict pass, each as a single argument. Their context is `files`, `job`,
-`config` and the four dispatcher names. It has no `builder` namespace. They
-are the only templates in the command: the script path, the interpreter and
-the wrappers courier adds are passed literally. For
-example, `suffix_args: ["{{ files[0].file }}", "{{ hostname }}"]` passes the
-first file's path and the dispatcher's host name as two arguments.
+`config` and the four dispatcher names, which hold the dispatcher's real
+values here, so the bare-value rule does not apply: `"{{ hostname | lower }}"`
+works. It has no `builder` namespace. They are the only templates in the
+command: the script path, the interpreter and the wrappers courier adds are
+passed literally. For example,
+`suffix_args: ["{{ files[0].file }}", "{{ hostname }}"]` passes the first
+file's path and the dispatcher's host name as two arguments.
 
 (payload-wire-format)=
 
@@ -289,7 +331,7 @@ The builder attaches the rendered payload to each job it emits as
 | `config`      | The payload's validated config **without** `script`: `file` (as a path string, for information only), `binary`, `default_binary`, `toolchain`, `toolchain_prepend`, `prefix_args`, `suffix_args`, and any field of the plugin's own config model. The argument templates are sent as written, and rendered on the dispatcher. |
 | `script`      | The script as the builder rendered it (pass one), from `file` or the inline `script`. `None` for a payload with only a `binary`.                                                                                                                                                                                              |
 | `suffix`      | Suffix of the file the dispatcher writes the script to.                                                                                                                                                                                                                                                                       |
-| `defer_nonce` | The random nonce that authenticates this job's markers for reserved names.                                                                                                                                                                                                                                                    |
+| `defer_nonce` | The random nonce issued for this job. The dispatcher fills in only the markers for reserved names that carry it.                                                                                                                                                                                                              |
 
 `PayloadSpec.script` is the only copy of the template a job carries: the raw
 template is never sent, and a template `file` is read on the builder, so it
@@ -309,10 +351,10 @@ already-rendered text that may hold job data.
 | Problem                                                                                                                                                                                    | Surfaces                             | Effect                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Job builder with no `payload` block, or a malformed one                                                                                                                                    | `courier validate` and `courier run` | The service does not start.                                                                                                                                                                            |
-| Template file unreadable; Jinja syntax error in the template or in `binary`, `prefix_args` or `suffix_args`                                                                                | `courier validate` and `courier run` | The service does not start.                                                                                                                                                                            |
+| Template file unreadable; Jinja syntax error in the template or in `binary`, `prefix_args` or `suffix_args`; a reserved name used in the template other than as a bare value               | `courier validate` and `courier run` | The service does not start.                                                                                                                                                                            |
 | Unknown or misplaced payload config key                                                                                                                                                    | `courier validate` and `courier run` | Validation error naming the key.                                                                                                                                                                       |
-| Undefined name, attribute, key or index in the template; unsupported use of a reserved name; any other data-dependent render error                                                         | Builder, when the job is emitted     | That job is dropped, not published. ERROR log with the job identifier, its files and the error; `courier_job_builder_emit_failures_total{reason="render"}` once per target. The builder keeps running. |
-| Reserved name this dispatcher does not define; undefined name in `binary`, `prefix_args` or `suffix_args`                                                                                  | Dispatcher                           | The job fails: ERROR log, `courier_dispatcher_jobs_processed_total{status="failure"}`.                                                                                                                 |
+| Undefined name, attribute, key or index in the template; any other data-dependent render error                                                                                             | Builder, when the job is emitted     | That job is dropped, not published. ERROR log with the job identifier, its files and the error; `courier_job_builder_emit_failures_total{reason="render"}` once per target. The builder keeps running. |
+| Reserved name, key or index this dispatcher does not define; undefined name in `binary`, `prefix_args` or `suffix_args`                                                                    | Dispatcher                           | The job fails: ERROR log, `courier_dispatcher_jobs_processed_total{status="failure"}`.                                                                                                                 |
 | Job has no payload (published by an older builder); payload plugin not installed; no compatible representation; invalid payload spec, including one with nothing to run; toolchain missing | Dispatcher                           | The job is parked on the dispatcher's dead-letter queue: `courier_dispatcher_jobs_processed_total{status="unexecutable"}`. See {doc}`dispatchers`.                                                     |
 | Script exits non-zero or times out                                                                                                                                                         | Dispatcher                           | ERROR log with the return code; `courier_payload_jobs_processed_total{status="failure"}`. The execution log carries the return code and output.                                                        |
 

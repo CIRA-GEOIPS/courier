@@ -156,7 +156,7 @@ dispatcher parks it as unexecutable.
 | `config`      | `dict[str, Any]` | The payload's validated config, without `script`. `file` stays, as a path for information only.                                              |
 | `script`      | `str` \| `None`  | The script as the builder rendered it, from the template `file` or the inline `script`. `None` for a payload with only a `binary`.           |
 | `suffix`      | `str`            | Suffix of the file the dispatcher writes the script to. Defaults to `.sh`.                                                                   |
-| `defer_nonce` | `str`            | Random nonce that authenticates this job's markers for the values only the dispatcher knows.                                                 |
+| `defer_nonce` | `str`            | The random nonce issued for this job. The dispatcher fills in only the markers for reserved names that carry it.                             |
 
 `script` is the only copy of the template in a job message: `config` never
 carries the raw template. When the dispatcher rebuilds the payload, it sets

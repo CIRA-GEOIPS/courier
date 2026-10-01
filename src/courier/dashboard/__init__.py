@@ -10,7 +10,6 @@ from enum import Enum, auto
 
 from courier.dashboard.config_parser import (
     DashboardModel,
-    PayloadInfo,
     PluginInfo,
     PluginKind,
     parse_config,
@@ -35,7 +34,6 @@ class DashboardGenerationMode(Enum):
 __all__ = [
     "DashboardGenerationMode",
     "DashboardModel",
-    "PayloadInfo",
     "PluginInfo",
     "PluginKind",
     "generate_dashboard",

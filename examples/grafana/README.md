@@ -8,7 +8,6 @@ Covers the Prometheus metrics exposed by the Courier service, organized into:
 - **Data Monitors** -- file processing rate, status breakdown, scan age, scan duration, poll errors, connection status, consumer lag, last emitted file age
 - **Job Builders** -- files received, jobs built, active groups, discards, duration percentiles, files per job, timeout emissions
 - **Dispatchers** -- jobs processed, success ratio, active jobs, execution duration, logs emitted, queue wait latency
-- **Payloads** -- jobs by outcome (the payload's own exit status), success ratio, execution duration percentiles
 - **Plugin Manager** -- health, status table, restarts
 - **Broker** -- connection status, connection attempts, messages sent, messages received
 - **State Sync / HA** -- pushes, applies, emit claims, sync errors (collapsed by default)
@@ -18,7 +17,7 @@ Covers the Prometheus metrics exposed by the Courier service, organized into:
 
 ## CLI Command (Recommended)
 
-The `courier dashboard` command reads your Courier service configuration and generates tailored Grafana dashboard JSON -- automatically including only the panels and template variables relevant to the plugins defined in your config. Each job builder's nested payload is shown in the pipeline topology (on the builder and on the dispatchers it is routed to), and gets a **Payloads** row charting `courier_payload_*`.
+The `courier dashboard` command reads your Courier service configuration and generates tailored Grafana dashboard JSON -- automatically including only the panels and template variables relevant to the plugins defined in your config.
 
 ### Installation
 
@@ -145,7 +144,6 @@ The dashboard includes dropdown filters for:
 - Error Type (for data monitor poll errors)
 - Topic (for data monitor consumer lag)
 - Route Name (for metadata router)
-- Payload name (the payload plugin a job builder nests)
 - Dispatcher Identifier (for routing throughput, dispatch latency, queue depth, and dedupe skips)
 
 ## Alternative: Script-based Generation

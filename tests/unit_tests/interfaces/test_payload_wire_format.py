@@ -20,7 +20,6 @@ import pytest
 
 from courier.errors import CourierError
 from courier.interfaces.job_builders import JobBuilder, job_builders
-from courier.interfaces.payloads import _config_from_job_spec
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
 from courier.plugins.payloads.bash_payload import BashPayload
@@ -29,7 +28,7 @@ from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.types.file import File
 from courier.types.job import Job
 from courier.types.payload import PayloadSpec
-from tests._helpers import bind_payload
+from tests._helpers import with_payload
 
 if TYPE_CHECKING:
     from courier.interfaces.payloads import Payload
@@ -105,19 +104,18 @@ def _builder(
     config: dict[str, Any],
     builder: str = "file_count_builder",
 ) -> JobBuilder:
-    """Build a *builder* whose payload block is *name* / *config*, and bind it."""
+    """Build a *builder* whose payload block is *name* / *config*."""
     builder_cls = cast("type[JobBuilder]", job_builders.get_plugin(builder))
-    instance = builder_cls(
+    return builder_cls(
         service,
-        {
-            **_BUILDER_SETTINGS[builder],
-            "targets": ["ld"],
-            "payload": {"p1": {"kind": "payload", "name": name, "config": config}},
-        },
+        with_payload(
+            {**_BUILDER_SETTINGS[builder], "targets": ["ld"]},
+            identifier="p1",
+            name=name,
+            settings=config,
+        ),
         identifier="b1",
     )
-    bind_payload(instance)
-    return instance
 
 
 def _published_job(service: MagicMock, builder: JobBuilder) -> str:
@@ -240,39 +238,50 @@ def _spec(config: dict[str, Any], script: str | None) -> PayloadSpec:
 
 
 class TestHydration:
-    def test_the_rendered_script_satisfies_the_source_requirement(self) -> None:
-        config = _config_from_job_spec(_spec({}, "echo rendered"))
+    def test_the_rendered_script_satisfies_the_source_requirement(
+        self,
+        service: MagicMock,
+    ) -> None:
+        hydrated = BashPayload.from_job_spec(_spec({}, "echo rendered"), service)
 
-        assert config.script == "echo rendered"
+        assert hydrated.config.script == "echo rendered"
 
-    def test_a_file_spec_is_given_the_rendered_script_too(self) -> None:
-        config = _config_from_job_spec(
+    def test_a_file_spec_is_given_the_rendered_script_too(
+        self,
+        service: MagicMock,
+    ) -> None:
+        hydrated = BashPayload.from_job_spec(
             _spec({"file": "/nowhere/template.sh"}, "echo rendered"),
+            service,
         )
 
-        assert config.file == Path("/nowhere/template.sh")
-        assert config.script == "echo rendered"
+        assert hydrated.config.file == Path("/nowhere/template.sh")
+        assert hydrated.config.script == "echo rendered"
 
-    def test_an_older_builders_spec_still_hydrates(self) -> None:
+    def test_an_older_builders_spec_still_hydrates(self, service: MagicMock) -> None:
         """A builder that still sends ``config.script`` sends the raw template.
 
         The rendered copy is what runs, so it replaces the raw one.
         """
-        config = _config_from_job_spec(
+        hydrated = BashPayload.from_job_spec(
             _spec({"script": "echo {{ files[0].file }}"}, "echo /data/a.nc"),
+            service,
         )
 
-        assert config.script == "echo /data/a.nc"
+        assert hydrated.config.script == "echo /data/a.nc"
 
-    def test_a_spec_with_no_script_or_source_is_invalid(self) -> None:
+    def test_a_spec_with_no_script_or_source_is_invalid(
+        self,
+        service: MagicMock,
+    ) -> None:
         with pytest.raises(ValueError, match="'file', 'script', or 'binary'"):
-            _config_from_job_spec(_spec({"script": "echo raw"}, None))
+            BashPayload.from_job_spec(_spec({"script": "echo raw"}, None), service)
 
-    def test_a_binary_spec_needs_no_script(self) -> None:
-        config = _config_from_job_spec(_spec({"binary": "true"}, None))
+    def test_a_binary_spec_needs_no_script(self, service: MagicMock) -> None:
+        hydrated = BashPayload.from_job_spec(_spec({"binary": "true"}, None), service)
 
-        assert config.script is None
-        assert config.binary == "true"
+        assert hydrated.config.script is None
+        assert hydrated.config.binary == "true"
 
     def test_a_hydrated_payload_refuses_to_render_again(
         self,

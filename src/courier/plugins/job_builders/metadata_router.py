@@ -9,12 +9,13 @@ no route are counted as unmatched and dropped.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, ClassVar
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from courier.constants import PluginRunState
-from courier.interfaces.job_builders import JobBuilder
+from courier.interfaces.job_builders import PAYLOAD_KEY, JobBuilder
 from courier.metrics import (
     JOB_BUILDER_ROUTE_MATCHES,
     JOB_BUILDER_TIMEOUT_EMISSIONS,
@@ -72,6 +73,26 @@ class RouteConfig(BaseModel, frozen=True):
             "``allow_implicit_target`` policy."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_route_payload(cls, data: Any) -> Any:
+        """Refuse a ``payload`` block in a route, which would be ignored.
+
+        Raises
+        ------
+        ValueError
+            If the route has a ``payload`` key.
+        """
+        if isinstance(data, Mapping) and PAYLOAD_KEY in data:
+            msg = (
+                f"route {data.get('name')!r} has a {PAYLOAD_KEY!r} block, but a "
+                "payload is set per job builder, not per route: every route "
+                "runs the payload in the builder's own 'payload' block. Move "
+                "it there, or use one metadata_router per payload."
+            )
+            raise ValueError(msg)
+        return data
 
     @model_validator(mode="after")
     def _check_min_files(self) -> RouteConfig:

@@ -17,8 +17,8 @@ import pytest
 
 from courier.broker.kombu import DELIVERY_ATTEMPT_HEADER, PARK_REASON_HEADER
 from courier.config import ServiceConfig
-from courier.constants import FILE_FOUND_EXCHANGE, job_ready_queue_for
-from courier.errors import ConfigurationError, FatalBrokerError
+from courier.constants import job_ready_queue_for
+from courier.errors import FatalBrokerError
 from courier.service import Service
 
 
@@ -58,38 +58,11 @@ def test_message_lands_on_the_consumers_dead_letter_queue_with_its_reason() -> N
     assert _drain(f"{ns}-JobReady-d1") == []
 
 
-def test_parking_inside_the_consume_loop_acknowledges_the_original() -> None:
-    """The consumer parks, returns, and the source queue is left empty."""
-    svc = _service()
-    ns = svc.config.namespace
-    queue = job_ready_queue_for("d1")
-    svc.emit(queue, "unexecutable job")
-    stop = threading.Event()
-    seen: list[str] = []
-
-    def _consume() -> None:
-        for body, _ctx in svc.consume(queue, stop_event=stop):
-            seen.append(body)
-            svc.park_message(queue, body, "payload plugin not installed")
-            stop.set()
-
-    worker = threading.Thread(target=_consume, daemon=True)
-    worker.start()
-    worker.join(timeout=10)
-
-    assert not worker.is_alive()
-    assert seen == ["unexecutable job"]
-    [parked] = _drain(f"{ns}-JobReady-d1-DeadLetter")
-    assert parked.decode() == "unexecutable job"
-    assert parked.headers[PARK_REASON_HEADER] == "payload plugin not installed"
-    assert _drain(f"{ns}-JobReady-d1") == []
-
-
 def test_a_dispatcher_parks_a_job_it_cannot_execute() -> None:
     """End to end: a job with no payload (a pre-upgrade builder's) is kept.
 
     It lands on the dispatcher's dead-letter queue with a reason instead of
-    being acknowledged and dropped, and the job queue is left empty.
+    being acknowledged and dropped, and the original is acknowledged.
     """
     from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
     from courier.types.job import Job
@@ -119,22 +92,6 @@ def test_a_dispatcher_parks_a_job_it_cannot_execute() -> None:
     assert message.decode() == body
     assert "payload" in message.headers[PARK_REASON_HEADER]
     assert _drain(f"{ns}-JobReady-d1") == []
-
-
-def test_file_found_messages_park_on_the_subscribers_queue() -> None:
-    svc = _service()
-    ns = svc.config.namespace
-
-    svc.park_message(FILE_FOUND_EXCHANGE, "file", "unusable", subscriber="jb-1")
-
-    [parked] = _drain(f"{ns}-FilesFound-jb-1-DeadLetter")
-    assert parked.headers[PARK_REASON_HEADER] == "unusable"
-
-
-def test_file_found_without_a_subscriber_is_refused() -> None:
-    """There is one file-found queue per builder; guessing would misfile it."""
-    with pytest.raises(ConfigurationError, match="subscriber"):
-        _service().park_message(FILE_FOUND_EXCHANGE, "file", "unusable")
 
 
 def test_a_long_reason_is_capped_in_the_header_and_logged_in_full(

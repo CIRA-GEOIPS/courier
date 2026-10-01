@@ -24,9 +24,10 @@ Both accept `shell_payload`, `bash_payload` and `python_payload`.
    happen to share an identifier are both run.
 1. **Resolve the payload.** The dispatcher loads the payload plugin named on
    the job, picks the representation to run it as, validates the payload's
-   config, and checks its `toolchain` (once per payload configuration). If any
-   of this fails, or the job carries no payload at all, the job is
-   **unexecutable**: the dispatcher logs an ERROR, counts it as
+   config, and checks its `toolchain` (once per payload configuration; see
+   `toolchain` and `toolchain_prepend` in {doc}`payloads` for each payload's
+   probe). If any of this fails, or the job carries no payload at all, the
+   job is **unexecutable**: the dispatcher logs an ERROR, counts it as
    `courier_dispatcher_jobs_processed_total{status="unexecutable"}`, and parks
    the original message on `<namespace>-JobReady-<identifier>-DeadLetter`
    with the reason in the `x-courier-park-reason` header. Parked messages also
@@ -51,11 +52,12 @@ Both accept `shell_payload`, `bash_payload` and `python_payload`.
    is counted in `courier_payload_jobs_processed_total{status="failure"}`.
 
 If anything else goes wrong while preparing or running a job, or while
-collecting its output files (a pass-two template error, a script that cannot
-be written, a bug in a custom dispatcher's hook), the error is logged at ERROR
-with its traceback, the script is removed (unless a submitted Slurm job may
-still read it), and the job counts as `status="failure"`. The dispatcher
-carries on with the next job either way.
+collecting its output files (a dispatcher-only value the template uses that
+this dispatcher does not define, an error rendering the command arguments, a
+script that cannot be written, a bug in a custom dispatcher's hook), the error
+is logged at ERROR with its traceback, the script is removed (unless a
+submitted Slurm job may still read it), and the job counts as
+`status="failure"`. The dispatcher carries on with the next job either way.
 
 Only a fault the dispatcher cannot pin on one job ends the `courier run`
 process: a failure to publish a job's output files or execution logs
@@ -78,9 +80,9 @@ A parked message is kept verbatim, so it can be moved back onto the
 `JobReady` queue once the cause is fixed: install the missing payload plugin
 or tool, or fix the dispatcher's config. `courier queues list <config>` names
 each dead-letter queue; read its depth with the broker's own tools
-(`rabbitmqctl list_queues name messages`, or the management UI). A job
-parked because it carries no payload was published by a job builder from an
-older release, since every current builder attaches one; see
+(`rabbitmqctl list_queues -p <vhost> name messages`, or the management UI).
+A job parked because it carries no payload was published by a job builder
+from an older release, since every current builder attaches one; see
 {doc}`../getting-started/upgrading` before re-driving it.
 
 ## Options for every dispatcher
@@ -301,21 +303,25 @@ output in wait mode, once the job has finished.
 ### How a payload is submitted
 
 The rendered script is written to `slurm_output_dir` under a new, random name
-that starts with the job identifier, created exclusively. The pass-two
-variable `output_dir` holds `slurm_output_dir`.
+that starts with the job identifier, created exclusively. In a payload
+template, the reserved name `output_dir` holds `slurm_output_dir`; like every
+dispatcher-only value it is used as a bare value, `{{ output_dir }}/x`, as
+{doc}`payloads` describes.
 
 - **As a batch script.** A `shell_payload` or `bash_payload` whose script runs
   directly (no `binary`, no `prefix_args`) is submitted as the batch script
   itself: `sbatch <options> <script> [suffix_args...]`. (`toolchain_prepend`
-  has no bearing on this: shell and bash payloads ignore it, and no payload
-  puts it in a job's command.) If the script has no shebang line, one naming
-  the payload's interpreter is added (`#!/usr/bin/env bash`, or `#!<path>`
-  for an absolute `default_binary`). `#SBATCH` directives at the top of the
-  script apply, except where the command line sets the same option: the
-  dispatcher always passes `--job-name`, `--output` and `--error`, and passes
-  `--partition`, `--account`, `--qos`, `--time`, `--ntasks`, `--mem` and
-  `sbatch_extra_args` when configured, and `sbatch` lets command-line options
-  override `#SBATCH` lines.
+  has no bearing on this: it is never part of a job's command.
+  `python_payload` puts it in front of the interpreter in its `toolchain`
+  probes only, and `shell_payload` and `bash_payload` ignore it.) If the
+  script has no shebang line, one naming the payload's interpreter is added
+  (`#!/usr/bin/env bash`, or `#!<path>` for an absolute `default_binary`).
+  `#SBATCH` directives at the top of the script apply, except where the
+  command line sets the same option: the dispatcher always passes
+  `--job-name`, `--output` and `--error`, and passes `--partition`,
+  `--account`, `--qos`, `--time`, `--ntasks`, `--mem` and `sbatch_extra_args`
+  when configured, and `sbatch` lets command-line options override `#SBATCH`
+  lines.
 - **With `--wrap`.** Everything else is submitted as a wrapped command:
   `python_payload`, payloads with a `binary`, and payloads with
   `prefix_args`, whose interpreter options must never be read as `sbatch`
@@ -348,7 +354,8 @@ logs where the job's output will be.
 When `sbatch` rejects a submission, the rejection is logged at ERROR and
 counted, and the execution log carries `sbatch`'s return code and its stderr.
 
-The payload's `toolchain` is checked on the submit host, not on a compute node.
+The payload's `toolchain` is checked on the submit host, not on a compute node,
+with `python_payload`'s `toolchain_prepend` in front of each probe.
 
 (script-lifetime)=
 

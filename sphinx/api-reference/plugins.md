@@ -347,3 +347,8 @@ filters:
 
 Routes files to different dispatchers based on file metadata (source,
 instrument, etc.).
+
+Like every job builder it nests one `payload` block, in its own `config`, and
+every route's jobs run that payload. A route cannot nest a payload of its own:
+a route with a `payload` key is rejected when the builder is constructed, at
+`courier run` startup. Use one `metadata_router` per payload instead.

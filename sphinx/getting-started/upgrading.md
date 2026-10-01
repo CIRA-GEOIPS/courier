@@ -191,6 +191,10 @@ The template context changed too:
 | `config`: the dispatcher's | `dispatcher.config`; `config` is now the job's config           |
 | (none)                     | `output_dir`: the dispatcher's `slurm_output_dir`               |
 
+Unlike in `sbatch_template`, `dispatcher.config` and `output_dir` can only be
+used as bare values (`{{ dispatcher.config.partition }}`), not in filters or
+conditions; see [Template changes](#template-changes).
+
 `slurm_output_dir` must be on a filesystem the compute nodes can read: jobs
 submitted with `--wrap` read their script from there, and the dispatcher reads
 the jobs' `.out` and `.err` files from there. The payload's `toolchain` is
@@ -239,13 +243,19 @@ A removed dispatcher plugin (`serial_bash`, `parallel_bash`,
   `courier_job_builder_emit_failures_total{reason="render"}`. `serial_bash`
   rendered undefined values as empty strings. Use `| default(...)` or
   `is defined` for values that are legitimately optional.
-- **Checked at startup.** Template files are read, and templates are parsed,
-  when `courier run` starts (and by `courier validate`). A syntax error stops
-  the service at startup.
+- **Checked at startup.** Template files are read, and templates are parsed
+  and checked, when `courier run` starts (and by `courier validate`). A syntax
+  error, or a reserved name used other than as a bare value (below), stops the
+  service at startup.
 - **Dispatcher values are reserved names.** `dispatcher` (with
-  `dispatcher.config`), `script_path`, `hostname` and `output_dir` are
-  resolved on the dispatcher and support plain interpolation only: no filters,
-  tests or conditionals over them. See {doc}`../api-reference/payloads`.
+  `dispatcher.config`), `script_path`, `hostname` and `output_dir` are filled
+  in on the dispatcher and can only be used as bare values, with literal text
+  around them: `{{ hostname }}`, `{{ dispatcher.config.log_dir }}/x`,
+  `courier-{{ dispatcher.identifier }}`. Filters, tests, calls and operators
+  over them (`{{ hostname | upper }}`, `{{ "courier-" ~ dispatcher.identifier }}`)
+  are rejected, and so are conditions and loops over them
+  (`{% if dispatcher.config.partition %}`). See
+  {doc}`../api-reference/payloads`.
 - **Use `{{ files[0].file }}` for the file.** Older tutorials showed a
   `{file}` placeholder; it was never substituted.
 

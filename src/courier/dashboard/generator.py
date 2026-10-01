@@ -17,13 +17,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from courier.dashboard.config_parser import (
-    DashboardModel,
-    PayloadInfo,
-    PluginInfo,
-    PluginKind,
-    payloads_reaching,
-)
+from courier.dashboard.config_parser import DashboardModel, PluginInfo, PluginKind
 
 if TYPE_CHECKING:
     from grafanalib.core import Dashboard
@@ -297,7 +291,6 @@ def _build_kind_model(
     kind_plugins: list[PluginInfo],
 ) -> DashboardModel:
     """Create a sub-model scoped to a single :class:`PluginKind`."""
-    dispatchers = [p for p in kind_plugins if p.kind is PluginKind.DISPATCHER]
     return DashboardModel(
         service_name=model.service_name,
         namespace=model.namespace,
@@ -305,38 +298,13 @@ def _build_kind_model(
         plugins=kind_plugins,
         data_monitors=[p for p in kind_plugins if p.kind is PluginKind.DATA_MONITOR],
         job_builders=[p for p in kind_plugins if p.kind is PluginKind.JOB_BUILDER],
-        dispatchers=dispatchers,
+        dispatchers=[p for p in kind_plugins if p.kind is PluginKind.DISPATCHER],
         routing={},
         has_metadata_router=(
             model.has_metadata_router and kind is PluginKind.JOB_BUILDER
         ),
         has_slurm=model.has_slurm and kind is PluginKind.DISPATCHER,
-        payloads=_scoped_payloads(model, kind_plugins, dispatchers),
     )
-
-
-def _scoped_payloads(
-    model: DashboardModel,
-    plugins: list[PluginInfo],
-    dispatchers: list[PluginInfo],
-) -> list[PayloadInfo]:
-    """Return the payloads a dashboard scoped to *plugins* should chart.
-
-    A job builder's own payload, plus every payload routed to one of
-    *dispatchers* -- payloads execute inside the dispatcher that receives the
-    job, so that is where their ``courier_payload_*`` metrics come from.
-    """
-    builders = {p.identifier for p in plugins if p.kind is PluginKind.JOB_BUILDER}
-    reaching = payloads_reaching(
-        model.payloads,
-        dispatchers,
-        all_dispatchers=model.dispatchers,
-    )
-    return [
-        payload
-        for payload in model.payloads
-        if payload.builder in builders or payload in reaching
-    ]
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +396,6 @@ def _build_plugin_model(
         has_slurm=(
             model.has_slurm and is_dp and plugin.plugin_name == "slurm_dispatcher"
         ),
-        payloads=_scoped_payloads(model, [plugin], [plugin] if is_dp else []),
     )
 
 

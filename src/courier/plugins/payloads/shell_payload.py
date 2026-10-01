@@ -19,10 +19,8 @@ from courier.types.job import Job
 from courier.utils.shell_executor import execute_shell_script
 
 #: Inline command the interpreter runs in ``binary`` mode.  The binary and its
-#: arguments follow as separate argv entries (``$0`` is the interpreter), so
-#: each is rendered on its own and no rendered value -- say, a file name that
-#: contains a quote or ``$(...)`` -- is ever re-parsed by the shell.  The guard
-#: fails loudly instead of succeeding silently if a caller drops those entries.
+#: arguments follow as separate argv entries, so no rendered value is ever
+#: re-parsed by the shell; the guard fails loudly if a caller drops them.
 RUN_ARGV_SCRIPT = ': "${1:?no command to run}"; "$@"'
 
 
@@ -49,21 +47,7 @@ class ShellPayload(Payload):
     config_class: ClassVar[type[PayloadConfig]] = ShellPayloadConfig
 
     def _interpreter(self) -> str:
-        """Return the interpreter that runs this payload's scripts.
-
-        Returns
-        -------
-        str
-            ``config.default_binary`` when set, else the class ``default_binary``.
-
-        Raises
-        ------
-        UnexecutableJobError
-            If neither the config nor the payload class names an interpreter,
-            so a dispatcher parks the job instead of running it.  Without this
-            check a ``None`` would reach ``subprocess`` as argv[0] and fail
-            with an unhelpful ``TypeError``.
-        """
+        """Return the interpreter; UnexecutableJobError (park) if none is set."""
         if not self._default_binary:
             raise UnexecutableJobError(
                 f"Payload {self.name!r} has no interpreter: set default_binary "
@@ -73,9 +57,6 @@ class ShellPayload(Payload):
 
     def validate_toolchain_arg(self, value: str) -> list[ExecutionLog]:
         """Validate toolchain arguments using the `command` command.
-
-        The probe is ``<interpreter> -c 'command -v <value>'``;
-        ``toolchain_prepend`` is not used by shell payloads.
 
         Parameters
         ----------
@@ -118,12 +99,8 @@ class ShellPayload(Payload):
         Returns
         -------
         list[str]
-            Arguments that follow :meth:`generate_calling_method`.  Without a
-            ``binary``: ``[prefix_args..., <script>, suffix_args...]``.  With
-            one: ``[RUN_ARGV_SCRIPT, <interpreter>, <binary>, prefix_args...,
-            <script>, suffix_args...]``.  Every entry is one argv element --
-            an argument that rendered to ``""`` stays an empty argument -- so
-            a caller must keep all of them.
+            Arguments that follow :meth:`generate_calling_method`, one argv
+            element each (see the class docstring); keep empty ones.
         """
         source = path or self.config.file
         script_arg = [str(source)] if source is not None else []
@@ -161,21 +138,13 @@ class ShellPayload(Payload):
             File that receives the execution log when the dispatcher config
             enables ``log_to_file``.
         probe : bool, optional
-            Mark a toolchain probe rather than a job run. A probe never writes
-            a log file, keeps its stdout even under ``log_only_errors`` (the
-            probe's answer is on stdout), and records no payload job metrics.
+            A toolchain probe: no log file, stdout kept, no payload metrics.
 
         Returns
         -------
         list[ExecutionLog]
             Execution result containing the process return code, stdout,
             and stderr.
-
-        Raises
-        ------
-        CourierError
-            If ``log_to_file`` is enabled for a job run but the caller supplied
-            no ``log_file_path``.
         """
         log_to_file = self.base_config.log_to_file and not probe
         if log_to_file and log_file_path is None:

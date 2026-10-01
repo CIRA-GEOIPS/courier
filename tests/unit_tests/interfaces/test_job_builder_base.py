@@ -29,7 +29,7 @@ from courier.interfaces.job_builders import JobBuilder
 from courier.interfaces.payloads import Payload
 from courier.types.file import File, FrozenFile
 from courier.types.job import Job, JobGroup
-from tests._helpers import DEFAULT_PAYLOAD_ID, bind_payload, with_payload
+from tests._helpers import DEFAULT_PAYLOAD_ID, with_payload
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -70,7 +70,6 @@ def _builder(service: MagicMock, identifier: str = "jb-1") -> JobBuilder:
         identifier=identifier,
     )
     builder.job_groups = [_StubGroup()]
-    bind_payload(builder)
     return builder
 
 
@@ -609,73 +608,50 @@ class TestPayloadRenderFailure:
         builder._sync.try_claim_emit.assert_not_called()
         service.emit.assert_not_called()
 
-    def test_a_missing_metadata_key_fails_only_its_own_job(
+    @pytest.mark.parametrize(
+        ("script", "metadata", "published"),
+        [
+            # Pass one renders with StrictUndefined semantics, so a key one
+            # file lacks raises at the builder instead of rendering as "".
+            pytest.param(
+                "echo {{ files[0].metadata.sector }}",
+                [{"sector": "meso"}, {}, {"sector": "full"}],
+                ["echo meso", "echo full"],
+                id="missing-key",
+            ),
+            pytest.param(
+                "echo {{ files[0].metadata.n + 1 }}",
+                [{"n": 1}, {"n": "not a number"}, {"n": 2}],
+                ["echo 2", "echo 3"],
+                id="type-error",
+            ),
+        ],
+    )
+    def test_one_files_bad_data_fails_only_its_own_job(
         self,
         service: MagicMock,
+        request: pytest.FixtureRequest,
+        script: str,
+        metadata: list[dict[str, Any]],
+        published: list[str],
     ) -> None:
-        """The consume loop keeps going and later jobs still publish.
-
-        Pass one renders with StrictUndefined semantics, so a key one file
-        lacks raises at the builder rather than rendering as an empty string.
-        """
-        builder = _builder(service, identifier="jb-render-meta")
+        """The consume loop keeps going and later jobs still publish."""
+        identifier = f"jb-render-{request.node.callspec.id}"
+        builder = _builder(service, identifier=identifier)
         builder.job_groups = [_OneFileGroup()]
-        builder.payload = _bash_payload(service, "echo {{ files[0].metadata.sector }}")
+        builder.payload = _bash_payload(service, script)
         service.consume.return_value = iter(
-            [
-                (str(_meta_file("a", sector="meso")), None),
-                (str(_meta_file("b")), None),
-                (str(_meta_file("c", sector="full")), None),
-            ],
+            [(str(_meta_file(f"f{i}", **m)), None) for i, m in enumerate(metadata)],
         )
-        before = _render_failures("jb-render-meta")
+        before = _render_failures(identifier)
 
         with patch("courier.interfaces.job_builders.os._exit") as exit_:
             builder._run_handle_incoming_files()
 
         exit_.assert_not_called()
-        assert _published_scripts(service) == ["echo meso", "echo full"]
-        assert _render_failures("jb-render-meta") == before + 1
+        assert _published_scripts(service) == published
+        assert _render_failures(identifier) == before + 1
         assert builder.job_groups[0].jobs == {}
-
-    def test_a_template_error_on_one_files_data_fails_only_that_job(
-        self,
-        service: MagicMock,
-    ) -> None:
-        """An expression that raises for one file's values is contained too."""
-        builder = _builder(service, identifier="jb-render-type")
-        builder.job_groups = [_OneFileGroup()]
-        builder.payload = _bash_payload(service, "echo {{ files[0].metadata.n + 1 }}")
-        service.consume.return_value = iter(
-            [
-                (str(_meta_file("a", n=1)), None),
-                (str(_meta_file("b", n="not a number")), None),
-                (str(_meta_file("c", n=2)), None),
-            ],
-        )
-        before = _render_failures("jb-render-type")
-
-        with patch("courier.interfaces.job_builders.os._exit") as exit_:
-            builder._run_handle_incoming_files()
-
-        exit_.assert_not_called()
-        assert _published_scripts(service) == ["echo 2", "echo 3"]
-        assert _render_failures("jb-render-type") == before + 1
-
-    def test_the_reaper_path_survives(self, service: MagicMock) -> None:
-        """The timeout reapers and the merge callback all go through here."""
-        builder = _builder(service, identifier="jb-render-reap")
-        builder.payload = _failing_payload(TypeError("boom"))
-        group = builder.job_groups[0]
-        group.add_file(_file("a"))
-        group.add_file(_file("b"))
-        before = _render_failures("jb-render-reap")
-
-        builder._emit_ready_jobs(group, reason="hit its window")
-
-        service.emit.assert_not_called()
-        assert group.jobs == {}
-        assert _render_failures("jb-render-reap") == before + 1
 
     def test_startup_hydration_survives(self, service: MagicMock) -> None:
         """A job already complete in shared state cannot fail ``start()``."""

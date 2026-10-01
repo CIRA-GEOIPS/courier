@@ -46,7 +46,9 @@ The falconer concept is removed and the falcon concept is renamed.
 1. **Payloads are sub-plugins of job builders.** Every job builder nests
    exactly one `payload` block, as a dispatcher used to nest a falcon. The
    payload plugin is constructed when the service starts, and construction
-   reads and parses its template. For each emitted job the builder renders the
+   reads, parses and checks its template (see
+   [Two-pass rendering](#two-pass-rendering)). For each emitted job the
+   builder renders the
    template (pass one, below) and attaches the serialized `PayloadSpec` to the
    `Job`, so the payload travels with the work (see
    [Wire format](#wire-format)).
@@ -97,12 +99,68 @@ The falconer concept is removed and the falcon concept is renamed.
 A payload template can mix values the builder knows (`{{ files[0].file }}`)
 with values only the dispatcher knows (`{{ script_path }}`). The builder cannot
 wait for the dispatcher, and the dispatcher must not re-render text that came
-from job data, so the template is rendered once on each side with a strict
-division of labour.
+from job data. So the builder renders the template, leaving a placeholder
+wherever a dispatcher-only value goes, and the dispatcher fills the
+placeholders in without evaluating anything.
+
+### Dispatcher-only names are bare values
+
+Exactly four top-level names are dispatcher-only, listed in
+`courier.interfaces.payloads.DISPATCHER_CONTEXT_NAMES`: `dispatcher`,
+`script_path`, `hostname` and `output_dir`. A payload template may use them
+in one way only, as a **bare value**: a `{{ ... }}` output whose expression is
+nothing but a path rooted at one of the names, made of attribute access with
+identifier names that do not start with `_` and subscripts that are `str` or
+`int` literals (`{{ script_path }}`, `{{ dispatcher.config.log_dir }}`,
+`{{ dispatcher.config['log_dir'] }}`). `script_path`, `hostname` and
+`output_dir` are always strings, so no step may follow them: pass two could
+not resolve `{{ hostname[0] }}`, so the check rejects it at startup instead.
+Literal template text may stand next to the value (`{{ script_path }}.log`,
+`--out={{ output_dir }}/x`). The output may sit at the top level, in the body,
+`elif` or `else` of an `{% if %}`, or in the body or `else` of a `{% for %}`
+that is not `recursive`, nested to any depth, and nowhere else.
+
+The rule is checked statically, on the template's syntax tree. The template is
+parsed with the pass-one environment, and the check:
+
+1. collects the `Output` nodes that are reachable only through those
+   containers (the template itself, `If` branches, and the body and `else` of
+   a non-recursive `For`);
+1. marks the root `Name` of each expression in those outputs that is a bare
+   path rooted at a dispatcher-only name as allowed;
+1. rejects every other `Name` node, in any context (load, store or parameter),
+   whose name is dispatcher-only, and every macro name, import alias or
+   namespace assignment that is one.
+
+That rejects every filter, test, call and method call; every operator (`~`,
+`+`, `%`, comparisons, `in`, `not`, `and`/`or`, conditional expressions);
+slicing and subscripts that are not literals; use in an `{% if %}` condition
+or a `{% for %}` iterable; any use inside `{% set %}` (inline or block),
+`{% with %}`, `{% block %}`, macros, call blocks, filter blocks,
+`{% autoescape %}` and recursive loops; and every binding that would shadow
+one of the names (assignment, loop and `with` targets, macro parameters,
+import aliases). The error names the dispatcher-only name and the template
+line, and says how to write it instead: the bare value, with any text around
+it written as literal template text.
+
+Names are compared in their NFKC form. Jinja accepts non-ASCII identifiers
+and compiles template names into Python identifiers, which Python
+NFKC-normalizes, so a look-alike spelling in fullwidth or mathematical
+letters would otherwise be a different name to the check but the same
+variable at render time. A look-alike of a reserved name is rejected, as a
+value and as a binding; only the plain ASCII spelling can be a bare value.
+
+The check runs when the payload plugin is constructed, next to the syntax
+check, so `courier validate` and `courier run` reject such a template at
+startup whatever the data, the way they reject a syntax error; construction
+reports a violation as a `ValueError`, chained from `DeferredExpressionError`,
+that names the template. `Payload.render_script` runs the check again, before
+compiling, on any template it renders with a `defer_nonce` (pass one), and
+raises `DeferredExpressionError` for a violation.
 
 ### Pass one: the builder
 
-The builder renders the template in a sandboxed Jinja environment with
+The builder renders the template in a plain sandboxed Jinja environment with
 `StrictUndefined`, against the context it owns:
 
 - `files`, `job` and `config` (an alias for `job.config`). `config` is the
@@ -111,92 +169,59 @@ The builder renders the template in a sandboxed Jinja environment with
   builder's `payload` block.
 - `builder`: `name`, `identifier`, `targets`.
 
-Exactly four top-level names are dispatcher-only, listed in
-`courier.interfaces.payloads.DISPATCHER_CONTEXT_NAMES`: `dispatcher`,
-`script_path`, `hostname` and `output_dir`. In pass one each is bound to a
-deferred placeholder. Nothing else is deferred: a typo, a missing metadata key
-or an out-of-range index raises Jinja's ordinary `UndefinedError` on the
-builder, and `| default(...)`, `is defined` and `{% if x is defined %}` over
-builder-side values behave exactly as in stock Jinja.
-
-A deferred placeholder records the full access path taken from the template
-source, for example `dispatcher.config.log_dir` or `dispatcher.config['k']`.
-Attribute names must be identifiers and not dunders; subscripts must be `str`
-or `int` values and are spliced into the path as Python literals, so no data
-value can become expression syntax. Rendering a placeholder emits a marker:
+Each dispatcher-only name that the caller does not supply is bound to a
+placeholder. The placeholder records its access path, one step per attribute
+or subscript (`dispatcher.config.log_dir` and `dispatcher.config['log_dir']`
+are both `["dispatcher", "config", "log_dir"]`), and renders as a marker:
 
 ```text
-\x00COURIER-DEFER:<nonce>:<base64(path)>\x00
+\x00COURIER-DEFER:<nonce>:<base64(JSON list of path steps)>\x00
 ```
 
-`<nonce>` is random per emitted job and travels on `PayloadSpec.defer_nonce`.
-
-Dispatcher-only values support leaf interpolation only: `{{ script_path }}`,
-concatenation with `~`, and plain string conversion (as one element of a list
-passed to `join`, `'%s' %`, `'{}'.format`). Every filter and test in the
-pass-one environment rejects a deferred argument, and conditionals, loops,
-arithmetic, comparisons and calling one (or one of its methods) are rejected
-too. A string built from one with `~` carries its marker and is treated the
-same way: filters, tests, attribute access (its methods), subscripts, and `%`
-or `str.format` conversions with a width, precision or conversion flag, or a
-`%(...)` key that contains a parenthesis, refuse it. Each raises
-`DeferredExpressionError` on the builder instead of rendering a wrong branch
-or a mangled marker.
-
-A call may receive a deferred value, or a string built from one, as an
-argument when it only stores or returns it: a macro, `namespace()`, `dict()`,
-`cycler()` and `loop.cycle()`, `joiner()`, `list.append()`, and the default of
-`dict.get()`. Refusing them would buy nothing: whatever such a call returns is
-still subject to the guards above when the template uses it, and to the output
-check below. A call that would compute with the value is refused: any string
-method given it as an argument (`'a/b'.split(x)`, `' '.join(x)`), and a
-deferred key to `get`, `pop` or `setdefault`.
-
-Each render records the markers it emitted, and pass one then checks its
-output: every marker must be intact, carry the job's nonce and be one this
-render emitted, and the nonce may not appear outside a marker. When the render
-emitted a marker, no NUL character may appear outside one either, since a NUL
-is how a truncated marker shows; a render that emitted none has no marker to
-truncate, so a NUL in its job data is kept. This catches a marker that was
-escaped on the way out (`| tojson` or `| urlencode` over a container holding
-one) or rewritten character by character, which the guards above cannot see.
-What no check can see is a template *inspecting* such a string -- `==`, `in`,
-truthiness, iteration, sorting, searching (`list.count`) -- which operates on
-the marker text; the documentation tells template authors not to branch on
-dispatcher-only values at all.
+`<nonce>` is random per emitted job (`secrets.token_hex(16)`) and travels on
+`PayloadSpec.defer_nonce`. The placeholder does nothing else and does not
+guard itself at run time: the static rule already guarantees that it is only
+ever rendered in place, as a bare value, so every marker reaches the output
+whole. Nothing else is deferred: a typo, a missing metadata key or an
+out-of-range index raises Jinja's ordinary `UndefinedError` on the builder,
+and `| default(...)`, `is defined` and `{% if x is defined %}` over
+builder-side values behave exactly as in stock Jinja.
 
 ### Pass two: the dispatcher
 
-The dispatcher never parses the carried script as a template. It scans for
-markers and, for each one:
+The dispatcher never parses the carried script as a template, and runs no
+Jinja on it. It finds the markers with a regular expression and, for each one
+that carries the job's nonce:
 
-1. rejects it unless it carries the job's nonce;
-1. decodes the path and rejects it unless it is a plain access path whose root
-   name is one of `DISPATCHER_CONTEXT_NAMES` (defence in depth: the builder can
-   emit nothing else);
-1. evaluates the path in a sandbox against its own context: `dispatcher`
-   (`name`, `identifier`, `config`), `script_path`, `hostname`, and for
-   `slurm_dispatcher` `output_dir`. The same `files`, `job` and `config` are
-   present, normalised the same way;
-1. raises `DeferredExpressionError` naming the expression if the result is
-   undefined: `{{ output_dir }}` sent to a `local_dispatcher`, for example, is
-   an error, not an empty string;
+1. decodes the path, raising `DeferredExpressionError` if the marker is
+   malformed or the path's root is not one of `DISPATCHER_CONTEXT_NAMES`;
+1. walks the path through its own context -- `dispatcher` (`name`,
+   `identifier`, `config`), `script_path`, `hostname`, and for
+   `slurm_dispatcher` `output_dir` -- taking each step as a key of a mapping
+   or an `int` index into a list or tuple;
+1. raises `DeferredExpressionError`, saying the value is not defined by this
+   dispatcher, if the root or any step does not exist: `{{ output_dir }}` sent
+   to a `local_dispatcher`, for example, is an error, not an empty string. A
+   step below a value that is neither a mapping nor a list or tuple
+   (`dispatcher.config.log_dir.parent`) raises it too, naming that value's
+   type;
 1. applies the same finalisation as pass one (`None` and `[]` render as an
    empty string) and substitutes `str(value)`.
 
-Text between markers, including any `{{` or `{%` that arrived in a file name
-or in metadata, is copied through literally. A template that changes a marker's
-text after it was rendered, for example with `{% filter upper %}` or by slicing
-a string that contains it, is rejected on the builder, and the dispatcher
-rejects any marker that no longer matches its authenticated form.
+Everything else is copied through unchanged: whatever pass one rendered from
+job data, including a `{{` or `{%` in a file name or in metadata, a NUL
+character, or text that looks like a marker but does not carry the job's
+nonce. A forged marker is never resolved, and no data value is evaluated on
+either side.
 
 The command parts (`binary`, `prefix_args`, `suffix_args`) are not part of the
-template. The dispatcher renders each of them, as one argument, in a single
-strict pass with the pass-two context (which has no `builder` namespace), and
-passes each to the process as its own argv entry, an empty one included: a
-rendered value is never spliced unquoted into a shell command line or into
-Python source (a Slurm `--wrap` command shell-quotes each argument). They are
-the only templates in the command; the script path (under `TMPDIR` or
+template, and the bare-value rule does not apply to them. The dispatcher
+renders each of them, as one argument, in a single strict Jinja pass with its
+real context (which has no `builder` namespace), and passes each to the
+process as its own argv entry, an empty one included: a rendered value is
+never spliced unquoted into a shell command line or into Python source (a
+Slurm `--wrap` command shell-quotes each argument). They are the only
+templates in the command; the script path (under `TMPDIR` or
 `slurm_output_dir`) and the interpreter are passed literally.
 
 ### Why an allow-list
@@ -214,6 +239,42 @@ injection past the nonce. A typo rendered as an empty string, so
 `| default` over optional builder data raised instead of defaulting. With a
 fixed allow-list, pass one is an ordinary strict template everywhere except at
 four reserved names.
+
+### Why a static bare-value rule
+
+This section amends the decision. A later revision, also never released, let
+dispatcher-only values travel further through Jinja and guarded them at run
+time instead: a pass-one environment subclass wrapped every filter and test to
+refuse a placeholder, intercepted calls, string methods and `%` and
+`str.format` conversions that would compute with one, recorded the markers
+each render emitted and checked the output for intact markers and stray NULs,
+and pass two compiled each decoded path as a Jinja expression. It allowed
+`~`, `join` and plain string formatting over a dispatcher-only value. The
+static bare-value rule replaces all of it, because:
+
+- **It is simpler.** One walk over the syntax tree at construction replaces
+  guards spread over the environment, the placeholder and the output, and pass
+  two becomes a walk through the dispatcher's context.
+- **It has no gaps.** A run-time guard sees only what reaches it. Comparisons,
+  `in`, truthiness, iteration and sorting operated on the placeholder's marker
+  text, so a template that branched on a dispatcher-only value silently took
+  the wrong branch, and an escaped copy of a marker cut short before its nonce
+  left nothing for the output check to find. Each fix added a guard and a new
+  edge. The static rule decides from the template alone, so none of those uses
+  can reach a render. It compares names as the compiled template will see
+  them (in NFKC form, see above), so a look-alike spelling cannot slip a
+  reserved name past it.
+- **Errors move to startup.** A guard fired only when some job's data reached
+  the offending expression, and dropped that job. The static rule rejects the
+  template in `courier validate` and at startup, whichever branches the data
+  would take.
+- **Pass two evaluates nothing.** Resolving a decoded list of keys cannot run
+  template code, whatever a marker holds.
+
+The cost is expressiveness, accepted below: a dispatcher-only value can no
+longer be concatenated, joined, formatted or passed to a macro in the
+template. Literal template text next to the bare value covers concatenation,
+and the script itself or the command arguments cover the rest.
 
 ## Wire format
 
@@ -252,12 +313,15 @@ ends the process.
 
 - **At startup.** A job builder with no valid `payload` block raises
   `InvalidPluginConfigError` (see the decision above), and a template file
-  that cannot be read, or a template with a Jinja syntax error, makes payload
-  construction raise `ValueError` naming the payload, the file (or "inline
+  that cannot be read, a template with a Jinja syntax error, or a template
+  that uses a dispatcher-only name other than as a bare value makes payload
+  construction fail with an error naming the payload, the file (or "inline
   script") and the line. Either way `courier run` stops before the service
   starts, and `courier validate` reports the same config.
 - **Pass one.** Any exception from `Payload.to_job_spec` inside
-  `JobBuilder.emit` is contained per job. It is logged at ERROR with the job
+  `JobBuilder.emit` is contained per job, and so is a `to_job_spec` (a
+  subclass's override) that returns something other than a `PayloadSpec`, so
+  no job is published without one. It is logged at ERROR with the job
   identifier, its files and the exception, and
   `courier_job_builder_emit_failures_total{reason="render"}` is incremented
   once per target. Nothing is published. Rendering happens before any
@@ -266,8 +330,10 @@ ends the process.
   again; the ERROR line is the record of them. `emit` returns normally, so the
   consumer loop, the timeout reapers, the Redis-merge callback and startup
   hydration all keep running. A builder with no payload bound is not a
-  per-job failure but a wiring error: `emit` raises `ConfigurationError`
-  before rendering, and `start()` refuses to run at all.
+  per-job failure but a wiring error: `start()` refuses to run at all, and
+  code that drives an unbound builder directly gets `ConfigurationError`
+  before a job leaves its group, so no file is lost (and `emit` itself raises
+  it before rendering).
 - **Dispatch.** Every non-`CourierError` exception raised while preparing the
   environment, executing, or collecting the job's output files becomes a
   `CourierError`; one raised while resolving the payload makes the job
@@ -420,10 +486,14 @@ the Slurm job's outcome, not the `sbatch` call. See
 
 ## Trade-offs accepted
 
-- **Dispatcher-only values are leaf interpolations.** A template cannot branch
-  on, filter, or test a value only the dispatcher knows. Anything the template
-  needs to decide must be decided on the builder side, or inside the script at
-  run time (in shell or Python, not Jinja).
+- **Dispatcher-only values are bare values.** A template interpolates a
+  dispatcher-only value as `{{ name }}` or a literal path below it, with
+  literal text around it, and does nothing else with it. It cannot branch on,
+  filter, test, concatenate, format or pass along such a value, and a template
+  that tries is rejected at startup, even in a branch no job would take. Anything the
+  template needs to decide must be decided on the builder side, inside the
+  script at run time (in shell or Python, not Jinja), or in the command
+  arguments, which the dispatcher renders with its real values.
 - **Four names are reserved.** `dispatcher`, `script_path`, `hostname` and
   `output_dir` always mean the dispatcher's values in a payload template.
 - **A payload's template file need not exist on the dispatcher host.** The

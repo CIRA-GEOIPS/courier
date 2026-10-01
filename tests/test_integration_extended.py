@@ -35,7 +35,6 @@ from courier.plugins.job_builders.filter_and_group import (
 from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
 )
-from courier.plugins.payloads.bash_payload import BashPayload
 from courier.service import Service
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
@@ -46,26 +45,6 @@ from tests._helpers import payload_block, poll_until, stays_false
 # ---------------------------------------------------------------------------
 # Helpers (reused pattern from test_integration.py)
 # ---------------------------------------------------------------------------
-
-
-def _register_payload(
-    service: Service,
-    script: str,
-    identifier: str = "payload",
-) -> dict[str, Any]:
-    """Register a BashPayload sub-plugin and return a builder's nested spec.
-
-    Dispatchers no longer carry a ``bash_script``; each job builder nests a
-    payload sub-plugin, and the dispatcher hydrates it from the job spec.
-    Service preflight binds the registered payload to the builder.
-    """
-    block = payload_block(identifier, script)
-    service.register_plugin(
-        BashPayload,
-        block[identifier]["config"],
-        identifier=identifier,
-    )
-    return block
 
 
 def _poll_for_file(path: Path, timeout: float = 45.0) -> bool:
@@ -115,6 +94,7 @@ def _shutdown_service(service: Service, thread: threading.Thread) -> None:
         if hasattr(info.plugin, "_stop_event"):
             info.plugin._stop_event.set()
     thread.join(timeout=30)
+
 
 
 def _make_service_config() -> ServiceConfig:
@@ -188,10 +168,9 @@ def test_multi_builder_multi_dispatcher_explicit_routing(
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
-                "cp {{ files[0].file }} " + str(output_a) + "/",
+            "payload": payload_block(
                 "payload-a",
+                "cp {{ files[0].file }} " + str(output_a) + "/",
             ),
         },
         identifier="builder_a",
@@ -199,10 +178,9 @@ def test_multi_builder_multi_dispatcher_explicit_routing(
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
-                "cp {{ files[0].file }} " + str(output_b) + "/",
+            "payload": payload_block(
                 "payload-b",
+                "cp {{ files[0].file }} " + str(output_b) + "/",
             ),
         },
         identifier="builder_b",
@@ -269,7 +247,7 @@ def test_single_builder_fan_out_to_multiple_dispatchers(
     service = Service(_make_service_config())
     service.register_plugin(
         DummyJobBuilder,
-        {"payload": _register_payload(service, script)},
+        {"payload": payload_block("payload", script)},
         identifier="fanout_builder",
     )
     service.register_plugin(LocalDispatcher, {}, identifier="runner_a")
@@ -313,7 +291,7 @@ def test_preflight_rejects_unknown_target() -> None:
     service.register_plugin(LocalDispatcher, {}, identifier="runner")
     service.register_plugin(
         DummyJobBuilder,
-        {"payload": _register_payload(service, "echo ok")},
+        {"payload": payload_block("payload", "echo ok")},
         identifier="bad_builder",
     )
     service.configure_routing(
@@ -361,8 +339,8 @@ def test_filter_and_group_with_files_per_job(tmp_path: Path) -> None:
                 "seconds": 3600,
                 "start": "2020-01-01 00:00:00",
             },
-            "payload": _register_payload(
-                service,
+            "payload": payload_block(
+                "payload",
                 (
                     "{% for f in files %}"
                     "echo {{ f.file }} >> " + str(processed_log) + ";"
@@ -445,8 +423,8 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
+            "payload": payload_block(
+                "payload",
                 "echo {{ files[0].file }} >> " + str(processed_log),
             ),
         },
@@ -478,7 +456,7 @@ def test_dispatcher_dedupe_lru_prevents_reprocessing(
             config={},
             files=[synthetic_file],
         )
-        # A job on the wire must carry its payload; render the bound one so the
+        # A job on the wire must carry its payload; render the builder's so the
         # dispatcher can execute it.  Dedupe drops the second copy by identifier.
         builder = service._plugin_manager.get_plugins()["builder"].plugin
         synthetic_job.payload = builder.payload.to_job_spec(
@@ -546,8 +524,8 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
+            "payload": payload_block(
+                "payload",
                 "cp {{ files[0].file }} " + str(output_dir) + "/",
             ),
         },
@@ -578,7 +556,9 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
         assert log_entry is not None, (
             "No ExecutionLog received from DISPATCHER_QUEUE within timeout"
         )
-        assert log_entry.return_code is not None, "ExecutionLog must have a return_code"
+        assert log_entry.return_code is not None, (
+            "ExecutionLog must have a return_code"
+        )
         assert isinstance(log_entry.return_code, int)
     finally:
         _shutdown_service(service, thread)
@@ -602,8 +582,8 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
+            "payload": payload_block(
+                "payload",
                 "cp {{ files[0].file }} " + str(output_dir) + "/",
             ),
         },
@@ -625,7 +605,9 @@ def test_service_startup_health_graceful_shutdown(tmp_path: Path) -> None:
 
         # Confirm the job flowed through.
         copied = output_dir / "lifecycle.nc"
-        assert _poll_for_file(copied), f"Pipeline did not produce {copied}"
+        assert _poll_for_file(copied), (
+            f"Pipeline did not produce {copied}"
+        )
         assert copied.read_text() == "lifecycle"
     finally:
         _shutdown_service(service, thread)
@@ -656,8 +638,8 @@ def test_implicit_routing_auto_wires_sole_dispatcher(
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
+            "payload": payload_block(
+                "payload",
                 "cp {{ files[0].file }} " + str(output_dir) + "/",
             ),
         },
@@ -727,8 +709,8 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
     service_a.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service_a,
+            "payload": payload_block(
+                "payload",
                 "cp {{ files[0].file }} " + str(output_a) + "/",
             ),
         },
@@ -737,8 +719,8 @@ def test_namespace_isolation_between_services(tmp_path: Path) -> None:
     service_b.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service_b,
+            "payload": payload_block(
+                "payload",
                 "cp {{ files[0].file }} " + str(output_b) + "/",
             ),
         },
@@ -835,8 +817,8 @@ def test_plugin_monitoring_detects_dead_thread(tmp_path: Path) -> None:
     service.register_plugin(
         DummyJobBuilder,
         {
-            "payload": _register_payload(
-                service,
+            "payload": payload_block(
+                "payload",
                 "cp {{ files[0].file }} " + str(output_dir) + "/",
             ),
         },
@@ -930,7 +912,7 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
                     "targets": ["proc_b"],
                 },
             ],
-            "payload": _register_payload(service, script),
+            "payload": payload_block("payload", script),
         },
     )
     service.register_plugin(LocalDispatcher, {}, identifier="proc_a")

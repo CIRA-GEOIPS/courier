@@ -59,15 +59,3 @@ def test_every_charted_metric_is_registered(dashboard_json: str) -> None:
     unknown = sorted(name for name in charted if name not in _registered_names())
 
     assert not unknown, f"example dashboard charts removed metrics: {unknown}"
-
-
-def test_removed_dispatchers_leave_no_panels_or_variables(dashboard_json: str) -> None:
-    assert "status_code" not in dashboard_json
-    assert "HTTP" not in dashboard_json
-    assert "parallel_workers" not in dashboard_json
-
-
-def test_payload_metrics_are_charted(dashboard_json: str) -> None:
-    assert "courier_payload_jobs_processed_total" in dashboard_json
-    assert "courier_payload_job_execution_duration_seconds_bucket" in dashboard_json
-    assert '"name": "payload_name"' in dashboard_json

@@ -549,24 +549,29 @@ an error, not an empty string, while `| default(...)` and `is defined` work as
 usual for values that are legitimately optional. The dispatcher then fills in
 the values only it knows: `dispatcher` (`name`, `identifier`, `config`),
 `script_path`, `hostname` and, for Slurm, `output_dir`. These four names are
-reserved, and support simple leaf interpolation only (`{{ script_path }}`);
-using one in a filter, test, conditional or loop is an error.
+reserved, and can only be used as bare values, with literal text around them:
+`{{ script_path }}.log`, `{{ dispatcher.config.log_dir }}/out`. Using one in a
+filter, test, call or operator (`~` included), or in the condition of an
+`{% if %}` or the iterable of a `{% for %}`, is an error; a bare value inside
+their bodies is fine.
 
 Errors surface at the earliest point that can see them:
 
-- **Startup.** The template is read and parsed when the payload plugin is
-  constructed, as `courier run` starts (and by `courier validate`). An
-  unreadable template file or a Jinja syntax error stops the service with an
-  error naming the file (or "inline script") and the line.
+- **Startup.** The template is read, parsed and checked when the payload
+  plugin is constructed, as `courier run` starts (and by `courier validate`).
+  An unreadable template file, a Jinja syntax error, or a reserved name used
+  other than as a bare value stops the service with an error naming the file
+  (or "inline script") and the line.
 - **Each job, on the builder.** An error that depends on a job's data, such as
   a metadata key one file does not have, fails only that job: the builder logs
   it at ERROR with the job's files, counts it in
   `courier_job_builder_emit_failures_total{reason="render"}`, publishes
   nothing for it, and carries on with the next job.
 
-Only the markers the builder emitted for the reserved names are evaluated on
-the dispatcher; the rest of the script (including file names and metadata) is
-never re-parsed as a template, so job data cannot inject template syntax.
+The builder leaves a marker for each reserved name, and the dispatcher only
+replaces those markers with its values; the rest of the script (including file
+names and metadata) is never parsed as a template again, so job data cannot
+inject template syntax.
 
 The full context, the command-line arguments (`prefix_args`, `suffix_args`,
 `binary`) and every error case are in {doc}`../api-reference/payloads`.

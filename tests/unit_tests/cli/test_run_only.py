@@ -45,7 +45,6 @@ def _make_registry():
     mock_plugin.__class__ = type("FakePlugin", (), {})
     registry = MagicMock()
     registry.get_plugin.return_value = mock_plugin
-    registry.nested_values = []
     return registry
 
 

@@ -1,9 +1,8 @@
 """Serialized payload specification carried on a Job.
 
-A payload is the builder-owned, job-attached description of *what* should be
-executed.  A job builder holds a nested payload plugin, renders the payload's
-template once (pass one), and serializes the result here; the dispatcher
-hydrates a payload instance from this spec (pass two) and executes it.
+A job builder renders its payload's template once (pass one) and serializes
+the result here; the dispatcher hydrates a payload instance from this spec,
+resolves the values only it knows (pass two) and executes it.
 """
 
 from __future__ import annotations
@@ -19,38 +18,23 @@ class PayloadSpec(BaseModel):
     Attributes
     ----------
     name : str
-        Entry-point name of the payload plugin the builder configured (e.g.
-        ``"bash_payload"``).  A dispatcher may execute it as a lower
-        representation; the hydrated payload keeps this name as its
-        ``payload_name``, which labels the payload metrics.
+        Entry-point name of the payload plugin the builder configured; it
+        labels the payload metrics even when a dispatcher executes a lower
+        representation.
     identifier : str
-        Identifier the payload was configured under, kept for provenance and
-        metric labels.
+        Identifier the payload was configured under.
     config : dict
-        Serialized :class:`~courier.interfaces.payloads.PayloadConfig` (or the
-        plugin's ``config_class``) *without* its ``script`` field: the raw
-        template is not sent, so the job carries its script once, rendered, in
-        :attr:`script`.  The dispatcher validates ``config`` with the
-        ``config_class`` of the representation it hydrates, dropping keys that
-        class does not define, and sets the hydrated config's ``script`` to
-        :attr:`script` (a ``config.script`` sent by an older builder is
-        replaced the same way).  The ``file`` field, when present, is a path
-        string and is informational on the dispatcher host: :attr:`script` is
-        authoritative.
+        The payload's serialized config *without* ``script``: a dispatcher
+        validates it with the hydrated representation's ``config_class``,
+        dropping keys that class does not define.
     script : str or None
-        Output of the job builder's template render (pass one), from the
-        payload's ``file`` or inline ``script``; the only copy of the template
-        the job carries.  ``None`` for binary-only payloads, which declare
-        their command inline.
+        The builder's rendered template, the only copy the job carries;
+        ``None`` for a binary-only payload.
     suffix : str
-        File suffix to use when the dispatcher materializes ``script``.
+        File suffix for the script the dispatcher writes.
     defer_nonce : str
-        Random nonce embedded in the deferred-expression markers left by the
-        builder's pass-one render for dispatcher-only values (see
-        :data:`~courier.interfaces.payloads.DISPATCHER_CONTEXT_NAMES`).  The
-        dispatcher resolves only markers carrying this nonce whose expression
-        is an access path rooted in one of those names, so text coming from
-        job data can never be evaluated as a template expression.
+        Random nonce in the markers pass one left for dispatcher-only values;
+        pass two resolves only markers carrying it.
     """
 
     name: str
