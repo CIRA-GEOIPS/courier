@@ -19,7 +19,7 @@ import pytest
 from courier.plugins.job_builders.filter_and_group import FilterAndGroupJobBuilder
 from courier.plugins.job_builders.metadata_router import MetadataRouterBuilder
 from courier.types.file import FrozenFile
-from tests._helpers import bind_payload, with_payload
+from tests._helpers import with_payload
 
 
 @pytest.fixture
@@ -70,7 +70,6 @@ def test_reaping_an_incomplete_job_deletes_its_shared_field(
 ) -> None:
     """The reaper is an emit path, so it owes the same deletion as the rest."""
     builder = builder_cls(service, with_payload(config), identifier="jb-1")
-    bind_payload(builder)
     sync = MagicMock()
     sync.try_claim_emit.return_value = True
     builder._sync = sync

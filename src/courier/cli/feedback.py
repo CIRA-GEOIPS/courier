@@ -109,18 +109,7 @@ _VALIDATOR_PREFIXES = ("Value error, ", "Assertion failed, ")
 
 
 def humanise_message(message: str) -> str:
-    """Reword one pydantic error message for someone editing YAML.
-
-    Parameters
-    ----------
-    message : str
-        A pydantic error ``msg``, e.g. ``"Extra inputs are not permitted"``.
-
-    Returns
-    -------
-    str
-        The same problem in operator terms.
-    """
+    """Reword one pydantic error ``msg`` for someone editing YAML."""
     for prefix in _VALIDATOR_PREFIXES:
         if message.startswith(prefix):
             return message.removeprefix(prefix)
@@ -147,17 +136,6 @@ def humanise_message(message: str) -> str:
 _LOCATION_WIDTH = 28
 
 
-def problem_line(location: str, message: str) -> str:
-    """Render one ``location  message`` problem line of a report.
-
-    A location too long for its column gets a line of its own, with the
-    message indented under it, so the messages stay in one readable column.
-    """
-    if len(location) <= _LOCATION_WIDTH:
-        return f"  {location:<{_LOCATION_WIDTH}} {message}"
-    return f"  {location}\n  {'':<{_LOCATION_WIDTH}} {message}"
-
-
 def format_problem_report(
     path: Path,
     problems: Sequence[tuple[str, str]],
@@ -165,24 +143,18 @@ def format_problem_report(
 ) -> str:
     """Render ``(location, message)`` problems as the standard invalid report.
 
-    Parameters
-    ----------
-    path : Path
-        The config the problems were found in.
-    problems : Sequence[tuple[str, str]]
-        Already-humanised ``(location, message)`` pairs.
-    next_step : str, optional
-        Closing line telling the operator what to do next.
-
-    Returns
-    -------
-    str
-        The report: a header naming the file and the problem count, one line
-        per problem, then *next_step*.
+    A header naming *path* and the problem count, one line per problem, then
+    *next_step*. A location too long for its column gets a line of its own, so
+    the messages stay in one readable column.
     """
     count = len(problems)
     header = f"{path} is not valid ({count} problem{'s' if count != 1 else ''}):"
-    lines = [problem_line(location, message) for location, message in problems]
+    lines = [
+        f"  {location:<{_LOCATION_WIDTH}} {message}"
+        if len(location) <= _LOCATION_WIDTH
+        else f"  {location}\n  {'':<{_LOCATION_WIDTH}} {message}"
+        for location, message in problems
+    ]
     return "\n".join([header, "", *lines, "", next_step])
 
 

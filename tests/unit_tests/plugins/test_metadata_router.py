@@ -14,7 +14,7 @@ from courier.plugins.job_builders.metadata_router import (
     MetadataRouterConfig,
     RouteConfig,
 )
-from tests._helpers import with_payload
+from tests._helpers import payload_block, with_payload
 
 
 def _route(**overrides: Any) -> dict[str, Any]:
@@ -77,6 +77,16 @@ class TestBuilder:
         )
         assert len(builder.job_groups) == 2
         assert not builder._has_timeout
+
+    def test_a_route_level_payload_fails_construction(
+        self,
+        mock_service: MagicMock,
+    ) -> None:
+        """Rejected when ``courier run`` builds the builder, not silently ignored."""
+        config = with_payload({"routes": [_route(payload=payload_block("pa"))]})
+
+        with pytest.raises(ValidationError, match="route 'r1' has a 'payload' block"):
+            MetadataRouterBuilder(mock_service, config)
 
     def test_has_timeout_flag(self, mock_service: MagicMock) -> None:
         builder = MetadataRouterBuilder(

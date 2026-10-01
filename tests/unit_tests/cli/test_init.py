@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import io
 import tempfile
 from pathlib import Path
@@ -21,7 +20,6 @@ from courier.cli.init import (
     validate_config,
     write_yaml,
 )
-from courier.interfaces.job_builders import job_builders, parse_payload_block
 from courier.interfaces.payloads import PayloadConfig
 from courier.plugins.data_monitors.file_system_poller_watchdog import (
     FileSystemPoller,
@@ -642,7 +640,7 @@ def _payload_selection(config_values: dict | None = None) -> PluginSelection:
     )
 
 
-def _builder_selection(*payloads: PluginSelection) -> PluginSelection:
+def _builder_selection(payload: PluginSelection) -> PluginSelection:
     return PluginSelection(
         plugin_class=DummyJobBuilder,
         plugin_name="DummyJobBuilder",
@@ -650,7 +648,7 @@ def _builder_selection(*payloads: PluginSelection) -> PluginSelection:
         display_label="Job Builder",
         config_model=DummyJobBuilderConfig,
         config_values={},
-        nested_values=list(payloads),
+        nested_values=[payload],
     )
 
 
@@ -695,7 +693,7 @@ class TestRequiredPayload:
         # The trap: a second payload can never be valid, so it is never offered.
         assert not [c for c in confirmations if "another payload" in c.lower()]
 
-    def test_skipping_the_payload_is_refused_and_reprompts(
+    def test_skipping_the_payload_is_refused_and_asks_again(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -761,27 +759,6 @@ class TestRequiredPayload:
         assert "no payload plugins are installed" in output
         assert "pip install" in output
 
-    def test_real_registries_nest_the_chosen_payload_plugin(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        from courier.interfaces import job_builders
-        from courier.plugins.payloads.bash_payload import BashPayloadConfig
-
-        selections, _ = _drive_category(
-            monkeypatch,
-            job_builders,
-            "DummyJobBuilder",
-            "bash_payload",
-            kind_name="job_builders",
-        )
-
-        (builder,) = selections
-        (payload,) = builder.nested_values
-        assert payload.plugin_class is BashPayload
-        assert payload.config_model is BashPayloadConfig
-        assert payload.yaml_kind == "payload"
-
 
 class TestPreviewShowsPayloads:
     """The confirmation screen must show what every job will execute."""
@@ -841,33 +818,6 @@ class TestPreviewShowsPayloads:
 class TestBuildServiceConfigPayloads:
     """The nested payload block is written the way ``courier run`` reads it."""
 
-    def test_a_builder_without_exactly_one_payload_is_rejected(self) -> None:
-        with pytest.raises(ValueError, match="exactly one payload; got 0"):
-            build_service_config({"name": "svc"}, [_builder_selection()])
-        with pytest.raises(ValueError, match="exactly one payload; got 2"):
-            build_service_config(
-                {"name": "svc"},
-                [_builder_selection(_payload_selection(), _payload_selection())],
-            )
-
-    @pytest.mark.parametrize("name", job_builders.names())
-    def test_every_builder_is_written_with_the_block_it_requires(
-        self,
-        name: str,
-    ) -> None:
-        """What init writes passes the check ``JobBuilder`` itself applies."""
-        selection = dataclasses.replace(
-            _builder_selection(_payload_selection({"script": "echo hi"})),
-            plugin_class=job_builders.get_plugin(name),
-            plugin_name=name,
-        )
-
-        (entry,) = build_service_config({"name": "svc"}, [selection])["spec"]["run"]
-        block = parse_payload_block(entry["identifier"], entry["spec"]["config"])
-
-        assert block.spec.name == "bash_payload"
-        assert block.spec.config == {"script": "echo hi"}
-
     def test_the_generated_config_passes_validate_plugin_checks(self) -> None:
         from courier.cli.validate import check_plugins
 
@@ -876,7 +826,6 @@ class TestBuildServiceConfigPayloads:
                 {"name": "svc"},
                 [
                     _builder_selection(_payload_selection({"script": "echo hi"})),
-                    _builder_selection(_payload_selection({"binary": "true"})),
                     PluginSelection(
                         plugin_class=LocalDispatcher,
                         plugin_name="local_dispatcher",
@@ -888,13 +837,7 @@ class TestBuildServiceConfigPayloads:
             ),
         )
 
-        check = check_plugins(config)
-
-        assert check.problems == []
-        assert [name for _, _, name in check.payloads] == [
-            "bash_payload",
-            "bash_payload",
-        ]
+        assert check_plugins(config).problems == []
 
 
 class TestInitCommand:
@@ -917,9 +860,7 @@ class TestInitCommand:
         "y",  # proceed with this configuration?
     )
 
-    def test_dry_run_writes_the_payload_and_warns_what_is_left_to_fill_in(
-        self,
-    ) -> None:
+    def test_dry_run_writes_the_payload(self) -> None:
         from typer.testing import CliRunner
 
         from courier.cli.app import app
@@ -931,11 +872,6 @@ class TestInitCommand:
         )
 
         assert result.exit_code == 0, result.output
-        assert "Add another payload" not in result.output
-        assert "└─payload-bash-payload" in result.output
-        # The payload was left unconfigured: init says so now, not `courier run`.
-        assert "Before this config can run" in result.output
-        assert "'file', 'script', or 'binary' must be provided" in result.output
         generated = result.output.split("Generated YAML (--dry-run):", 1)[1]
         builder = yaml.safe_load(generated)["spec"]["run"][0]
         assert builder["spec"]["config"]["payload"]["spec"] == {

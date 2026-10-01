@@ -4,10 +4,8 @@ A job is only executable with the payload its builder renders onto it, so the
 requirement is enforced in the :class:`JobBuilder` base class, where it covers
 every builder, including a third-party one that calls ``super().__init__``:
 
-* construction rejects a config without a valid ``payload`` block;
-* the bound payload is read through a property that refuses to hand back
-  nothing, and only the payload the block names can be bound;
-* ``start()`` refuses to run without it, before consuming anything;
+* construction rejects a config without a valid ``payload`` block, and
+  otherwise constructs the payload plugin the block names;
 * ``emit()`` always attaches it, so a job without one is never published.
 """
 
@@ -15,24 +13,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, ClassVar, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
-from courier.constants import PluginRunState
-from courier.errors import ConfigurationError, InvalidPluginConfigError
+from courier.errors import InvalidPluginConfigError, PluginNotFoundError
 from courier.interfaces.job_builders import JobBuilder, job_builders
-from courier.interfaces.payloads import Payload
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.types.file import FrozenFile
 from courier.types.job import Job
-from tests._helpers import (
-    DEFAULT_PAYLOAD_ID,
-    bind_payload,
-    payload_block,
-    with_payload,
-)
+from tests._helpers import DEFAULT_PAYLOAD_ID, payload_block, with_payload
 
 #: Settings besides ``payload`` that an in-tree builder needs, so the payload
 #: block is the only thing wrong with the configs these tests build.  A builder
@@ -54,24 +47,41 @@ IN_TREE_BUILDERS = [
     "metadata_router",
 ]
 
-_MALFORMED_BLOCKS = [
-    pytest.param("bash_payload", "(a str, not a mapping)", id="not-a-mapping"),
+_UNUSABLE_CONFIGS = [
+    pytest.param(None, "has no 'payload' block", id="no-config"),
+    pytest.param({}, "has no 'payload' block", id="no-block"),
     pytest.param(
-        {"a": {"kind": "payload", "name": "bash_payload"}, "b": {}},
-        "exactly one identifier mapping",
+        {"payload": "bash_payload"},
+        "(should be a mapping, not str)",
+        id="not-a-mapping",
+    ),
+    pytest.param(
+        {"payload": {"a": {"kind": "payload", "name": "bash_payload"}, "b": {}}},
+        "(it takes exactly one payload plugin; found 2)",
         id="two-plugins",
     ),
-    # Located by the keys written (``p.name``), not the model's ``spec.name``.
-    pytest.param({"p": {"kind": "payload"}}, "(p.name: ", id="no-plugin-name"),
     pytest.param(
-        {"identifier": "p", "spec": {"kind": "payload"}},
+        {"payload": {}},
+        "(it takes exactly one payload plugin; found 0)",
+        id="no-plugin",
+    ),
+    # Located by the keys written (``p.name``), not the model's ``spec.name``.
+    pytest.param({"payload": {"p": {"kind": "payload"}}}, "(p.name: ", id="no-name"),
+    pytest.param(
+        {"payload": {"identifier": "p", "spec": {"kind": "payload"}}},
         "(spec.name: ",
-        id="canonical-form-no-plugin-name",
+        id="canonical-form-no-name",
     ),
     pytest.param(
-        {"p": {"kind": "dispatcher", "name": "local_dispatcher"}},
+        {"payload": {"p": {"kind": "dispatcher", "name": "local_dispatcher"}}},
         "of kind 'dispatcher'",
         id="wrong-kind",
+    ),
+    # Settings the payload plugin could never be constructed from.
+    pytest.param(
+        {"payload": {"p": {"kind": "payload", "name": "bash_payload", "config": "x"}}},
+        "(p.config: should be a mapping of settings, not str)",
+        id="settings-not-a-mapping",
     ),
 ]
 
@@ -129,7 +139,7 @@ def test_every_in_tree_builder_is_registered() -> None:
 
 
 class TestConstruction:
-    """A builder cannot be constructed without a valid payload block."""
+    """A builder is constructed with its payload, or not at all."""
 
     @pytest.mark.parametrize("name", BUILDER_NAMES)
     def test_a_config_without_a_payload_block_is_rejected(
@@ -138,10 +148,8 @@ class TestConstruction:
         name: str,
     ) -> None:
         """The error names the builder and shows a block to copy."""
-        builder_cls = _builder_class(name)
-
         with pytest.raises(InvalidPluginConfigError) as caught:
-            builder_cls(service, _config(name), identifier="jb-1")
+            _builder_class(name)(service, _config(name), identifier="jb-1")
 
         message = str(caught.value)
         assert "Job builder 'jb-1' has no 'payload' block" in message
@@ -150,30 +158,16 @@ class TestConstruction:
         assert "kind: payload" in message
         assert "name: bash_payload" in message
 
-    @pytest.mark.parametrize("name", BUILDER_NAMES)
-    def test_no_config_at_all_is_rejected(
+    @pytest.mark.parametrize(("config", "problem"), _UNUSABLE_CONFIGS)
+    def test_an_unusable_payload_block_is_rejected(
         self,
         service: MagicMock,
-        name: str,
-    ) -> None:
-        """``None`` is the default config, and it has no payload either."""
-        with pytest.raises(InvalidPluginConfigError, match="has no 'payload' block"):
-            _builder_class(name)(service, None, identifier="jb-1")
-
-    @pytest.mark.parametrize("name", BUILDER_NAMES)
-    @pytest.mark.parametrize(("block", "problem"), _MALFORMED_BLOCKS)
-    def test_a_malformed_payload_block_is_rejected(
-        self,
-        service: MagicMock,
-        name: str,
-        block: Any,
+        config: Any,
         problem: str,
     ) -> None:
         """Each way a block can be unusable is reported, not raised raw."""
-        builder_cls = _builder_class(name)
-
         with pytest.raises(InvalidPluginConfigError) as caught:
-            builder_cls(service, _config(name, payload=block), identifier="jb-1")
+            JobBuilder(service, config, identifier="jb-1")
 
         message = str(caught.value)
         assert "Job builder 'jb-1'" in message
@@ -181,21 +175,41 @@ class TestConstruction:
         assert "Every job builder needs a payload block" in message
 
     @pytest.mark.parametrize("name", BUILDER_NAMES)
-    def test_a_valid_block_is_kept_for_binding(
+    def test_a_valid_block_constructs_the_payload_it_names(
         self,
         service: MagicMock,
         name: str,
     ) -> None:
-        """The validated block is what preflight binds the payload by."""
         builder = _builder_class(name)(
             service,
-            _config(name, payload=payload_block("p-7")),
+            _config(name, payload=payload_block("p-7", "echo hi")),
             identifier="jb-1",
         )
 
-        assert builder.payload_identifier == "p-7"
-        assert builder.payload_block.spec.name == "bash_payload"
-        assert builder.has_payload is False
+        assert isinstance(builder.payload, BashPayload)
+        assert builder.payload.identifier == "p-7"
+        assert builder.payload.config.script == "echo hi"
+
+    @pytest.mark.parametrize(
+        ("block", "error"),
+        [
+            pytest.param(
+                payload_block(name="no_such_payload"),
+                PluginNotFoundError,
+                id="not-installed",
+            ),
+            pytest.param(payload_block(settings={}), ValidationError, id="bad-config"),
+        ],
+    )
+    def test_a_payload_that_cannot_be_constructed_fails_the_builder(
+        self,
+        service: MagicMock,
+        block: dict[str, Any],
+        error: type[Exception],
+    ) -> None:
+        """At startup, when the builder is built, not when a job arrives."""
+        with pytest.raises(error):
+            JobBuilder(service, {"payload": block}, identifier="jb-1")
 
     @pytest.mark.parametrize("kind", ["payload", "payloads", "Payload"])
     def test_every_spelling_of_the_payload_kind_is_accepted(
@@ -210,7 +224,17 @@ class TestConstruction:
             identifier="jb-1",
         )
 
-        assert builder.payload_identifier == DEFAULT_PAYLOAD_ID
+        assert builder.payload.identifier == DEFAULT_PAYLOAD_ID
+
+    def test_a_read_only_mapping_is_a_payload_block(self, service: MagicMock) -> None:
+        """Any mapping will do, not only the dict a YAML file loads as."""
+        builder = JobBuilder(
+            service,
+            {"payload": MappingProxyType(payload_block("p-7"))},
+            identifier="jb-1",
+        )
+
+        assert builder.payload.identifier == "p-7"
 
     def test_a_third_party_builder_gets_the_check_from_the_base_class(
         self,
@@ -226,132 +250,7 @@ class TestConstruction:
             identifier="site",
         )
         assert builder.site_setting == 1
-        assert builder.payload_identifier == DEFAULT_PAYLOAD_ID
-
-
-# ── binding ─────────────────────────────────────────────────────────────────
-
-
-class TestBinding:
-    """Only the payload the block names can be bound, and reading needs one."""
-
-    @staticmethod
-    def _builder(service: MagicMock) -> JobBuilder:
-        return JobBuilder(service, with_payload({"targets": ["dp-1"]}), identifier="jb")
-
-    def test_reading_an_unbound_payload_raises(self, service: MagicMock) -> None:
-        """Nothing is handed back that emit could quietly skip."""
-        builder = self._builder(service)
-
-        with pytest.raises(ConfigurationError) as caught:
-            _ = builder.payload
-
-        message = str(caught.value)
-        assert "'jb' has no payload bound" in message
-        assert repr(DEFAULT_PAYLOAD_ID) in message
-
-    def test_has_payload_asks_without_raising(self, service: MagicMock) -> None:
-        """The cheap question code can ask before anything is bound."""
-        builder = self._builder(service)
-        assert builder.has_payload is False
-
-        bind_payload(builder)
-
-        assert builder.has_payload is True
-
-    def test_the_named_payload_binds(self, service: MagicMock) -> None:
-        """The payload registered under the block's identifier is accepted."""
-        builder = self._builder(service)
-        payload = BashPayload(
-            service,
-            {"script": "true"},
-            identifier=DEFAULT_PAYLOAD_ID,
-        )
-
-        builder.payload = payload
-
-        assert builder.payload is payload
-
-    def test_a_payload_with_another_identifier_is_refused(
-        self,
-        service: MagicMock,
-    ) -> None:
-        """Binding the wrong payload would run the wrong script."""
-        builder = self._builder(service)
-        other = BashPayload(service, {"script": "true"}, identifier="someone-else")
-
-        with pytest.raises(ConfigurationError) as caught:
-            builder.payload = other
-
-        message = str(caught.value)
-        assert repr(DEFAULT_PAYLOAD_ID) in message
-        assert "'someone-else'" in message
-        assert builder.has_payload is False
-
-    def test_something_that_is_not_a_payload_is_refused(
-        self,
-        service: MagicMock,
-    ) -> None:
-        """Only a Payload can render a job spec."""
-        builder = self._builder(service)
-
-        with pytest.raises(ConfigurationError, match="only bind a Payload"):
-            builder.payload = MagicMock(identifier=DEFAULT_PAYLOAD_ID)
-
-        assert builder.has_payload is False
-
-    def test_a_rebind_must_name_the_same_payload(self, service: MagicMock) -> None:
-        """A refused rebind leaves the bound payload in place."""
-        builder = self._builder(service)
-        first = bind_payload(builder)
-
-        with pytest.raises(ConfigurationError):
-            builder.payload = BashPayload(service, {"script": "true"}, identifier="x")
-
-        assert builder.payload is first
-
-
-# ── start() ─────────────────────────────────────────────────────────────────
-
-
-class TestStart:
-    """A builder with no payload bound refuses to start."""
-
-    @pytest.mark.parametrize("name", BUILDER_NAMES)
-    def test_start_without_a_payload_raises_before_consuming(
-        self,
-        service: MagicMock,
-        name: str,
-    ) -> None:
-        """Nothing is consumed, connected to or published first."""
-        builder = _builder_class(name)(
-            service,
-            with_payload(_config(name)),
-            identifier="jb-1",
-        )
-        builder._sync = MagicMock()
-        service.consume.return_value = iter([(str(_file()), None)])
-
-        with pytest.raises(ConfigurationError, match="'jb-1' has no payload bound"):
-            builder.start()
-
-        assert builder._state is PluginRunState.STOPPED
-        assert builder._main_thread is None
-        service.consume.assert_not_called()
-        builder._sync.connect.assert_not_called()
-        service.emit.assert_not_called()
-
-    def test_start_with_a_payload_runs(self, service: MagicMock) -> None:
-        """The check does not get in the way of a wired builder."""
-        builder = JobBuilder(service, with_payload({"targets": ["dp-1"]}))
-        bind_payload(builder)
-        service.consume.return_value = iter(())
-
-        builder.start()
-        try:
-            assert builder.is_healthy() is True
-        finally:
-            builder.stop()
+        assert builder.payload.identifier == DEFAULT_PAYLOAD_ID
 
 
 # ── emit() ──────────────────────────────────────────────────────────────────
@@ -360,46 +259,12 @@ class TestStart:
 class TestEmit:
     """A job without a payload is never published."""
 
-    def test_emit_without_a_payload_raises_and_publishes_nothing(
-        self,
-        service: MagicMock,
-    ) -> None:
-        """A wiring error, not a per-job render failure to log and move past."""
-        builder = JobBuilder(service, with_payload({"targets": ["dp-1"]}))
-        job = Job("n", "job-1", {}, files=[_file()])
-
-        with pytest.raises(ConfigurationError, match="has no payload bound"):
-            builder.emit(job, ["dp-1"])
-
-        service.emit.assert_not_called()
-        assert job.payload is None
-        assert job.emit_time is None
-
-    @pytest.mark.parametrize("name", IN_TREE_BUILDERS)
-    def test_no_builder_publishes_a_completed_job_while_unbound(
-        self,
-        service: MagicMock,
-        name: str,
-    ) -> None:
-        """A file that completes a job reaches emit, which refuses it."""
-        builder = _builder_class(name)(
-            service,
-            with_payload(_config(name)),
-            identifier="jb-1",
-        )
-
-        with pytest.raises(ConfigurationError, match="'jb-1' has no payload bound"):
-            builder._dispatch_file(_file())
-
-        service.emit.assert_not_called()
-
-    def test_every_published_job_carries_the_bound_payload(
+    def test_every_published_job_carries_the_payload(
         self,
         service: MagicMock,
     ) -> None:
         """Every target gets the rendered payload with the job."""
         builder = JobBuilder(service, with_payload({"targets": ["dp-1"]}))
-        bind_payload(builder)
 
         builder.emit(Job("n", "job-1", {}, files=[_file()]), ["dp-a", "dp-b"])
 
@@ -413,19 +278,31 @@ class TestEmit:
             assert job.payload.identifier == DEFAULT_PAYLOAD_ID
             assert job.payload.script == "echo 1"
 
-    def test_a_payload_that_fails_to_render_publishes_nothing(
+    def test_a_payload_that_renders_no_spec_publishes_nothing(
         self,
         service: MagicMock,
     ) -> None:
-        """The one way a bound payload yields no spec: the job is dropped."""
-        builder = JobBuilder(service, with_payload({"targets": ["dp-1"]}))
-        payload = MagicMock(spec=Payload, identifier=DEFAULT_PAYLOAD_ID)
-        payload.to_job_spec.side_effect = RuntimeError("no")
-        builder.payload = payload
+        """A ``to_job_spec`` override returning ``None`` is a render failure."""
 
-        assert builder.emit(Job("n", "job-1", {}, files=[_file()])) is True
+        class _NoSpecPayload(BashPayload):
+            def to_job_spec(self, job: Job, builder: Any | None = None) -> Any:
+                del job, builder
+
+        builder = JobBuilder(service, with_payload({"targets": ["dp-1"]}))
+        builder.payload = _NoSpecPayload(
+            service,
+            {"script": "echo 1"},
+            identifier=DEFAULT_PAYLOAD_ID,
+        )
+        job = Job("n", "job-1", {}, files=[_file()])
+
+        with patch.object(builder._logger, "exception") as logged:
+            assert builder.emit(job) is True
 
         service.emit.assert_not_called()
+        assert job.payload is None
+        [call] = logged.call_args_list
+        assert "failed to render" in call.args[0]
 
 
 # ── the payload block stays out of job.config ───────────────────────────────
@@ -452,7 +329,6 @@ def test_a_published_job_has_no_copy_of_the_payload_block_in_its_config(
         with_payload(_config(name), script=script),
         identifier="jb-1",
     )
-    bind_payload(builder)
 
     builder._dispatch_file(_file())
 
@@ -485,7 +361,6 @@ def test_a_published_job_carries_no_state_sync_settings(
     with patch.object(JobBuilder, "_init_sync", return_value=MagicMock()):
         builder = _builder_class(name)(service, config, identifier="jb-1")
     builder._sync = None
-    bind_payload(builder)
 
     builder._dispatch_file(_file())
 

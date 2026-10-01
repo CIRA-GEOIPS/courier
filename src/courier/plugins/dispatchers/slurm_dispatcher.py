@@ -1,22 +1,14 @@
 """Implementation for the slurm_dispatcher dispatcher class.
 
-:class:`SlurmDispatcher` submits each job's payload to Slurm with ``sbatch``
-and, unless ``wait_for_completion`` is off, polls ``sacct`` until the Slurm job
-reaches a terminal state.
-
-``sbatch`` and ``sacct`` are scheduler control commands, not the job: they are
-run directly, each bounded by ``submission_timeout_seconds``, and never through
-the payload's job-execution path.  The dispatcher's local-process options
-(``timeout_seconds``, ``log_to_file``, ``log_only_errors``) therefore cannot
-break a submission, and the payload metrics describe the Slurm job's outcome
-rather than the ``sbatch`` call.
+``sbatch`` and ``sacct`` are scheduler control commands, not the job: they run
+directly, bounded by ``submission_timeout_seconds``, never through the
+payload, so the local-process options cannot break a submission.
 """
 
 import re
 import shlex
 import shutil
 import socket
-import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -43,8 +35,7 @@ from courier.types.job import Job
 from courier.utils.functional import slugify_for_filename
 from courier.utils.shell_executor import execute_shell_script
 
-#: ``sbatch --parsable`` prints ``<job id>``, or ``<job id>;<cluster>`` when the
-#: job went to a cluster chosen with ``-M``/``--clusters``.
+#: ``sbatch --parsable`` prints ``<job id>`` or ``<job id>;<cluster>``.
 _PARSABLE_JOB_ID_RE = re.compile(r"^(\d+)(?:;(\S+))?$")
 #: What ``sbatch`` prints without ``--parsable`` (e.g. behind a site wrapper).
 _SBATCH_JOB_ID_RE = re.compile(r"Submitted batch job (\d+)(?: on cluster (\S+))?")
@@ -64,12 +55,10 @@ _TERMINAL_STATES: frozenset[str] = frozenset(
     },
 )
 
-#: Terminal states after which Slurm may requeue the job and run it again, so
-#: a script the job reads from disk must be left in place.
+#: Terminal states Slurm may requeue the job from, so its script must stay.
 _REQUEUEABLE_STATES: frozenset[str] = frozenset({"PREEMPTED", "NODE_FAIL"})
 
-#: Options every dispatcher takes that describe a local process.  They do not
-#: apply to a Slurm job, so setting one is reported once at startup.
+#: Inherited options that describe a local process; reported once at startup.
 _LOCAL_PROCESS_OPTIONS = (
     "timeout_seconds",
     "log_to_file",
@@ -81,12 +70,9 @@ _LOCAL_PROCESS_OPTIONS = (
 class SlurmDispatcherConfig(DispatcherGroupConfig):
     """Validated configuration for the Slurm dispatcher.
 
-    Of the inherited options, ``timeout_seconds``, ``log_to_file``,
-    ``log_dir`` and ``log_only_errors`` describe a local process and do not
-    apply: ``sbatch`` and ``sacct`` are bounded by
-    ``submission_timeout_seconds``, the job's run time by ``time_limit``, and
-    its output goes to ``slurm_output_dir``.  ``log_to_logger``,
-    ``output_files`` and ``scan_stderr`` apply to the job's output in wait mode.
+    ``timeout_seconds``, ``log_to_file``, ``log_dir`` and ``log_only_errors``
+    do not apply; ``log_to_logger``, ``output_files`` and ``scan_stderr``
+    apply to the job's output in wait mode.
     """
 
     slurm_output_dir: str
@@ -106,64 +92,40 @@ class SlurmDispatcherConfig(DispatcherGroupConfig):
 
 @dataclass
 class SlurmSubmission(ExecutionPayload):
-    """The ``sbatch`` command prepared for one job.
+    """The ``sbatch`` command for one job.
 
-    Attributes
-    ----------
-    reads_script_at_run : bool
-        The Slurm job reads :attr:`file` from ``slurm_output_dir`` when it
-        starts (a ``--wrap`` command), rather than running Slurm's own copy of
-        a batch script.  The file must then outlive the ``sbatch`` call for as
-        long as the job may still run; see :meth:`SlurmDispatcher._execute_job`.
+    ``reads_script_at_run``: the Slurm job reads :attr:`file` when it starts
+    (``--wrap``), so it must outlive the ``sbatch`` call.
     """
 
     reads_script_at_run: bool = False
 
 
 class _SlurmJobId(NamedTuple):
-    """A submitted Slurm job, as ``sbatch`` identified it."""
+    """A submitted Slurm job, and the cluster ``sbatch`` named for it."""
 
     job_id: str
-    #: The cluster the job was submitted to, when ``sbatch`` named one
-    #: (``-M``/``--clusters``); ``sacct`` must then be asked on that cluster.
     cluster: str | None = None
 
 
 class _Submission(NamedTuple):
-    """Outcome of one ``sbatch`` call."""
+    """Outcome of one ``sbatch`` call; ``job`` is None if not accepted."""
 
-    #: Slurm job id, or ``None`` if the submission was not accepted.
-    job_id: str | None
-    #: ``sbatch``'s return code (negative: timed out, killed or not run).
-    return_code: int
-    #: Why the submission was not accepted; empty when it was.
+    job: _SlurmJobId | None
+    return_code: int  # negative: timed out, killed or not run
     reason: str
-    #: The cluster ``sbatch`` named for the job, if any.
-    cluster: str | None = None
 
 
 class _SacctRecord(NamedTuple):
-    """The state ``sacct`` reports for a Slurm job."""
+    """The state, exit code and run time (``ElapsedRaw``) ``sacct`` reports."""
 
     state: str
     exit_code: int
-    #: The job's run time (``ElapsedRaw``), when ``sacct`` reported it.
     elapsed_seconds: float | None
 
 
 def _parse_sbatch_job_id(stdout: str) -> _SlurmJobId | None:
-    """Return the job id in ``sbatch``'s output, or ``None`` if there is none.
-
-    Parameters
-    ----------
-    stdout : str
-        What ``sbatch`` printed on stdout.
-
-    Returns
-    -------
-    _SlurmJobId or None
-        The Slurm job id, and the cluster ``sbatch`` named for it, if any.
-    """
+    """Return the job id (and cluster) in ``sbatch``'s output, if any."""
     for line in reversed(stdout.strip().splitlines()):
         text = line.strip()
         match = _PARSABLE_JOB_ID_RE.match(text) or _SBATCH_JOB_ID_RE.search(text)
@@ -175,17 +137,8 @@ def _parse_sbatch_job_id(stdout: str) -> _SlurmJobId | None:
 def _parse_sacct_output(stdout: str) -> _SacctRecord:
     """Parse the first data row of ``sacct --parsable2`` output.
 
-    Parameters
-    ----------
-    stdout : str
-        Output of ``sacct --format=State,ExitCode,ElapsedRaw --parsable2``.
-
-    Returns
-    -------
-    _SacctRecord
-        The job's state, exit code and run time.  The state is empty when no
-        valid accounting row was found (``sacct`` may not know a job yet right
-        after it was submitted).
+    The state is empty when no valid row was found (``sacct`` may not know a
+    job yet right after it was submitted).
     """
     for line in stdout.splitlines():
         parts = line.strip().split("|")
@@ -232,13 +185,10 @@ def _read_text(path: Path) -> str:
 class SlurmDispatcher(Dispatcher):
     """Dispatcher that submits payloads to Slurm via ``sbatch``.
 
-    A shell script that runs directly is submitted as the batch script itself,
-    so ``#SBATCH`` directives in it apply and Slurm keeps its own copy.
-    Anything else -- a Python script, a ``binary``, interpreter options -- is
-    submitted as ``--wrap`` with the command a local dispatcher would run,
-    each argument shell-quoted.  Such a job reads the script from
-    ``slurm_output_dir`` when it starts, so the script is left in place for as
-    long as the job may still run.
+    A shell script that runs directly is submitted as the batch script itself
+    (its ``#SBATCH`` directives apply).  Anything else is submitted as
+    ``--wrap`` with the shell-quoted command a local dispatcher would run, and
+    reads the script from ``slurm_output_dir`` when it starts.
     """
 
     interface: ClassVar[str] = "dispatchers"
@@ -346,15 +296,9 @@ class SlurmDispatcher(Dispatcher):
     def _submits_batch_script(job: Job, payload: Payload) -> bool:
         """Return whether *job*'s script is submitted as the batch script itself.
 
-        That is a shell payload's script run directly by its interpreter: no
-        ``binary``, and no interpreter options (``prefix_args``), which
-        ``sbatch`` would otherwise read as its own options.
-        (``toolchain_prepend`` is never part of a job's command -- only
-        python_payload uses it, in front of its toolchain probes -- so it does
-        not matter here.)  A Python script is never
-        a batch script: its interpreter (``default_binary``, e.g. a venv's
-        python) must be the one that runs it.  Everything else is submitted
-        with ``--wrap``.
+        Only a non-Python script with no ``binary`` and no ``prefix_args``
+        (which ``sbatch`` would read as its own options) is; Python must run
+        under its own interpreter.  Everything else uses ``--wrap``.
         """
         spec = job.payload
         config = payload.config
@@ -367,11 +311,7 @@ class SlurmDispatcher(Dispatcher):
         )
 
     def _finalize_script_text(self, text: str, job: Job, payload: Payload) -> str:
-        """Ensure a batch script starts with a shebang, as ``sbatch`` requires.
-
-        The shebang names the payload's interpreter, the one a local
-        dispatcher would run the script with.  A script that has one keeps it.
-        """
+        """Give a batch script without one a shebang naming its interpreter."""
         if text.startswith("#!") or not self._submits_batch_script(job, payload):
             return text
         return f"{_shebang(payload.generate_calling_method()[0])}\n{text}"
@@ -379,10 +319,8 @@ class SlurmDispatcher(Dispatcher):
     def _output_pattern(self, job: Job) -> str:
         """Return the ``--output``/``--error`` base for *job*, without suffix.
 
-        ``%j`` (the Slurm job id) keeps two submissions of one job -- a
-        redelivery, or two dispatchers sharing ``slurm_output_dir`` -- from
-        writing the same files.  A literal ``%`` in the directory is escaped
-        so Slurm does not read it as a pattern.
+        ``%j`` (the Slurm job id) keeps two submissions of one job apart; a
+        literal ``%`` in the directory is escaped.
         """
         directory = str(self._output_dir).replace("%", "%%")
         return f"{directory}/{slugify_for_filename(job.identifier)}-%j"
@@ -393,19 +331,7 @@ class SlurmDispatcher(Dispatcher):
         return self._output_dir / f"{base}.out", self._output_dir / f"{base}.err"
 
     def _build_sbatch_args(self, job: Job) -> list[str]:
-        """Build an argument array for sbatch.
-
-        Parameters
-        ----------
-        job : Job
-            Job whose Slurm submission arguments should be generated.
-
-        Returns
-        -------
-        list[str]
-            Complete ``sbatch`` command arguments excluding the job command or
-            batch script.
-        """
+        """Return the ``sbatch`` command, excluding the job's script or ``--wrap``."""
         cfg = self.config
         pattern = self._output_pattern(job)
         args = [
@@ -438,14 +364,10 @@ class SlurmDispatcher(Dispatcher):
     ) -> list[str]:
         """Return what follows the ``sbatch`` options: the script or ``--wrap``.
 
-        A batch script is followed by its arguments (``suffix_args``).  A
-        wrapped command is the argv a local dispatcher would run, joined with
-        :func:`shlex.join` so the shell ``sbatch`` wraps it in splits it back
-        into exactly those arguments: no rendered value is re-parsed.
+        A wrapped command is :func:`shlex.join`-ed so the wrap shell splits it
+        back into exactly the argv a local dispatcher would run.
         """
         if self._submits_batch_script(job, payload):
-            # Only the argument templates are rendered: the script path (in
-            # slurm_output_dir) is spliced in literally.
             return payload.with_rendered_arguments(job, context).declare_command(
                 script_path,
             )
@@ -457,12 +379,7 @@ class SlurmDispatcher(Dispatcher):
         job: Job,
         payload: Payload,
     ) -> ExecutionPayload:
-        """Write the job's script to the Slurm output directory and build sbatch.
-
-        The script is created by :meth:`_materialize_script` under a new,
-        random name beginning with the job identifier (exclusively: an existing
-        file or symlink is never followed or overwritten).  If building the
-        command fails, the script is removed before the error propagates.
+        """Write the job's script to ``slurm_output_dir`` and build ``sbatch``.
 
         Parameters
         ----------
@@ -511,26 +428,21 @@ class SlurmDispatcher(Dispatcher):
     ) -> list[ExecutionLog]:
         """Submit the job to Slurm and, in wait mode, wait for it to finish.
 
-        A script the Slurm job reads when it starts (``--wrap``) is kept
-        (``env.keep_file``) from submission on, and released only once no job
-        can read it any more: ``sbatch`` refused the submission, or the job
-        reached a terminal state it will not be requeued from.  It is left in
-        place in no-wait mode, when polling gives up, and when the outcome of
-        ``sbatch`` itself is unknown.
+        A script the job reads when it starts is kept from submission on and
+        released only once no job can read it any more.
         """
         reads_script = self._reads_script(env)
         with self._slot_semaphore:
             env.keep_file = env.keep_file or reads_script
             submission = self._submit(job, env.command)
-            if submission.job_id is None:
+            if submission.job is None:
                 if reads_script:
                     self._release_rejected_script(job, env, submission)
                 return [self._rejection_log(job, submission)]
             self._count_submission("submitted")
             if not self.config.wait_for_completion:
-                return [self._submitted_log(job, submission.job_id)]
-            slurm_job = _SlurmJobId(submission.job_id, submission.cluster)
-            return [self._await_job(job, payload, env, slurm_job)]
+                return [self._submitted_log(job, submission.job.job_id)]
+            return [self._await_job(job, payload, env, submission.job)]
 
     @staticmethod
     def _reads_script(env: ExecutionPayload) -> bool:
@@ -538,12 +450,7 @@ class SlurmDispatcher(Dispatcher):
         return isinstance(env, SlurmSubmission) and env.reads_script_at_run
 
     def _submit(self, job: Job, command: list[str]) -> _Submission:
-        """Run ``sbatch``, bounded by ``submission_timeout_seconds``.
-
-        It is run directly, not through the payload: the job's logging options
-        must not apply to it (``log_only_errors`` would discard the job id it
-        prints), and the payload metrics are for the Slurm job.
-        """
+        """Run ``sbatch``, bounded by ``submission_timeout_seconds``."""
         self._logger.debug(f"Submitting job {job.identifier!r}: {shlex.join(command)}")
         result = execute_shell_script(command, self.config.submission_timeout_seconds)
         stderr = result.stderr.strip()
@@ -574,7 +481,7 @@ class SlurmDispatcher(Dispatcher):
             f"{parsed.job_id}{on_cluster}",
             extra={"correlation_id": job.correlation_id},
         )
-        return _Submission(parsed.job_id, 0, "", parsed.cluster)
+        return _Submission(parsed, 0, "")
 
     def _release_rejected_script(
         self,
@@ -582,12 +489,7 @@ class SlurmDispatcher(Dispatcher):
         env: ExecutionPayload,
         submission: _Submission,
     ) -> None:
-        """Release the script of a submission that ``sbatch`` did not confirm.
-
-        ``sbatch`` exiting with an error of its own means nothing was queued.
-        Otherwise -- it timed out, was killed, or exited 0 without a job id --
-        a job may have been queued after all, and it would read the script.
-        """
+        """Release the script unless a job may have been queued after all."""
         if submission.return_code > 0:
             env.keep_file = False
             return
@@ -642,10 +544,8 @@ class SlurmDispatcher(Dispatcher):
     ) -> ExecutionLog:
         """Wait for a submitted job and report its outcome.
 
-        The job counts as pending (``courier_dispatcher_slurm_jobs_pending``)
-        from submission until polling returns.  Once the job is terminal its
-        outcome is recorded in the payload metrics, like a job a local
-        dispatcher ran.
+        The job counts as pending until polling returns; a terminal outcome is
+        recorded in the payload metrics, like a job a local dispatcher ran.
         """
         slurm_job_id = slurm_job.job_id
         submitted_at = time.monotonic()
@@ -655,7 +555,7 @@ class SlurmDispatcher(Dispatcher):
             record = self._poll_status(slurm_job)
         finally:
             pending.dec()
-        stdout, stderr = self._read_output(job, slurm_job_id)
+        stdout, stderr = map(_read_text, self._output_paths(job, slurm_job_id))
         self._log_job_output(job, stdout, stderr)
         if record.state not in _TERMINAL_STATES:
             return self._unfinished_log(env, slurm_job_id, record, stdout, stderr)
@@ -670,8 +570,7 @@ class SlurmDispatcher(Dispatcher):
             else time.monotonic() - submitted_at,
         )
         if return_code != 0:
-            # A successful job's stderr stays exactly what it wrote, as under
-            # a local dispatcher.
+            # A successful job's stderr stays exactly what it wrote.
             stderr = _append_line(
                 stderr,
                 f"SLURM job {slurm_job_id} ended with state {record.state}",
@@ -691,11 +590,7 @@ class SlurmDispatcher(Dispatcher):
         stdout: str,
         stderr: str,
     ) -> ExecutionLog:
-        """Build the execution log of a job polling gave up on.
-
-        The job's outcome is unknown, so nothing is recorded in the payload
-        metrics, and a script it reads is left in place.
-        """
+        """Build the execution log of a job polling gave up on."""
         note = (
             f"SLURM job {slurm_job_id} did not reach a terminal state within "
             f"{self.config.polling_timeout_seconds}s (last state "
@@ -730,17 +625,7 @@ class SlurmDispatcher(Dispatcher):
     def _poll_status(self, slurm_job: _SlurmJobId) -> _SacctRecord:
         """Poll ``sacct`` until the job is terminal or polling times out.
 
-        Parameters
-        ----------
-        slurm_job : _SlurmJobId
-            The submitted Slurm job, and the cluster it was submitted to.
-
-        Returns
-        -------
-        _SacctRecord
-            The job's terminal state, exit code and run time.  If
-            ``polling_timeout_seconds`` expires first, the last state seen
-            (not a terminal one) with exit code ``-1``.
+        On timeout, returns the last (non-terminal) state seen, exit code -1.
         """
         deadline = time.monotonic() + self.config.polling_timeout_seconds
         record = _SacctRecord("PENDING", 0, None)
@@ -758,68 +643,30 @@ class SlurmDispatcher(Dispatcher):
         return _SacctRecord(record.state, -1, None)
 
     def _query_sacct(self, slurm_job: _SlurmJobId) -> _SacctRecord | None:
-        """Ask ``sacct`` for the job's state; ``None`` if it could not answer.
-
-        A job ``sbatch`` placed on a named cluster is looked up there
-        (``--clusters``): the local cluster does not know it, or knows a
-        different job with the same id.
-        """
-        slurm_job_id = slurm_job.job_id
+        """Ask ``sacct`` (on the job's cluster) for its state; None on failure."""
         clusters = [f"--clusters={slurm_job.cluster}"] if slurm_job.cluster else []
-        try:
-            result = subprocess.run(  # noqa: S603
-                [  # noqa: S607
-                    "sacct",
-                    "-j",
-                    slurm_job_id,
-                    *clusters,
-                    "--format=State,ExitCode,ElapsedRaw",
-                    "--noheader",
-                    "--parsable2",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=self.config.submission_timeout_seconds,
-            )
-        except (subprocess.SubprocessError, OSError) as exc:
+        result = execute_shell_script(
+            [
+                "sacct",
+                "-j",
+                slurm_job.job_id,
+                *clusters,
+                "--format=State,ExitCode,ElapsedRaw",
+                "--noheader",
+                "--parsable2",
+            ],
+            self.config.submission_timeout_seconds,
+        )
+        if result.return_code != 0:
             self._logger.warning(
-                f"sacct poll for SLURM job {slurm_job_id} failed: {exc}",
-            )
-            return None
-        if result.returncode != 0:
-            self._logger.warning(
-                f"sacct poll for SLURM job {slurm_job_id} failed with return "
-                f"code {result.returncode}: {result.stderr.strip()}",
+                f"sacct poll for SLURM job {slurm_job.job_id} failed with return "
+                f"code {result.return_code}: {result.stderr.strip()}",
             )
             return None
         return _parse_sacct_output(result.stdout)
 
-    def _read_output(self, job: Job, slurm_job_id: str) -> tuple[str, str]:
-        """Read and return the ``.out`` and ``.err`` files of a Slurm job.
-
-        Parameters
-        ----------
-        job : Job
-            Job whose output files should be read.
-        slurm_job_id : str
-            The Slurm job it was submitted as.
-
-        Returns
-        -------
-        tuple[str, str]
-            Contents of the job's stdout and stderr files. Missing files are
-            represented by empty strings.
-        """
-        out_path, err_path = self._output_paths(job, slurm_job_id)
-        return _read_text(out_path), _read_text(err_path)
-
     def _log_job_output(self, job: Job, stdout: str, stderr: str) -> None:
-        """Log a finished job's output when ``log_to_logger`` is enabled.
-
-        As for a local job, stdout lines go to DEBUG and stderr lines to
-        WARNING; here they are logged once the job has finished.
-        """
+        """Log a finished job's output when ``log_to_logger`` is enabled."""
         if not self.config.log_to_logger:
             return
         prefix = f"[job: {job.identifier}]"

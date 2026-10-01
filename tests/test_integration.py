@@ -25,7 +25,6 @@ from courier.plugins.data_monitors.file_system_poller_watchdog import (
 )
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
-from courier.plugins.payloads.bash_payload import BashPayload
 from courier.service import Service
 from tests._helpers import payload_block
 
@@ -187,16 +186,10 @@ def _prometheus_cleanup(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def _register_local_pipeline(service, script: str) -> None:
-    """Register a payload-carrying builder and a local dispatcher."""
-    block = payload_block("payload", script)
-    service.register_plugin(
-        BashPayload,
-        block["payload"]["config"],
-        identifier="payload",
-    )
+    """Register a builder whose payload runs *script*, and a local dispatcher."""
     service.register_plugin(
         DummyJobBuilder,
-        {"targets": ["runner"], "payload": block},
+        {"targets": ["runner"], "payload": payload_block("payload", script)},
         identifier="builder",
     )
     service.register_plugin(LocalDispatcher, {}, identifier="runner")
@@ -241,7 +234,9 @@ def test_cron_glob_single_file_end_to_end(tmp_path: Path) -> None:
         assert _wait_for_healthy(service), "Service did not become healthy"
 
         output_file = output_dir / "sample.nc"
-        assert _poll_for_file(output_file), f"Pipeline did not produce {output_file}"
+        assert _poll_for_file(output_file), (
+            f"Pipeline did not produce {output_file}"
+        )
         assert output_file.read_text() == "sensor data payload"
     finally:
         _shutdown_service(service, thread)

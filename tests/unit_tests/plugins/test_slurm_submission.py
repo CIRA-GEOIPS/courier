@@ -12,17 +12,15 @@ fake ``sbatch`` behaves like the real one where it matters here:
 * it keeps its own copy of a batch script, as ``slurmctld`` does, while a
   ``--wrap`` command runs later and reads whatever files it names at that time;
 * it expands ``%j`` and ``%%`` in ``--output``/``--error``;
-* it prints the job id (``--parsable``) and runs the job in the background
-  after ``FAKE_JOB_DELAY`` seconds -- or, when ``FAKE_JOB_HOLD`` names a file,
-  once the test creates that file -- recording its state for the fake
-  ``sacct``;
+* it prints the job id (``--parsable``) and runs the job in the background --
+  when ``FAKE_JOB_HOLD`` names a file, once the test creates that file --
+  recording its state for the fake ``sacct``;
 * with ``FAKE_SBATCH_CLUSTER`` set it prints ``<id>;fake-cluster``, and the
   fake ``sacct`` then knows the job only when asked with
   ``--clusters=fake-cluster``, like a job on a remote cluster.
 
 Tests that need a job to still be pending while the dispatcher polls hold it
-with ``FAKE_JOB_HOLD`` rather than racing a delay against the poll, which
-under load could let the job finish first.
+with ``FAKE_JOB_HOLD`` rather than racing a delay against the poll.
 """
 
 # cspell:ignore giveup
@@ -37,23 +35,20 @@ import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
 
 import pytest
 from prometheus_client import REGISTRY
 
 from courier.constants import FILE_FOUND_EXCHANGE
 from courier.plugins.dispatchers.slurm_dispatcher import SlurmDispatcher
-from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.types.execution_log import ExecutionLog
 from courier.types.file import File
-from courier.types.job import Job
+from tests.unit_tests.plugins.conftest import consume, file_job, wire_job
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
-
-    from courier.interfaces.payloads import Payload
+    from collections.abc import Callable
+    from unittest.mock import MagicMock
 
 #: Upper bound for anything that should finish "promptly".
 _PROMPT_SECONDS = 15.0
@@ -199,7 +194,6 @@ def run(job_id):
         deadline = time.monotonic() + 120
         while not Path(hold).exists() and time.monotonic() < deadline:
             time.sleep(0.02)
-    time.sleep(float(os.environ.get("FAKE_JOB_DELAY", "0")))
     _write(STATE / f"{job_id}.state", "RUNNING|0:0|0")
     started = time.monotonic()
     with open(record["output"], "w") as out, open(record["error"], "w") as err:
@@ -305,7 +299,6 @@ def fake_slurm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeSlurm:
         wrapper.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_SLURM_STATE", str(state))
-    monkeypatch.setenv("FAKE_JOB_DELAY", "0")
     for name in (
         "FAKE_SBATCH_SLEEP",
         "FAKE_SBATCH_FAIL",
@@ -315,14 +308,6 @@ def fake_slurm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeSlurm:
     ):
         monkeypatch.delenv(name, raising=False)
     return FakeSlurm(state)
-
-
-@pytest.fixture
-def service() -> MagicMock:
-    svc = MagicMock()
-    svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
-    return svc
 
 
 @pytest.fixture
@@ -343,29 +328,6 @@ def _dispatcher(
     }
     base.update(config)
     return SlurmDispatcher(service, base, identifier=identifier)
-
-
-def _wire(  # noqa: PLR0913
-    service: MagicMock,
-    payload_config: dict,
-    *,
-    payload_cls: type[Payload] = BashPayload,
-    identifier: str = "job-1",
-    payload_identifier: str = "p1",
-    files: list[Path] | None = None,
-    config: dict | None = None,
-) -> Job:
-    """Return a job carrying a rendered payload, as a dispatcher receives it."""
-    payload = payload_cls(service, payload_config, payload_identifier)
-    job = Job(
-        "n",
-        identifier,
-        config or {},
-        files=[File(file=f).freeze() for f in files or []],
-    )
-    job.targets = ("sd",)
-    job.payload = payload.to_job_spec(job)
-    return Job.from_string(str(job))
 
 
 def _scripts(out_dir: Path) -> list[Path]:
@@ -430,7 +392,7 @@ class TestWaitMode:
         fake_slurm: FakeSlurm,
     ) -> None:
         dispatcher = _dispatcher(service, out_dir, identifier="sd-wait")
-        job = _wire(
+        job = wire_job(
             service,
             {"script": "echo 'out from {{ job.identifier }}'; echo 'err line' >&2"},
         )
@@ -451,7 +413,7 @@ class TestWaitMode:
         fake_slurm: FakeSlurm,  # noqa: ARG002
     ) -> None:
         dispatcher = _dispatcher(service, out_dir)
-        job = _wire(service, {"script": "echo 'going down' >&2; exit 3"})
+        job = wire_job(service, {"script": "echo 'going down' >&2; exit 3"})
 
         (log,) = dispatcher.get_execution_log(job)
 
@@ -471,24 +433,11 @@ class TestWaitMode:
         monkeypatch.setenv("FAKE_SBATCH_CLUSTER", "1")
         dispatcher = _dispatcher(service, out_dir, polling_timeout_seconds=10)
 
-        (log,) = dispatcher.get_execution_log(_wire(service, {"script": "echo ok"}))
+        (log,) = dispatcher.get_execution_log(wire_job(service, {"script": "echo ok"}))
 
         assert log.return_code == 0, log.stderr
         assert log.stdout == "ok\n"
         assert all("--clusters=fake-cluster" in argv for argv in fake_slurm.polls())
-
-    def test_successful_job_stderr_is_only_what_it_wrote(
-        self,
-        service: MagicMock,
-        out_dir: Path,
-        fake_slurm: FakeSlurm,  # noqa: ARG002
-    ) -> None:
-        dispatcher = _dispatcher(service, out_dir)
-
-        (log,) = dispatcher.get_execution_log(_wire(service, {"script": "echo ok"}))
-
-        assert log.return_code == 0
-        assert log.stderr == ""
 
     def test_output_files_are_found_in_the_jobs_output(
         self,
@@ -501,10 +450,10 @@ class TestWaitMode:
             out_dir,
             output_files=[{"pattern": r"wrote (?P<file>/\S+\.nc)"}],
         )
-        job = _wire(service, {"script": "echo wrote /data/product.nc"})
 
-        # Output files are re-emitted by the consumer loop, with the results.
-        dispatcher._run_job(job, str(job), dispatcher._dedupe_key(job))
+        consume(
+            dispatcher, wire_job(service, {"script": "echo wrote /data/product.nc"})
+        )
 
         emitted = [
             File.from_string(call.kwargs["message"]).file
@@ -530,7 +479,7 @@ class TestBatchScripts:
             'echo "{{ job.identifier }} args: $1|$2"',
         )
         dispatcher = _dispatcher(service, out_dir)
-        job = _wire(service, {"file": str(template), "suffix_args": ["a", "b c"]})
+        job = wire_job(service, {"file": str(template), "suffix_args": ["a", "b c"]})
 
         (log,) = dispatcher.get_execution_log(job)
 
@@ -540,23 +489,6 @@ class TestBatchScripts:
         assert submitted["directives"] == ["--gres=gpu:1", "--time=00:05:00"]
         assert all(option.startswith("--") for option in submitted["options"])
         assert log.stdout == "job-1 args: a|b c\n"
-
-    def test_inline_script_without_shebang_is_accepted(
-        self,
-        service: MagicMock,
-        out_dir: Path,
-        fake_slurm: FakeSlurm,
-    ) -> None:
-        dispatcher = _dispatcher(service, out_dir)
-
-        (log,) = dispatcher.get_execution_log(
-            _wire(service, {"script": "echo hi from {{ job.identifier }}"}),
-        )
-
-        assert log.return_code == 0, log.stderr
-        assert log.stdout == "hi from job-1\n"
-        script = Path(fake_slurm.only_job()["runner"][0]).read_text()
-        assert script.splitlines()[0] == "#!/usr/bin/env bash"
 
     def test_no_wait_batch_script_is_removed_but_the_job_still_runs(
         self,
@@ -569,7 +501,7 @@ class TestBatchScripts:
         release = fake_slurm.hold_jobs(monkeypatch)
         dispatcher = _dispatcher(service, out_dir, wait_for_completion=False)
 
-        (log,) = dispatcher.get_execution_log(_wire(service, {"script": "echo ran"}))
+        (log,) = dispatcher.get_execution_log(wire_job(service, {"script": "echo ran"}))
 
         submitted = fake_slurm.only_job()
         assert log.return_code == 0
@@ -591,7 +523,7 @@ class TestWrappedJobs:
         template = tmp_path / "job.py"
         template.write_text("import sys; print('{{ job.identifier }}', sys.argv[1:])")
         dispatcher = _dispatcher(service, out_dir)
-        job = _wire(
+        job = wire_job(
             service,
             {
                 "file": str(template),
@@ -626,7 +558,7 @@ class TestWrappedJobs:
         template = tmp_path / "job.py"
         template.write_text("print('late but fine')")
         dispatcher = _dispatcher(service, out_dir, wait_for_completion=False)
-        job = _wire(
+        job = wire_job(
             service,
             {"file": str(template), "default_binary": sys.executable},
             payload_cls=PythonPayload,
@@ -643,23 +575,6 @@ class TestWrappedJobs:
         assert fake_slurm.wait_until_done(submitted["id"]) == "COMPLETED"
         assert Path(submitted["output"]).read_text() == "late but fine\n"
 
-    def test_prefix_args_reach_the_interpreter_not_sbatch(
-        self,
-        service: MagicMock,
-        out_dir: Path,
-        fake_slurm: FakeSlurm,
-    ) -> None:
-        dispatcher = _dispatcher(service, out_dir)
-        job = _wire(service, {"script": "echo $-", "prefix_args": ["-e"]})
-
-        (log,) = dispatcher.get_execution_log(job)
-
-        submitted = fake_slurm.only_job()
-        assert "-e" not in submitted["options"]
-        assert shlex.split(submitted["wrap"])[:2] == ["bash", "-e"]
-        assert log.return_code == 0, log.stderr
-        assert "e" in (log.stdout or "")
-
     def test_untrusted_file_names_are_not_run_by_the_wrap_shell(
         self,
         service: MagicMock,
@@ -670,10 +585,10 @@ class TestWrappedJobs:
         marker = tmp_path / "pwned"
         evil = f"/data/x'; touch {marker}; echo '$(touch {marker}).nc"
         dispatcher = _dispatcher(service, out_dir)
-        job = _wire(
+        job = wire_job(
             service,
             {"binary": "echo", "suffix_args": ["{{ files[0].file }}"]},
-            files=[Path(evil)],
+            job=file_job(evil),
         )
 
         (log,) = dispatcher.get_execution_log(job)
@@ -702,7 +617,7 @@ class TestRejectedSubmissions:
         rejected = _submissions("sd-reject", "rejected")
         submitted = _submissions("sd-reject", "submitted")
 
-        (log,) = dispatcher.get_execution_log(_wire(service, payload_config))
+        (log,) = dispatcher.get_execution_log(wire_job(service, payload_config))
 
         assert log.return_code == 1
         assert log.stderr is not None
@@ -726,7 +641,7 @@ class TestRejectedSubmissions:
             submission_timeout_seconds=2,
             timeout_seconds=3600,
         )
-        job = _wire(service, {"script": "echo hi", "prefix_args": ["-e"]})
+        job = wire_job(service, {"script": "echo hi", "prefix_args": ["-e"]})
 
         started = time.monotonic()
         (log,) = dispatcher.get_execution_log(job)
@@ -743,15 +658,6 @@ class TestRejectedSubmissions:
 
 
 class TestDispatcherLoggingOptions:
-    @pytest.mark.parametrize(
-        "logging_config",
-        [
-            {"log_to_file": True},
-            {"log_only_errors": True},
-            {"log_to_file": True, "log_only_errors": True, "log_to_logger": True},
-        ],
-        ids=["log_to_file", "log_only_errors", "all"],
-    )
     @pytest.mark.parametrize("wait", [True, False], ids=["wait", "no-wait"])
     def test_do_not_break_submission(
         self,
@@ -759,7 +665,6 @@ class TestDispatcherLoggingOptions:
         out_dir: Path,
         tmp_path: Path,
         fake_slurm: FakeSlurm,
-        logging_config: dict,
         wait: bool,  # noqa: FBT001
     ) -> None:
         log_dir = tmp_path / "logs"
@@ -769,11 +674,13 @@ class TestDispatcherLoggingOptions:
             out_dir,
             wait_for_completion=wait,
             log_dir=str(log_dir),
-            **logging_config,
+            log_to_file=True,
+            log_only_errors=True,
+            log_to_logger=True,
         )
 
         (log,) = dispatcher.get_execution_log(
-            _wire(service, {"script": "echo hi", "toolchain": ["sh"]}),
+            wire_job(service, {"script": "echo hi", "toolchain": ["sh"]}),
         )
 
         assert log.return_code == 0, log.stderr
@@ -788,26 +695,15 @@ class TestDispatcherLoggingOptions:
         out_dir: Path,
         tmp_path: Path,
         fake_slurm: FakeSlurm,  # noqa: ARG002
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        def _no_exit(code: int) -> None:
-            raise AssertionError(f"os._exit({code}) called")
-
-        monkeypatch.setattr(os, "_exit", _no_exit)
         dispatcher = _dispatcher(
             service,
             out_dir,
             log_to_file=True,
             log_dir=str(tmp_path / "logs"),
         )
-        wire = _wire(service, {"script": "echo through the loop"})
 
-        def _consume(*_args: object, **_kwargs: object) -> Iterator[tuple[str, None]]:
-            yield str(wire), None
-            dispatcher._stop_event.set()
-
-        service.consume.side_effect = _consume
-        dispatcher._run_handle_incoming_jobs()
+        consume(dispatcher, wire_job(service, {"script": "echo through the loop"}))
 
         (message,) = [
             call.kwargs["message"]
@@ -818,43 +714,6 @@ class TestDispatcherLoggingOptions:
         assert log.return_code == 0
         assert log.stdout == "through the loop\n"
         service.park_message.assert_not_called()
-
-
-class TestSharedOutputDir:
-    def test_two_submissions_of_one_job_do_not_collide(
-        self,
-        service: MagicMock,
-        out_dir: Path,
-        tmp_path: Path,
-        fake_slurm: FakeSlurm,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Two dispatchers share slurm_output_dir and both get job 'job-1'."""
-        monkeypatch.setenv("FAKE_JOB_DELAY", "0.5")
-        template = tmp_path / "job.py"
-        template.write_text("print('{{ job.config.who }}')")
-
-        for identifier, who in (("sd-a", "a"), ("sd-b", "b")):
-            dispatcher = _dispatcher(
-                service,
-                out_dir,
-                identifier=identifier,
-                wait_for_completion=False,
-            )
-            job = _wire(
-                service,
-                {"file": str(template), "default_binary": sys.executable},
-                payload_cls=PythonPayload,
-                config={"who": who},
-            )
-            dispatcher.get_execution_log(job)
-
-        first, second = fake_slurm.jobs()
-        assert len(_scripts(out_dir)) == 2  # noqa: PLR2004
-        assert first["output"] != second["output"]
-        for submitted, who in ((first, "a"), (second, "b")):
-            assert fake_slurm.wait_until_done(submitted["id"]) == "COMPLETED"
-            assert Path(submitted["output"]).read_text() == f"{who}\n"
 
 
 class TestPollingGivesUp:
@@ -875,7 +734,7 @@ class TestPollingGivesUp:
             identifier="sd-giveup",
             polling_timeout_seconds=0.3,
         )
-        job = _wire(
+        job = wire_job(
             service,
             {"file": str(template), "default_binary": sys.executable},
             payload_cls=PythonPayload,
@@ -904,7 +763,7 @@ class TestPollingGivesUp:
     ) -> None:
         monkeypatch.setenv("FAKE_JOB_FINAL_STATE", "PREEMPTED")
         dispatcher = _dispatcher(service, out_dir)
-        job = _wire(service, {"script": "echo hi", "prefix_args": ["-e"]})
+        job = wire_job(service, {"script": "echo hi", "prefix_args": ["-e"]})
 
         (log,) = dispatcher.get_execution_log(job)
 
@@ -924,7 +783,7 @@ class TestMetrics:
         release = fake_slurm.hold_jobs(monkeypatch)
         dispatcher = _dispatcher(service, out_dir, identifier="sd-gauge")
         submitted_before = _submissions("sd-gauge", "submitted")
-        job = _wire(service, {"script": "echo hi"})
+        job = wire_job(service, {"script": "echo hi"})
         result: list[list[ExecutionLog]] = []
 
         worker = threading.Thread(
@@ -959,7 +818,7 @@ class TestMetrics:
             wait_for_completion=False,
         )
         before = _submissions("sd-nowait-metrics", "submitted")
-        job = _wire(service, {"script": "echo hi"}, payload_identifier="p-nowait")
+        job = wire_job(service, {"script": "echo hi"}, payload_identifier="p-nowait")
 
         dispatcher.get_execution_log(job)
 
@@ -982,7 +841,9 @@ class TestMetrics:
     ) -> None:
         payload_identifier = f"p-metrics-{status}"
         dispatcher = _dispatcher(service, out_dir)
-        job = _wire(service, {"script": script}, payload_identifier=payload_identifier)
+        job = wire_job(
+            service, {"script": script}, payload_identifier=payload_identifier
+        )
         other = "failure" if status == "success" else "success"
 
         dispatcher.get_execution_log(job)

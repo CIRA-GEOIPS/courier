@@ -60,33 +60,6 @@ def _resolve_candidate(
     return None
 
 
-def _as_model(candidate: object) -> type[BaseModel] | None:
-    """Return *candidate* if it is a pydantic model class, else ``None``."""
-    if isinstance(candidate, type) and issubclass(candidate, BaseModel):
-        return candidate
-    return None
-
-
-def declared_config_model(plugin_class: type) -> type[BaseModel] | None:
-    """Return the config model *plugin_class* declares it validates with.
-
-    That is its ``config_class`` class attribute, possibly inherited: payloads
-    and dispatchers validate their config block with it. Unlike
-    :func:`find_config_model` this never guesses from names.
-
-    Parameters
-    ----------
-    plugin_class : type
-        A plugin class.
-
-    Returns
-    -------
-    type[BaseModel] or None
-        The declared model, or ``None`` when the class declares none.
-    """
-    return _as_model(getattr(plugin_class, "config_class", None))
-
-
 def _module_config_model(plugin_class: type) -> type[BaseModel] | None:
     """Guess *plugin_class*'s config model from the models its module defines."""
     module = importlib.import_module(plugin_class.__module__)
@@ -114,16 +87,17 @@ def find_config_model(plugin_class: type) -> type[BaseModel] | None:
     """Find the companion Pydantic Config model for *plugin_class*.
 
     Scans the plugin's defining module for ``BaseModel`` subclasses,
-    preferring those named ``{PluginClassName}Config``.  A model the class
-    declares (see :func:`declared_config_model`) wins over that guess unless
-    the guess is a subclass of it -- a declaration inherited from a base class
-    is less specific than a model the plugin's own module extends it with.
+    preferring those named ``{PluginClassName}Config``.  A ``config_class`` the
+    class declares (payloads and dispatchers validate with it) wins over that
+    guess unless the guess is a subclass of it -- a declaration inherited from
+    a base class is less specific than a model the plugin's own module extends
+    it with.
 
     Returns ``None`` if no Config model is found.
     """
-    declared = declared_config_model(plugin_class)
+    declared = getattr(plugin_class, "config_class", None)
     guessed = _module_config_model(plugin_class)
-    if declared is None:
+    if not (isinstance(declared, type) and issubclass(declared, BaseModel)):
         return guessed
     if guessed is not None and issubclass(guessed, declared):
         return guessed

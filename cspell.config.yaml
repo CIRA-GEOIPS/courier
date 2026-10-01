@@ -193,6 +193,9 @@ words:
   - misdeclared
   - dunders
   - dummyjobbuilder
+  # Unicode identifier normalization (the payload template check)
+  - NFKC
+  - fullwidth
   # POSIX and Python standard library names
   - fchmod
   - fspath
@@ -228,8 +231,13 @@ words:
   - rabbitmqctl
   # Jinja2 filters and tags, and Slurm and POSIX names used in the tests
   - tojson
-  - urlencode
   - endmacro
+  - elif
+  - endset
+  - endwith
+  - endcall
+  - endfilter
+  - endautoescape
   - lipsum
   - requeue
   - requeued

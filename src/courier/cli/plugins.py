@@ -22,8 +22,6 @@ from courier.interfaces import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from courier.interfaces.discovery import (
         ClassPluginRegistry,
         ConfigPluginRegistry,
@@ -77,10 +75,8 @@ RUN_KINDS: frozenset[str] = frozenset(
 )
 
 #: Display label, singular YAML ``kind``, and table color for every registry in
-#: :data:`PLUGIN_REGISTRIES`.  ``data_monitor_configs`` are data referenced by a
-#: monitor's ``metadata-tools`` rather than a runnable step, so they have no
-#: singular kind.  Single source of truth for the kind/label/style tables the
-#: CLI previously spelled out separately.
+#: :data:`PLUGIN_REGISTRIES`. ``data_monitor_configs`` are not a step, so they
+#: have no singular kind.
 KIND_INFO: dict[str, tuple[str, str | None, str]] = {
     "data_monitor_configs": ("Data Monitor Config", None, "cyan"),
     "data_monitors": ("Data Monitor", "data_monitor", "magenta"),
@@ -119,39 +115,19 @@ def normalize_kind(kind: str) -> str:
     return _KIND_TO_REGISTRY_KEY.get(Lexeme(kind), kind)
 
 
-def _iter_specs(node: object) -> Iterator[tuple[str, str]]:
-    """Yield ``(kind, name)`` for every service spec nested in *node*.
-
-    Recurses through raw config dicts so nested sub-plugins -- e.g. a payload
-    under a job builder -- are discovered when filtering the plugin list.  Both
-    nested shapes the schema allows are handled: the canonical
-    ``{identifier, spec: {kind, name}}`` and the singleton
-    ``{identifier: {kind, name}}``.  A canonical entry is descended once, via
-    its ``spec``, so it is not yielded twice.
-    """
-    if isinstance(node, dict):
-        spec = node.get("spec")
-        if isinstance(spec, dict) and "kind" in spec and "name" in spec:
-            yield str(spec["kind"]), str(spec["name"])
-            node = spec
-        elif "kind" in node and "name" in node:
-            yield str(node["kind"]), str(node["name"])
-        for value in node.values():
-            yield from _iter_specs(value)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _iter_specs(item)
-
-
 def _config_references_plugin(
     config: ServiceConfigModel,
     plugin_type: str,
     plugin_name: str,
 ) -> bool:
-    """Return True if the config references the plugin, nested or top-level."""
+    """Return True if the config names the plugin, as a step or as a payload."""
+    from courier.cli.run import _payload_blocks  # noqa: PLC0415 -- run imports us
+
+    specs = [entry.spec for entry in config.spec.run]
+    specs += [block.spec for block in _payload_blocks(config).values()]
     return any(
-        normalize_kind(kind) == plugin_type and Lexeme(name) == plugin_name
-        for kind, name in _iter_specs(config.model_dump())
+        normalize_kind(spec.kind) == plugin_type and Lexeme(spec.name) == plugin_name
+        for spec in specs
     )
 
 

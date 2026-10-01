@@ -48,11 +48,10 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 FROM ${PYTHON_IMAGE} AS runtime
 
 # bash is load-bearing, not the convenience the old comment claimed:
-# bash_payload runs its scripts with ``bash`` from PATH (``bash -c`` in binary
-# mode), so it breaks without it.  (shell_executor.py runs whatever argv it is
-# handed.)
-# tini reaps the children a local_dispatcher forks and forwards SIGTERM.
-# PID 1 does neither.
+# bash_payload runs its scripts with the ``bash`` found on PATH, so it breaks
+# without it.
+# tini reaps the children local_dispatcher forks, and
+# forwards SIGTERM. PID 1 does neither.
 RUN apk add --no-cache bash tini \
  && adduser -D -u 1000 courier \
  && mkdir -p /work \

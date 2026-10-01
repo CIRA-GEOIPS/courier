@@ -21,31 +21,13 @@ from courier.utils.logging import get_logger
 #: function with no access to a plugin instance logger.
 _logger = get_logger("module", "local_dispatcher", None)
 
-#: Prefix of a ``COURIER_METRIC: <name> <value>`` stdout line.
-_COURIER_METRIC_PREFIX = "COURIER_METRIC:"
-
 #: Regex that extracts ``metric_name`` and ``value`` from a
 #: ``COURIER_METRIC: <name> <value>`` stdout line. The value pattern is
-#: deliberately permissive; :func:`_parse_courier_metric` validates it with
-#: ``float()``.
+#: deliberately permissive; :func:`_ingest_courier_metrics` validates it with
+#: ``float()`` and skips anything that fails.
 _COURIER_METRIC_RE = re.compile(
     r"^COURIER_METRIC:\s+(?P<metric_name>\S+)\s+(?P<value>-?[\d.e+-]+)",
 )
-
-#: Characters of a malformed metric line echoed into the warning.
-_METRIC_LINE_PREVIEW = 200
-
-
-def _parse_courier_metric(line: str) -> tuple[str, float] | None:
-    """Return the name and value of a ``COURIER_METRIC:`` *line*, if it has them."""
-    match = _COURIER_METRIC_RE.match(line)
-    if not match:
-        return None
-    try:
-        return match.group("metric_name"), float(match.group("value"))
-    except ValueError:
-        # The value pattern admits strings float() rejects ("1.2.3", "5--").
-        return None
 
 
 def _ingest_courier_metrics(
@@ -61,27 +43,27 @@ def _ingest_courier_metrics(
 
     The dispatcher recognises the prefix after every job execution and pushes
     the value into ``courier_custom_gauge`` with labels
-    ``dispatcher_identifier`` and ``metric_name``.  A line with the prefix
-    but no name and numeric value is skipped with a WARNING, never raised:
-    the payload has already run, and one bad metric line must not fail a job
-    that succeeded and drop its execution log.
+    ``dispatcher_identifier`` and ``metric_name``.
     """
     for line in stdout.splitlines():
-        text = line.strip()
-        if not text.startswith(_COURIER_METRIC_PREFIX):
+        match = _COURIER_METRIC_RE.match(line.strip())
+        if not match:
             continue
-        parsed = _parse_courier_metric(text)
-        if parsed is None:
+        raw_value = match.group("value")
+        try:
+            value = float(raw_value)
+        except ValueError:
+            # The value pattern admits strings float() rejects ("1.2.3", "5--",
+            # "1e"). A bad metric line must not fail a job that already ran.
             _logger.warning(
-                "Ignoring malformed COURIER_METRIC line %r: expected "
-                "'COURIER_METRIC: <metric_name> <numeric_value>'",
-                text[:_METRIC_LINE_PREVIEW],
+                "Ignoring malformed COURIER_METRIC value %r for metric %r",
+                raw_value,
+                match.group("metric_name"),
             )
             continue
-        metric_name, value = parsed
         COURIER_CUSTOM_GAUGE.labels(
             dispatcher_identifier=dispatcher_identifier,
-            metric_name=metric_name,
+            metric_name=match.group("metric_name"),
         ).set(value)
 
 

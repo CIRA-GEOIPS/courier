@@ -18,8 +18,6 @@ in :mod:`courier.interfaces` and
 * ``courier_plugin_*`` — :mod:`courier.metrics`
 * ``courier_broker_*`` — :mod:`courier.metrics`
 * ``courier_dispatcher_slurm_*`` — :mod:`courier.metrics`
-* ``courier_payload_*`` — :mod:`courier.metrics`, recorded by the dispatcher
-  that executes a job builder's payload
 
 Panel Generation Logic
 ----------------------
@@ -47,8 +45,6 @@ from grafanalib.core import (
     Threshold,
     TimeSeries,
 )
-
-from courier.dashboard.topology import _re2_escape
 
 if TYPE_CHECKING:
     from courier.dashboard.config_parser import DashboardModel
@@ -297,16 +293,6 @@ def build_prometheus_templates(model: DashboardModel) -> list[Template]:
                 name="dp_plugin",
                 label="Dispatcher",
                 options=dp_names,
-            ),
-        )
-
-    # -- Payload plugins (nested under job builders) ------------------------
-    if model.payloads:
-        templates.append(
-            _custom_template(
-                name="pl_plugin",
-                label="Payload",
-                options=list(dict.fromkeys(p.plugin_name for p in model.payloads)),
             ),
         )
 
@@ -1034,110 +1020,6 @@ def _dispatcher_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
 
 
 # ==========================================================================
-# 5b. Payload Row (ONLY if model.payloads)
-# ==========================================================================
-
-
-def _payload_row(model: DashboardModel, gs: _GenState) -> RowPanel | None:
-    """Generate Payload panels — job outcomes and execution time per payload.
-
-    Payload metrics are recorded by the dispatcher that runs the job, labelled
-    with the payload plugin configured on the job builder (``payload_name``)
-    and the payload block's identifier.  Their ``status`` is the outcome of
-    the payload itself (its exit code), which the dispatcher counters do not
-    report: a dispatcher counts a job whose script exited non-zero as handled.
-    """
-    if not model.payloads:
-        return None
-
-    y_row = _advance(gs, 1)
-    identifiers = "|".join(_re2_escape(p.identifier) for p in model.payloads)
-    lbl = f'payload_name=~"$pl_plugin", payload_identifier=~"{identifiers}"'
-    succeeded = lbl + ', status="success"'
-    processed = f"{_PREFIX}_payload_jobs_processed_total"
-
-    panels: list = []
-    py1 = _advance(gs, 8)
-
-    panels.append(
-        _timeseries(
-            gs,
-            title="Payload Jobs by Outcome",
-            targets=[
-                _target(
-                    f"sum by (payload_identifier, status) ({_rate(processed, lbl)})",
-                    "{{payload_identifier}} — {{status}}",
-                ),
-            ],
-            unit="ops",
-            y=py1,
-            w=8,
-            x=0,
-            description=(
-                "Jobs executed per second, by payload and outcome. Why it "
-                "matters: 'failure' means the payload itself exited non-zero, "
-                "even when the dispatcher reports the job as handled."
-            ),
-        ),
-    )
-
-    panels.append(
-        _heatmap(
-            gs,
-            title="Payload Execution Time Distribution",
-            targets=[
-                _target(
-                    (
-                        f"rate({_PREFIX}_payload_job_execution_duration_seconds_bucket"
-                        f"{{{lbl}}}[5m])"
-                    ),
-                    "{{payload_identifier}}",
-                ),
-            ],
-            y=py1,
-            w=8,
-            x=8,
-            description=(
-                "How long each payload takes to run. Why it matters: a shift "
-                "towards the timeout means jobs are about to start failing."
-            ),
-        ),
-    )
-
-    panels.append(
-        GaugePanel(
-            id=_next_id(gs),
-            title="Payload Success Rate",
-            description=(
-                "Fraction of payload runs that exited zero. When yellow (<95%) "
-                "or red (<80%): read the failing jobs' execution logs."
-            ),
-            dataSource=_DS,
-            targets=[
-                _target(
-                    _clamp_div(
-                        f"sum({_rate(processed, succeeded)})",
-                        f"sum({_rate(processed, lbl)})",
-                    ),
-                ),
-            ],
-            format=YAXIS_PERCENT,
-            min=0,
-            max=1,
-            thresholds=THRESHOLD_SUCCESS_RATIO,
-            gridPos=GridPos(h=8, w=8, x=16, y=py1),
-        ),
-    )
-
-    return RowPanel(
-        id=_next_id(gs),
-        title="Payloads",
-        gridPos=GridPos(h=1, w=24, x=0, y=y_row),
-        panels=panels,
-    )
-
-
-# ==========================================================================
 # 6. SLURM Row (ONLY if model.has_slurm)
 # ==========================================================================
 
@@ -1395,9 +1277,9 @@ def _pipeline_latency_row(
     """End-to-end pipeline latency from satellite scan time to product generation.
 
     Metrics are populated by deployment scripts via the ``COURIER_METRIC:``
-    stdout protocol (see the ``COURIER_METRIC`` section of the dispatcher
-    reference, ``sphinx/api-reference/dispatchers.md``).  Each dispatcher
-    emits its own ``scan_to_*_latency_seconds`` gauge after every job.
+    stdout protocol (see :mod:`courier.plugins.dispatchers.local_dispatcher`
+    docs).  Each dispatcher emits its own ``scan_to_*_latency_seconds`` gauge
+    after every job.
     """
     y_row = _advance(gs, 1)
     py = _advance(gs, 8)
@@ -1836,11 +1718,6 @@ def build_prometheus_panels(
     dp_row = _dispatcher_row(model, gs)
     if dp_row is not None:
         panels.append(dp_row)
-
-    # 6b. Payloads — only if a job builder nests one
-    payload_row = _payload_row(model, gs)
-    if payload_row is not None:
-        panels.append(payload_row)
 
     # 7. SLURM — only if has_slurm
     slurm_row = _slurm_row(model, gs)

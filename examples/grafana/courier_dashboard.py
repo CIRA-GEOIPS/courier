@@ -209,15 +209,6 @@ def _templating() -> Templating:
         multi=True,
         refresh=REFRESH_ON_TIME_RANGE_CHANGE,
     )
-    payload = Template(
-        name="payload_name",
-        label="Payload",
-        query=(f"label_values({_PREFIX}_payload_jobs_processed_total, payload_name)"),
-        dataSource=_DS,
-        includeAll=True,
-        multi=True,
-        refresh=REFRESH_ON_TIME_RANGE_CHANGE,
-    )
     return Templating(
         list=[
             ds,
@@ -231,7 +222,6 @@ def _templating() -> Templating:
             error_type,
             topic,
             route_name,
-            payload,
         ],
     )
 
@@ -785,80 +775,6 @@ def _dispatcher_row() -> RowPanel:
     )
 
 
-def _payload_row() -> RowPanel:
-    """Row — Payload panels.
-
-    A payload is the script a job builder attaches to every job; the
-    dispatcher that receives the job runs it and records these metrics.
-    Their ``status`` is the payload's own outcome (its exit code).
-    """
-    y = _advance(1)
-    py = _advance(8)
-    lbl = 'payload_name=~"$payload_name"'
-    succeeded = lbl + ', status="success"'
-    m_proc = f"{_PREFIX}_payload_jobs_processed_total"
-    m_dur = f"{_PREFIX}_payload_job_execution_duration_seconds"
-
-    outcomes = TimeSeries(
-        title="Payload Jobs by Outcome",
-        description="Jobs executed per second, by payload and exit status.",
-        dataSource=_DS,
-        targets=[
-            _target(
-                _rate(m_proc, lbl),
-                "{{payload_identifier}} — {{status}}",
-            ),
-        ],
-        stacking={"mode": "normal", "group": "A"},
-        fillOpacity=30,
-        unit="ops",
-        gridPos=GridPos(8, 8, 0, py),
-    )
-
-    success_ratio = GaugePanel(
-        title="Payload Success Ratio",
-        dataSource=_DS,
-        targets=[
-            _target(
-                f"sum({_rate(m_proc, succeeded)}) / sum({_rate(m_proc, lbl)})",
-            ),
-        ],
-        format=PERCENT_FORMAT,
-        min=0,
-        max=100,
-        thresholds=[
-            Threshold("red", 0, 0.0),
-            Threshold("yellow", 1, 80.0),
-            Threshold("green", 2, 95.0),
-        ],
-        gridPos=GridPos(8, 4, 8, py),
-    )
-
-    duration = TimeSeries(
-        title="Payload Execution Duration",
-        dataSource=_DS,
-        targets=[
-            _target(
-                _hq(m_dur, 0.50, lbl),
-                "p50 — {{payload_identifier}}",
-            ),
-            _target(
-                _hq(m_dur, 0.95, lbl),
-                "p95 — {{payload_identifier}}",
-                ref="B",
-            ),
-        ],
-        unit=SECONDS_FORMAT,
-        gridPos=GridPos(8, 12, 12, py),
-    )
-
-    return RowPanel(
-        title="Payloads",
-        gridPos=GridPos(1, 24, 0, y),
-        panels=[outcomes, success_ratio, duration],
-    )
-
-
 def _plugin_manager_row() -> RowPanel:
     """Row 5 — Plugin manager panels."""
     y = _advance(1)
@@ -1350,7 +1266,6 @@ def build_dashboard() -> Dashboard:
     panels.append(_metadata_router_row())
     panels.append(_job_builder_row())
     panels.append(_dispatcher_row())
-    panels.append(_payload_row())
     panels.append(_slurm_row())
     panels.append(_plugin_manager_row())
     panels.append(_broker_row())

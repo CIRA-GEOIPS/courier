@@ -12,33 +12,25 @@ configs it must refuse while building one; its lifecycle is covered by
 ``tests/test_process_lifecycle.py``.
 """
 
-# cspell:ignore geteuid summarises uids backticked usefixtures
+# cspell:ignore summarises uids backticked usefixtures
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import signal
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import click
 import click.testing
 import pytest
 import typer.main
-from pydantic import BaseModel
 from typer.testing import CliRunner
 
 from courier.cli.app import app
-from courier.interfaces.dispatchers import dispatchers
-from courier.interfaces.payloads import (
-    REMOVED_DISPATCHER_KEYS,
-    DispatcherGroupConfig,
-    PayloadConfig,
-    payloads,
-)
+from courier.interfaces.discovery import REMOVED_PLUGINS
+from courier.interfaces.payloads import REMOVED_DISPATCHER_KEYS
 
 runner = CliRunner()
 
@@ -121,8 +113,9 @@ def test_validate_reports_a_missing_file(tmp_path: Path) -> None:
 #
 # The schema only checks the shape of `spec.run`. Everything below used to
 # pass `courier validate` and then fail -- or, worse, be silently ignored -- at
-# `courier run`: removed dispatcher keys, a builder with no payload, a typo in
-# a payload setting, a template that does not compile.
+# `courier run`. validate runs the checks `courier run` runs at startup, so
+# each test here shows one of them is reached; the rules themselves are tested
+# where they are defined.
 
 
 def _service_yaml(builder_config: str, dispatcher_config: str = "") -> str:
@@ -164,6 +157,8 @@ _ECHO_PAYLOAD = (
     "                script: echo {{ files | length }}\n"
 )
 
+_VALID = _service_yaml(_ECHO_PAYLOAD)
+
 
 def _validate(tmp_path: Path, text: str) -> click.testing.Result:
     path = tmp_path / "svc.yaml"
@@ -172,172 +167,162 @@ def _validate(tmp_path: Path, text: str) -> click.testing.Result:
 
 
 def test_validate_accepts_a_well_formed_payload(tmp_path: Path) -> None:
-    result = _validate(tmp_path, _service_yaml(_ECHO_PAYLOAD))
+    """The baseline every rejection below changes one thing in."""
+    result = _validate(tmp_path, _VALID)
 
     assert result.exit_code == 0, result.output
     assert "build runs payload echo (bash_payload)" in result.output
 
 
-@pytest.mark.parametrize("key", sorted(REMOVED_DISPATCHER_KEYS))
-def test_validate_rejects_removed_dispatcher_keys_with_migration_advice(
-    tmp_path: Path,
-    key: str,
-) -> None:
-    """A half-migrated serial_bash/parallel_bash config must not pass silently.
-
-    Each removed key is reported at its own location, with the advice for
-    what replaces it rather than a bare "not permitted".
-    """
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD, f"          {key}: x\n"),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert f"work.config.{key}" in result.output
-    assert "no longer supported" in result.output
-    assert REMOVED_DISPATCHER_KEYS[key] in result.output
-    assert "courier validate" in result.output, "no next step offered"
-
-
-def test_validate_reports_every_problem_in_one_run(tmp_path: Path) -> None:
-    """A removed key must not hide the typo next to it until the next run."""
-    result = _validate(
-        tmp_path,
-        _service_yaml(
-            _ECHO_PAYLOAD,
-            "          bash_script: echo hi\n          log_to_fil: true\n",
-        ),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "2 problems" in result.output
-    assert "work.config.bash_script" in result.output
-    assert "work.config.log_to_fil" in result.output
-    assert "did you mean 'log_to_file'?" in result.output
-
-
-def test_validate_reports_a_removed_key_in_a_payload_block_with_its_advice(
-    tmp_path: Path,
-) -> None:
-    """A removed key in a payload block gets its advice and hides nothing."""
-    result = _validate(
-        tmp_path,
-        _service_yaml(
-            _ECHO_PAYLOAD
-            + "                python_venv: /opt/venv\n"
-            + "                scripts: echo typo\n",
-        ),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "2 problems" in result.output
-    assert "build.config.payload.echo.config.python_venv" in result.output
-    assert "no longer supported" in result.output
-    assert "default_binary" in result.output
-    assert "build.config.payload.echo.config.scripts" in result.output
-
-
-def test_validate_points_a_payload_setting_on_a_dispatcher_at_the_payload(
-    tmp_path: Path,
-) -> None:
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD, "          script: echo hi\n"),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "work.config.script" in result.output
-    assert "payload block" in result.output
-
-
-def test_validate_points_a_dispatcher_setting_on_a_payload_at_the_dispatcher(
-    tmp_path: Path,
-) -> None:
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD + "                timeout_seconds: 5\n"),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "build.config.payload.echo.config.timeout_seconds" in result.output
-    assert "dispatcher's config" in result.output
-
-
-def _installed_fields(registry: Any, other: type[BaseModel]) -> list[Any]:
-    """Every ``(plugin, field)`` of *registry*'s config models not in *other*."""
-    return [
-        pytest.param(name, field, id=f"{name}.{field}")
-        for name in registry.names()
-        for field in registry.get_plugin(name).config_class.model_fields
-        if field not in other.model_fields
-    ]
-
-
-def _owners(registry: Any, base: type[BaseModel], field: str) -> list[str]:
-    """Name the installed *registry* plugins that define *field*.
-
-    ``[]`` for a field of *base*, which every such plugin accepts -- how the
-    advice words it too.
-    """
-    if field in base.model_fields:
-        return []
-    return sorted(
-        name
-        for name in registry.names()
-        if field in registry.get_plugin(name).config_class.model_fields
-    )
-
-
 @pytest.mark.parametrize(
-    ("dispatcher", "field"),
-    _installed_fields(dispatchers, PayloadConfig),
+    ("text", "where", "message"),
+    [
+        pytest.param(
+            _VALID + "    - identifier: f\n      spec:\n        kind: falcon\n"
+            "        name: bash_falcon\n",
+            "f.kind",
+            "'falcon' is not a pipeline step",
+            id="kind-not-a-step",
+        ),
+        pytest.param(
+            _VALID + "        config: hello\n",
+            "work.config",
+            "should be a mapping of settings",
+            id="config-not-a-mapping",
+        ),
+        pytest.param(
+            _VALID.replace("name: local_dispatcher", "name: serial_bash"),
+            "work.name",
+            "No dispatchers plugin named 'serial_bash'. It was removed: "
+            + REMOVED_PLUGINS["dispatchers", "serial_bash"],
+            id="removed-plugin",
+        ),
+        pytest.param(
+            _service_yaml(""),
+            "build.config.payload",
+            "Job builder 'build' has no 'payload' block",
+            id="no-payload-block",
+        ),
+        pytest.param(
+            _VALID.replace("bash_payload", "bash_falcon"),
+            "build.config.payload.echo.name",
+            "No payloads plugin named 'bash_falcon'",
+            id="unknown-payload-plugin",
+        ),
+        pytest.param(
+            _service_yaml(_ECHO_PAYLOAD + "                suffix_arg: [x]\n"),
+            "build.config.payload.echo.config.suffix_arg",
+            "not a recognised setting",
+            id="unknown-payload-setting",
+        ),
+        pytest.param(
+            _VALID.replace("echo {{ files | length }}", "'echo {{ hostname | upper }}'"),
+            "build.config.payload.echo.config",
+            "Payload 'echo': unsupported template in inline script, line 1: "
+            "dispatcher-only name 'hostname'",
+            id="template-the-payload-rejects",
+        ),
+        pytest.param(
+            _service_yaml(_ECHO_PAYLOAD, "          bash_script: x\n"),
+            "work.config",
+            "'bash_script' is no longer supported: "
+            + REMOVED_DISPATCHER_KEYS["bash_script"],
+            id="removed-dispatcher-key",
+        ),
+        pytest.param(
+            _VALID.replace("identifier: echo", "identifier: work"),
+            "spec.run",
+            "'build': payload 'work' reuses the identifier of a run step",
+            id="identifier-clash",
+        ),
+        pytest.param(
+            _service_yaml(_ECHO_PAYLOAD + "          routes: [1]\n"),
+            "spec.run",
+            "cannot read the job builders' targets or routes",
+            id="unreadable-routes",
+        ),
+    ],
 )
-def test_validate_explains_every_dispatcher_setting_in_a_payload_block(
+def test_validate_rejects_what_courier_run_would(
     tmp_path: Path,
-    dispatcher: str,
-    field: str,
+    text: str,
+    where: str,
+    message: str,
 ) -> None:
-    """Derived from the installed models: slurm's ``partition`` included."""
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD + f"                {field}: x\n"),
+    result = _validate(tmp_path, text)
+    output = " ".join(result.output.split())
+
+    assert result.exit_code == 1, result.output
+    assert "(1 problem)" in output
+    assert f"{where} {message}" in output
+    assert "Fix these, then re-run: courier validate" in output
+
+
+@pytest.mark.parametrize("targets", ["          targets: [work]\n", ""])
+def test_validate_rejects_a_payload_its_dispatcher_cannot_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    targets: str,
+) -> None:
+    """Also with no ``targets``: one dispatcher, so preflight wires it there."""
+    from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
+
+    monkeypatch.setattr(LocalDispatcher, "representations", [])
+    text = _VALID.replace("          targets: [work]\n", targets)
+
+    result = _validate(tmp_path, text)
+
+    assert result.exit_code == 1, result.output
+    assert "is not compatible with dispatcher 'work'" in result.output
+
+
+def test_validate_accepts_a_dispatchers_own_settings(tmp_path: Path) -> None:
+    """Settings are judged by the model the dispatcher validates with."""
+    text = _service_yaml(
+        _ECHO_PAYLOAD,
+        "          partition: debug\n          slurm_output_dir: /scratch/out\n",
+    ).replace("name: local_dispatcher", "name: slurm_dispatcher")
+
+    result = _validate(tmp_path, text)
+
+    assert result.exit_code == 0, result.output
+
+
+def test_validate_notes_a_template_file_it_cannot_see(tmp_path: Path) -> None:
+    """A template may live only inside the image `courier run` starts in.
+
+    That is worth a note, not a failure -- but everything else about the
+    payload is still checked.
+    """
+    payload = _ECHO_PAYLOAD.replace(
+        "script: echo {{ files | length }}",
+        "file: /opt/image-only/job.sh",
     )
 
-    owners = _owners(dispatchers, DispatcherGroupConfig, field)
-    assert owners == [] or dispatcher in owners
-    assert result.exit_code == 1, result.output
-    assert "1 problem" in result.output
-    assert f"build.config.payload.echo.config.{field}" in result.output
-    assert (
-        f"not a payload setting; it is a {' / '.join(owners) or 'dispatcher'} "
-        "setting: put it in the dispatcher's config"
-    ) in result.output
+    result = _validate(tmp_path, _service_yaml(payload))
+
+    assert result.exit_code == 0, result.output
+    assert "note:" in result.output
+    assert "/opt/image-only/job.sh" in result.output
+
+    typo = _validate(tmp_path, _service_yaml(payload + "                binaries: x\n"))
+    assert typo.exit_code == 1, typo.output
+    assert "binaries" in typo.output
 
 
-@pytest.mark.parametrize(
-    ("payload", "field"),
-    _installed_fields(payloads, DispatcherGroupConfig),
-)
-def test_validate_explains_every_payload_setting_in_a_dispatcher_block(
-    tmp_path: Path,
-    payload: str,
-    field: str,
-) -> None:
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD, f"          {field}: x\n"),
-    )
+def test_validate_never_creates_a_log_dir(tmp_path: Path) -> None:
+    """`validate` is offline: a log_dir is for the host `courier run` runs on.
 
-    owners = _owners(payloads, PayloadConfig, field)
-    assert owners == [] or payload in owners
-    assert result.exit_code == 1, result.output
-    assert "1 problem" in result.output
-    assert f"work.config.{field}" in result.output
-    assert (
-        f"not a dispatcher setting; it is a {' / '.join(owners) or 'payload'} "
-        "setting: put it in the job builder's payload block"
-    ) in result.output
+    It used to create the directory on the validating host, and to reject a
+    config whose log_dir only exists (or is only writable) in the image.
+    """
+    log_dir = tmp_path / "created" / "deep" / "logs"
+    dispatcher = f"          log_to_file: true\n          log_dir: {log_dir}\n"
+
+    result = _validate(tmp_path, _service_yaml(_ECHO_PAYLOAD, dispatcher))
+
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / "created").exists()
 
 
 # ── run: the same advice when the service is built ─────────────────────────
@@ -361,19 +346,33 @@ def _signal_handlers() -> Iterator[None]:
 _RUN_FAILED = "Fatal error in run_service"
 
 
-def _run_error(
+@pytest.mark.usefixtures("_signal_handlers")
+@pytest.mark.timeout(60)
+@pytest.mark.parametrize(
+    ("text", "advice"),
+    [
+        pytest.param(
+            _service_yaml(_ECHO_PAYLOAD + "                timeout_seconds: 5\n"),
+            "'timeout_seconds': dispatcher option(s) set in a payload block",
+            id="dispatcher-option-in-a-payload",
+        ),
+        pytest.param(
+            _service_yaml(_ECHO_PAYLOAD, "          script: echo hi\n"),
+            "'script': payload setting(s) set in a dispatcher block",
+            id="payload-setting-in-a-dispatcher",
+        ),
+    ],
+)
+def test_run_says_where_a_misplaced_setting_goes(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
     text: str,
-) -> str:
-    """``courier run`` *text* (a :func:`_service_yaml`) on the memory broker.
+    advice: str,
+) -> None:
+    """The error is read from the record ``courier run`` logs it with.
 
-    Returns
-    -------
-    str
-        The error that stopped it, read from the record ``courier run`` logs
-        it with: the console output does not reliably capture log lines
-        across ``CliRunner`` invocations.
+    The console output does not reliably capture log lines across
+    ``CliRunner`` invocations.
     """
     path = tmp_path / "svc.yaml"
     broker = "\nspec:\n  broker:\n    transport: memory\n"
@@ -384,401 +383,7 @@ def _run_error(
     assert result.exit_code == 1, result.output
     [record] = [r for r in caplog.records if r.getMessage() == _RUN_FAILED]
     assert record.exc_info is not None
-    return str(record.exc_info[1])
-
-
-@pytest.mark.usefixtures("_signal_handlers")
-@pytest.mark.timeout(60)
-@pytest.mark.parametrize(
-    ("dispatcher", "field"),
-    _installed_fields(dispatchers, PayloadConfig),
-)
-def test_run_explains_every_dispatcher_setting_in_a_payload_block(
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-    dispatcher: str,
-    field: str,
-) -> None:
-    """Building the payload gives the advice ``courier validate`` gives."""
-    error = _run_error(
-        tmp_path,
-        caplog,
-        _service_yaml(_ECHO_PAYLOAD + f"                {field}: x\n"),
-    )
-
-    owners = _owners(dispatchers, DispatcherGroupConfig, field)
-    assert owners == [] or dispatcher in owners
-    named = f"{field!r} ({' / '.join(owners)})" if owners else repr(field)
-    assert (
-        f"{named}: dispatcher option(s) set in a payload block; move them to "
-        "the dispatcher's config"
-    ) in error
-
-
-@pytest.mark.usefixtures("_signal_handlers")
-@pytest.mark.timeout(60)
-@pytest.mark.parametrize(
-    ("payload", "field"),
-    _installed_fields(payloads, DispatcherGroupConfig),
-)
-def test_run_explains_every_payload_setting_in_a_dispatcher_block(
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-    payload: str,
-    field: str,
-) -> None:
-    """Building the dispatcher gives the advice ``courier validate`` gives."""
-    error = _run_error(
-        tmp_path,
-        caplog,
-        _service_yaml(_ECHO_PAYLOAD, f"          {field}: x\n"),
-    )
-
-    owners = _owners(payloads, PayloadConfig, field)
-    assert owners == [] or payload in owners
-    named = f"{field!r} ({' / '.join(owners)})" if owners else repr(field)
-    assert (
-        f"{named}: payload setting(s) set in a dispatcher block; move them to "
-        "the job builder's nested payload block"
-    ) in error
-
-
-def test_validate_rejects_an_unknown_payload_setting(tmp_path: Path) -> None:
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD + "                suffix_arg: [x]\n"),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "build.config.payload.echo.config.suffix_arg" in result.output
-    assert "did you mean 'suffix_args'?" in result.output
-
-
-def test_validate_rejects_a_builder_without_a_payload(tmp_path: Path) -> None:
-    """Every builder needs one; `courier run` refuses the config without it."""
-    result = _validate(tmp_path, _service_yaml(""))
-
-    assert result.exit_code == 1, result.output
-    assert "build.config.payload" in result.output
-    assert "exactly one payload" in result.output
-    # The same words as the error `courier run` raises (JobBuilder.__init__).
-    assert "every job builder needs a payload block" in result.output
-
-
-def test_validate_rejects_a_payload_block_naming_two_plugins(tmp_path: Path) -> None:
-    two = (
-        "          payload:\n"
-        "            one: {kind: payload, name: bash_payload}\n"
-        "            two: {kind: payload, name: shell_payload}\n"
-    )
-    result = _validate(tmp_path, _service_yaml(two))
-
-    assert result.exit_code == 1, result.output
-    assert "takes exactly one payload plugin; found 2" in result.output
-
-
-def test_validate_rejects_the_wrong_kind_nested_as_a_payload(tmp_path: Path) -> None:
-    wrong = (
-        "          payload:\n"
-        "            nested:\n"
-        "              kind: dispatcher\n"
-        "              name: local_dispatcher\n"
-    )
-    result = _validate(tmp_path, _service_yaml(wrong))
-
-    assert result.exit_code == 1, result.output
-    assert "build.config.payload.nested.kind" in result.output
-    assert "takes a payload" in result.output
-
-
-@pytest.mark.parametrize(
-    ("block", "where"),
-    [
-        pytest.param(
-            "          payload:\n"
-            "            nested:\n"
-            "              name: bash_payload\n",
-            "build.config.payload.nested.kind",
-            id="short-form",
-        ),
-        pytest.param(
-            "          payload:\n"
-            "            identifier: nested\n"
-            "            spec:\n"
-            "              name: bash_payload\n",
-            "build.config.payload.spec.kind",
-            id="canonical-form",
-        ),
-    ],
-)
-def test_validate_locates_a_payload_problem_by_the_keys_written(
-    tmp_path: Path,
-    block: str,
-    where: str,
-) -> None:
-    """``spec`` is the model's name for the short form's ``<identifier>:``."""
-    result = _validate(tmp_path, _service_yaml(block))
-
-    assert result.exit_code == 1, result.output
-    assert where in result.output
-    assert "required, but missing" in result.output
-
-
-def test_validate_rejects_an_unknown_payload_plugin(tmp_path: Path) -> None:
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD.replace("bash_payload", "bash_falcon")),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "no payload plugin named 'bash_falcon'" in result.output
-    assert "bash_payload" in result.output, "the alternatives are listed"
-
-
-@pytest.mark.parametrize("removed", ["serial_bash", "parallel_bash", "http_dispatcher"])
-def test_validate_says_what_replaced_a_removed_dispatcher(
-    tmp_path: Path,
-    removed: str,
-) -> None:
-    """An upgrade leaves configs naming these; "unknown plugin" is a dead end."""
-    text = _service_yaml(_ECHO_PAYLOAD).replace(
-        "name: local_dispatcher",
-        f"name: {removed}",
-    )
-
-    result = _validate(tmp_path, text)
-
-    assert result.exit_code == 1, result.output
-    assert "work.name" in result.output
-    assert f"'{removed}' was removed:" in result.output
-    if removed != "http_dispatcher":
-        assert "use local_dispatcher" in result.output
-
-
-def test_validate_rejects_a_payload_reusing_a_step_identifier(tmp_path: Path) -> None:
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD.replace("identifier: echo", "identifier: work")),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "identifier 'work' is already used" in result.output
-
-
-def test_validate_reports_a_payload_template_that_does_not_compile(
-    tmp_path: Path,
-) -> None:
-    """A Jinja syntax error used to pass validate and startup, then fail jobs."""
-    result = _validate(
-        tmp_path,
-        _service_yaml(
-            _ECHO_PAYLOAD.replace(
-                "echo {{ files | length }}",
-                "'echo {% if %}'",
-            ),
-        ),
-    )
-
-    assert result.exit_code == 1, result.output
-    assert "build.config.payload.echo.config" in result.output
-    assert "invalid Jinja template" in result.output
-    assert "line 1" in result.output
-
-
-def test_validate_reports_a_template_file_that_does_not_compile(
-    tmp_path: Path,
-) -> None:
-    template = tmp_path / "job.sh.j2"
-    template.write_text("#!/bin/bash\necho ok\necho {{ files[0] \n")
-    payload = (
-        "          payload:\n"
-        "            echo:\n"
-        "              kind: payload\n"
-        "              name: bash_payload\n"
-        "              config:\n"
-        f"                file: {template}\n"
-    )
-
-    result = _validate(tmp_path, _service_yaml(payload))
-
-    assert result.exit_code == 1, result.output
-    assert "job.sh.j2" in result.output
-    assert "line 3" in result.output
-
-
-def test_validate_notes_a_template_file_it_cannot_see(tmp_path: Path) -> None:
-    """A template may live only inside the image `courier run` starts in.
-
-    That is worth a note, not a failure -- but everything else about the
-    payload is still checked.
-    """
-    payload = (
-        "          payload:\n"
-        "            echo:\n"
-        "              kind: payload\n"
-        "              name: bash_payload\n"
-        "              config:\n"
-        "                file: /opt/image-only/job.sh\n"
-    )
-
-    result = _validate(tmp_path, _service_yaml(payload))
-
-    assert result.exit_code == 0, result.output
-    assert "note:" in result.output
-    assert "/opt/image-only/job.sh" in result.output
-
-    typo = _validate(tmp_path, _service_yaml(payload + "                binaries: x\n"))
-    assert typo.exit_code == 1, typo.output
-    assert "binaries" in typo.output
-
-
-def test_validate_never_creates_a_log_dir(tmp_path: Path) -> None:
-    """`validate` is offline: a log_dir for the target host is only a note.
-
-    It used to create the directory on the validating host, and to reject a
-    config whose log_dir only exists (or is only writable) in the image.
-    """
-    log_dir = tmp_path / "created" / "deep" / "logs"
-    dispatcher = f"          log_to_file: true\n          log_dir: {log_dir}\n"
-
-    result = _validate(tmp_path, _service_yaml(_ECHO_PAYLOAD, dispatcher))
-
-    assert result.exit_code == 0, result.output
-    assert not (tmp_path / "created").exists()
-    assert "note:" in result.output
-    assert "log_dir" in result.output
-
-
-def _log_dir_note(tmp_path: Path, log_dir: Path) -> str:
-    """Validate a config logging to *log_dir*; return its one log_dir note."""
-    dispatcher = f"          log_to_file: true\n          log_dir: {log_dir}\n"
-    result = _validate(tmp_path, _service_yaml(_ECHO_PAYLOAD, dispatcher))
-    assert result.exit_code == 0, result.output
-    notes = [
-        line.strip()
-        for line in result.output.splitlines()
-        if line.strip().startswith("note: work.config.log_dir")
-    ]
-    assert len(notes) == 1, result.output
-    return notes[0]
-
-
-def test_validate_notes_a_missing_log_dir_courier_run_will_create(
-    tmp_path: Path,
-) -> None:
-    log_dir = tmp_path / "not" / "yet"
-
-    note = _log_dir_note(tmp_path, log_dir)
-
-    assert note == (
-        f"note: work.config.log_dir: {log_dir} does not exist here; `courier "
-        "run` creates it when it builds the dispatcher at startup, and fails to "
-        "start if it cannot create or write it where it runs"
-    )
-    assert not (tmp_path / "not").exists()
-
-
-@pytest.mark.skipif(os.geteuid() == 0, reason="root can write any directory")
-def test_validate_notes_a_read_only_log_dir_it_will_not_fix(
-    tmp_path: Path,
-) -> None:
-    log_dir = tmp_path / "read-only"
-    log_dir.mkdir()
-    log_dir.chmod(0o500)
-    try:
-        note = _log_dir_note(tmp_path, log_dir)
-    finally:
-        log_dir.chmod(0o700)
-
-    assert note == (
-        f"note: work.config.log_dir: {log_dir} exists here but is not "
-        "writable; `courier run` does not change its permissions, and fails to "
-        "start unless it is writable where it runs"
-    )
-    assert "creates it" not in note
-
-
-def test_validate_notes_a_log_dir_that_is_a_file(tmp_path: Path) -> None:
-    log_dir = tmp_path / "a-file"
-    log_dir.write_text("")
-
-    note = _log_dir_note(tmp_path, log_dir)
-
-    assert note == (
-        f"note: work.config.log_dir: {log_dir} exists here but is not a "
-        "directory; `courier run` fails to start unless it is a writable "
-        "directory, or can be created as one, where it runs"
-    )
-    assert "does not exist" not in note
-
-
-def test_validate_says_nothing_about_a_usable_log_dir(tmp_path: Path) -> None:
-    log_dir = tmp_path / "logs"
-    log_dir.mkdir()
-    dispatcher = f"          log_to_file: true\n          log_dir: {log_dir}\n"
-
-    result = _validate(tmp_path, _service_yaml(_ECHO_PAYLOAD, dispatcher))
-
-    assert result.exit_code == 0, result.output
-    assert "log_dir" not in result.output
-
-
-def test_validate_uses_the_dispatchers_config_class(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Settings are judged by the model the dispatcher really validates with.
-
-    A dispatcher with options of its own (``slurm_dispatcher``) declares them
-    on a ``config_class`` subclass; validating against the base model would
-    reject every one of them.
-    """
-    from courier.plugins.dispatchers.local_dispatcher import (
-        LocalDispatcher,
-        LocalDispatcherConfig,
-    )
-
-    class _Extended(LocalDispatcherConfig):
-        queue_hint: str = "default"
-
-    monkeypatch.setattr(LocalDispatcher, "config_class", _Extended)
-
-    result = _validate(
-        tmp_path,
-        _service_yaml(_ECHO_PAYLOAD, "          queue_hint: fast\n"),
-    )
-
-    assert result.exit_code == 0, result.output
-
-
-def test_validate_rejects_a_payload_its_dispatcher_cannot_run(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
-
-    monkeypatch.setattr(LocalDispatcher, "representations", [])
-
-    result = _validate(tmp_path, _service_yaml(_ECHO_PAYLOAD))
-
-    assert result.exit_code == 1, result.output
-    assert "cannot run on dispatcher 'work'" in result.output
-
-
-def test_validate_checks_compatibility_through_implicit_routing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No `targets` and one dispatcher: preflight auto-wires, so check that pair."""
-    from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
-
-    monkeypatch.setattr(LocalDispatcher, "representations", [])
-    text = _service_yaml(_ECHO_PAYLOAD).replace("          targets: [work]\n", "")
-
-    result = _validate(tmp_path, text)
-
-    assert result.exit_code == 1, result.output
-    assert "cannot run on dispatcher 'work'" in result.output
+    assert advice in str(record.exc_info[1])
 
 
 # ── plugins ─────────────────────────────────────────────────────────────────
@@ -813,6 +418,19 @@ def test_plugins_list_filtered_by_config(config: Path) -> None:
 
     reported = {entry["name"] for entry in json.loads(result.output)["plugins"]}
     assert reported, f"{config.name}: no plugins matched"
+
+
+def test_plugins_list_filtered_by_config_names_its_payloads(tmp_path: Path) -> None:
+    """A payload is nested under its job builder, not a step of its own."""
+    path = tmp_path / "svc.yaml"
+    path.write_text(_VALID.replace("bash_payload", "shell_payload"))
+
+    result = runner.invoke(app, ["plugins", "list", str(path), "--json"])
+
+    assert result.exit_code == 0, result.output
+    reported = {(e["type"], e["name"]) for e in json.loads(result.output)["plugins"]}
+    assert ("payloads", "shell_payload") in reported
+    assert ("payloads", "bash_payload") not in reported
 
 
 # ── queues ──────────────────────────────────────────────────────────────────

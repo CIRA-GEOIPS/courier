@@ -12,7 +12,6 @@ import typer
 import yaml
 from rich import box
 from rich.console import Console
-from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -23,7 +22,6 @@ from courier.cli.init_helpers import (
     get_plugin_description,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
-from courier.cli.validate import check_plugins
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
 
 if TYPE_CHECKING:
@@ -504,7 +502,7 @@ def prompt_category(
         matched, problem = _resolve_plugin_choice(answer, plugins)
 
         if matched is None:
-            console.print(f"  [red]{escape(problem or '')}[/red]")
+            console.print(f"  [red]{problem}[/red]")
             continue
 
         selections.append(_build_selection(matched, kind_name, registry, console))
@@ -555,8 +553,7 @@ def prompt_required_plugin(
 
     console.print(
         Panel.fit(
-            f"[bold]{display_label}[/bold] — {escape(parent)} needs exactly one "
-            f"{label}",
+            f"[bold]{display_label}[/bold] — {parent} needs exactly one {label}",
             border_style="magenta",
         ),
     )
@@ -564,7 +561,7 @@ def prompt_required_plugin(
     plugins = list(registry.get_plugins())
     if not plugins:
         console.print(
-            f"\n[red]Error:[/red] {escape(parent)} needs a {label}, but no {label} "
+            f"\n[red]Error:[/red] {parent} needs a {label}, but no {label} "
             "plugins are installed. Reinstall courier so its plugin entry "
             "points are registered (e.g. [bold]pip install -e .[/bold]), then "
             "run [bold]courier init[/bold] again.",
@@ -582,14 +579,13 @@ def prompt_required_plugin(
         )
         if not answer or not answer.strip():
             console.print(
-                f"  [red]{escape(parent)} requires a {label}; choose one to "
-                "continue.[/red]",
+                f"  [red]{parent} requires a {label}; choose one to continue.[/red]",
             )
             continue
 
         matched, problem = _resolve_plugin_choice(answer, plugins)
         if matched is None:
-            console.print(f"  [red]{escape(problem or '')}[/red]")
+            console.print(f"  [red]{problem}[/red]")
             continue
 
         return _build_selection(matched, kind_name, registry, console)
@@ -634,11 +630,9 @@ def show_preview(selections: list[PluginSelection], console: Console) -> None:
     screen must show it.
     """
     table = Table(title="Configuration Preview", box=box.ROUNDED)
-    # Folded rather than truncated: the identifier is what the operator will
-    # look for in the written YAML, so an ellipsis in the middle defeats it.
-    table.add_column("Identifier", style="cyan", overflow="fold")
+    table.add_column("Identifier", style="cyan")
     table.add_column("Kind", style="dim")
-    table.add_column("Plugin", style="green", overflow="fold")
+    table.add_column("Plugin", style="green")
     table.add_column("Config", style="dim")
 
     seen_ids: Counter[str] = Counter()
@@ -660,10 +654,10 @@ def show_preview(selections: list[PluginSelection], console: Console) -> None:
             )
 
         table.add_row(
-            escape(identifier),
+            identifier,
             sel.yaml_kind,
-            escape(sel.plugin_name),
-            escape(config_summary),
+            sel.plugin_name,
+            config_summary,
         )
 
     console.print(table)
@@ -710,16 +704,8 @@ def build_service_config(
         if sel.config_values:
             config.update(sel.config_values)
 
-        payload_nested = 0
         for nested_sel in sel.nested_values:
-            payload_nested += nested_sel.yaml_kind == "payload"
             config[nested_sel.yaml_kind] = get_run_entry(nested_sel)
-
-        if sel.yaml_kind == "job_builder" and payload_nested != 1:
-            raise ValueError(
-                f"Job builder {sel.plugin_name!r} must nest exactly one "
-                f"payload; got {payload_nested}.",
-            )
 
         if config:
             spec["config"] = config
@@ -759,26 +745,6 @@ def validate_config(config_dict: dict[str, Any]) -> ServiceConfigModel:
     Pure function — no side effects.  Raises ``ValidationError`` on failure.
     """
     return ServiceConfigModel(**config_dict)
-
-
-def show_plugin_problems(
-    problems: list[tuple[str, str]],
-    console: Console,
-) -> None:
-    """Warn about plugin settings ``courier run`` would still reject.
-
-    A config can satisfy the service schema yet not run -- a payload with no
-    ``script``, ``file`` or ``binary``, for instance, when its configuration
-    was skipped. These are the problems ``courier validate`` reports.
-    """
-    if not problems:
-        return
-    console.print(
-        "\n[yellow]Before this config can run, edit these settings "
-        "(then check with [bold]courier validate[/bold]):[/yellow]",
-    )
-    for location, message in problems:
-        console.print(f"  [cyan]{escape(location)}[/cyan]  {escape(message)}")
 
 
 # ---------------------------------------------------------------------------
@@ -893,19 +859,13 @@ def init(
         raise typer.Exit(0)
 
     # Step 6 — Build & validate
+    config_dict = build_service_config(metadata, all_selections)
+
     try:
-        config_dict = build_service_config(metadata, all_selections)
         config = validate_config(config_dict)
     except Exception as e:
-        console.print(f"\n[red]Validation Error:[/red] {escape(str(e))}")
+        console.print(f"\n[red]Validation Error:[/red] {e}")
         raise typer.Exit(1) from e
-
-    # Not fatal: the file is still written so no answers are lost, but the
-    # operator learns now -- not at `courier run` -- what is left to fill in.
-    check = check_plugins(config)
-    show_plugin_problems(check.problems, console)
-    for note in check.notes:
-        console.print(f"  [dim]note: {escape(note)}[/dim]")
 
     # Step 7 — Output
     if dry_run:

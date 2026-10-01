@@ -148,8 +148,11 @@ The other hooks, from the outside in:
 - `_dispatcher_context(script_path)` supplies the values of the reserved
   template names (`dispatcher`, `script_path`, `hostname`, and `output_dir`
   where it exists). Extend it to add fields under `dispatcher`, which a
-  template reaches as `{{ dispatcher.<field> }}`; a template cannot use any
-  other top-level name for a dispatcher value.
+  template reaches as the bare value `{{ dispatcher.<field> }}`; a template
+  cannot use any other top-level name for a dispatcher value. Keep the fields
+  plain data (dictionaries, lists, strings, numbers): the dispatcher fills in
+  a value such as `{{ dispatcher.<field>.<key> }}` by looking each step up as
+  a dictionary key or a list index, never as an object attribute.
 
 Overriding `get_execution_log` itself skips payload hydration, toolchain
 checks and script handling, so prefer the hooks above.
@@ -261,12 +264,12 @@ Four rules follow from the payload requirement:
 
 - **Call `super().__init__` first.** `JobBuilder.__init__` validates the
   `payload` block before it sets up anything else. A block that is missing,
-  is not a mapping, does not nest exactly one plugin, or nests one whose
-  `kind` is not `payload` raises `InvalidPluginConfigError` (a
-  `ConfigurationError`) naming the builder and showing a minimal block, so
-  `courier run` stops at startup; see {doc}`../api-reference/plugins`. The
-  validated block is kept as `self.payload_block`, its identifier as
-  `self.payload_identifier`.
+  is not a mapping, does not nest exactly one plugin, nests one whose `kind`
+  is not `payload`, or gives it settings (`config`) that are not a mapping
+  raises `InvalidPluginConfigError` (a `ConfigurationError`) naming the
+  builder and showing a minimal block, so `courier run` stops at startup;
+  see {doc}`../api-reference/plugins`. The validated block is kept as
+  `self.payload_block`, its identifier as `self.payload_identifier`.
 - **Let `payload` through your own config checks.** A builder that validates
   its config with a model that forbids unknown keys must allow `payload`.
 - **Keep the block out of the jobs' config.** A job group's config travels in
@@ -281,7 +284,8 @@ Four rules follow from the payload requirement:
 The payload plugin itself is bound after construction: at startup, service
 preflight assigns the plugin registered under `payload_identifier` to
 `builder.payload`. Until one is bound, `start()` and `emit()` raise
-`ConfigurationError` before consuming or publishing anything, and reading
+`ConfigurationError` before consuming or publishing anything, and so do the
+base class's file and timeout paths, before a job leaves its group. Reading
 `builder.payload` raises too; `builder.has_payload` asks without raising. The
 setter accepts only a `Payload` whose identifier is `payload_identifier`. The
 two errors read:
