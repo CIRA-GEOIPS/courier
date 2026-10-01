@@ -32,7 +32,6 @@ class PythonPayload(BashPayload):
     interface: ClassVar[str] = "payloads"
     family: ClassVar[str] = "standard"
     name: ClassVar[str] = "python_payload"
-    version: ClassVar[str] = "-1"
     default_binary: ClassVar[str] = "python"
     file_suffix: ClassVar[str] = ".py"
     config_class: ClassVar[type[PayloadConfig]] = PythonPayloadConfig

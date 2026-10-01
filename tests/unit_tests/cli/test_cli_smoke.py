@@ -216,7 +216,9 @@ def test_validate_accepts_a_well_formed_payload(tmp_path: Path) -> None:
             id="unknown-payload-setting",
         ),
         pytest.param(
-            _VALID.replace("echo {{ files | length }}", "'echo {{ hostname | upper }}'"),
+            _VALID.replace(
+                "echo {{ files | length }}", "'echo {{ hostname | upper }}'"
+            ),
             "build.config.payload.echo.config",
             "Payload 'echo': unsupported template in inline script, line 1: "
             "dispatcher-only name 'hostname'",
@@ -274,6 +276,26 @@ def test_validate_rejects_a_payload_its_dispatcher_cannot_run(
 
     assert result.exit_code == 1, result.output
     assert "is not compatible with dispatcher 'work'" in result.output
+
+
+def test_validate_reports_any_error_a_dispatcher_config_model_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A third-party model may raise more than ``ValidationError``: no traceback."""
+    from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
+
+    class _Raising:
+        @staticmethod
+        def model_validate(*_args: object, **_kwargs: object) -> None:
+            raise TypeError("custom validator blew up")
+
+    monkeypatch.setattr(LocalDispatcher, "config_class", _Raising)
+
+    result = _validate(tmp_path, _VALID)
+
+    assert result.exit_code == 1, result.output
+    assert "work.config custom validator blew up" in " ".join(result.output.split())
 
 
 def test_validate_accepts_a_dispatchers_own_settings(tmp_path: Path) -> None:

@@ -606,9 +606,9 @@ def test_optional_dependency_is_declared_as_an_extra(
     """
     extras = _pyproject()["tool"]["poetry"]["extras"]
 
-    assert extra in extras, (
-        f"{plugin_name} names courier[{extra}], which is not declared"
-    )
+    assert (
+        extra in extras
+    ), f"{plugin_name} names courier[{extra}], which is not declared"
     normalised = {name.replace("_", "-").lower() for name in extras[extra]}
     assert package.replace("_", "-") in normalised or any(
         package.replace("_", "-") in n for n in normalised
@@ -790,9 +790,9 @@ def test_version_tuple_matches_version() -> None:
         int(part) for part in courier.__version__.split(".")[:3] if part.isdigit()
     )
 
-    assert courier.__version_tuple__[: len(expected)] == expected, (
-        f"{courier.__version_tuple__} does not match {courier.__version__}"
-    )
+    assert (
+        courier.__version_tuple__[: len(expected)] == expected
+    ), f"{courier.__version_tuple__} does not match {courier.__version__}"
 
 
 # Broker-monitor field maps.

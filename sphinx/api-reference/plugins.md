@@ -1,18 +1,17 @@
 # Plugins API Reference
 
-Courier's pipeline steps are plugins that implement one of three runnable
-interfaces: `courier.interfaces.data_monitors.DataMonitorBasePlugin`,
-`courier.interfaces.job_builders.JobBuilder`, or
-`courier.interfaces.dispatchers.Dispatcher`. A fourth interface,
-`courier.interfaces.payloads.Payload`, is a sub-plugin: every job builder nests
-exactly one payload, which describes what its jobs execute. Each interface has
-its own entry-point group; see {doc}`../contribute/writing-a-plugin`.
+Courier plugins implement one of three interfaces:
+:class:`~courier.interfaces.data_monitors.DataMonitorBasePlugin`,
+:class:`~courier.interfaces.job_builders.JobBuilder`, or
+:class:`~courier.interfaces.dispatchers.Dispatcher`. Every job builder also
+nests exactly one payload plugin (`courier.interfaces.payloads.Payload`),
+which describes what its jobs execute.
 
 ## Standard Data Monitors
 
 ### file_system_poller_watchdog
 
-`courier.plugins.data_monitors.file_system_poller_watchdog.FileSystemPoller`
+:class:`~courier.plugins.data_monitors.file_system_poller_watchdog.FileSystemPoller`
 
 Watches a directory for new files and emits them to the pipeline.
 
@@ -59,8 +58,9 @@ All dispatchers inherit `emit_file(file)` from the
 `courier.types.file.File` to the file-found exchange
 (`courier.constants.FILE_FOUND_EXCHANGE`), the same fanout exchange that data
 monitors use, so downstream job builders can pick it up and create new jobs.
-The base class calls it for each output file of a job, after the job has run
-(see [From a custom dispatcher](#from-a-custom-dispatcher)).
+The base class calls it, after a job has run, for each file its
+`output_files` patterns find in the job's output; a custom dispatcher can call
+it too.
 
 This enables **chained pipeline workflows**: one dispatcher processes a job,
 writes output files, then feeds those files back into the pipeline for a
@@ -176,10 +176,9 @@ and processes it again, forever.
 
 ### From a custom dispatcher
 
-A dispatcher that decides in code which files a job produced overrides
-`_collect_output_files(job, logs)`. It returns the files to feed back into
-the pipeline; the base implementation returns the ones the `output_files`
-patterns matched, so extend its list rather than replace it:
+A dispatcher that decides in code which files a job produced extends
+`get_execution_log(job)`, and calls `self.emit_file()` for each of them once
+the job has run:
 
 ```python
 import socket
@@ -196,71 +195,37 @@ class CalibrateDispatcher(LocalDispatcher):
     name: ClassVar[str] = "calibrate_dispatcher"
     version: ClassVar[str] = "1.0.0"
 
-    def _collect_output_files(self, job, logs):
-        files = super()._collect_output_files(job, logs)  # `output_files` matches
+    def get_execution_log(self, job):
+        logs = super().get_execution_log(job)  # runs the payload
         if all(log.return_code == 0 for log in logs):
-            files.extend(
-                File(
-                    file=Path("/data/l2") / f"{Path(source.file).stem}_cal.nc",
-                    hostname=socket.gethostname(),
-                    source=source.source,
-                    instrument=source.instrument,
-                    processing_stage="l2",
+            for source in job.files:
+                self.emit_file(
+                    File(
+                        file=Path("/data/l2") / f"{Path(source.file).stem}_cal.nc",
+                        hostname=socket.gethostname(),
+                        source=source.source,
+                        instrument=source.instrument,
+                        processing_stage="l2",
+                    ),
                 )
-                for source in job.files
-            )
-        return files
+        return logs
 ```
 
-Once the job has run, the base class calls this hook, publishes each file it
-returns with `emit_file`, and then publishes the job's execution logs.
-Collecting and publishing fail differently:
-
-- **Collecting is part of the job.** An exception raised in
-  `_collect_output_files`, including a bug in an override, fails that job
-  like any other job error: it is logged at ERROR, counted as
-  `courier_dispatcher_jobs_processed_total{status="failure"}`, and the
-  dispatcher moves on to the next job.
-- **Publishing is not.** A publish failure (`TransientBrokerError`,
-  `FatalBrokerError`, or a raw transport error) belongs to the broker, not to
-  the job. It is not contained: the `courier run` process exits, the job is
-  counted as neither a success nor a failure, and the job message is not
-  acknowledged as done. It is retried as described in
-  {doc}`../concepts/adr/0010-poison-message-handling`, and a retried job runs
-  again, so a file published before the fault can be published twice.
-
-So do not call `self.emit_file()` while the job runs, for example from an
-`_execute_job` override. Everything raised there, a broker fault included,
-is contained as a failure of that job, and the message is acknowledged with
-the file never published.
+Publishing these files is part of the job, like publishing the `output_files`
+matches and the execution logs: an exception there, a broker fault included,
+fails that job (see {doc}`dispatchers`).
 
 ## Standard Job Builders
 
 Every job builder, shipped or your own, requires a `payload` block in its
-config: exactly one payload plugin, nested under `payload:`, which is what
-its jobs execute (see {doc}`payloads`). The `JobBuilder` base class checks the
-block when the builder is constructed. A builder without one, or with one that
-is malformed or nests something other than a payload, stops `courier run` at
-startup with an `InvalidPluginConfigError` that names the builder and shows a
-minimal block:
-
-```text
-Job builder 'build' has no 'payload' block. Every job builder needs a payload block: its config nests exactly one payload plugin under `payload:`, which is what its jobs execute. For example:
-  payload:
-    my-payload:
-      kind: payload
-      name: bash_payload
-      config:
-        script: echo {{ files[0].file }}
-```
-
-`courier validate` reports the same configs; see {ref}`validation-errors`.
-The payload block is the builder's own: it is never copied into the jobs'
-`config`, and it travels with each job only as the rendered payload.
+config: exactly one payload plugin, nested under `payload:`, which is what its
+jobs execute. The `JobBuilder` base class checks the block and constructs the
+payload when the builder is constructed, and never copies the block into the
+jobs' `config`; see {doc}`payloads`.
 
 ### DummyJobBuilder
 
-`courier.plugins.job_builders.dummy_job_builder.DummyJobBuilder`
+:class:`~courier.plugins.job_builders.dummy_job_builder.DummyJobBuilder`
 
 Creates a minimal job for each file. Suitable for development and testing;
 for production, use `filter_and_group` or a custom builder. Each job's
@@ -269,42 +234,75 @@ blocks.
 
 ### filter_and_group
 
-`courier.plugins.job_builders.filter_and_group.FilterAndGroupJobBuilder`
+:class:`~courier.plugins.job_builders.filter_and_group.FilterAndGroupJobBuilder`
 
 Groups files into jobs by metadata filters and optional time windows.
-Jobs are emitted when the file count reaches `files_per_job`, or when a
-`window_timeout_seconds` has elapsed and at least `min_files` have
+Jobs are emitted when the file count reaches ``files_per_job``, or when a
+``window_timeout_seconds`` has elapsed and at least ``min_files`` have
 accumulated (dropout path).
+
+.. literalinclude:: ../../../src/courier/plugins/job_builders/filter_and_group.py
+   :language: python
+   :start-after: class FilterAndGroupJobBuilder(JobBuilder):
+   :end-before:     interface: ClassVar[str] = "job_builders"
+   :linenos:
 
 #### Config Fields
 
-| Field                    | Type                       | Default      | Description                                                                                                                                                                                                      |
-| ------------------------ | -------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `files_per_job`          | `int`                      | `5`          | Number of files that triggers job emission (fast path). Minimum `1`.                                                                                                                                             |
-| `min_files`              | `int`                      | `1`          | Minimum files required before the dropout path fires. Must be `<= files_per_job`.                                                                                                                                |
-| `window_timeout_seconds` | `float` \| `None`          | `None`       | Seconds since the first file after which a partial job may be emitted. When `None`, the dropout path is disabled entirely.                                                                                       |
-| `filters`                | `dict[str, str]`           | `{}`         | Key-value pairs that each file must satisfy (see {ref}`filter-syntax`).                                                                                                                                          |
-| `time_grouping`          | `dict[str, Any]` \| `None` | `None`       | Optional time-bucketing configuration. Supports keys `weeks`, `hours`, `minutes`, `seconds` (`float`) and `start` (ISO-8601 string or `datetime`). Files are assigned to a bucket ID based on their `timestamp`. |
-| `targets`                | `list[str]` \| `None`      | `None`       | Dispatcher identifiers this builder's jobs are published to. `None` is resolved at preflight via the service's `allow_implicit_target` policy.                                                                   |
-| `payload`                | payload block              | *(required)* | The payload its jobs execute; see {doc}`payloads`.                                                                                                                                                               |
+.. list-table::
+   :header-rows: 1
 
-(filter-syntax)=
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``files_per_job``
+     - ``int``
+     - ``5``
+     - Number of files that triggers job emission (fast path). Minimum ``1``.
+   * - ``min_files``
+     - ``int``
+     - ``1``
+     - Minimum files required before the dropout path fires. Must be ``<= files_per_job``.
+   * - ``window_timeout_seconds``
+     - ``float`` | ``None``
+     - ``None``
+     - Seconds since the first file after which a partial job may be emitted. When ``None``, the dropout path is disabled entirely.
+   * - ``filters``
+     - ``dict[str, str]``
+     - ``{}``
+     - Key-value pairs that each file must satisfy (see :ref:`filter-syntax`).
+   * - ``time_grouping``
+     - ``dict[str, Any]`` | ``None``
+     - ``None``
+     - Optional time-bucketing configuration. Supports keys ``weeks``, ``hours``, ``minutes``, ``seconds`` (``float``) and ``start`` (ISO-8601 string or ``datetime``). Files are assigned to a bucket ID based on their ``timestamp``.
+   * - ``targets``
+     - ``list[str]`` | ``None``
+     - ``None``
+     - Dispatcher identifiers this builder's jobs are published to. ``None`` is resolved at preflight via the service's ``allow_implicit_target`` policy.
+   * - ``payload``
+     - payload block
+     - *(required)*
+     - The payload its jobs execute; see :doc:`payloads`.
 
 #### Filter Syntax
 
-Each key-value pair in the `filters` dict is checked against each file with a
-**two-layer lookup**:
+.. _filter-syntax:
 
-1. **Metadata layer**: `file.metadata.get(key)`. Keys stored in the metadata
-   dict (populated from `field_map` entries that do not map to a named `File`
-   attribute) are checked first.
-1. **Attribute layer**: `getattr(file, key, None)`. If the key is not found in
-   metadata, the `File` attributes (`source`, `instrument`,
-   `processing_stage`, `domain`, `hostname`, `num_expected`, `timestamp`) are
-   checked.
+Each key-value pair in the ``filters`` dict is checked against each file
+with a **two-layer lookup**:
 
-If the key is found in **neither** layer, or the attribute is `None`, a
-`WARNING` is logged and the file is rejected (the filter returns `False`).
+1. **Metadata layer** — ``file.metadata.get(key)``. Keys stored in the
+   metadata dict (populated from ``field_map`` entries that do not map to a
+   named ``File`` attribute) are checked first.
+
+2. **Attribute layer** — ``getattr(file, key, None)``. If the key is not
+   found in metadata, the ``File`` dataclass attributes (``source``,
+   ``instrument``, ``processing_stage``, ``domain``, ``hostname``,
+   ``num_expected``, ``timestamp``) are checked.
+
+If the key is found in **neither** layer, a ``WARNING`` is logged and the
+file is rejected (the filter returns ``False``).
 
 ```yaml
 # Example: match GOES-16 ABI L1b full-disk files
@@ -317,7 +315,7 @@ filters:
 
 #### Breaking Change: Filter Key Names
 
-Filter configurations **must use `File` attribute names**, not legacy
+Filter configurations **must use ``File`` attribute names**, not legacy
 field_map names. The following legacy keys are no longer recognized:
 
 ```{include} ../includes/breaking-changes.md
@@ -343,10 +341,9 @@ filters:
 
 ### MetadataRouterBuilder
 
-`courier.plugins.job_builders.metadata_router.MetadataRouterBuilder`
+:class:`~courier.plugins.job_builders.metadata_router.MetadataRouterBuilder`
 
-Routes files to different dispatchers based on file metadata (source,
-instrument, etc.).
+Routes files to different dispatchers based on file metadata (source, instrument, etc.).
 
 Like every job builder it nests one `payload` block, in its own `config`, and
 every route's jobs run that payload. A route cannot nest a payload of its own:

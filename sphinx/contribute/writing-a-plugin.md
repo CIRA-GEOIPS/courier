@@ -18,9 +18,9 @@ The first four resolve to a **class**, which courier instantiates with the
 service, the step's config, and its identifier. The fifth resolves to an
 already-validated **instance**, because a metadata config is data.
 
-Payloads are sub-plugins: they are never steps of their own in `spec.run`.
-Every job builder nests exactly one, under `config.payload`, and its jobs carry
-the rendered payload to whichever dispatcher runs them. See
+Payloads are never steps of their own in `spec.run`. Every job builder nests
+exactly one, under `config.payload`, and constructs it; its jobs carry the
+rendered payload to whichever dispatcher runs them. See
 {doc}`../api-reference/payloads` for the configuration a payload takes and
 {doc}`../concepts/adr/0011-dispatchers-execute-jobs` for the design.
 
@@ -45,7 +45,6 @@ class ZshPayload(ShellPayload):
 
     interface: ClassVar[str] = "payloads"
     name: ClassVar[str] = "zsh_payload"
-    version: ClassVar[str] = "1.0.0"
     default_binary: ClassVar[str] = "zsh"
     file_suffix: ClassVar[str] = ".zsh"
 ```
@@ -138,13 +137,6 @@ The other hooks, from the outside in:
 - `_execute_job(job, payload, env)` runs it. `local_dispatcher` extends it to
   read `COURIER_METRIC:` lines; `slurm_dispatcher` replaces it to submit to
   Slurm. Set `env.keep_file = True` if the script must outlive the call.
-- `_collect_output_files(job, logs)` returns the files to feed back into the
-  pipeline once the job has run; the base returns the `output_files`
-  matches. Extend its list to emit files decided in code. The base class
-  publishes them, then the execution logs, outside the job's error handling,
-  so a broker fault while publishing is retried rather than counted as a
-  failed job. Do not call `emit_file` from `_execute_job`: a fault there is
-  contained as a failure of the job. See {ref}`pipeline-feedback-example`.
 - `_dispatcher_context(script_path)` supplies the values of the reserved
   template names (`dispatcher`, `script_path`, `hostname`, and `output_dir`
   where it exists). Extend it to add fields under `dispatcher`, which a
@@ -154,8 +146,10 @@ The other hooks, from the outside in:
   a value such as `{{ dispatcher.<field>.<key> }}` by looking each step up as
   a dictionary key or a list index, never as an object attribute.
 
-Overriding `get_execution_log` itself skips payload hydration, toolchain
-checks and script handling, so prefer the hooks above.
+`get_execution_log(job)` runs all of the above. Extend it with `super()` to
+emit files decided in code once the job has run (see
+{ref}`pipeline-feedback-example`); replacing it skips payload hydration,
+toolchain checks and script handling.
 
 Declare both plugins:
 
@@ -263,13 +257,11 @@ class NetcdfJobBuilder(JobBuilder):
 Four rules follow from the payload requirement:
 
 - **Call `super().__init__` first.** `JobBuilder.__init__` validates the
-  `payload` block before it sets up anything else. A block that is missing,
-  is not a mapping, does not nest exactly one plugin, nests one whose `kind`
-  is not `payload`, or gives it settings (`config`) that are not a mapping
-  raises `InvalidPluginConfigError` (a `ConfigurationError`) naming the
-  builder and showing a minimal block, so `courier run` stops at startup;
-  see {doc}`../api-reference/plugins`. The validated block is kept as
-  `self.payload_block`, its identifier as `self.payload_identifier`.
+  `payload` block before it sets up anything else, and constructs the
+  payload plugin it names as `self.payload`. A missing or malformed block
+  raises `InvalidPluginConfigError` naming the builder, an uninstalled
+  payload plugin `PluginNotFoundError`, and invalid payload settings
+  pydantic's `ValidationError`, so `courier run` stops at startup.
 - **Let `payload` through your own config checks.** A builder that validates
   its config with a model that forbids unknown keys must allow `payload`.
 - **Keep the block out of the jobs' config.** A job group's config travels in
@@ -278,103 +270,17 @@ Four rules follow from the payload requirement:
   `PAYLOAD_KEY` from the group config, as above, or build the group config
   from a model that keeps only its own fields. Drop `state_sync` too: it
   holds the Redis password.
-- **Emit with `self.emit(job)`.** It renders the bound payload onto the job
+- **Emit with `self.emit(job)`.** It renders `self.payload` onto the job
   and publishes it; never set `job.payload` yourself.
 
-The payload plugin itself is bound after construction: at startup, service
-preflight assigns the plugin registered under `payload_identifier` to
-`builder.payload`. Until one is bound, `start()` and `emit()` raise
-`ConfigurationError` before consuming or publishing anything, and so do the
-base class's file and timeout paths, before a job leaves its group. Reading
-`builder.payload` raises too; `builder.has_payload` asks without raising. The
-setter accepts only a `Payload` whose identifier is `payload_identifier`. The
-two errors read:
+A test needs no service preflight: construct the builder with a config that
+nests a payload block, and `builder.emit(job)` publishes jobs that carry it.
 
-```text
-Job builder 'build' has no payload bound. Service preflight binds the payload plugin registered as 'convert', the one its payload block names; code that drives a builder without preflight must assign builder.payload itself. A job builder cannot start or emit a job without its payload.
-Job builder 'build' nests payload 'convert', so it cannot bind payload 'other'.
-```
-
-A test that drives a builder without a service binds one itself:
-
-```python
-# tests/test_netcdf.py
-from pathlib import Path
-from unittest.mock import MagicMock
-
-import pytest
-
-from courier.errors import ConfigurationError, InvalidPluginConfigError
-from courier.plugins.payloads.bash_payload import BashPayload
-from courier.types.file import File
-from courier.types.job import Job
-from my_package.netcdf import NetcdfJobBuilder, OneFileJob
-
-CONFIG = {
-    "targets": ["process"],
-    "payload": {
-        "convert": {
-            "kind": "payload",
-            "name": "bash_payload",
-            "config": {"script": 'convert.sh "{{ files[0].file }}"'},
-        },
-    },
-}
-
-
-def test_rejects_a_config_without_a_payload_block():
-    with pytest.raises(InvalidPluginConfigError, match="needs a payload block"):
-        NetcdfJobBuilder(MagicMock(config=None), {"targets": ["process"]})
-
-
-def test_refuses_to_start_without_a_bound_payload():
-    builder = NetcdfJobBuilder(MagicMock(config=None), CONFIG, identifier="build")
-    with pytest.raises(ConfigurationError, match="no payload bound"):
-        builder.start()
-
-
-def test_every_job_carries_the_rendered_payload():
-    service = MagicMock(config=None)
-    builder = NetcdfJobBuilder(service, CONFIG, identifier="build")
-    # What service preflight does: bind the payload the block names.
-    builder.payload = BashPayload(
-        service,
-        builder.payload_block.spec.config,
-        identifier=builder.payload_identifier,
-    )
-    group = builder.job_groups[0]
-    job = OneFileJob(name=group.name, identifier="a", config=group.config)
-    job.add_file(File(file=Path("/data/a.nc")))
-
-    builder.emit(job)
-
-    sent = Job.from_string(service.emit.call_args.kwargs["message"])
-    assert sent.payload.script == 'convert.sh "/data/a.nc"'
-    assert "payload" not in sent.config
-```
-
-Declare it in `courier.job_builders` and give every step that uses it a
-payload block:
+Declare it in `courier.job_builders`:
 
 ```toml
 [project.entry-points."courier.job_builders"]
 netcdf_builder = "my_package.netcdf:NetcdfJobBuilder"
-```
-
-```yaml
-- build:
-    kind: job_builder
-    name: netcdf_builder
-    config:
-      targets:
-        - process
-      payload:
-        convert:
-          kind: payload
-          name: bash_payload
-          config:
-            script: |
-              convert.sh "{{ files[0].file }}"
 ```
 
 ## Three rules the tests enforce

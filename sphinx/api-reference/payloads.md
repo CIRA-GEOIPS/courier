@@ -42,33 +42,14 @@ The payload identifier (`convert` above) must be unique among all steps and
 payloads in the file. It appears as the `payload_identifier` label on payload
 metrics and is part of the dispatcher's deduplication key.
 
-The block is required: a job builder without one is a configuration error,
-whichever builder it is. `courier validate` reports a missing block as
-
-```text
-build.config.payload         required, but missing: every job builder needs a payload block: its config nests exactly one payload plugin under `payload:`, which is what its jobs execute
-```
-
-and `courier run` refuses to start with an `InvalidPluginConfigError` that
-names the builder and shows a minimal block (see
-{doc}`plugins`). A block that is not a mapping, nests no plugin or more than
-one, nests a plugin whose `kind` is not `payload`, or gives that plugin
-settings (`config`) that are not a mapping is rejected the same way.
-At startup, service preflight binds the payload plugin to its builder; a
-builder refuses to start without it, and every job it emits carries it.
-
-The payload plugin is constructed when `courier run` starts the job builder.
-Construction reads the template (`file`, or the inline `script`) once, parses
-it and checks it; editing the file afterwards takes effect on the next
-restart. A template that cannot be read, that has a Jinja syntax error, or
-that uses a dispatcher-only name other than as a bare value (see
-[Values only the dispatcher knows](#values-only-the-dispatcher-knows)) stops
-`courier run` at startup with an error naming the payload, the file (or
-"inline script") and the line. `courier validate` builds the payload the same
-way, so it reports the same errors, as well as unknown config keys and a
-payload that cannot run on the dispatchers its builder targets. A template
-`file` that is not visible from where `courier validate` runs is noted, not
-checked.
+The block is required, whichever builder it is: a builder without one, or
+with a malformed one, stops `courier run` at startup with an error that names
+the builder and shows a minimal block. The builder constructs the payload
+plugin when it is itself constructed, and construction reads the template
+(`file`, or the inline `script`) once, parses it and checks it, so editing the
+file takes effect on the next restart. `courier validate` builds the payload
+the same way, except that a template `file` it cannot see is noted, not
+checked. See [Errors and where they surface](#errors-and-where-they-surface).
 
 ## Shipped payload plugins
 
@@ -100,11 +81,11 @@ also be installed wherever a dispatcher that receives it runs.
 ## Payload config fields
 
 `PayloadConfig`, shared by all three shipped payloads. Unknown keys are
-rejected. A key that belongs to a dispatcher, meaning a field of any installed
-dispatcher's config model (`timeout_seconds`, or `partition`, which only
-`slurm_dispatcher` defines), is reported as belonging on the dispatcher, by
-`courier validate` and `courier run` alike. At least one of `file`, `script`
-or `binary` must be set.
+rejected. An option every dispatcher takes (`timeout_seconds`, `log_to_file`
+and the others in {doc}`dispatchers`) is reported as belonging on the
+dispatcher; any other unknown key, such as `slurm_dispatcher`'s `partition`,
+is reported only as unknown. At least one of `file`, `script` or `binary` must
+be set.
 
 | Field               | Type        | Default | Description                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------- | ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -122,21 +103,9 @@ are rendered only on the dispatcher. See [Command arguments](#command-arguments)
 
 ## How each payload builds its command
 
-The dispatcher writes the rendered script to a new file with a random name,
-mode `0755`, created exclusively. `local_dispatcher` names it
-`courier-XXXXXXXX<suffix>` in the temporary directory (`$TMPDIR`, else the
-platform default); `slurm_dispatcher` writes it to `slurm_output_dir`, under a
-name that starts with the job identifier (`<job-id>-XXXXXXXX<suffix>`). Below,
-`<script>` is that path. How long the file lives depends on the dispatcher:
-
-- **`local_dispatcher`** removes it once the job has run, and also when
-  preparing the job fails after the file was written.
-- **`slurm_dispatcher`** removes a script submitted as the batch script once
-  it is done with the job, since Slurm runs its own copy: right after
-  submission in no-wait mode, after polling ends in wait mode. A script run
-  through `--wrap` is read by the job when it starts, so it is kept until no
-  job can read it any more, and is sometimes left in `slurm_output_dir` for
-  good; see {ref}`script-lifetime`.
+Below, `<script>` is the file the dispatcher writes the rendered script to;
+{doc}`dispatchers` gives its name and how long it is kept
+({ref}`script-lifetime` for Slurm).
 
 Every part of the command is a separate argument: nothing is joined into a
 shell command line (a Slurm `--wrap` command shell-quotes each argument, so
@@ -300,9 +269,10 @@ literal text, and so does a NUL character or text that looks like a marker but
 does not carry the job's nonce.
 
 A reserved name or key the receiving dispatcher does not define, such as
-`{{ output_dir }}` sent to a `local_dispatcher` or
-`{{ dispatcher.config.no_such_option }}`, fails that job on the dispatcher. So
-does a step below a value that is not a dictionary or a list, such as
+`{{ output_dir }}` sent to a `local_dispatcher`,
+`{{ dispatcher.config.no_such_option }}`, or a step below a null value, fails
+that job on the dispatcher as not defined by that dispatcher. So does a step
+below a value that is not a dictionary or a list, such as
 `{{ dispatcher.config.log_dir.parent }}`: the error says which value it is.
 
 ### Command arguments
@@ -333,24 +303,20 @@ The builder attaches the rendered payload to each job it emits as
 | `suffix`      | Suffix of the file the dispatcher writes the script to.                                                                                                                                                                                                                                                                       |
 | `defer_nonce` | The random nonce issued for this job. The dispatcher fills in only the markers for reserved names that carry it.                                                                                                                                                                                                              |
 
-`PayloadSpec.script` is the only copy of the template a job carries: the raw
-template is never sent, and a template `file` is read on the builder, so it
-need not exist on the dispatcher host. When the dispatcher rebuilds the
-payload from the spec, it sets the rebuilt config's `script` to the rendered
-`PayloadSpec.script`, so anything on the dispatcher side that reads
-`config.script` sees the script that will run. A spec whose `config` still
-carries a raw `script` is rebuilt the same way: the rendered copy replaces
-it. A spec with no rendered `script` whose `config` sets neither `file` nor
-`binary` has nothing to run, and the job is parked as unexecutable. A payload
-rebuilt from a spec runs that script but cannot render a job
-(`to_job_spec` raises `CourierError`), because its `config.script` is
-already-rendered text that may hold job data.
+`PayloadSpec.script` is the only copy of the template a job carries, and a
+template `file` is read on the builder, so it need not exist on the dispatcher
+host. The dispatcher rebuilds the payload with `config.script` set to the
+rendered `PayloadSpec.script` (replacing any raw `script` an older builder
+put in `config`). A rebuilt payload runs that script but cannot render a job again,
+and a spec with nothing to run is parked as unexecutable.
+
+(payload-errors)=
 
 ## Errors and where they surface
 
 | Problem                                                                                                                                                                                    | Surfaces                             | Effect                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Job builder with no `payload` block, or a malformed one                                                                                                                                    | `courier validate` and `courier run` | The service does not start.                                                                                                                                                                            |
+| Job builder with no `payload` block, or a malformed one; payload plugin not installed where the builder runs; payload that cannot run on a dispatcher its builder targets                  | `courier validate` and `courier run` | The service does not start.                                                                                                                                                                            |
 | Template file unreadable; Jinja syntax error in the template or in `binary`, `prefix_args` or `suffix_args`; a reserved name used in the template other than as a bare value               | `courier validate` and `courier run` | The service does not start.                                                                                                                                                                            |
 | Unknown or misplaced payload config key                                                                                                                                                    | `courier validate` and `courier run` | Validation error naming the key.                                                                                                                                                                       |
 | Undefined name, attribute, key or index in the template; any other data-dependent render error                                                                                             | Builder, when the job is emitted     | That job is dropped, not published. ERROR log with the job identifier, its files and the error; `courier_job_builder_emit_failures_total{reason="render"}` once per target. The builder keeps running. |

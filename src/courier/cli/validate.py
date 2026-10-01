@@ -112,7 +112,7 @@ def _check_dispatcher(
             entry.spec.config or {},
             context={"offline": True},
         )
-    except ValidationError as exc:
+    except Exception as exc:  # a third-party config model may raise anything
         check.report(f"{entry.identifier}.config", exc)
 
 

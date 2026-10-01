@@ -166,7 +166,9 @@ class TestTopology:
         config = _config(
             _builder("b1"),
             _builder("b2", payload={"a": {}, "b": {}}),
-            _builder("b3", payload=_payload(kind="dispatcher", name="local_dispatcher")),
+            _builder(
+                "b3", payload=_payload(kind="dispatcher", name="local_dispatcher")
+            ),
             _dispatcher("work"),
         )
 

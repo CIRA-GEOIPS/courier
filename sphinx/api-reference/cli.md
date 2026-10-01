@@ -61,11 +61,10 @@ payload template compiles, and that each payload can run on the dispatchers
 its builder targets. On failure it names each problem by config key and exits
 `1`; {ref}`validation-errors` lists the common messages.
 
-It creates nothing and connects to nothing. What it can only judge from the
-host where `courier run` will start is printed as a `note:` line, not a
-problem: a template `file` that is not visible here, and a `log_to_file`
-directory that is missing, not writable or not a directory here (see
-[The log directory](dispatchers.md#the-log-directory)).
+It creates nothing and connects to nothing, so it does not check a
+`log_to_file` directory (see
+[The log directory](dispatchers.md#the-log-directory)). A template `file` that
+is not visible where it runs is printed as a `note:` line, not a problem.
 
 ### `courier plugins list`
 

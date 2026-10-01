@@ -50,22 +50,18 @@ if TYPE_CHECKING:
 # so the ``data_monitors`` interface reads ``courier.data_monitors``.
 ENTRY_POINT_PREFIX = "courier"
 
-_MOVE_SCRIPT = (
-    "use local_dispatcher, and move bash_script into the job builder's nested "
-    "payload block (kind: payload, name: bash_payload, config: {script: ...})"
-)
-
 #: Plugins earlier releases shipped, keyed by ``(interface, name)`` and mapped
-#: to what replaces them, so a config that still names one is told how to
-#: migrate -- by ``courier run`` and ``courier validate`` alike -- rather than
-#: only that the name is unknown.
+#: to what replaces them; an unknown-plugin error for one names it.
 REMOVED_PLUGINS: dict[tuple[str, str], str] = {
-    ("dispatchers", "serial_bash"): _MOVE_SCRIPT,
-    ("dispatchers", "parallel_bash"): (
-        f"{_MOVE_SCRIPT}; per-file parallel execution within one job is not "
-        "supported, so scale out with more dispatcher replicas or smaller jobs"
+    ("dispatchers", "serial_bash"): (
+        "use local_dispatcher with a bash_payload (see 'Migrating serial_bash' "
+        "in the upgrade guide)"
     ),
-    ("dispatchers", "http_dispatcher"): "it has no replacement in this release",
+    ("dispatchers", "parallel_bash"): (
+        "use local_dispatcher with a bash_payload (see 'Migrating "
+        "parallel_bash' in the upgrade guide)"
+    ),
+    ("dispatchers", "http_dispatcher"): "it has no replacement",
 }
 
 ModelT = TypeVar("ModelT", bound="BaseModel")

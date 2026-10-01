@@ -49,14 +49,6 @@ SCRIPT_PATH = "/scratch/courier-abc.sh"
 MARKER_RE = re.compile(r"\x00COURIER-DEFER:([0-9a-f]+):([^\x00]*)\x00")
 
 
-@pytest.fixture
-def service() -> MagicMock:
-    svc = MagicMock()
-    svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
-    return svc
-
-
 def _payload(service: MagicMock, template: str) -> BashPayload:
     return BashPayload(service, {"script": template}, "payload-1")
 
@@ -769,19 +761,15 @@ class TestRejectedForms:
         assert f"line 2: dispatcher-only name {reported} {problem}" in message
         assert "bare value" in message
 
-    @pytest.mark.parametrize(("form", "reported", "problem"), _REJECTED)
-    def test_rejected_by_render_script_in_pass_one(
-        self,
-        service: MagicMock,
-        form: str,
-        reported: str,
-        problem: str,
-    ) -> None:
+    def test_rejected_by_render_script_in_pass_one(self, service: MagicMock) -> None:
+        """The same check as at construction; the table above covers its rules."""
         payload = _payload(service, "echo ok")
-        expected = f"line 2: dispatcher-only name {reported} {problem}"
+        expected = "line 2: dispatcher-only name 'hostname' is used other than"
 
         with pytest.raises(DeferredExpressionError, match=re.escape(expected)):
-            payload.render_script(_job(), f"#!/bin/sh\n{form}\n", defer_nonce=NONCE)
+            payload.render_script(
+                _job(), "#!/bin/sh\n{{ hostname | upper }}\n", defer_nonce=NONCE
+            )
 
     def test_message_says_how_to_write_it(self, service: MagicMock) -> None:
         with pytest.raises(ValueError, match="unsupported template") as info:

@@ -8,7 +8,7 @@ from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import RUN_ARGV_SCRIPT, ShellPayload
-from tests.unit_tests.plugins.conftest import run_locally
+from tests._helpers import run_locally
 
 
 class TestConstruction:

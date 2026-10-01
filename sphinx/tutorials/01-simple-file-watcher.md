@@ -167,7 +167,6 @@ lines trimmed):
 ```
 [Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
 [Manager: PluginManager] Registered plugin: create-jobs (class=DummyJobBuilder v-1)
-[Manager: PluginManager] Registered plugin: log-payload (class=bash_payload v-1)
 [Manager: PluginManager] Registered plugin: log-files (class=local_dispatcher v-1)
 [Service: tutorial-01-file-watcher] Starting Service tutorial-01-file-watcher
 [Manager: PrometheusManager] Starting Prometheus server on port 8000
@@ -300,7 +299,6 @@ Stop the service gracefully with `Ctrl+C`:
 ^C[Module: signals] Received signal 2, requesting graceful shutdown...
 [Manager: PluginManager] Plugin stopped: file_system_poller_watchdog
 [Manager: PluginManager] Plugin stopped: DummyJobBuilder
-[Manager: PluginManager] Plugin stopped: bash_payload
 [Manager: PluginManager] Plugin stopped: local_dispatcher
 [Manager: PluginManager] Plugin manager stopped
 [Manager: PrometheusManager] Prometheus manager stopped

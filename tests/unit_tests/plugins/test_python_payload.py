@@ -9,7 +9,7 @@ from courier.plugins.payloads.python_payload import (
     PythonPayloadConfig,
 )
 from courier.types.execution_log import ExecutionLog
-from tests.unit_tests.plugins.conftest import file_job, run_locally
+from tests._helpers import file_job, run_locally
 
 
 def _dispatch(service: MagicMock, payload_config: dict, **wire) -> list[ExecutionLog]:

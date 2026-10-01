@@ -17,7 +17,7 @@ from courier.plugins.payloads.shell_payload import (
 )
 from courier.types.file import File
 from courier.types.job import Job
-from tests.unit_tests.plugins.conftest import file_job, run_locally
+from tests._helpers import file_job, run_locally
 
 
 _SHELL_PLUGINS = [ShellPayload, BashPayload, PythonPayload]
