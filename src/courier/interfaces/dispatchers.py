@@ -761,6 +761,7 @@ class Dispatcher(ServicePlugin):
     def handle_incoming_jobs(self) -> None:
         """Handle the consumption and processing of consumed jobs."""
         consumer_errors: queue.Queue[BaseException] = queue.Queue(maxsize=1)
+        ctx = contextvars.copy_context()
 
         def consume() -> None:
             try:
@@ -770,7 +771,8 @@ class Dispatcher(ServicePlugin):
                 self._stop_event.set()
 
         consumer_thread = threading.Thread(
-            target=consume,
+            target=ctx.run,
+            args=[consume],
             name=f"{self.name}-consumer",
             daemon=True,
         )
