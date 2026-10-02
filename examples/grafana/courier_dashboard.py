@@ -27,7 +27,7 @@ from grafanalib._gen import DashboardEncoder
 from grafanalib.core import (
     GAUGE_CALC_LAST,
     GRAPH_TOOLTIP_MODE_SHARED_CROSSHAIR,
-    PERCENT_FORMAT,
+    PERCENT_UNIT_FORMAT,
     REFRESH_ON_TIME_RANGE_CHANGE,
     SECONDS_FORMAT,
     Dashboard,
@@ -654,13 +654,16 @@ def _dispatcher_row() -> RowPanel:
                 f"sum({_rate(m_proc, succeeded)}) / sum({_rate(m_proc, lbl)})",
             ),
         ],
-        format=PERCENT_FORMAT,
+        # The query is a 0-1 ratio: percentunit renders it as 0%-100%, so the
+        # range and thresholds are fractions too. "percent" with max=100 left
+        # the needle near zero and the gauge red at a 100% success rate.
+        format=PERCENT_UNIT_FORMAT,
         min=0,
-        max=100,
+        max=1,
         thresholds=[
             Threshold("red", 0, 0.0),
-            Threshold("yellow", 1, 80.0),
-            Threshold("green", 2, 95.0),
+            Threshold("yellow", 1, 0.80),
+            Threshold("green", 2, 0.95),
         ],
         gridPos=GridPos(8, 4, 8, py),
     )

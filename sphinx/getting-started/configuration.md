@@ -395,11 +395,19 @@ not pipeline steps -- a data monitor names them in its
 than skipped, so a typo cannot produce a service that runs and
 processes nothing.
 
-**Avoid duplicate dispatchers.** A dispatcher consumes jobs from a
-shared queue. Running the same dispatcher identifier in two containers
-creates a split-brain scenario where both compete for the same messages.
-Each dispatcher identifier should appear in exactly one `--only` list
-across your deployment.
+**Dispatcher replicas share the work.** A dispatcher consumes jobs from
+one queue per identifier. Running the same dispatcher identifier in
+several containers (each with `--only <dispatcher>`, against the same
+broker) makes them competing consumers: the broker delivers each job to
+one replica, so adding replicas adds concurrent runs (see
+{doc}`../api-reference/dispatchers`). Each replica deduplicates only the
+jobs it has seen itself.
+
+**Duplicating a data monitor is different.** Two copies of the same data
+monitor each publish every file they find, so their builders see every
+file twice. Run one copy of each data monitor, or enable job builder
+state sync ({doc}`../operations/high-availability`) when you run
+redundant instances against one data source.
 
 **Empty `--only` runs everything.** Omitting the flag, or passing an
 empty value (`--only ""`), starts all steps defined in `spec.run[]`.

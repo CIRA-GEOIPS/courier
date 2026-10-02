@@ -200,9 +200,11 @@ class Dispatcher(ServicePlugin):
             "dispatcher_identifier": self.identifier,
         }
         self.active_job_timestamps: dict[str, float] = {}
-        # Bounded LRU of recently-seen jobs, keyed by _dedupe_key. Catches
-        # same-replica duplicates; cross-replica strict dedupe is opt-in via
-        # state sync. Thread-safe: only touched by handle_incoming_jobs thread.
+        # Bounded LRU of recently-seen jobs, keyed by _dedupe_key. Per replica
+        # only: nothing dedupes across replicas, so a job redelivered to
+        # another replica runs again. (Builder state sync stops duplicate jobs
+        # being published; it does not dedupe here.) Thread-safe: only touched
+        # by handle_incoming_jobs thread.
         self._seen_jobs: OrderedDict[Hashable, None] = OrderedDict()
         # Payload name -> its class and the representation it runs as here,
         # and validated (payload, toolchain) keys, so jobs do not re-pay
@@ -609,8 +611,10 @@ class Dispatcher(ServicePlugin):
         """Return True if *key* is in the bounded LRU.
 
         On miss, records the key; evicts oldest when the LRU is full.
-        Catches same-replica duplicates from at-least-once delivery;
-        cross-replica exactly-once requires the optional state-sync dedupe.
+        Catches duplicates from at-least-once delivery to this replica only.
+        There is no cross-replica dedupe: a job redelivered to another
+        replica is not in its LRU and runs again. Job builder state sync
+        prevents duplicate jobs from being published, upstream of here.
         """
         if key in self._seen_jobs:
             self._seen_jobs.move_to_end(key)

@@ -439,6 +439,84 @@ class TestBatchScriptSubmission:
         assert env.file is not None
         assert env.file.read_text() == "#!/bin/bash -l\nmodule load x"
 
+    @pytest.mark.parametrize(
+        "shebang",
+        ["#!/usr/bin/env bash", "#!/usr/bin/env -S bash -l", "#!/usr/local/bin/bash"],
+    )
+    def test_shebang_naming_the_interpreter_is_kept(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+        shebang: str,
+    ) -> None:
+        """Any spelling of the payload's interpreter keeps its options."""
+        dispatcher = _dispatcher(service, tmp_path)
+        job = wire_job(service, {"script": f"{shebang}\necho hi"})
+
+        env = _prepare(dispatcher, job)
+
+        assert env.file is not None
+        assert env.file.read_text() == f"{shebang}\necho hi"
+
+    def test_shebang_naming_another_interpreter_is_replaced(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Slurm must run the interpreter a local dispatcher would.
+
+        A local dispatcher runs ``bash <script>`` whatever the shebang says;
+        keeping ``#!/bin/sh`` would run bash syntax under sh on Slurm only.
+        """
+        dispatcher = _dispatcher(service, tmp_path)
+        script = "#!/bin/sh\n#SBATCH --time=00:05:00\n[[ -n x ]] && echo hi"
+        job = wire_job(service, {"script": script})
+
+        with caplog.at_level(logging.WARNING):
+            env = _prepare(dispatcher, job)
+
+        assert env.file is not None
+        assert env.file.read_text() == (
+            "#!/usr/bin/env bash\n#SBATCH --time=00:05:00\n[[ -n x ]] && echo hi"
+        )
+        assert "replacing shebang '#!/bin/sh'" in caplog.text
+
+    def test_shebang_is_replaced_for_an_absolute_default_binary(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """A configured binary wins over a shebang naming another bash."""
+        dispatcher = _dispatcher(service, tmp_path)
+        job = wire_job(
+            service,
+            {"script": "#!/bin/bash\necho hi", "default_binary": "/opt/bash5/bin/bash"},
+        )
+
+        env = _prepare(dispatcher, job)
+
+        assert env.file is not None
+        assert env.file.read_text() == "#!/opt/bash5/bin/bash\necho hi"
+
+    def test_shebang_is_left_alone_on_a_wrapped_script(
+        self,
+        service: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """--wrap names the interpreter explicitly; the script is untouched."""
+        dispatcher = _dispatcher(service, tmp_path)
+        job = wire_job(
+            service,
+            {"script": "#!/usr/bin/python2\nprint(1)"},
+            payload_cls=PythonPayload,
+        )
+
+        env = _prepare(dispatcher, job)
+
+        assert env.file is not None
+        assert env.file.read_text() == "#!/usr/bin/python2\nprint(1)"
+
 
 class TestWrappedSubmission:
     """Everything else is ``--wrap``: the local command, each argument quoted."""
@@ -635,12 +713,12 @@ class TestScriptFiles:
         dispatcher = _dispatcher(service, tmp_path)
         job = wire_job(
             service,
-            {"script": "#!/bin/sh\necho {{ output_dir }} {{ script_path }}"},
+            {"script": "#!/bin/bash\necho {{ output_dir }} {{ script_path }}"},
         )
 
         env = _prepare(dispatcher, job)
 
         assert env.file is not None
         assert env.file.read_text() == (
-            f"#!/bin/sh\necho {dispatcher._output_dir} {env.file}"
+            f"#!/bin/bash\necho {dispatcher._output_dir} {env.file}"
         )

@@ -231,6 +231,14 @@ class TestDashboardKindMapping:
             ("job_builders", PluginKind.JOB_BUILDER),
             ("dispatcher", PluginKind.DISPATCHER),
             ("dispatchers", PluginKind.DISPATCHER),
+            # normalize_kind tolerates case and whitespace, so the runtime
+            # runs these; the dashboard used to drop them.
+            ("Dispatcher", PluginKind.DISPATCHER),
+            (" dispatcher ", PluginKind.DISPATCHER),
+            ("DATA_MONITOR", PluginKind.DATA_MONITOR),
+            ("Job_Builder", PluginKind.JOB_BUILDER),
+            # A payload is configured under a builder, never a run step.
+            ("payload", None),
             # Valid in a run list but not a runnable plugin -- skipped, not fatal.
             ("data_monitor_configs", None),
             ("nonsense", None),

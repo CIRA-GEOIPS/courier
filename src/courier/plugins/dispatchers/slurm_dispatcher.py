@@ -174,6 +174,26 @@ def _shebang(interpreter: str) -> str:
     return f"#!/usr/bin/env {interpreter}"
 
 
+def _shebang_names(line: str, interpreter: str) -> bool:
+    """Return whether shebang *line* runs a script with *interpreter*.
+
+    ``#!/usr/bin/env bash`` and ``#!/bin/bash -l`` both name ``bash``; an
+    absolute *interpreter* must be named by exactly that path.
+    """
+    words = line[2:].split()
+    if not words:
+        return False
+    program, *rest = words
+    if Path(program).name == "env":
+        operands = [word for word in rest if not word.startswith("-")]
+        if not operands:
+            return False
+        program = operands[0]
+    if Path(interpreter).is_absolute():
+        return program == interpreter
+    return Path(program).name == interpreter
+
+
 def _read_text(path: Path) -> str:
     """Return the contents of *path*, or ``""`` if it cannot be read."""
     try:
@@ -313,10 +333,28 @@ class SlurmDispatcher(Dispatcher):
         )
 
     def _finalize_script_text(self, text: str, job: Job, payload: Payload) -> str:
-        """Give a batch script without one a shebang naming its interpreter."""
-        if text.startswith("#!") or not self._submits_batch_script(job, payload):
+        """Make a batch script's shebang name the payload's interpreter.
+
+        ``sbatch`` runs a batch script through its shebang, while a local
+        dispatcher runs ``<interpreter> <script>`` and ignores it.  A shebang
+        that already names the interpreter is kept, options included (e.g.
+        ``#!/bin/bash -l`` for ``module``); one naming another interpreter
+        is replaced, and a missing one is added.
+        """
+        if not self._submits_batch_script(job, payload):
             return text
-        return f"{_shebang(payload.generate_calling_method()[0])}\n{text}"
+        interpreter = payload.generate_calling_method()[0]
+        if not text.startswith("#!"):
+            return f"{_shebang(interpreter)}\n{text}"
+        first_line, _, body = text.partition("\n")
+        if _shebang_names(first_line, interpreter):
+            return text
+        self._logger.warning(
+            f"Job {job.identifier!r}: replacing shebang {first_line.strip()!r} "
+            f"with {_shebang(interpreter)!r}, the interpreter a local "
+            f"dispatcher would run it with",
+        )
+        return f"{_shebang(interpreter)}\n{body}"
 
     def _output_pattern(self, job: Job) -> str:
         """Return the ``--output``/``--error`` base for *job*, without suffix.
