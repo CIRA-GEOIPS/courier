@@ -207,7 +207,7 @@ class RabbitMQWatcherConfig(BaseModel, frozen=True):
         return self
 
 
-#: Datumname tokens that identify a platform when the message omits one.
+#: filename tokens that identify a platform when the message omits one.
 _PATH_SOURCE_HINTS: dict[str, str] = {
     "G16": "goes16",
     "G17": "goes17",
