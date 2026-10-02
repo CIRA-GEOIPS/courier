@@ -163,15 +163,7 @@ dispatcher that receives the job executes it. Its fields are listed in
 
 The internal {py:func}`~courier.types.datum._file_fields_from_dict` helper
 **no longer recognizes legacy fallback keys**. If your configuration or
-serialized data uses any of the following, update to the canonical attribute
-names:
-
-```{include} ../includes/breaking-changes.md
-```
-
-The table below maps legacy metadata keys to the current `Datum` attribute
-names. These legacy keys are no longer recognized by the field access
-helper.
+serialized data uses legacy keys, update to the canonical attribute names.
 
 Only `data`, `source`, `instrument`, `processing_stage`, `domain`,
 `hostname`, `file`, `metadata`, `num_expected`, and `timestamp`

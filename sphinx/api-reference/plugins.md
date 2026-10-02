@@ -316,10 +316,7 @@ filters:
 #### Breaking Change: Filter Key Names
 
 Filter configurations **must use ``Datum`` attribute names**, not legacy
-field_map names. The following legacy keys are no longer recognized:
-
-```{include} ../includes/breaking-changes.md
-```
+field_map names.
 
 See {doc}`types` for the `Datum`/`FrozenDatum` attribute reference.
 
