@@ -315,12 +315,16 @@ class TestRateLimit:
 
         # Patch _listen_to_broker to a no-op so the background thread does
         # not race with the main thread on _stop_event.is_set().
+        # Patch the watcher module's ``time`` binding, not the global
+        # ``time.sleep``: a global patch also intercepts sleeps from threads
+        # leaked by earlier tests, which then spin and flood the mock.
         with (
             patch.object(plugin, "_listen_to_broker"),
             patch.object(queue.Queue, "get", self._stop_after(plugin, 3)),
-            patch("time.sleep") as mock_sleep,
-            patch("time.monotonic", side_effect=[0.0, 0.0, 0.5, 0.5, 1.0, 1.0]),
+            patch(f"{RabbitMQWatcher.__module__}.time") as mock_time,
         ):
+            mock_time.monotonic.side_effect = [0.0, 0.0, 0.5, 0.5, 1.0, 1.0]
+            mock_sleep = mock_time.sleep
             result = list(plugin.find_file())
 
         # With rate_limit_per_second=2.0, interval=0.5s
@@ -336,12 +340,12 @@ class TestRateLimit:
         with (
             patch.object(plugin, "_listen_to_broker"),
             patch.object(queue.Queue, "get", self._stop_after(plugin, 2)),
-            patch("time.sleep") as mock_sleep,
+            patch(f"{RabbitMQWatcher.__module__}.time") as mock_time,
         ):
             result = list(plugin.find_file())
 
         assert len(result) == 2
-        mock_sleep.assert_not_called()
+        mock_time.sleep.assert_not_called()
 
     def test_find_file_returns_when_stop_event_set(
         self,
