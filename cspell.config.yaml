@@ -7,6 +7,7 @@ ignorePaths:
 dictionaryDefinitions: []
 dictionaries: []
 words:
+  - unhashed
   - argparse
   - interruptible
   - boto
