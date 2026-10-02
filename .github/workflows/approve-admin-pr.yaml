@@ -1,36 +1,20 @@
-name: Auto-approve admin PRs
-
 on:
   pull_request:
-    branches: [ main ]
+    
+permissions:
+  pull-requests: write
 
 jobs:
-  auto-approve:
+  approve:
+    if: github.event.pull_request.user.login == 'biosafetylvl5'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-
     steps:
-      - name: Check if PR author is a repository admin
-        id: check-admin
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_PAT }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          REPO: ${{ github.repository }}
-        run: |
-          permission=$(gh api "repos/$REPO/collaborators/$PR_AUTHOR/permission" \
-            --jq '.permission' 2>/dev/null || echo "none")
-          if [ "$permission" = "admin" ]; then
-            echo "is_admin=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_admin=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Auto-approve PR
-        if: steps.check-admin.outputs.is_admin == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_PAT }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          gh pr review "$PR_NUMBER" --repo "$REPO" --approve
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              event: 'APPROVE'
+            })
