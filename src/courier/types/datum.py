@@ -7,6 +7,7 @@ import json
 import re
 import types
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -188,7 +189,7 @@ class Datum(Generic[T]):  # noqa: UP046
             Immutable copy of this Datum.
         """
         return FrozenDatum(
-            data=self.data,
+            data=deepcopy(self.data),
             file=self.file,
             hostname=self.hostname,
             source=self.source,
@@ -368,7 +369,7 @@ class FrozenDatum(Generic[T]):  # noqa: UP046
             Mutable copy of this FrozenDatum.
         """
         return Datum(
-            data=self.data,
+            data=deepcopy(self.data),
             file=self.file,
             hostname=self.hostname,
             source=self.source,
