@@ -178,19 +178,16 @@ def _plugin_kind_or_none(raw_kind: str) -> PluginKind | None:
     Accepts both the singular kinds written in configs (``data_monitor``) and
     the plural interface names (``data_monitors``) that
     :func:`courier.cli.plugins.normalize_kind` maps them to, so the dashboard
-    understands exactly the set of configs the runtime accepts.
+    understands exactly the set of configs the runtime accepts -- including
+    the case and whitespace variants ``normalize_kind`` tolerates.
     """
-    from courier.cli.plugins import normalize_kind  # noqa: PLC0415
+    from courier.cli.plugins import KIND_INFO, normalize_kind  # noqa: PLC0415
 
-    for candidate in (raw_kind, normalize_kind(raw_kind)):
-        try:
-            return PluginKind(candidate)
-        except ValueError:
-            continue
-    # Plural interface name -> singular enum value (e.g. "dispatchers").
-    singular = raw_kind[:-1] if raw_kind.endswith("s") else raw_kind
+    info = KIND_INFO.get(normalize_kind(raw_kind))
+    if info is None or info[1] is None:
+        return None
     try:
-        return PluginKind(singular)
+        return PluginKind(info[1])
     except ValueError:
         return None
 

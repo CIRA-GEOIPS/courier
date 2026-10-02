@@ -1060,6 +1060,7 @@ class Service:
             try:
                 self.preflight_check()
                 self._start_managers()
+                self._require_healthy_after_startup()
 
                 self._logger.info(
                     f"Service {self._config.service_id} started successfully",
@@ -1073,11 +1074,18 @@ class Service:
                 self._logger.exception("Service startup failed")
                 raise
             finally:
-                if not self._health_check():
-                    raise RuntimeError(
-                        "Service health check failed after startup",
-                    )
                 self._cleanup()
+
+    def _require_healthy_after_startup(self) -> None:
+        """Raise ``RuntimeError`` if a manager is unhealthy once started.
+
+        Called inside ``start``'s ``try``, never its ``finally``: every exit
+        path -- a startup failure, Ctrl-C, a clean shutdown -- reaches
+        ``finally`` with managers stopping, and a raise there would mask the
+        exception in flight and skip ``_cleanup()``.
+        """
+        if not self._health_check():
+            raise RuntimeError("Service health check failed after startup")
 
     def _cleanup(self) -> None:
         """Perform complete resource cleanup for service shutdown."""

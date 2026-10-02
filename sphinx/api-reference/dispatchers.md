@@ -281,9 +281,13 @@ template, `{{ output_dir }}` holds `slurm_output_dir`.
 
 - **As a batch script.** A `shell_payload` or `bash_payload` whose script runs
   directly (no `binary`, no `prefix_args`) is submitted as the batch script
-  itself: `sbatch <options> <script> [suffix_args...]`. If the
-  script has no shebang line, one naming the payload's interpreter is added
-  (`#!/usr/bin/env bash`, or `#!<path>` for an absolute `default_binary`).
+  itself: `sbatch <options> <script> [suffix_args...]`. `sbatch` runs it
+  through its shebang, so the shebang must name the interpreter a local
+  dispatcher would use. If the script has no shebang line, one naming the
+  payload's interpreter is added (`#!/usr/bin/env bash`, or `#!<path>` for an
+  absolute `default_binary`). A shebang naming that interpreter is kept with
+  its options (`#!/bin/bash -l`); one naming a different interpreter, such as
+  `#!/bin/sh` in a `bash_payload`, is replaced and a warning logged.
   `#SBATCH` directives at the top of the script apply, except where the
   command line sets the same option: the dispatcher always passes
   `--job-name`, `--output` and `--error`, and passes `--partition`,
