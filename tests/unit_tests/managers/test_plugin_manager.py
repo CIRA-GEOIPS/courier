@@ -179,10 +179,15 @@ class TestStartPluginEagerHealth:
         manager._plugins["healthy-one"] = info
 
         manager._start_plugin(info)
-        info.ready.wait(timeout=5.0)
-        info.thread.join(timeout=5.0)  # type: ignore[union-attr]
-
-        assert info.state == PluginRunState.RUNNING
+        try:
+            assert info.ready.wait(timeout=5.0)
+            assert info.state == PluginRunState.RUNNING
+        finally:
+            # The plugin thread loops while the manager is RUNNING; leaving it
+            # alive leaks a thread into later tests that patch time.sleep.
+            manager._state = PluginRunState.STOPPED
+            info.thread.join(timeout=5.0)  # type: ignore[union-attr]
+        assert not info.thread.is_alive()  # type: ignore[union-attr]
 
     def test_unhealthy_plugin_still_proceeds_to_running(self) -> None:
         """When is_healthy() is always False, eventually proceeds to RUNNING."""
@@ -197,10 +202,13 @@ class TestStartPluginEagerHealth:
         manager._plugins["slow-one"] = info
 
         manager._start_plugin(info)
-        info.ready.wait(timeout=5.0)
-        info.thread.join(timeout=5.0)  # type: ignore[union-attr]
-
-        assert info.state == PluginRunState.RUNNING
+        try:
+            assert info.ready.wait(timeout=5.0)
+            assert info.state == PluginRunState.RUNNING
+        finally:
+            manager._state = PluginRunState.STOPPED
+            info.thread.join(timeout=5.0)  # type: ignore[union-attr]
+        assert not info.thread.is_alive()  # type: ignore[union-attr]
 
     def test_start_raises_plugin_goes_failed(self) -> None:
         """When plugin.start() raises, state transitions to FAILED."""
