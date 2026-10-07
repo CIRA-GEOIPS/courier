@@ -527,8 +527,8 @@ skip-magic-trailing-comma = false
 line-ending = "lf"
 
 [project]
-name = "data-courier"
-version = "1.0.0-alpha.29"
+name = "courier-pigeon"
+version = "1.0.0-alpha.37"
 requires-python = ">=3.11,<3.15"
 
 # Mirror of the [tool.poetry.plugins.*] tables above. Both are declared so the
