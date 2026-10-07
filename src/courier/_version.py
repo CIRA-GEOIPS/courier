@@ -1,10 +1,5 @@
 """Version, read from installed distribution metadata.
 
-These were hand-written constants and drifted from ``pyproject.toml`` twice --
-most recently sitting at ``1.0.0-alpha.12`` while the project shipped
-``1.0.0-alpha.29``, so ``courier.__version__`` reported a version that had not
-existed for months. Deriving means a release bumps one file and cannot lie.
-
 Reading metadata requires the distribution to be installed, which is already a
 hard requirement: entry-point plugin discovery cannot work without it. The
 fallback exists only so a bare source checkout stays importable.
