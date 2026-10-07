@@ -7,7 +7,7 @@
 ![Install](.github/badges/install-badge.svg)
 ![CSpell](.github/badges/cspell-badge.svg)
 
-Courier is a plugin-based, event-driven orchestration framework for building data processing pipelines. It watches for incoming data, groups it into jobs, and dispatches those jobs to processing workflows. It scales from a single laptop to a distributed cluster without changing your pipeline code.
+Courier (full name `courier-pigeon`) is a plugin-based, event-driven orchestration framework for building data processing pipelines. It watches for incoming data, groups it into jobs, and dispatches those jobs to processing workflows. It scales from a single laptop to a distributed cluster without changing your pipeline code.
 
 While general-purpose, Courier ships with extra tooling for geolocation data — satellite instrument configs, metadata extraction, and integration with [GeoIPS](https://github.com/NRLMMD-GEOIPS/geoips).
 
