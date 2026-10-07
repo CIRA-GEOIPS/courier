@@ -2,7 +2,7 @@
 name = "courier-pigeon"
 version = "1.0.0-alpha.37"
 description = "A plugin-based, event-driven orchestration framework for building data processing pipelines"
-authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Shane Ciardelli <shaneciardelli27@gmail.com>" "Evan Rose <none@email.com>"]
+authors = ["Gwyn Uttmark <biosafetylevel5@gmail.com>", "Shane Ciardelli <shaneciardelli27@gmail.com>", "Evan Rose <none@email.com>"]
 repository = "https://github.com/biosafetylvl5/courier"
 license = "Apache-2.0"
 
