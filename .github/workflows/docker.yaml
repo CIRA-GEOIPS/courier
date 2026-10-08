@@ -19,9 +19,12 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+# IMAGE_NAME is not set here. Registry references must be lowercase, and
+# github.repository keeps the owner's case (CIRA-GEOIPS/courier), which buildx
+# rejects. Expressions have no lower(), so each publishing job derives it in a
+# step instead -- see "Derive the image name".
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 jobs:
   # Build and test on each architecture natively. Emulated cross-building would
   # emulate a from-source dependency build, and `--load` does not work for a
@@ -98,6 +101,8 @@ jobs:
             runner: ubuntu-24.04-arm
             platform: linux/arm64
     steps:
+      - name: Derive the image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - name: Check out the repository code
         uses: actions/checkout@v6
       - name: Set up Buildx
@@ -167,6 +172,8 @@ jobs:
       attestations: write
       id-token: write
     steps:
+      - name: Derive the image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to the container registry

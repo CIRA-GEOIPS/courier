@@ -21,7 +21,8 @@ By the end of this tutorial, you will:
 ## Prerequisites
 
 - Courier installed ({doc}`../getting-started/installation`)
-- RabbitMQ running on localhost
+- RabbitMQ running on localhost (or delete the `broker` block from the config
+  below to use the built-in in-memory broker)
 - Basic familiarity with YAML
 - A sample GOES-18 ABI file (or ability to create a test file)
 
@@ -164,6 +165,7 @@ courier run watcher.yaml
 You should see startup logs like these (timestamps and log levels trimmed):
 
 ```
+[Module: tracing] OpenTelemetry tracing disabled
 [Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
 [Manager: PluginManager] Registered plugin: create-jobs (class=DummyJobBuilder v-1)
 [Manager: PluginManager] Registered plugin: log-files (class=local_dispatcher v-1)
@@ -200,7 +202,7 @@ cp data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c2024
 In the service logs, you'll see lines like these:
 
 ```
-[Plugin: file_system_poller_watchdog] Found file: {"file": "/home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_s20240151200000_e20240151209310_c20240151209360.nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}
+[Plugin: file_system_poller_watchdog] Found file: {"data": null, "file": "/home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_s20240151200000_e20240151209310_c20240151209360.nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}
 [Plugin: DummyJobBuilder] Job /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_...nc is ready; emitting
 [Plugin: DummyJobBuilder] Emitted job /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_...nc to targets ['log-files']
 [Plugin: bash_payload] [job: /home/user/tutorial01-file-watcher/data/incoming/OR_ABI-...nc] [stdout] ==========================================
@@ -237,7 +239,8 @@ Look for these metrics (labels trimmed):
 
 ### Service health
 
-Set on every heartbeat (every 30 seconds by default):
+Set on every heartbeat (every 30 seconds by default). It reads `0.0` until
+the first heartbeat, so wait 30 seconds after startup before checking it:
 
 ```
 courier_service_health 1.0
@@ -344,6 +347,4 @@ You've completed all the learning objectives listed at the start of this tutoria
 
 ## Complete Code
 
-The complete configuration is available in the tutorial repository:
-
-[tutorial01-file-watcher/watcher.yaml](https://github.com/biosafetylvl5/courier/tree/main/examples/tutorials/01-file-watcher)
+The complete configuration is the `watcher.yaml` from Step 3.
