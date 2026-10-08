@@ -68,7 +68,7 @@ class TestBasicExecution:
 class TestLogToLogger:
     """Streaming output to a logger."""
 
-    def test_stdout_streamed_at_debug(self) -> None:
+    def test_stdout_streamed_at_info(self) -> None:
         mock_logger = MagicMock(spec=logging.Logger)
 
         result = _run(
@@ -79,10 +79,10 @@ class TestLogToLogger:
         )
 
         assert result.return_code == 0
-        debug_calls = [
-            c for c in mock_logger.log.call_args_list if c[0][0] == logging.DEBUG
+        info_calls = [
+            c for c in mock_logger.log.call_args_list if c[0][0] == logging.INFO
         ]
-        assert any("[job: test]" in str(c) and "hello" in str(c) for c in debug_calls)
+        assert any("[job: test]" in str(c) and "hello" in str(c) for c in info_calls)
 
     def test_stderr_streamed_at_warning(self) -> None:
         mock_logger = MagicMock(spec=logging.Logger)
@@ -140,13 +140,13 @@ class TestLogOnlyErrors:
             log_only_errors=True,
         )
 
-        debug_calls = [
-            c for c in mock_logger.log.call_args_list if c[0][0] == logging.DEBUG
+        info_calls = [
+            c for c in mock_logger.log.call_args_list if c[0][0] == logging.INFO
         ]
         warning_calls = [
             c for c in mock_logger.log.call_args_list if c[0][0] == logging.WARNING
         ]
-        assert debug_calls == []
+        assert info_calls == []
         assert len(warning_calls) >= 1
 
     def test_stdout_is_not_written_to_file(self, tmp_path: Path) -> None:

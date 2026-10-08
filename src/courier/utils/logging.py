@@ -269,7 +269,7 @@ def get_logger(
         Identifier for the source (service ID, plugin name, class name, or module name).
     config : ServiceConfig or None, optional
         Service configuration containing Loki settings. If None, uses console-only
-        logging with default settings (DEBUG level, no Loki).
+        logging with default settings (INFO level, no Loki).
 
     Returns
     -------
@@ -285,9 +285,9 @@ def get_logger(
     >>> logger = get_logger("service", "my-service-id", config)
     >>> logger.info("Service start")  # Logs: [Service: my-service-id] Service start
 
-    >>> # Without config (console-only, DEBUG level)
+    >>> # Without config (console-only, INFO level)
     >>> logger = get_logger("module", "my_module")
-    >>> logger.debug("Debug message")  # Logs: [Module: my_module] Debug message
+    >>> logger.info("Info message")  # Logs: [Module: my_module] Info message
     """
     # Create unique logger name based on source type and name
     logger_name = f"courier.{source_type}.{source_name}"
@@ -314,7 +314,7 @@ def get_logger(
             if log_level_str == "TRACE":
                 log_level = TRACE_LEVEL
             else:
-                log_level = getattr(logging, log_level_str, logging.DEBUG)
+                log_level = getattr(logging, log_level_str, logging.INFO)
 
             # Enforce INFO minimum in production mode
             if config.production_mode and log_level < logging.INFO:
@@ -362,8 +362,8 @@ def get_logger(
                 if loki_handler is not None:
                     base_logger.addHandler(loki_handler)
         else:
-            # Default to DEBUG level when no config provided
-            base_logger.setLevel(logging.DEBUG)
+            # Default to INFO level when no config provided
+            base_logger.setLevel(logging.INFO)
 
     # Wrap logger in ContextAdapter to prepend source information
     adapter = ContextAdapter(

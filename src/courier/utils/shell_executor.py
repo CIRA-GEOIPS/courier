@@ -95,7 +95,7 @@ def execute_shell_script(  # noqa: PLR0913
     logger : logging.Logger or logging.LoggerAdapter or None
         Logger or adapter for streaming output (required if ``log_to_logger=True``).
     log_to_logger : bool
-        Stream stdout→DEBUG, stderr→WARNING to the logger in real-time.
+        Stream stdout→INFO, stderr→WARNING to the logger in real-time.
     log_prefix : str
         Prefix prepended to each log line (e.g., ``"[job: abc] [file: /data/x.nc]"``).
     log_to_file : bool
@@ -183,7 +183,7 @@ def execute_shell_script(  # noqa: PLR0913
 
         stdout_thread = threading.Thread(
             target=_read_stream,
-            args=(process.stdout, stdout_lines, logging.DEBUG, "stdout"),
+            args=(process.stdout, stdout_lines, logging.INFO, "stdout"),
             daemon=True,
         )
         stderr_thread = threading.Thread(

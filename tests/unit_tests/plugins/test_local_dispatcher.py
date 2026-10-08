@@ -230,7 +230,7 @@ class TestLogging:
         assert logs[0].return_code == 0
         lines = [(r.levelno, r.getMessage()) for r in records]
         assert any(
-            level == logging.DEBUG and "[job: job-1] [stdout] hello" in message
+            level == logging.INFO and "[job: job-1] [stdout] hello" in message
             for level, message in lines
         )
         assert any(

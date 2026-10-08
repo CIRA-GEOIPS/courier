@@ -161,8 +161,7 @@ Start the service in the foreground:
 courier run watcher.yaml
 ```
 
-You should see startup logs like these (timestamps, log levels and DEBUG
-lines trimmed):
+You should see startup logs like these (timestamps and log levels trimmed):
 
 ```
 [Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
@@ -198,8 +197,7 @@ cp data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_e20240151209310_c2024
 ```{include} ../includes/watchdog-new-files-only.md
 ```
 
-In the service logs, you'll see lines like these (courier logs at DEBUG by
-default, which is where the script's output appears):
+In the service logs, you'll see lines like these:
 
 ```
 [Plugin: file_system_poller_watchdog] Found file: {"file": "/home/user/tutorial01-file-watcher/data/incoming/OR_ABI-L1b-RadF-M6C02_G18_s20240151200000_e20240151209310_c20240151209360.nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}

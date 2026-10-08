@@ -21,6 +21,13 @@ keys by name, together with their replacement.
   carries, and keeps the execution options: timeout, logging and
   `output_files`. See {doc}`../api-reference/dispatchers`.
 - **Plugins were removed or replaced**, as listed in the table below.
+- **Tracing is off by default.** Set `COURIER_TRACING_ENABLED=true` (or
+  `tracing_enabled: true` in `service_config`) to keep exporting spans. See
+  {doc}`../operations/tracing`.
+- **The default log level is INFO**, not DEBUG. Set `COURIER_LOG_LEVEL=DEBUG`
+  or pass `--log-level DEBUG` to get the old output. With `log_to_logger`, a
+  payload's stdout is now logged at INFO instead of DEBUG, so it still shows
+  at the default level.
 - **Extras removed:** `data-courier[http]` and `data-courier[all-dispatchers]`.
   Installing them now installs nothing extra.
 - **Stricter configs.** Dispatcher and payload configs reject unknown keys, so

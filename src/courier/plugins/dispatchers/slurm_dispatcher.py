@@ -711,6 +711,6 @@ class SlurmDispatcher(Dispatcher):
             return
         prefix = f"[job: {job.identifier}]"
         for line in stdout.splitlines():
-            self._logger.debug(f"{prefix} [stdout] {line}")
+            self._logger.info(f"{prefix} [stdout] {line}")
         for line in stderr.splitlines():
             self._logger.warning(f"{prefix} [stderr] {line}")

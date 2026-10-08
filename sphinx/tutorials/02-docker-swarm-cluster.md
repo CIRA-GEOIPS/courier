@@ -439,10 +439,11 @@ Add a Jaeger all-in-one service to `docker-compose.yml`:
 | `16686` | Jaeger UI — search and visualize traces |
 | `4318` | OTLP HTTP receiver — Courier sends spans here |
 
-Add the tracing environment variable to **both** Courier containers.
-Append to each container's `environment` block:
+Tracing is off by default. Add the tracing environment variables to **both**
+Courier containers. Append to each container's `environment` block:
 
 ```
+      COURIER_TRACING_ENABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318/v1/traces"
 ```
 
@@ -483,6 +484,7 @@ services:
       - "watch-files"
     environment:
       COURIER_PROMETHEUS_PORT: "8001"
+      COURIER_TRACING_ENABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318/v1/traces"
     volumes:
       - ./config.yaml:/config/service.yaml:ro
@@ -502,6 +504,7 @@ services:
       - "create-jobs,process-files"
     environment:
       COURIER_PROMETHEUS_PORT: "8002"
+      COURIER_TRACING_ENABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318/v1/traces"
     volumes:
       - ./config.yaml:/config/service.yaml:ro
@@ -635,8 +638,7 @@ Check the processor logs:
 docker compose logs courier-processor
 ```
 
-You should see lines like these (timestamps, levels and most DEBUG lines
-trimmed):
+You should see lines like these (timestamps and levels trimmed):
 
 ```
 [Plugin: DummyJobBuilder] Job /data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc is ready; emitting
@@ -647,7 +649,7 @@ trimmed):
 [Plugin: bash_payload] [job: /data/incoming/OR_ABI-...nc] [stdout] ==========================================
 ```
 
-The `[stdout]` lines are the payload's output, logged at DEBUG because the
+The `[stdout]` lines are the payload's output, logged at INFO because the
 dispatcher sets `log_to_logger: true`. A job whose script fails is logged at
 ERROR either way.
 
@@ -730,7 +732,8 @@ and data directory.
 
 **No traces in Jaeger:**
 
-- Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is set on both Courier containers.
+- Verify `COURIER_TRACING_ENABLED` is `"true"` and `OTEL_EXPORTER_OTLP_ENDPOINT`
+  is set on both Courier containers.
 - Check the endpoint is `http://jaeger:4318/v1/traces` (not localhost).
 - Jaeger's OTLP receiver must be enabled — the
   `COLLECTOR_OTLP_ENABLED=true` environment variable does this.

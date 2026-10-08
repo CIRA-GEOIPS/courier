@@ -87,25 +87,25 @@ All four tracing fields live on the immutable `ServiceConfig` dataclass (`src/co
 
 | Field                      | Environment Variable               | Default                                    | Description                                                      |
 |----------------------------|------------------------------------|--------------------------------------------|------------------------------------------------------------------|
-| `tracing_enabled`          | `COURIER_TRACING_ENABLED`          | `true`                                     | Master toggle. Set to `"false"` to disable all tracing.         |
+| `tracing_enabled`          | `COURIER_TRACING_ENABLED`          | `false`                                    | Master toggle. Set to `"true"` to enable tracing.              |
 | `tracing_endpoint`         | `OTEL_EXPORTER_OTLP_ENDPOINT`      | `http://localhost:4318/v1/traces`          | Primary OTLP HTTP collector endpoint. Takes precedence over the Courier-specific variable. |
 |                            | `COURIER_TRACING_ENDPOINT`         | (same default as above)                   | Courier-specific OTLP endpoint. Used only when `OTEL_EXPORTER_OTLP_ENDPOINT` is not set. |
 | `tracing_service_name`     | `COURIER_TRACING_SERVICE_NAME`     | `""` (falls back to `service_id`)          | `service.name` resource attribute for all exported spans.        |
 | `tracing_sample_rate`      | `COURIER_TRACING_SAMPLE_RATE`      | `1.0`                                      | Float between 0.0 and 1.0. Controls the root sampling decision; children inherit the decision via `ParentBased`. |
 
-### Disabling Tracing
+### Enabling and Disabling Tracing
 
-Two independent mechanisms disable tracing:
+Tracing is off by default. Turn it on with Courier's own toggle, either as an
+environment variable or as `tracing_enabled: true` in `service_config`:
 
 ```bash
-# Method 1: Courier's own toggle
-export COURIER_TRACING_ENABLED=false
-
-# Method 2: OpenTelemetry SDK convention
-export OTEL_TRACES_EXPORTER=none
+export COURIER_TRACING_ENABLED=true
 ```
 
-When either is active, `init_tracing()` installs a `NoOpTracerProvider`. All `get_tracer()` calls return no-op tracers whose spans have invalid span contexts and are never exported. No network traffic leaves the process.
+The OpenTelemetry SDK convention `OTEL_TRACES_EXPORTER=none` disables tracing
+even when `tracing_enabled` is true.
+
+When tracing is disabled, `init_tracing()` installs a `NoOpTracerProvider`. All `get_tracer()` calls return no-op tracers whose spans have invalid span contexts and are never exported. No network traffic leaves the process.
 
 ### Sampling Behavior
 
@@ -1141,9 +1141,9 @@ piped through `jq` with `@csv` output formatting.
 ### Environment Variables
 
 ```bash
-COURIER_TRACING_ENABLED=true          # Enable tracing (default)
-COURIER_TRACING_ENABLED=false         # Disable tracing
-OTEL_TRACES_EXPORTER=none             # Alternative disable (SDK convention)
+COURIER_TRACING_ENABLED=true          # Enable tracing
+COURIER_TRACING_ENABLED=false         # Disable tracing (default)
+OTEL_TRACES_EXPORTER=none             # Force-disable (SDK convention)
 COURIER_TRACING_ENDPOINT=http://...   # OTLP collector URL
 OTEL_EXPORTER_OTLP_ENDPOINT=http://... # OTLP collector URL (takes precedence)
 COURIER_TRACING_SERVICE_NAME=courier  # Service name in traces
