@@ -99,15 +99,14 @@ or tool, or fix the dispatcher's config. `courier queues list <config>` names
 each dead-letter queue; read its depth with the broker's own tools
 (`rabbitmqctl list_queues -p <vhost> name messages`, or the management UI).
 A job parked because it carries no payload was published by a job builder
-from an older release, since every current builder attaches one; see
-{doc}`../getting-started/upgrading` before re-driving it.
+from an older release, since every current builder attaches one. Re-driving
+it parks it again: re-feed its files through a current builder instead.
 
 ## Options for every dispatcher
 
 These options are accepted by every dispatcher (`DispatcherGroupConfig`).
 Unknown keys are rejected, and keys removed from older dispatchers fail with a
-message that names their replacement (see
-{doc}`../getting-started/upgrading`). A setting every payload takes (such as
+message that names their replacement. A setting every payload takes (such as
 `script` or `prefix_args`; see {doc}`payloads`) placed here is reported as
 belonging in the job builder's payload block.
 
@@ -406,6 +405,9 @@ a job, and counts the messages ready for delivery at that moment: the job in
 hand and any other unacknowledged message are not included. It keeps that
 value until the next job arrives, and is set to 0 when the broker does not
 answer the probe. It therefore cannot show that a queue has drained; ask the
-broker (see {ref}`upgrading-drain-check`).
+broker. A queue has drained when it holds no message ready for delivery and
+none delivered but not yet acknowledged. On RabbitMQ, read both counts with
+`rabbitmqctl list_queues -p <vhost> name messages_ready messages_unacknowledged`
+or in the management UI.
 
 Payload metrics are listed in {doc}`payloads`.

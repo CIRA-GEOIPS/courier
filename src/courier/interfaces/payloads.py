@@ -72,26 +72,20 @@ DISPATCHER_CONTEXT_NAMES: frozenset[str] = frozenset(
     {"dispatcher", "script_path", "hostname", "output_dir"},
 )
 
-_UPGRADE_GUIDE = "see 'Removed configuration keys' in the upgrade guide"
 _PARALLEL_REMOVED = (
     "per-file parallel execution within one job is not supported; scale out "
-    f"with more dispatcher replicas or smaller jobs ({_UPGRADE_GUIDE})"
+    "with more dispatcher replicas or smaller jobs"
 )
 
 #: Dispatcher config keys earlier releases accepted, mapped to what to do
 #: instead.  They are rejected with this advice.
 REMOVED_DISPATCHER_KEYS: dict[str, str] = {
-    "bash_script": (
-        f"set the script in the job builder's nested payload block ({_UPGRADE_GUIDE})"
-    ),
+    "bash_script": ("set the script in the job builder's nested payload block"),
     "fail_fast": _PARALLEL_REMOVED,
-    "python_venv": (
-        f"set the payload's `default_binary` to the venv's interpreter "
-        f"({_UPGRADE_GUIDE})"
-    ),
+    "python_venv": ("set the payload's `default_binary` to the venv's interpreter"),
     "sbatch_template": (
-        f"use slurm_dispatcher's scheduler options, or #SBATCH lines in the "
-        f"payload script ({_UPGRADE_GUIDE})"
+        "use slurm_dispatcher's scheduler options, or #SBATCH lines in the "
+        "payload script"
     ),
 }
 

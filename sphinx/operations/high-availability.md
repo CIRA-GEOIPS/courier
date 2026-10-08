@@ -28,8 +28,7 @@ at the same data source. Common scenarios:
   stream across cores or hosts.
 - Rolling deployments where an old and a new instance overlap briefly during
   a restart. An overlap is only safe between releases that share the job
-  message format; the release that moved payloads onto jobs does not, see
-  {doc}`../getting-started/upgrading`.
+  message format; the release that moved payloads onto jobs does not.
 
 A **single-instance** deployment does not benefit from state sync and should
 leave it unconfigured.

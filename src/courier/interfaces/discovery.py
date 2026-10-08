@@ -54,12 +54,10 @@ ENTRY_POINT_PREFIX = "courier"
 #: to what replaces them; an unknown-plugin error for one names it.
 REMOVED_PLUGINS: dict[tuple[str, str], str] = {
     ("dispatchers", "serial_bash"): (
-        "use local_dispatcher with a bash_payload (see 'Migrating serial_bash' "
-        "in the upgrade guide)"
+        "use local_dispatcher, with a bash_payload in the job builder's payload block"
     ),
     ("dispatchers", "parallel_bash"): (
-        "use local_dispatcher with a bash_payload (see 'Migrating "
-        "parallel_bash' in the upgrade guide)"
+        "use local_dispatcher, with a bash_payload in the job builder's payload block"
     ),
     ("dispatchers", "http_dispatcher"): "it has no replacement",
 }
