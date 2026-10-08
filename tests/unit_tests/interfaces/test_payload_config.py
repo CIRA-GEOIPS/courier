@@ -288,7 +288,7 @@ class TestDispatcherConfigKeys:
             DispatcherGroupConfig.model_validate({"timeout_secnds": 5})
 
     @pytest.mark.parametrize("key", sorted(REMOVED_DISPATCHER_KEYS))
-    def test_removed_key_fails_with_a_pointer_to_the_upgrade_guide(
+    def test_removed_key_fails_with_its_replacement(
         self,
         key: str,
     ) -> None:
@@ -299,7 +299,6 @@ class TestDispatcherConfigKeys:
         assert f"{key!r} is no longer supported: {REMOVED_DISPATCHER_KEYS[key]}" in (
             message
         )
-        assert "upgrade guide" in message
 
     @pytest.mark.parametrize(
         "model",

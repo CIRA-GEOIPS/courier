@@ -133,8 +133,7 @@ the script its jobs run, and how to launch it. The block is required, and the
 payload's identifier must also be unique in the file. Dispatchers execute the
 payload each job carries, and take only execution settings (timeout, logging,
 output scanning). See {doc}`../api-reference/payloads`,
-{doc}`../api-reference/dispatchers`, and {doc}`upgrading` for a config written
-for `serial_bash` or `parallel_bash`.
+and {doc}`../api-reference/dispatchers`.
 
 ## Broker Configuration
 
@@ -479,7 +478,7 @@ courier validate my_service.yaml
 key, for example:
 
 ```text
-  dispatch.config              'bash_script' is no longer supported: set the script in the job builder's nested payload block (see 'Removed configuration keys' in the upgrade guide)
+  dispatch.config              'bash_script' is no longer supported: set the script in the job builder's nested payload block
 ```
 
 Common messages (`<...>` stands for a value from your config, and `...` for
@@ -492,7 +491,7 @@ the rest of a longer message):
 | `Input tag '<transport>' found using 'transport' does not match any of the expected tags: 'amqp', 'redis', 'memory', 'url'` | An invalid `transport` value                                                    | Use `amqp`, `redis`, `memory`, or `url`       |
 | `not a recognised setting`                                                                                                  | An unknown field                                                                | Remove the field, or fix its spelling         |
 | `Duplicate run step identifiers detected: <identifiers>`                                                                    | Two steps share the same identifier                                             | Rename one of the step identifiers            |
-| `'<key>' is no longer supported: ...`                                                                                       | A key removed in this release                                                   | Follow the message; see {doc}`upgrading`      |
+| `'<key>' is no longer supported: ...`                                                                                       | A key removed in this release                                                   | Follow the message                            |
 | `'<key>': dispatcher option(s) set in a payload block; ...`                                                                 | An option every dispatcher takes (`timeout_seconds` etc.) in a payload's config | Move the key to the dispatcher's `config`     |
 | `'<key>': payload setting(s) set in a dispatcher block; ...`                                                                | A payload setting (`script`, `prefix_args` etc.) in a dispatcher's config       | Move the key to the builder's `payload` block |
 | `Job builder '<identifier>' has no 'payload' block. ...`, or another message about a `payload` block or template            | See {ref}`payload-errors`                                                       | Follow the message                            |

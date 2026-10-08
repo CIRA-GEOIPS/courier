@@ -27,7 +27,6 @@ getting-started/installation
 getting-started/quick-start
 getting-started/init
 getting-started/configuration
-getting-started/upgrading
 ```
 
 ```{toctree}

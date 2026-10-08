@@ -1,13 +1,13 @@
 # Types API Reference
 
 The core data types that flow through Courier's pipeline:
-{py:class}`~courier.types.datum.Datum` (mutable) and
-{py:class}`~courier.types.datum.FrozenDatum` (immutable). Each job also carries
+`Datum` (mutable) and
+`FrozenDatum` (immutable). Each job also carries
 the payload it executes, as a [PayloadSpec](#payloadspec).
 
 ## Datum
 
-{py:class}`~courier.types.datum.Datum`
+`courier.types.datum.Datum`
 
 Represents a single data file with its associated metadata. `Datum` is a
 mutable {py:func}`dataclasses.dataclass` -- it is created by data monitors,
@@ -66,25 +66,25 @@ type `T` of its optional `data` payload.
 
 * - Method
   - Description
-* - {py:meth}`~courier.types.datum.Datum.to_dict`
+* - `Datum.to_dict()`
   - Serialize to a `dict` with keys matching the attribute names. The `metadata` dict is copied (not shared) and `timestamp` is ISO-8601 formatted.
-* - {py:meth}`~courier.types.datum.Datum.from_dict`
+* - `Datum.from_dict()`
   - Deserialize from a `dict`. Only recognized keys (`data`, `source`, `instrument`, `processing_stage`, `domain`, `hostname`, `file`, `metadata`, `num_expected`, `timestamp`) are used; extraneous keys are silently ignored. Legacy keys (`platform`, `sensor`, `level`, `sector`) are **not** recognized.
-* - {py:meth}`~courier.types.datum.Datum.from_string`
-  - Deserialize from a JSON string via {py:meth}`~courier.types.datum.Datum.from_dict`.
-* - {py:meth}`~courier.types.datum.Datum.freeze`
-  - Convert to an immutable {py:class}`~courier.types.datum.FrozenDatum`. The `metadata` dict is wrapped with {py:class}`types.MappingProxyType` for true immutability.
-* - {py:meth}`~courier.types.datum.Datum.merge_metadata`
+* - `Datum.from_string()`
+  - Deserialize from a JSON string via `Datum.from_dict()`.
+* - `Datum.freeze()`
+  - Convert to an immutable `FrozenDatum`. The `metadata` dict is wrapped with {py:class}`types.MappingProxyType` for true immutability.
+* - `Datum.merge_metadata()`
   - Shallow-merge metadata into the file. Only `None` or default fields are overwritten; existing values are preserved. Accepts a `metadata={...}` kwarg that shallow-merges into `self.metadata` (existing keys kept, new keys added).
-* - {py:meth}`~courier.types.datum.Datum.with_updates`
+* - `Datum.with_updates()`
   - Create a new `Datum` with updated fields via {py:func}`dataclasses.replace`.
 ```
 
 ## FrozenDatum
 
-{py:class}`~courier.types.datum.FrozenDatum`
+`courier.types.datum.FrozenDatum`
 
-Immutable (`frozen=True`) counterpart of {py:class}`~courier.types.datum.Datum`.
+Immutable (`frozen=True`) counterpart of `Datum`.
 It is the form carried through the pipeline once a job is built.
 All attributes are read-only after construction.
 
@@ -117,7 +117,7 @@ All attributes are read-only after construction.
   - Domain or sector.
 * - `metadata`
   - {py:class}`Mapping[str, Any] <collections.abc.Mapping>`
-  - Metadata dictionary. When the `FrozenDatum` is created via {py:meth}`~courier.types.datum.Datum.freeze`, metadata is wrapped with {py:class}`types.MappingProxyType` for true immutability. When created directly or via {py:meth}`~courier.types.datum.FrozenDatum.from_dict`, metadata is stored as a plain `dict`. Calling {py:meth}`~courier.types.datum.FrozenDatum.thaw` unwraps any `MappingProxyType` back to a mutable `dict`.
+  - Metadata dictionary. When the `FrozenDatum` is created via `Datum.freeze()`, metadata is wrapped with {py:class}`types.MappingProxyType` for true immutability. When created directly or via `FrozenDatum.from_dict()`, metadata is stored as a plain `dict`. Calling `FrozenDatum.thaw()` unwraps any `MappingProxyType` back to a mutable `dict`.
 * - `num_expected`
   - `int`
   - Expected number of files.
@@ -140,15 +140,15 @@ All attributes are read-only after construction.
 
 * - Method
   - Description
-* - {py:meth}`~courier.types.datum.FrozenDatum.to_dict`
-  - Same serialization as {py:meth}`~courier.types.datum.Datum.to_dict`.
-* - {py:meth}`~courier.types.datum.FrozenDatum.from_dict`
-  - Same deserialization as {py:meth}`~courier.types.datum.Datum.from_dict`.
-* - {py:meth}`~courier.types.datum.FrozenDatum.from_string`
-  - Same JSON deserialization as {py:meth}`~courier.types.datum.Datum.from_string`.
-* - {py:meth}`~courier.types.datum.FrozenDatum.thaw`
-  - Convert back to a mutable {py:class}`~courier.types.datum.Datum`. The `metadata` field becomes a plain `dict` (the `MappingProxyType` is unwrapped).
-* - {py:meth}`~courier.types.datum.FrozenDatum.with_updates`
+* - `FrozenDatum.to_dict()`
+  - Same serialization as `Datum.to_dict()`.
+* - `FrozenDatum.from_dict()`
+  - Same deserialization as `Datum.from_dict()`.
+* - `FrozenDatum.from_string()`
+  - Same JSON deserialization as `Datum.from_string()`.
+* - `FrozenDatum.thaw()`
+  - Convert back to a mutable `Datum`. The `metadata` field becomes a plain `dict` (the `MappingProxyType` is unwrapped).
+* - `FrozenDatum.with_updates()`
   - Create a new `FrozenDatum` with updated fields via {py:func}`dataclasses.replace`.
 ```
 
@@ -161,11 +161,11 @@ dispatcher that receives the job executes it. Its fields are listed in
 
 ## Breaking Changes
 
-The internal {py:func}`~courier.types.datum._file_fields_from_dict` helper
+The internal `_file_fields_from_dict()` helper
 **no longer recognizes legacy fallback keys**. If your configuration or
 serialized data uses legacy keys, update to the canonical attribute names.
 
 Only `data`, `source`, `instrument`, `processing_stage`, `domain`,
 `hostname`, `file`, `metadata`, `num_expected`, and `timestamp`
-are recognized by {py:meth}`~courier.types.datum.Datum.from_dict` and
-{py:meth}`~courier.types.datum.FrozenDatum.from_dict`.
+are recognized by `Datum.from_dict()` and
+`FrozenDatum.from_dict()`.

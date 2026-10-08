@@ -170,9 +170,9 @@ the compute nodes. See {doc}`../../api-reference/dispatchers`.
 - `DispatcherGroupConfig` and `PayloadConfig` forbid unknown keys, and each
   dispatcher and payload validates with its own `config_class`. Keys removed by
   this change (`bash_script`, `max_workers`, `fail_fast`, `python_venv`,
-  `sbatch_template`) fail validation with a pointer to the upgrade guide.
+  `sbatch_template`) fail validation with a message naming their replacement.
 - The job wire format changed. Jobs queued by a pre-upgrade builder are
-  parked, not executed; see {doc}`../../getting-started/upgrading`.
+  parked, not executed.
 
 ### What did not carry over
 
@@ -180,7 +180,6 @@ the compute nodes. See {doc}`../../api-reference/dispatchers`.
 payload on the builder; per-file concurrency within a job (`max_workers`,
 `fail_fast`) is gone. `http_dispatcher` is removed with no replacement, along
 with its extras and metrics. `python_venv` and `sbatch_template` are removed.
-{doc}`../../getting-started/upgrading` gives the migration for each.
 
 ## Trade-offs accepted
 
