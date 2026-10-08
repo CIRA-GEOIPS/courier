@@ -105,7 +105,12 @@ export COURIER_TRACING_ENABLED=true
 The OpenTelemetry SDK convention `OTEL_TRACES_EXPORTER=none` disables tracing
 even when `tracing_enabled` is true.
 
-When tracing is disabled, `init_tracing()` installs a `NoOpTracerProvider`. All `get_tracer()` calls return no-op tracers whose spans have invalid span contexts and are never exported. No network traffic leaves the process.
+When tracing is disabled, `init_tracing()` installs nothing. Until a provider is installed, `get_tracer()` returns OpenTelemetry's default proxy tracers, whose spans have invalid span contexts and are never exported. No network traffic leaves the process.
+
+OpenTelemetry lets a process install a global `TracerProvider` only once, which matters when several services share a process:
+
+- **Disabled, then enabled:** the enabled service installs its provider as normal. Tracers obtained earlier, including by the disabled service, switch to it, so the enabled service's spans are exported.
+- **Enabled, then disabled:** the installed provider cannot be removed, so the disabled service's spans are still exported. `init_tracing()` logs a warning naming the service.
 
 ### Sampling Behavior
 
@@ -265,7 +270,7 @@ assert len(captured_spans) == 2
 
 The `_ListExporter` is in-process and synchronous (`SimpleSpanProcessor`), so spans are available for assertion immediately after the operations under test complete.
 
-### 4.2 Test Isolation with `reset_tracing()` and `_force_noop_global_provider()`
+### 4.2 Test Isolation with `reset_tracing()` and `_reset_global_provider()`
 
 The tracing module stores a global `_tracer_provider` singleton. Without cleanup, one test's initialized provider leaks into the next test. Two utilities enforce isolation:
 
@@ -276,28 +281,30 @@ from courier.tracing import reset_tracing
 reset_tracing()  # calls shutdown_tracing(), clears _tracer_provider
 ```
 
-**`_force_noop_global_provider()`** — resets the OpenTelemetry API's process-wide gate (`_TRACER_PROVIDER_SET_ONCE`) and installs a fresh `NoOpTracerProvider`:
+**`_reset_global_provider()`** — returns the OpenTelemetry API to its fresh-process state: it reopens the process-wide gate (`_TRACER_PROVIDER_SET_ONCE`) and clears the installed provider, so `get_tracer_provider()` falls back to the default proxy provider:
 ```python
-def _force_noop_global_provider():
+def _reset_global_provider():
     from opentelemetry.util._once import Once
     import opentelemetry.trace
 
     opentelemetry.trace._TRACER_PROVIDER_SET_ONCE = Once()
-    set_tracer_provider(NoOpTracerProvider())
+    opentelemetry.trace._TRACER_PROVIDER = None
 ```
+
+Do not install a `NoOpTracerProvider` here instead: that closes the gate again, so a test could no longer catch a disabled service blocking a later enabled one.
 
 The test suite uses both in an `autouse` fixture:
 ```python
 @pytest.fixture(autouse=True)
 def _reset_tracing_after_test():
     reset_tracing()
-    _force_noop_global_provider()
+    _reset_global_provider()
     yield
     reset_tracing()
-    _force_noop_global_provider()
+    _reset_global_provider()
 ```
 
-**Important**: `_force_noop_global_provider()` reaches into the `opentelemetry.util._once` private module. This is a necessary workaround — the OTel API intentionally prevents replacing the global provider after the first call. Tests that need to re-initialize tracing must use this pattern.
+**Important**: `_reset_global_provider()` reaches into private OpenTelemetry state (`opentelemetry.util._once` and `opentelemetry.trace._TRACER_PROVIDER`). This is a necessary workaround — the OTel API intentionally prevents replacing the global provider after the first call. Tests that need to re-initialize tracing must use this pattern.
 
 ### 4.3 Adding Tracing to a New Plugin Type
 

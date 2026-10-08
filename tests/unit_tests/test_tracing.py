@@ -8,6 +8,7 @@ and configuration validation.
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -62,31 +63,30 @@ def _make_list_exporter() -> tuple[Any, list[Any]]:
 def _reset_tracing_after_test() -> Any:
     """Ensure tracing singleton is reset before and after each test."""
     reset_tracing()
-    _force_noop_global_provider()
+    _reset_global_provider()
     yield
     reset_tracing()
-    _force_noop_global_provider()
+    _reset_global_provider()
 
 
-def _force_noop_global_provider() -> None:
-    """Force the OTel API global tracer provider to NoOp for test isolation.
+def _reset_global_provider() -> None:
+    """Return the OTel API global tracer provider to its fresh-process state.
 
     The OTel API's ``set_tracer_provider`` can only be called once per
     process lifetime (gated by ``_TRACER_PROVIDER_SET_ONCE``).  After a
     test initializes a real ``TracerProvider`` the gate is permanently
-    closed, so subsequent calls are no-ops.  This helper resets the gate
-    and installs a fresh ``NoOpTracerProvider`` to guarantee test isolation.
+    closed, so subsequent calls are no-ops.  This helper reopens the gate and
+    clears the provider, so ``get_tracer_provider()`` falls back to the
+    default ``ProxyTracerProvider`` exactly as in a process that has not
+    installed one.  Installing a NoOp provider here instead would close the
+    gate again and hide the lifecycle bugs these tests exist to catch.
     """
-    from opentelemetry.trace import (  # noqa: PLC0415
-        NoOpTracerProvider,
-        set_tracer_provider,
-    )
     from opentelemetry.util._once import Once  # noqa: PLC0415
 
     import opentelemetry.trace  # noqa: PLC0415
 
     opentelemetry.trace._TRACER_PROVIDER_SET_ONCE = Once()
-    set_tracer_provider(NoOpTracerProvider())
+    opentelemetry.trace._TRACER_PROVIDER = None
 
 
 @pytest.fixture
@@ -106,7 +106,7 @@ class TestInitShutdownLifecycle:
     def test_init_tracing_noop_when_disabled(
         self, disabled_config: ServiceConfig
     ) -> None:
-        """Tracing disabled produces a NoOp TracerProvider with non-recording spans."""
+        """Tracing disabled produces non-recording spans."""
         init_tracing(disabled_config)
         tracer = get_tracer("test")
         span = tracer.start_span("test_span")
@@ -143,7 +143,7 @@ class TestInitShutdownLifecycle:
 
 
 class TestNoOpMode:
-    """Tests for tracing-disabled paths (NoOp TracerProvider)."""
+    """Tests for tracing-disabled paths (no provider installed)."""
 
     def test_tracing_disabled_by_default(
         self, monkeypatch: pytest.MonkeyPatch
@@ -169,8 +169,64 @@ class TestNoOpMode:
         monkeypatch.setenv("COURIER_TRACING_ENABLED", value)
         assert ServiceConfig().tracing_enabled is expected
 
+    def test_disabled_init_leaves_the_global_provider_unset(self) -> None:
+        """A disabled service must not use up the once-per-process global."""
+        import opentelemetry.trace  # noqa: PLC0415
+
+        init_tracing(ServiceConfig(tracing_enabled=False))
+        assert opentelemetry.trace._TRACER_PROVIDER is None
+
+    def test_enabled_service_after_disabled_service_records_spans(self) -> None:
+        """A disabled service first must not stop a later one from tracing.
+
+        A sample rate of 0.0 keeps the spans unexported (no collector runs in
+        tests) while still giving them a valid span context, which a NoOp
+        span never has.
+        """
+        from opentelemetry import trace  # noqa: PLC0415
+
+        import courier.tracing as tracing_module  # noqa: PLC0415
+
+        init_tracing(ServiceConfig(tracing_enabled=False))
+        early_tracer = get_tracer("obtained-while-disabled")
+        with early_tracer.start_as_current_span("before") as span:
+            assert not span.get_span_context().is_valid
+
+        init_tracing(ServiceConfig(tracing_enabled=True, tracing_sample_rate=0.0))
+
+        assert tracing_module._tracer_provider is not None
+        assert trace.get_tracer_provider() is tracing_module._tracer_provider
+        # A tracer obtained before the provider existed switches over too.
+        with early_tracer.start_as_current_span("after") as span:
+            assert span.get_span_context().is_valid
+
+    def test_disabled_service_after_enabled_service_warns(self) -> None:
+        """The installed provider cannot be removed, so say so instead."""
+        from opentelemetry import trace  # noqa: PLC0415
+
+        import courier.tracing as tracing_module  # noqa: PLC0415
+
+        init_tracing(ServiceConfig(tracing_enabled=True, tracing_sample_rate=0.0))
+        provider = tracing_module._tracer_provider
+
+        warnings: list[str] = []
+        with (
+            patch("courier.utils.logging.get_logger") as mock_get_logger,
+            patch.object(tracing_module, "route_external_logger"),
+        ):
+            mock_get_logger.return_value.warning.side_effect = (
+                lambda msg, *args: warnings.append(msg % args)
+            )
+            init_tracing(
+                ServiceConfig(service_id="late-service", tracing_enabled=False)
+            )
+
+        assert tracing_module._tracer_provider is provider
+        assert trace.get_tracer_provider() is provider
+        assert any("late-service" in w for w in warnings)
+
     def test_tracing_enabled_false(self) -> None:
-        """Explicit tracing_enabled=False initialises a NoOp provider."""
+        """Explicit tracing_enabled=False produces non-recording spans."""
         config = ServiceConfig(tracing_enabled=False)
         init_tracing(config)
         tracer = get_tracer("test-noop")

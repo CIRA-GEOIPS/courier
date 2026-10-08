@@ -4,8 +4,18 @@ Design notes
 ------------
 Tracing is a global ON/OFF concern: it is controlled by
 ``ServiceConfig.tracing_enabled`` and the ``OTEL_TRACES_EXPORTER=none``
-environment variable.  Both paths converge on a single ``TracerProvider``
-(real or NoOp) set at startup via ``opentelemetry.trace.set_tracer_provider``.
+environment variable.  Only an enabled service installs a global
+``TracerProvider``, via ``opentelemetry.trace.set_tracer_provider``.
+
+**Disabled tracing installs nothing.**  OpenTelemetry accepts
+``set_tracer_provider`` once per process, so installing a NoOp provider for a
+disabled service would leave a later, enabled service in the same process
+unable to install its real one, and its spans would be silently dropped.
+Until a provider is installed, the API's default ``ProxyTracerProvider``
+hands out tracers whose spans are non-recording; those same tracers switch to
+the real provider once an enabled service installs it.  The reverse cannot be
+undone: after a real provider is installed, a later disabled service still
+exports spans, and :func:`init_tracing` warns about it.
 
 **Per-plugin tracing toggle — deferred (Phase 2.4).**
 Because the ``TracerProvider`` is installed once at application bootstrap and
@@ -87,26 +97,29 @@ def init_tracing(config: ServiceConfig) -> None:
     # refers to all logs coming from that module.
     route_external_logger("opentelemetry", _tracer_logger)
 
-    # Idempotent: if already initialized, return immediately
-    if _tracer_provider is not None:
-        _tracer_logger.debug(
-            "Skip re-init: TracerProvider already configured",
-        )
-        return
-
     # Respect OTEL_TRACES_EXPORTER=none as secondary disable
     if os.environ.get("OTEL_TRACES_EXPORTER", "").lower() == "none":
         config = config.__class__(**{**config.__dict__, "tracing_enabled": False})
 
     if not config.tracing_enabled:
-        from opentelemetry.trace import (  # noqa: PLC0415
-            NoOpTracerProvider,
-            set_tracer_provider,
-        )
+        # Leave the global untouched so a later enabled service can still
+        # install its provider; see the module docstring.
+        if _tracer_provider is not None:
+            _tracer_logger.warning(
+                "Tracing is disabled for service %s, but this process already "
+                "installed a TracerProvider, which cannot be removed; its "
+                "spans will still be exported",
+                config.service_id,
+            )
+        else:
+            _tracer_logger.info("OpenTelemetry tracing disabled")
+        return
 
-        _tracer_provider = NoOpTracerProvider()
-        set_tracer_provider(_tracer_provider)
-        _tracer_logger.info("OpenTelemetry tracing disabled (NoOp provider)")
+    # Idempotent: if a real provider is already installed, keep it
+    if _tracer_provider is not None:
+        _tracer_logger.debug(
+            "Skip re-init: TracerProvider already configured",
+        )
         return
 
     # Real OTLP provider
@@ -206,11 +219,6 @@ def shutdown_tracing() -> None:
     """
     if _tracer_provider is None:
         return
-    # NoOpTracerProvider has neither force_flush nor shutdown — nothing to do.
-    from opentelemetry.trace import NoOpTracerProvider  # noqa: PLC0415
-
-    if isinstance(_tracer_provider, NoOpTracerProvider):
-        return
     try:
         _tracer_provider.force_flush(timeout_millis=5000)
     except Exception:
@@ -229,11 +237,6 @@ def reset_tracing() -> None:
     """
     global _tracer_provider  # noqa: PLW0603
     if _tracer_provider is None:
-        return
-    from opentelemetry.trace import NoOpTracerProvider  # noqa: PLC0415
-
-    if isinstance(_tracer_provider, NoOpTracerProvider):
-        _tracer_provider = None
         return
     try:
         _tracer_provider.force_flush(timeout_millis=5000)
