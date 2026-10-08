@@ -109,8 +109,7 @@ courier run goes18_watcher.yaml
 
 > The above command works whether you installed via pip or poetry — the `courier` CLI is registered as a console script entry point in both cases.
 
-You should see output like this (timestamps, log levels and DEBUG lines
-trimmed):
+You should see output like this (timestamps and log levels trimmed):
 
 ```
 [Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
@@ -131,8 +130,7 @@ cp /path/to/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000*.nc ~/goes18_data/incoming
 ```
 
 Watch the service logs. You should see lines like these (file names
-shortened; courier logs at DEBUG by default, which is where the script's
-output appears):
+shortened):
 
 ```
 [Plugin: file_system_poller_watchdog] Found file: {"file": "/home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}

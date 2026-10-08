@@ -186,7 +186,7 @@ your config or your broker.
 : `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. For
 `courier run`, it takes precedence over `spec.service_config.log_level` in
 the config, which takes precedence over `COURIER_LOG_LEVEL`; the default is
-`DEBUG`.
+`INFO`.
 
 `--version` / `-V`
 : Print the installed version and exit.

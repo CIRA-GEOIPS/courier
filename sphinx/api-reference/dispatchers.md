@@ -88,7 +88,7 @@ finish before it exits.
 
 `local_dispatcher` logs nothing at INFO for a job that runs normally
 (`slurm_dispatcher` logs each submission). To follow jobs in the log, set
-`log_to_logger: true` (the script's output is then logged at DEBUG and
+`log_to_logger: true` (the script's output is then logged at INFO and
 WARNING), or watch `courier_dispatcher_jobs_processed_total`.
 
 ### Parked jobs
@@ -114,7 +114,7 @@ belonging in the job builder's payload block.
 | Option            | Type                         | Default  | Description                                                                                                                                                                                                                     |
 | ----------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `timeout_seconds` | `float` > 0                  | `3600.0` | Maximum run time of a job's payload process. On expiry the whole process group is sent SIGTERM (then SIGKILL after 5 s), the return code is `-1`, and stderr ends with `Script execution timed out after <n>s`.                 |
-| `log_to_logger`   | `bool`                       | `false`  | Log the payload's output line by line through the payload plugin's logger: stdout at DEBUG, stderr at WARNING, each line prefixed with `[job: <id>] [stdout]` or `[job: <id>] [stderr]`.                                        |
+| `log_to_logger`   | `bool`                       | `false`  | Log the payload's output line by line through the payload plugin's logger: stdout at INFO, stderr at WARNING, each line prefixed with `[job: <id>] [stdout]` or `[job: <id>] [stderr]`.                                        |
 | `log_to_file`     | `bool`                       | `false`  | Write the payload's stdout and stderr, each line prefixed `[stdout]` or `[stderr]`, to `<log_dir>/dispatch_<job-id>_<timestamp>.log`. The execution log's `log_file_path` names the file. Requires `log_dir`.                   |
 | `log_dir`         | `str`                        | `""`     | Directory for `log_to_file`. See [The log directory](#the-log-directory).                                                                                                                                                       |
 | `log_only_errors` | `bool`                       | `false`  | Discard the payload's stdout entirely: it is not logged, not written to the log file, and not kept in the execution log. `COURIER_METRIC:` lines are then never seen, and `output_files` can only match stderr (`scan_stderr`). |

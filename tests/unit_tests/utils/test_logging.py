@@ -471,6 +471,28 @@ class TestGetLogger:
         # but we can verify the logger is created without errors
         assert isinstance(logger, ContextAdapter)
 
+    def test_log_level_defaults_to_info(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without COURIER_LOG_LEVEL, the config and the logger default to INFO."""
+        monkeypatch.delenv("COURIER_LOG_LEVEL", raising=False)
+        config = ServiceConfig(loki_enabled=False)
+        assert config.log_level == "INFO"
+
+        logger = get_logger("service", "default-level-unique", config)
+        assert logger.logger.level == logging.INFO
+
+    def test_unknown_log_level_falls_back_to_info(self) -> None:
+        """An unrecognised level name falls back to INFO."""
+        config = ServiceConfig(loki_enabled=False, log_level="NOPE")
+        logger = get_logger("service", "unknown-level-unique", config)
+        assert logger.logger.level == logging.INFO
+
+    def test_no_config_defaults_to_info(self) -> None:
+        """A logger created without a config defaults to INFO."""
+        logger = get_logger("module", "no-config-level-unique")
+        assert logger.logger.level == logging.INFO
+
     @pytest.mark.parametrize(
         ("invalid_config", "expected_exception"),
         [

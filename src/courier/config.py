@@ -65,13 +65,13 @@ class ServiceConfig:
         LOKI_ENABLED or False.
     log_level : str, optional
         Logging level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL). Defaults
-        to environment variable COURIER_LOG_LEVEL or 'DEBUG'.
+        to environment variable COURIER_LOG_LEVEL or 'INFO'.
     production_mode : bool, optional
         Enable production mode with enforced minimum INFO log level. Defaults
         to environment variable PRODUCTION or False.
     tracing_enabled : bool, optional
         Enable OpenTelemetry tracing. Defaults to environment variable
-        COURIER_TRACING_ENABLED or True. Set to "false" to disable.
+        COURIER_TRACING_ENABLED or False. Set to "true" to enable.
     tracing_endpoint : str, optional
         OTLP collector endpoint URL. Defaults to OTEL_EXPORTER_OTLP_ENDPOINT,
         then COURIER_TRACING_ENDPOINT, then http://localhost:4318/v1/traces.
@@ -144,14 +144,14 @@ class ServiceConfig:
         ),
     )
     log_level: str = field(
-        default_factory=lambda: os.environ.get("COURIER_LOG_LEVEL", "DEBUG"),
+        default_factory=lambda: os.environ.get("COURIER_LOG_LEVEL", "INFO"),
     )
     production_mode: bool = field(
         default_factory=lambda: os.environ.get("PRODUCTION", "false").lower() == "true",
     )
     tracing_enabled: bool = field(
         default_factory=lambda: (
-            os.environ.get("COURIER_TRACING_ENABLED", "true").lower() != "false"
+            os.environ.get("COURIER_TRACING_ENABLED", "false").lower() == "true"
         ),
     )
     tracing_endpoint: str = field(
