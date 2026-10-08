@@ -107,11 +107,12 @@ Run the service:
 courier run goes18_watcher.yaml
 ```
 
-> The above command works whether you installed via pip or poetry — the `courier` CLI is registered as a console script entry point in both cases.
+> The above command works whether you installed with `uv pip`, `pip`, or an editable development install — the `courier` CLI is registered as a console script entry point in both cases.
 
 You should see output like this (timestamps and log levels trimmed):
 
 ```
+[Module: tracing] OpenTelemetry tracing disabled
 [Manager: PluginManager] Registered plugin: watch-files (class=file_system_poller_watchdog v0.0.0)
 [Manager: PluginManager] Registered plugin: group-files (class=DummyJobBuilder v-1)
 [Manager: PluginManager] Registered plugin: process-data (class=local_dispatcher v-1)
@@ -133,7 +134,7 @@ Watch the service logs. You should see lines like these (file names
 shortened):
 
 ```
-[Plugin: file_system_poller_watchdog] Found file: {"file": "/home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}
+[Plugin: file_system_poller_watchdog] Found file: {"data": null, "file": "/home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc", "hostname": "localhost", "source": "goes18", "instrument": "abi", "processing_stage": "l1b", "domain": "FULL-DISK", "metadata": {}, "num_expected": 16, "timestamp": "2024-01-15T12:00:00+00:00"}
 [Plugin: DummyJobBuilder] Job /home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc is ready; emitting
 [Plugin: DummyJobBuilder] Emitted job /home/user/goes18_data/incoming/OR_ABI-L1b-RadF-M6C01_G18_s20240151200000_...nc to targets ['process-data']
 [Plugin: bash_payload] [job: /home/user/goes18_data/incoming/OR_ABI-...nc] [stdout] ==========================================
@@ -147,6 +148,10 @@ The `[stdout]` lines are the script's output, logged by the payload because
 the dispatcher sets `log_to_logger: true`. Without it, a job that succeeds
 leaves no log line of its own; a job whose script fails is always logged at
 ERROR with its return code.
+
+Courier logs at INFO by default. For more detail, pass a global log level
+before the subcommand, e.g. `courier --log-level DEBUG run goes18_watcher.yaml`.
+Tracing is off by default; see {doc}`../operations/tracing` to enable it.
 
 The file will be moved to the `processed` directory.
 

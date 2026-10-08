@@ -183,7 +183,7 @@ watcher:
 
 ```
   courier-watcher:
-    image: dgshanee/courier:latest
+    image: ghcr.io/cira-geoips/courier:latest
     command:
       - "courier"
       - "run"
@@ -191,7 +191,7 @@ watcher:
       - "--only"
       - "watch-files"
     environment:
-      COURIER_PROMETHEUS_PORT: "8001"
+      PROMETHEUS_PORT: "8001"
     volumes:
       - ./config.yaml:/config/service.yaml:ro
       - ./data:/data
@@ -206,7 +206,7 @@ watcher:
 - `--only watch-files` tells Courier to start only the plugin listed
   under the YAML key `watch-files` in `spec.run`. All other plugins are
   skipped.
-- `COURIER_PROMETHEUS_PORT=8001` overrides the default Prometheus port
+- `PROMETHEUS_PORT=8001` overrides the default Prometheus port
   (8000). Each container needs a unique port so Prometheus can scrape
   both.
 - The config file is mounted read-only at `/config/service.yaml`. The
@@ -224,7 +224,7 @@ together:
 
 ```
   courier-processor:
-    image: dgshanee/courier:latest
+    image: ghcr.io/cira-geoips/courier:latest
     command:
       - "courier"
       - "run"
@@ -232,7 +232,7 @@ together:
       - "--only"
       - "create-jobs,process-files"
     environment:
-      COURIER_PROMETHEUS_PORT: "8002"
+      PROMETHEUS_PORT: "8002"
     volumes:
       - ./config.yaml:/config/service.yaml:ro
       - ./data:/data
@@ -298,13 +298,27 @@ Run this on your **host machine** (not inside a container), in the same
 directory as your config:
 
 ```
-pip install courier-pigeon[grafana]
-courier dashboard config.yaml -o grafana/provisioning/dashboards/courier.json
+pip install "courier-pigeon[grafana]"
+courier dashboard config.yaml --only-metrics -o grafana/provisioning/dashboards/courier.json
 ```
 
 This produces a dashboard with panels for service health, data monitor
 throughput, job builder metrics, and dispatcher execution stats — only
-the panels relevant to your configured plugins.
+the panels relevant to your configured plugins. `--only-metrics` leaves out
+the trace panels, which query a Tempo datasource this stack does not run.
+
+Grafana only loads dashboard files that a provider points it at. Create
+`grafana/provisioning/dashboards/courier.yml`:
+
+```
+apiVersion: 1
+
+providers:
+  - name: courier
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards
+```
 
 Create a Grafana datasource provisioning file at
 `grafana/provisioning/datasources/prometheus.yml`:
@@ -356,7 +370,7 @@ services:
       RABBITMQ_DEFAULT_PASS: admin_test
 
   courier-watcher:
-    image: dgshanee/courier:latest
+    image: ghcr.io/cira-geoips/courier:latest
     command:
       - "courier"
       - "run"
@@ -364,7 +378,7 @@ services:
       - "--only"
       - "watch-files"
     environment:
-      COURIER_PROMETHEUS_PORT: "8001"
+      PROMETHEUS_PORT: "8001"
     volumes:
       - ./config.yaml:/config/service.yaml:ro
       - ./data:/data
@@ -374,7 +388,7 @@ services:
       - rabbitmq
 
   courier-processor:
-    image: dgshanee/courier:latest
+    image: ghcr.io/cira-geoips/courier:latest
     command:
       - "courier"
       - "run"
@@ -382,7 +396,7 @@ services:
       - "--only"
       - "create-jobs,process-files"
     environment:
-      COURIER_PROMETHEUS_PORT: "8002"
+      PROMETHEUS_PORT: "8002"
     volumes:
       - ./config.yaml:/config/service.yaml:ro
       - ./data:/data
@@ -417,9 +431,9 @@ services:
 
 ## Step 7: Distributed Tracing
 
-Courier instruments its plugin pipeline with OpenTelemetry tracing.
-Courier enables traces by default. They follow each file from detection to
-execution across all containers. For details, see
+Courier instruments its plugin pipeline with OpenTelemetry tracing. Once
+enabled, traces follow each file from detection to execution across all
+containers. For details, see
 {doc}`../operations/tracing`.
 
 Add a Jaeger all-in-one service to `docker-compose.yml`:
@@ -454,8 +468,9 @@ For span naming conventions, sampling configuration, and production query
 workflows, see {doc}`../operations/tracing`.
 
 After restarting the stack, the Jaeger UI is available at
-<http://localhost:16686>. Select the `courier` service to see traces with
-spans from both containers linked by a shared `trace_id`.
+<http://localhost:16686>. Select the `tutorial-02-docker-swarm` service (the
+config's `metadata.name`; set `SERVICE_ID` per container to tell them apart)
+to see traces with spans from both containers linked by a shared `trace_id`.
 
 ### Complete Compose File
 
@@ -475,7 +490,7 @@ services:
       RABBITMQ_DEFAULT_PASS: admin_test
 
   courier-watcher:
-    image: dgshanee/courier:latest
+    image: ghcr.io/cira-geoips/courier:latest
     command:
       - "courier"
       - "run"
@@ -483,7 +498,7 @@ services:
       - "--only"
       - "watch-files"
     environment:
-      COURIER_PROMETHEUS_PORT: "8001"
+      PROMETHEUS_PORT: "8001"
       COURIER_TRACING_ENABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318/v1/traces"
     volumes:
@@ -495,7 +510,7 @@ services:
       - rabbitmq
 
   courier-processor:
-    image: dgshanee/courier:latest
+    image: ghcr.io/cira-geoips/courier:latest
     command:
       - "courier"
       - "run"
@@ -503,7 +518,7 @@ services:
       - "--only"
       - "create-jobs,process-files"
     environment:
-      COURIER_PROMETHEUS_PORT: "8002"
+      PROMETHEUS_PORT: "8002"
       COURIER_TRACING_ENABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318/v1/traces"
     volumes:
@@ -603,7 +618,6 @@ You should see:
 ```
 [Service: tutorial-02-docker-swarm] Starting Service tutorial-02-docker-swarm
 [Manager: PrometheusManager] Starting Prometheus server on port 8001
-[Manager: RabbitMQManager] Successfully connected to RabbitMQ
 [Plugin: file_system_poller_watchdog] Starting to watch directory: /data/incoming
 [Service: tutorial-02-docker-swarm] Service tutorial-02-docker-swarm started successfully
 ```
@@ -617,8 +631,8 @@ plugins starting.
 |---------|-----|---------------|
 | RabbitMQ | <http://localhost:15672> | Login `admin`/`admin_test`. Look for the fanout exchange and auto-created queues under the Exchanges and Queues tabs. |
 | Prometheus | <http://localhost:9090/targets> | Both Courier targets should show State `UP`. |
-| Grafana | <http://localhost:3000> | The Courier dashboard auto-loads. If not visible, browse Dashboards and select "Courier Service". |
-| Jaeger | <http://localhost:16686> | Select service `courier` from the dropdown. Traces appear once files are processed. |
+| Grafana | <http://localhost:3000> | The Courier dashboard auto-loads. If not visible, browse Dashboards and select "tutorial-02-docker-swarm" (the config's `metadata.name`). |
+| Jaeger | <http://localhost:16686> | Select service `tutorial-02-docker-swarm` from the dropdown. Traces appear once files are processed. |
 
 ### Test File Processing
 
@@ -655,7 +669,7 @@ ERROR either way.
 
 ### Verify the Trace
 
-Open Jaeger at <http://localhost:16686>, select the `courier` service,
+Open Jaeger at <http://localhost:16686>, select the `tutorial-02-docker-swarm` service,
 and click **Find Traces**. You should see a trace containing spans from
 both containers:
 
@@ -726,7 +740,9 @@ and data directory.
 
 - Run `courier dashboard config.yaml` locally to verify the dashboard
   JSON is valid.
-- Ensure `pip install courier-pigeon[grafana]` completed successfully.
+- Ensure `pip install "courier-pigeon[grafana]"` completed successfully.
+- Check that `grafana/provisioning/dashboards/courier.yml` (the provider)
+  exists alongside the JSON.
 - Check that `grafana/provisioning/dashboards/courier.json` exists and
   contains valid JSON.
 
@@ -774,11 +790,9 @@ You've completed all the learning objectives listed at the start of this tutoria
    20 files, and verify roughly 5 complete traces appear in Jaeger.
 1. **Split Prometheus per kind.** Use `courier dashboard config.yaml
    --split-by kind -o grafana/provisioning/dashboards/` to generate
-   separate dashboards for the data monitor and dispatcher.
+   separate dashboards for the data monitor, job builder, and dispatcher.
 
 ## Complete Code
 
-The complete configuration and compose file are available in the tutorial
-repository:
-
-[tutorial02-docker-swarm/](<https://github.com/biosafetylvl5/courier/tree/main/examples/tutorials/02-docker-swarm>)
+The complete configuration is the `config.yaml` from Step 2, and the complete
+compose file is the one at the end of Step 7.

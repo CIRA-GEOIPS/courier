@@ -6,7 +6,7 @@ This guide covers installing Courier in different environments.
 
 **System Requirements:**
 
-- Python 3.11, 3.12, or 3.13
+- Python 3.11, 3.12, 3.13, or 3.14
 - 4GB RAM minimum (8GB recommended)
 - Linux, macOS, or Windows (with WSL2)
 
@@ -18,6 +18,8 @@ Courier depends on:
 - Prometheus client
 - Pydantic for configuration validation
 - Rich for enhanced logging
+- OpenTelemetry for distributed tracing (off by default; see
+  {doc}`../operations/tracing`)
 
 All dependencies are automatically installed.
 
@@ -52,7 +54,6 @@ cron_glob requires the cron extra: pip install courier-pigeon[cron]
 | --- | --- | --- |
 | `courier-pigeon[cron]` | `croniter` | `cron_glob` data monitor |
 | `courier-pigeon[s3]` | `boto3`, `botocore` | `s3_poller` data monitor |
-| `courier-pigeon[sftp]` | `paramiko` | `sftp_poller` data monitor |
 | `courier-pigeon[kafka]` | `kafka-python` | `kafka_consumer` data monitor |
 | `courier-pigeon[ha]` | `redis` | Multi-instance state sync |
 | `courier-pigeon[grafana]` | `grafanalib` | `courier dashboard` generation |
@@ -82,7 +83,7 @@ uv pip install -e ".[doc,lint,test]"
 Pull the image:
 
 ```
-docker pull ghcr.io/biosafetylvl5/courier:latest
+docker pull ghcr.io/cira-geoips/courier:latest
 ```
 
 For a full production deployment with RabbitMQ, Prometheus, Grafana, and Jaeger, see
