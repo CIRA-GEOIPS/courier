@@ -13,7 +13,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 #: PyPI distribution name. Differs from the import package (``courier``)
 #: because ``courier`` was already taken.
-DISTRIBUTION_NAME = "data-courier"
+DISTRIBUTION_NAME = "courier-pigeon"
 
 try:
     __version__ = version(DISTRIBUTION_NAME)

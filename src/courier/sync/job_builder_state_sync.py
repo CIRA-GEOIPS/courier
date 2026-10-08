@@ -2,7 +2,7 @@
 
 This module is optional and requires the ``redis`` package::
 
-    pip install data-courier[ha]
+    pip install courier-pigeon[ha]
 
 Design
 ------

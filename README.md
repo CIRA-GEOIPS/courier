@@ -40,7 +40,7 @@ Upgrading from a release with the `serial_bash`, `parallel_bash` or `http_dispat
 ## Quick Start
 
 ```bash
-pip install data-courier
+pip install courier-pigeon
 ```
 
 ### Running the service

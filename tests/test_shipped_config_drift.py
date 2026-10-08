@@ -654,21 +654,24 @@ def test_a_missing_optional_dependency_names_its_extra() -> None:
     from courier.plugins.data_monitors.cron_glob import CronGlobConfig
 
     with mock.patch.dict(sys.modules, {"croniter": None}):
-        with pytest.raises(InvalidPluginConfigError, match=r"courier\[cron\]"):
+        with pytest.raises(
+            InvalidPluginConfigError,
+            match=rf"{re.escape(_DISTRIBUTION_NAME)}\[cron\]",
+        ):
             CronGlobConfig(path="/tmp", cron_expression="*/5 * * * *")
 
 
 # ---------------------------------------------------------------------------
 # Distribution name and version
 #
-# The install name (data-courier) differs from the import name (courier)
+# The install name (courier-pigeon) differs from the import name (courier)
 # because `courier` was taken on PyPI. That split is only safe if every place
 # that tells an operator what to install agrees with what is actually
 # published -- for most of this project's life it did not, and the docs and six
 # plugin error messages pointed at a package it does not own.
 # ---------------------------------------------------------------------------
 
-_DISTRIBUTION_NAME = "data-courier"
+_DISTRIBUTION_NAME = "courier-pigeon"
 
 #: Every extra courier declares, used to spot install instructions in prose.
 _KNOWN_EXTRAS = (
@@ -753,7 +756,9 @@ def test_no_bare_install_of_the_import_name() -> None:
     offenders: list[str] = []
     for path in _install_instruction_files():
         for line_number, line in enumerate(path.read_text().splitlines(), start=1):
-            if re.search(r"pip install +courier\b", line):
+            # ``courier-pigeon`` starts with ``courier``, so a hyphen must not
+            # count as the end of the name.
+            if re.search(r"pip install +courier(?![\w-])", line):
                 offenders.append(f"{path.relative_to(_REPO_ROOT)}:{line_number}")
 
     assert not offenders, (

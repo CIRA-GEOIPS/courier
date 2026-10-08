@@ -28,14 +28,14 @@ All dependencies are automatically installed.
 Install the latest stable release from PyPI:
 
 ```
-uv pip install data-courier
+uv pip install courier-pigeon
 ```
 
-> **Note:** The distribution is named `data-courier` on PyPI (the name
+> **Note:** The distribution is named `courier-pigeon` on PyPI (the name
 > `courier` was already taken), but it installs and imports as `courier`.
 > The CLI command is `courier`.
 
-Optional extras: `data-courier[doc]` for documentation tools, `data-courier[test]` for testing, `data-courier[doc,lint,test]` for development.
+Optional extras: `courier-pigeon[doc]` for documentation tools, `courier-pigeon[test]` for testing, `courier-pigeon[doc,lint,test]` for development.
 
 ### Plugin Extras
 
@@ -45,20 +45,20 @@ shows every plugin without importing any of them — but naming one in a config
 without its extra fails with the install command you need:
 
 ```text
-cron_glob requires the cron extra: pip install data-courier[cron]
+cron_glob requires the cron extra: pip install courier-pigeon[cron]
 ```
 
 | Extra | Provides | Needed by |
 | --- | --- | --- |
-| `data-courier[cron]` | `croniter` | `cron_glob` data monitor |
-| `data-courier[s3]` | `boto3`, `botocore` | `s3_poller` data monitor |
-| `data-courier[sftp]` | `paramiko` | `sftp_poller` data monitor |
-| `data-courier[kafka]` | `kafka-python` | `kafka_consumer` data monitor |
-| `data-courier[ha]` | `redis` | Multi-instance state sync |
-| `data-courier[grafana]` | `grafanalib` | `courier dashboard` generation |
-| `data-courier[viz]` | `textual`, `httpx` | `courier viz` terminal UI |
+| `courier-pigeon[cron]` | `croniter` | `cron_glob` data monitor |
+| `courier-pigeon[s3]` | `boto3`, `botocore` | `s3_poller` data monitor |
+| `courier-pigeon[sftp]` | `paramiko` | `sftp_poller` data monitor |
+| `courier-pigeon[kafka]` | `kafka-python` | `kafka_consumer` data monitor |
+| `courier-pigeon[ha]` | `redis` | Multi-instance state sync |
+| `courier-pigeon[grafana]` | `grafanalib` | `courier dashboard` generation |
+| `courier-pigeon[viz]` | `textual`, `httpx` | `courier viz` terminal UI |
 
-`data-courier[all-monitors]` installs every data-monitor plugin dependency at
+`courier-pigeon[all-monitors]` installs every data-monitor plugin dependency at
 once.
 
 The `file_system_poller_watchdog` monitor — the one used in

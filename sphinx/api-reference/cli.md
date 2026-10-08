@@ -131,7 +131,7 @@ A terminal dashboard reading a running instance's Prometheus endpoint.
 courier viz --host localhost --port 8000
 ```
 
-Requires `pip install data-courier[viz]`.
+Requires `pip install courier-pigeon[viz]`.
 
 ### `courier dashboard`
 
@@ -145,7 +145,7 @@ courier dashboard config.yaml --only-metrics
 courier dashboard config.yaml --live      # detect active plugins from Prometheus
 ```
 
-Requires `pip install data-courier[grafana]`.
+Requires `pip install courier-pigeon[grafana]`.
 
 ______________________________________________________________________
 
