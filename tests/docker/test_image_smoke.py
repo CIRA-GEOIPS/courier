@@ -112,7 +112,7 @@ def test_image_keeps_its_distribution_metadata(docker_image: str) -> None:
     probe = (
         "import importlib.metadata as m, json;"
         "print(json.dumps({"
-        "'requires': len(m.metadata('data-courier').get_all('Requires-Dist') or []),"
+        "'requires': len(m.metadata('courier-pigeon').get_all('Requires-Dist') or []),"
         "'dispatchers': sorted(e.name for e in"
         " m.entry_points(group='courier.dispatchers')),"
         "'monitors': sorted(e.name for e in"

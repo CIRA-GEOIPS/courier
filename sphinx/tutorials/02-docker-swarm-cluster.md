@@ -298,7 +298,7 @@ Run this on your **host machine** (not inside a container), in the same
 directory as your config:
 
 ```
-pip install data-courier[grafana]
+pip install courier-pigeon[grafana]
 courier dashboard config.yaml -o grafana/provisioning/dashboards/courier.json
 ```
 
@@ -726,7 +726,7 @@ and data directory.
 
 - Run `courier dashboard config.yaml` locally to verify the dashboard
   JSON is valid.
-- Ensure `pip install data-courier[grafana]` completed successfully.
+- Ensure `pip install courier-pigeon[grafana]` completed successfully.
 - Check that `grafana/provisioning/dashboards/courier.json` exists and
   contains valid JSON.
 

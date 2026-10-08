@@ -1,6 +1,6 @@
 """Consume messages from a Kafka topic and emit them as Datum objects.
 
-Requires the optional ``data-courier[kafka]`` extra (``kafka-python``).
+Requires the optional ``courier-pigeon[kafka]`` extra (``kafka-python``).
 
 Messages are expected to be JSON-encoded dicts. A ``field_map`` allows the
 operator to translate producer-specific key names into the canonical
@@ -141,7 +141,7 @@ class KafkaConsumer(DataMonitorBasePlugin):
         except ImportError as exc:
             raise InvalidPluginConfigError(
                 "kafka_consumer requires the kafka extra: "
-                "pip install data-courier[kafka]",
+                "pip install courier-pigeon[kafka]",
             ) from exc
 
         kwargs: dict[str, Any] = {

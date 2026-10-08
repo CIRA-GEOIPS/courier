@@ -2,5 +2,5 @@
 
 Requires the ``redis`` extra::
 
-    pip install data-courier[ha]
+    pip install courier-pigeon[ha]
 """

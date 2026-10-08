@@ -180,8 +180,9 @@ class ServiceSpecModel(FrozenModel):
 class ServiceConfigModel(FrozenModel):
     """Top-level validation model for courier service configuration files."""
 
-    apiVersion: str = Field( # noqa: N815
-        ..., description="API version of the service document.",
+    apiVersion: str = Field(  # noqa: N815
+        ...,
+        description="API version of the service document.",
     )
     kind: str = Field(..., description="Resource kind; expected to be 'Service'.")
     metadata: ResourceMetadataModel = Field(
