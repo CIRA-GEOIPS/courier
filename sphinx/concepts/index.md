@@ -22,4 +22,5 @@ adr/0008-entry-point-plugin-discovery
 adr/0009-dispatcher-refactoring
 adr/0010-poison-message-handling
 adr/0011-dispatchers-execute-jobs
+adr/0012-import-layering
 ```
