@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from courier.constants import PluginRunState
 from courier.interfaces.job_builders import PAYLOAD_KEY, JobBuilder
 from courier.metrics import (
     JOB_BUILDER_ROUTE_MATCHES,
@@ -205,7 +204,7 @@ class MetadataRouterBuilder(JobBuilder):
 
     def is_healthy(self) -> bool:
         """Healthy only while running and the reaper (if any) is alive."""
-        if self._state != PluginRunState.RUNNING:
+        if not super().is_healthy():
             return False
         return self._reaper_thread is None or self._reaper_thread.is_alive()
 

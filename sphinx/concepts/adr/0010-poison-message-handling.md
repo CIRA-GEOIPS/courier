@@ -36,9 +36,11 @@ message — never reached the `except Exception` clause at all. Only a failure
 between the `yield` and the `ack` did.
 
 **A counter in the consumer's memory cannot work.** Both plugin interfaces treat
-an unhandled exception as fatal and call `os._exit(1)`. An in-process attempt
-count would be reset by exactly the crash it is counting, and the message would
-be retried forever across container restarts rather than within one process.
+an unhandled exception as fatal to the plugin: its thread ends and the plugin
+manager restarts it (originally the whole process exited via `os._exit(1)`).
+An in-process attempt count would be reset by exactly the failure it is
+counting, and the message would be retried forever across restarts rather than
+within one plugin lifetime.
 
 Issue #44 had already fixed the opposite failure — an exclusive queue the broker
 deleted on disconnect, losing every file published while a builder was away — so
@@ -98,8 +100,8 @@ per-queue dead-letter queue** once the count passes `broker_max_redeliveries`
 - **Acking and dropping on repeated delivery.** Unblocks the queue and silently
   destroys the file. That is the #44 failure mode with a different cause.
 
-- **Counting redeliveries in the consumer.** Cannot survive `os._exit`; see
-  above.
+- **Counting redeliveries in the consumer.** Cannot survive a plugin restart;
+  see above.
 
 - **Rejecting with `requeue=False` and no dead-letter queue.** Equivalent to
   dropping, since an unbound queue with no DLX discards.

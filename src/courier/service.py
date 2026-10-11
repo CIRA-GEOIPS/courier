@@ -207,7 +207,10 @@ class Service:
         """Publish a message to a message broker queue.
 
         Blocks until the broker confirms the message; see
-        :func:`courier.broker.kombu.publish`.
+        :func:`courier.broker.kombu.publish`. Publishes on the calling
+        thread's long-lived connection
+        (:meth:`~courier.broker.kombu.MessageBrokerManager.publisher_connection`)
+        rather than opening one per call.
 
         Parameters
         ----------
@@ -227,7 +230,7 @@ class Service:
         # --- receives every file notification.
         if queue == FILE_FOUND_EXCHANGE:
             exchange_name = self._broker_manager.get_queue_name(queue)
-            with self._broker_manager.get_connection_context() as conn:
+            with self._broker_manager.publisher_connection() as conn:
                 exchange = declare_fanout_exchange(conn, exchange_name)
                 tracer = get_tracer(__name__)
                 with tracer.start_as_current_span(
@@ -259,7 +262,7 @@ class Service:
             durable=True,
             exclusive=False,
         )
-        with self._broker_manager.get_connection_context() as conn:
+        with self._broker_manager.publisher_connection() as conn:
             self._logger.debug(f"Emitting message to queue '{queue_name}': {message}")
             q = declare_queue(conn, queue_name, durable=True)
             tracer = get_tracer(__name__)
@@ -648,7 +651,7 @@ class Service:
             **inject_trace_headers(),
             PARK_REASON_HEADER: reason[:_PARK_REASON_HEADER_MAX],
         }
-        with self._broker_manager.get_connection_context() as conn:
+        with self._broker_manager.publisher_connection() as conn:
             dead_letter = declare_queue(
                 conn,
                 dead_letter_name,

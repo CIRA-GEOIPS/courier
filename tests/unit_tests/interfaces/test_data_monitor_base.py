@@ -35,6 +35,16 @@ class _ScriptedMonitor(DataMonitorBasePlugin):
         yield from self.to_yield
 
 
+class _BlockingMonitor(_ScriptedMonitor):
+    """Monitor whose scan runs until ``stop()``, as a real watcher's does."""
+
+    name = "blocking_monitor"
+
+    def find_file(self) -> Generator[Datum, None, None]:
+        yield from self.to_yield
+        self._stop_event.wait()
+
+
 @pytest.fixture
 def service() -> MagicMock:
     svc = MagicMock()
@@ -48,7 +58,8 @@ def _monitor(service: MagicMock, identifier: str = "dm-1") -> _ScriptedMonitor:
 
 def _emitted_files(service: MagicMock) -> list[Datum]:
     return [
-        Datum.from_string(call.kwargs["message"]) for call in service.emit.call_args_list
+        Datum.from_string(call.kwargs["message"])
+        for call in service.emit.call_args_list
     ]
 
 
@@ -200,10 +211,26 @@ class TestLifecycle:
         service: MagicMock,
     ) -> None:
         """A monitor thread that outlives stop() blocks interpreter exit."""
-        monitor = _monitor(service)
+        monitor = _BlockingMonitor(service, {}, identifier="dm-block")
 
         monitor.start()
         assert monitor.is_healthy() is True
+        monitor.stop()
+
+        assert monitor._stop_event.is_set()
+        assert monitor._state is PluginRunState.STOPPED
+        assert not (monitor._main_thread and monitor._main_thread.is_alive())
+
+    def test_a_scan_that_returns_is_unhealthy(self, service: MagicMock) -> None:
+        """A dead worker thread is unhealthy even though nothing called stop()."""
+        monitor = _monitor(service)
+
+        monitor.start()
+        assert monitor._main_thread is not None
+        monitor._main_thread.join(timeout=5)
+
+        assert monitor._state is PluginRunState.RUNNING
+        assert monitor.is_healthy() is False
         monitor.stop()
 
         assert monitor._stop_event.is_set()

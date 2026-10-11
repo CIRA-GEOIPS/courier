@@ -266,9 +266,9 @@ def prepare_chain_directories(pipeline: Pipeline, *paths: str) -> None:
     root-owned is one the dispatcher cannot write into.
 
     Call this before the service starts.  The filesystem monitor is
-    inotify with no start-up scan, ``observer.schedule`` raises on a missing path, and the
-    data-monitor base class turns any exception from its find-and-emit loop into
-    ``os._exit(1)``, so one absent directory takes the whole container down.
+    inotify with no start-up scan, ``observer.schedule`` raises on a missing path, and
+    an exception from the find-and-emit loop fails the monitor plugin, which the
+    plugin manager then restarts until its attempts run out.
 
     It uses a one-shot ``docker run -u root`` so that it reaches for no private
     attribute of the shared pipeline helper.

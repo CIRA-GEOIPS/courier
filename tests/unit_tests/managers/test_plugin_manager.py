@@ -353,3 +353,191 @@ class TestGetPlugins:
         assert "snapshot-p" in snap
         snap.pop("snapshot-p")
         assert "snapshot-p" in manager.get_plugins()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# monitor loop: health checks, restart scheduling
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+def _live_thread() -> threading.Thread:
+    """Return a started thread that stays alive until the test ends."""
+    stop = threading.Event()
+    thread = threading.Thread(target=stop.wait, daemon=True)
+    thread.start()
+    thread.stop_event = stop  # type: ignore[attr-defined]
+    return thread
+
+
+def _running_info(plugin: MagicMock) -> PluginStateInfo:
+    return PluginStateInfo(
+        plugin=plugin,
+        state=PluginRunState.RUNNING,
+        thread=_live_thread(),
+    )
+
+
+class TestMonitorChecks:
+    """One pass of the monitor loop, driven by hand."""
+
+    def test_an_unhealthy_plugin_is_marked_failed(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("sick", healthy=False)
+        info = _running_info(plugin)
+
+        assert manager._check_plugin("sick", info) is True
+        assert info.state == PluginRunState.FAILED
+        assert info.last_health_check is not None
+
+    def test_a_dead_thread_is_failed_without_asking_the_plugin(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("dead")
+        dead = threading.Thread(target=lambda: None)
+        dead.start()
+        dead.join()
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.RUNNING, thread=dead)
+
+        assert manager._check_plugin("dead", info) is True
+        assert info.state == PluginRunState.FAILED
+        plugin.is_healthy.assert_not_called()
+
+    def test_a_check_inside_the_interval_is_skipped(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_health_check_interval=60.0),
+            parent_service=MagicMock(),
+        )
+        plugin = _make_plugin("fresh", healthy=False)
+        info = _running_info(plugin)
+
+        assert manager._check_plugin("fresh", info) is True
+        plugin.is_healthy.reset_mock()
+        info.state = PluginRunState.RUNNING
+
+        assert manager._check_plugin("fresh", info) is False
+        plugin.is_healthy.assert_not_called()
+
+    def test_a_health_check_that_raises_does_not_fail_the_plugin(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("flaky")
+        plugin.is_healthy.side_effect = RuntimeError("probe broke")
+        info = _running_info(plugin)
+
+        assert manager._check_plugin("flaky", info) is False
+        assert info.state == PluginRunState.RUNNING
+
+    def test_the_lock_is_not_held_during_the_health_check(self) -> None:
+        """A slow ``is_healthy`` must not block registration or shutdown."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("slow")
+        lock_free: list[bool] = []
+
+        def probe() -> bool:
+            acquired = manager._lock.acquire(timeout=1.0)
+            lock_free.append(acquired)
+            if acquired:
+                manager._lock.release()
+            return True
+
+        plugin.is_healthy.side_effect = probe
+        manager._check_plugin("slow", _running_info(plugin))
+
+        assert lock_free == [True]
+
+
+class TestRestartScheduling:
+    """Failed plugins are restarted from the monitor loop, not by sleeping."""
+
+    def test_a_failed_plugin_is_scheduled_not_slept(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_restart_delay=30.0),
+            parent_service=MagicMock(),
+        )
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("restartable")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+
+        with patch("courier.managers.plugin_manager.time.sleep") as sleep:
+            manager._handle_failed_plugin(info)
+
+        sleep.assert_not_called()
+        assert info.state == PluginRunState.RESTARTING
+        assert info.restart_count == 1
+        assert info.last_restart is not None
+        assert info.restart_due is not None
+        assert manager._due_restarts([("restartable", info)]) == []
+
+    def test_a_due_restart_is_returned_once(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("due")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+
+        manager._handle_failed_plugin(info)
+
+        snapshot = [("due", info)]
+        assert manager._due_restarts(snapshot) == [info]
+        assert info.restart_due is None
+        assert manager._due_restarts(snapshot) == []
+
+    def test_max_attempts_leaves_the_plugin_failed(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_max_restart_attempts=1),
+            parent_service=MagicMock(),
+        )
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("exhausted")
+        info = PluginStateInfo(
+            plugin=plugin,
+            state=PluginRunState.FAILED,
+            restart_count=1,
+        )
+
+        manager._handle_failed_plugin(info)
+
+        assert info.state == PluginRunState.FAILED
+        assert info.restart_due is None
+
+    def test_a_restart_too_soon_after_the_last_is_refused(self) -> None:
+        """The interval is measured on the monotonic clock, not wall time."""
+        manager = PluginManager(
+            _make_config(plugin_restart_delay=60.0),
+            parent_service=MagicMock(),
+        )
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("hasty")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+
+        manager._handle_failed_plugin(info)
+        assert info.state == PluginRunState.RESTARTING
+        info.state = PluginRunState.FAILED
+        info.restart_due = None
+
+        manager._handle_failed_plugin(info)
+
+        assert info.state == PluginRunState.FAILED
+        assert info.restart_count == 1
+
+    def test_the_monitor_restarts_a_crashed_plugin(self) -> None:
+        """End to end: unhealthy → stop → scheduled → started again."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("phoenix", healthy=False)
+        info = _running_info(plugin)
+        manager._plugins["phoenix"] = info
+        started = threading.Event()
+
+        def fake_start(plugin_info: PluginStateInfo) -> None:
+            plugin_info.state = PluginRunState.RUNNING
+            started.set()
+            manager._state = PluginRunState.STOPPED
+
+        with (
+            patch.object(manager, "_start_plugin", side_effect=fake_start),
+            patch("courier.managers.plugin_manager.time.sleep"),
+        ):
+            manager._monitor_plugins()
+
+        assert started.is_set()
+        plugin.stop.assert_called_once()
+        assert info.restart_count == 1
+        assert info.state == PluginRunState.RUNNING

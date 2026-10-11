@@ -38,12 +38,20 @@ class PluginStateInfo:
         Current state of the plugin.
     thread : threading.Thread or None, default=None
         Thread running the plugin, if any.
-    last_health_check : datetime or None, default=None
-        Timestamp of last health check.
+    last_health_check : float or None, default=None
+        ``time.monotonic()`` of the last health check.
     restart_count : int, default=0
         Number of times plugin has been restarted.
     last_restart : datetime or None, default=None
-        Timestamp of last restart attempt.
+        Wall-clock timestamp of the last restart attempt, for status reports.
+    last_restart_at : float or None, default=None
+        ``time.monotonic()`` of the last restart attempt, for interval checks.
+        Monotonic so a wall-clock adjustment cannot make a restart look
+        recent, or long past, when it was not.
+    restart_due : float or None, default=None
+        ``time.monotonic()`` at which a plugin in ``RESTARTING`` is started
+        again. The monitor loop checks it each tick instead of sleeping
+        through the delay, so the other plugins stay monitored meanwhile.
     error_message : str or None, default=None
         Last error message if plugin failed.
     ready : threading.Event
@@ -53,9 +61,11 @@ class PluginStateInfo:
     plugin: ServicePlugin
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
-    last_health_check: datetime | None = None
+    last_health_check: float | None = None
     restart_count: int = 0
     last_restart: datetime | None = None
+    last_restart_at: float | None = None
+    restart_due: float | None = None
     error_message: str | None = None
     ready: threading.Event = field(default_factory=threading.Event)
 
@@ -364,76 +374,109 @@ class PluginManager(ServiceManager):
             )
 
     def _monitor_plugins(self) -> None:
-        """Monitor plugin health and restart failed plugins."""
+        """Monitor plugin health, restart failed plugins, and start due restarts.
+
+        Health checks run outside the manager lock: ``is_healthy`` belongs to
+        the plugin and may be slow, and holding the lock across it blocked
+        registration and shutdown. The restart delay is not slept here
+        either; a plugin waiting to restart is started once its
+        ``restart_due`` passes, so the other plugins stay monitored.
+        """
         while self._state == PluginRunState.RUNNING:
-            failed_plugins: list[PluginStateInfo] = []
-
             with self._lock:
-                for plugin_name, plugin_info in self._plugins.items():
-                    try:
-                        now = datetime.now()
-                        if plugin_info.last_health_check is not None and (
-                            (now - plugin_info.last_health_check).seconds
-                            < self._config.plugin_health_check_interval
-                        ):
-                            continue
+                snapshot = list(self._plugins.items())
 
-                        plugin_info.last_health_check = now
-
-                        if plugin_info.state == PluginRunState.RUNNING:
-                            if (
-                                not plugin_info.thread
-                                or not plugin_info.thread.is_alive()
-                            ):
-                                self._logger.error(
-                                    f"Plugin {plugin_name} thread died",
-                                )
-                                plugin_info.state = PluginRunState.FAILED
-                                failed_plugins.append(plugin_info)
-                            else:
-                                is_healthy = plugin_info.plugin.is_healthy()
-                                self._plugin_health_metric.labels(
-                                    plugin_name=plugin_info.plugin.name,
-                                    plugin_identifier=self._plugin_identifier(
-                                        plugin_info.plugin,
-                                    ),
-                                ).set(1 if is_healthy else 0)
-
-                                if not is_healthy:
-                                    self._logger.warning(
-                                        f"Plugin {plugin_name} is unhealthy",
-                                    )
-                                    plugin_info.state = PluginRunState.FAILED
-                                    failed_plugins.append(plugin_info)
-
-                                    with self._tracer.start_as_current_span(
-                                        "plugin_lifecycle",
-                                    ) as span:
-                                        span.add_event(
-                                            "plugin.health_check_failed",
-                                            attributes={
-                                                ATTR_PLUGIN_NAME: (
-                                                    plugin_info.plugin.name
-                                                ),
-                                            },
-                                        )
-
-                    except CourierError:
-                        self._logger.exception(
-                            f"Error monitoring plugin {plugin_name}",
-                        )
-                    except Exception:
-                        self._logger.exception(
-                            f"Unexpected error monitoring plugin {plugin_name}",
-                        )
-
+            failed_plugins = [
+                plugin_info
+                for plugin_name, plugin_info in snapshot
+                if self._check_plugin(plugin_name, plugin_info)
+            ]
             for plugin_info in failed_plugins:
                 self._handle_failed_plugin(plugin_info)
 
+            for plugin_info in self._due_restarts(snapshot):
+                self._start_plugin(plugin_info)
+
             time.sleep(1)
 
+    def _check_plugin(self, plugin_name: str, plugin_info: PluginStateInfo) -> bool:
+        """Health-check one plugin if its interval has elapsed.
+
+        Returns
+        -------
+        bool
+            True if the plugin was found failed by this check.
+        """
+        now = time.monotonic()
+        with self._lock:
+            if plugin_info.last_health_check is not None and (
+                now - plugin_info.last_health_check
+                < self._config.plugin_health_check_interval
+            ):
+                return False
+            plugin_info.last_health_check = now
+            if plugin_info.state != PluginRunState.RUNNING:
+                return False
+        try:
+            reason = self._failure_reason(plugin_info)
+        except Exception:
+            self._logger.exception(f"Error monitoring plugin {plugin_name}")
+            return False
+        if reason is None or not self._mark_failed(plugin_info):
+            return False
+        self._logger.error(f"Plugin {plugin_name} {reason}")
+        return True
+
+    def _mark_failed(self, plugin_info: PluginStateInfo) -> bool:
+        """Move a still-RUNNING plugin to FAILED; False if stop() got there first."""
+        with self._lock:
+            if plugin_info.state != PluginRunState.RUNNING:
+                return False
+            plugin_info.state = PluginRunState.FAILED
+            return True
+
+    def _failure_reason(self, plugin_info: PluginStateInfo) -> str | None:
+        """Return why a RUNNING plugin is failed, or None if it is healthy."""
+        if not plugin_info.thread or not plugin_info.thread.is_alive():
+            return "thread died"
+        is_healthy = plugin_info.plugin.is_healthy()
+        self._plugin_health_metric.labels(
+            plugin_name=plugin_info.plugin.name,
+            plugin_identifier=self._plugin_identifier(plugin_info.plugin),
+        ).set(1 if is_healthy else 0)
+        if is_healthy:
+            return None
+        with self._tracer.start_as_current_span("plugin_lifecycle") as span:
+            span.add_event(
+                "plugin.health_check_failed",
+                attributes={ATTR_PLUGIN_NAME: plugin_info.plugin.name},
+            )
+        return "is unhealthy"
+
+    def _due_restarts(
+        self,
+        snapshot: list[tuple[str, PluginStateInfo]],
+    ) -> list[PluginStateInfo]:
+        """Return the plugins whose restart delay has elapsed, clearing it."""
+        now = time.monotonic()
+        due: list[PluginStateInfo] = []
+        with self._lock:
+            for _name, plugin_info in snapshot:
+                if (
+                    plugin_info.state == PluginRunState.RESTARTING
+                    and plugin_info.restart_due is not None
+                    and now >= plugin_info.restart_due
+                ):
+                    plugin_info.restart_due = None
+                    due.append(plugin_info)
+        return due
+
     def _handle_failed_plugin(self, plugin_info: PluginStateInfo) -> None:
-        """Handle a failed plugin with restart logic.
+        """Stop a failed plugin and schedule its restart, or give up on it.
+
+        The restart itself happens in :meth:`_monitor_plugins` once
+        ``restart_due`` passes. Sleeping through ``plugin_restart_delay``
+        here left every other plugin unmonitored for the whole delay.
 
         Parameters
         ----------
@@ -445,17 +488,18 @@ class PluginManager(ServiceManager):
 
         plugin_name = plugin_info.plugin.name
         plugin_ident = self._plugin_identifier(plugin_info.plugin)
-        now = datetime.now()
+        now = time.monotonic()
 
         with self._lock:
             can_restart = (
                 plugin_info.restart_count < self._config.plugin_max_restart_attempts
             )
-
-            if plugin_info.last_restart:
-                time_since_restart = (now - plugin_info.last_restart).seconds
-                if time_since_restart < self._config.plugin_restart_delay:
-                    can_restart = False
+            if (
+                plugin_info.last_restart_at is not None
+                and now - plugin_info.last_restart_at
+                < self._config.plugin_restart_delay
+            ):
+                can_restart = False
 
             if can_restart:
                 self._logger.info(
@@ -476,7 +520,8 @@ class PluginManager(ServiceManager):
 
                 plugin_info.state = PluginRunState.RESTARTING
                 plugin_info.restart_count += 1
-                plugin_info.last_restart = now
+                plugin_info.last_restart = datetime.now()
+                plugin_info.last_restart_at = now
 
                 self._plugin_restart_metric.labels(
                     plugin_name=plugin_name,
@@ -495,8 +540,11 @@ class PluginManager(ServiceManager):
 
         if can_restart:
             self._stop_plugin(plugin_info)
-            time.sleep(self._config.plugin_restart_delay)
-            self._start_plugin(plugin_info)
+            with self._lock:
+                plugin_info.state = PluginRunState.RESTARTING
+                plugin_info.restart_due = (
+                    time.monotonic() + self._config.plugin_restart_delay
+                )
 
     @log_execution
     def start(self) -> None:
