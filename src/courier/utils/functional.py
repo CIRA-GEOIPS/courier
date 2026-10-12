@@ -2,11 +2,6 @@
 
 import hashlib
 import re
-from collections.abc import Callable, Iterable
-from typing import TypeVar
-
-T = TypeVar("T")
-R = TypeVar("R")
 
 _UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
 _SLUG_MAX_LEN = 64
@@ -44,35 +39,3 @@ def slugify_for_filename(value: str, max_length: int = _SLUG_MAX_LEN) -> str:
         return truncated
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
     return f"{truncated}-{digest}" if truncated else digest
-
-
-def filter_map(  # noqa: UP047
-    predicate: Callable[[T], bool],
-    transform: Callable[[T], R],
-    items: Iterable[T],
-) -> list[R]:
-    """Filter and map in a single operation.
-
-    Filters items using a predicate function and transforms matching
-    items using a transform function in a single pass.
-
-    Parameters
-    ----------
-    predicate : Callable[[T], bool]
-        Function to test each item. Only items returning True are transformed.
-    transform : Callable[[T], R]
-        Function to transform filtered items.
-    items : Iterable[T]
-        Items to filter and transform.
-
-    Returns
-    -------
-    list[R]
-        List of transformed items that passed the predicate test.
-
-    Examples
-    --------
-    >>> filter_map(lambda x: x % 2 == 0, lambda x: x * 2, [1, 2, 3, 4])
-    [4, 8]
-    """
-    return [transform(item) for item in items if predicate(item)]

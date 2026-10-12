@@ -22,6 +22,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.mathjax",
     "sphinx_copybutton",
+    "sphinxcontrib.mermaid",
 ]
 
 templates_path = ["_templates"]

@@ -186,8 +186,8 @@ def test_malformed_metric_line_does_not_raise(line: str) -> None:
 
     ``_ingest_courier_metrics`` runs inside ``get_execution_log``; a raised
     ValueError is not a CourierError, so the dispatcher loop does not catch it
-    and the process exits via ``os._exit(1)`` with the message unacked --
-    which then kills the service again on redelivery.
+    and the consumer thread dies with the message unacked -- which then
+    kills the restarted dispatcher again on redelivery.
     """
     _ingest_courier_metrics(line, "disp-poison")
 

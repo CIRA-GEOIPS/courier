@@ -11,6 +11,7 @@ import pytest
 from courier.utils.decorators import (
     INFINITE_RETRIES,
     MAX_BACKOFF_SECONDS,
+    log_execution,
     retry_with_backoff,
 )
 
@@ -186,3 +187,30 @@ class TestRetryWithBackoff:
 
         assert my_function.__name__ == "my_function"
         assert my_function.__doc__ == "Docstring for my_function."
+
+
+class TestLogExecution:
+    """``log_execution`` logs and re-raises whatever the function raises."""
+
+    def test_any_exception_is_logged_and_re_raised(self) -> None:
+        logger = MagicMock()
+
+        class Thing:
+            _logger = logger
+
+            @log_execution
+            def go(self) -> None:
+                raise ValueError("not a CourierError")
+
+        with pytest.raises(ValueError, match="not a CourierError"):
+            Thing().go()
+
+        logger.exception.assert_called_once()
+        assert "go" in logger.exception.call_args.args[0]
+
+    def test_success_returns_the_value(self) -> None:
+        @log_execution
+        def double(x: int) -> int:
+            return x * 2
+
+        assert double(4) == 8

@@ -26,7 +26,7 @@ from courier.constants import (
     file_found_queue_for,
     job_ready_queue_for,
 )
-from courier.errors import ConfigurationError, DiscoveryError
+from courier.errors import ConfigurationError, DiscoveryError, PluginFailedError
 from courier.managers.plugin_manager import PluginManager
 from courier.managers.prometheus_manager import PrometheusManager
 from courier.routing import TargetResolver, build_default_resolver
@@ -207,7 +207,10 @@ class Service:
         """Publish a message to a message broker queue.
 
         Blocks until the broker confirms the message; see
-        :func:`courier.broker.kombu.publish`.
+        :func:`courier.broker.kombu.publish`. Publishes on the calling
+        thread's long-lived connection
+        (:meth:`~courier.broker.kombu.MessageBrokerManager.publisher_connection`)
+        rather than opening one per call.
 
         Parameters
         ----------
@@ -227,7 +230,7 @@ class Service:
         # --- receives every file notification.
         if queue == FILE_FOUND_EXCHANGE:
             exchange_name = self._broker_manager.get_queue_name(queue)
-            with self._broker_manager.get_connection_context() as conn:
+            with self._broker_manager.publisher_connection() as conn:
                 exchange = declare_fanout_exchange(conn, exchange_name)
                 tracer = get_tracer(__name__)
                 with tracer.start_as_current_span(
@@ -259,7 +262,7 @@ class Service:
             durable=True,
             exclusive=False,
         )
-        with self._broker_manager.get_connection_context() as conn:
+        with self._broker_manager.publisher_connection() as conn:
             self._logger.debug(f"Emitting message to queue '{queue_name}': {message}")
             q = declare_queue(conn, queue_name, durable=True)
             tracer = get_tracer(__name__)
@@ -648,7 +651,7 @@ class Service:
             **inject_trace_headers(),
             PARK_REASON_HEADER: reason[:_PARK_REASON_HEADER_MAX],
         }
-        with self._broker_manager.get_connection_context() as conn:
+        with self._broker_manager.publisher_connection() as conn:
             dead_letter = declare_queue(
                 conn,
                 dead_letter_name,
@@ -1039,10 +1042,26 @@ class Service:
 
                 self._service_uptime_metric.set(time.time() - self._start_time)
                 self._service_health_metric.set(1 if self._health_check() else 0)
+                self._require_no_failed_plugins()
 
                 plugin_status = self._plugin_manager.get_plugin_status()
                 if plugin_status:
                     self._logger.debug(f"Plugin status: {plugin_status}")
+
+    def _require_no_failed_plugins(self) -> None:
+        """Raise ``PluginFailedError`` if a plugin has used up its restarts.
+
+        A plugin the manager has given up on would otherwise stay dead for
+        the life of the process while the service kept its heartbeat. Exiting
+        hands the decision to whatever runs the process, which can restart
+        it, and makes the failure visible where a metric alone was not.
+        """
+        exhausted = self._plugin_manager.exhausted_plugins()
+        if exhausted:
+            raise PluginFailedError(
+                "Exiting: these plugins failed and exhausted their restart "
+                f"attempts: {', '.join(exhausted)}",
+            )
 
     @log_execution
     def start(self) -> None:
@@ -1071,7 +1090,7 @@ class Service:
                 self._logger.info("Received keyboard interrupt")
                 raise
             except Exception:
-                self._logger.exception("Service startup failed")
+                self._logger.exception("Service failed")
                 raise
             finally:
                 self._cleanup()

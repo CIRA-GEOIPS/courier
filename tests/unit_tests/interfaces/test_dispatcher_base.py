@@ -1,8 +1,9 @@
 """Behavioural tests for the ``Dispatcher`` base class.
 
 The consume/execute/ack loop is where one bad job could once take a whole
-service down: any non-``CourierError`` escaping ``get_execution_log`` reached
-``os._exit`` with the message unacked, so it recurred on every redelivery.
+service down: any non-``CourierError`` escaping ``get_execution_log`` killed
+the consumer thread with the message unacked, so it recurred on every
+redelivery.
 These tests pin the contract that replaced that:
 
 * a job that fails while being prepared, run or published is contained and
@@ -357,7 +358,7 @@ class TestJobExecution:
         assert _processed(dispatcher, "failure") == failures + 1
 
     @pytest.mark.parametrize(
-        ("case", "exits"),
+        ("case", "fails"),
         [
             ("job-error", False),
             ("publish-fault", False),
@@ -365,13 +366,18 @@ class TestJobExecution:
             ("park-fails", True),
         ],
     )
-    def test_the_process_exits_only_when_parking_fails(
+    def test_the_loop_fails_only_when_parking_fails(
         self,
         service: MagicMock,
         case: str,
-        exits: bool,
+        fails: bool,
     ) -> None:
-        """An escaping error ends the process, leaving the message unacked."""
+        """An escaping error marks the plugin FAILED and ends its thread.
+
+        The error propagates out of the run wrapper rather than exiting the
+        process, so the plugin manager can restart the dispatcher under its
+        restart policy. The message is left unacked either way.
+        """
         dispatcher = _dispatcher(service, f"exec-exit-{case}")
         body = str(_job("job-1"))
         if case == "job-error":
@@ -384,10 +390,14 @@ class TestJobExecution:
                 service.park_message.side_effect = ConnectionError("DLQ gone")
         service.consume.return_value = iter([(body, None)])
 
-        with patch("courier.interfaces.dispatchers.os._exit") as exit_:
+        if fails:
+            with pytest.raises(ConnectionError):
+                dispatcher._run_handle_incoming_jobs()
+            assert dispatcher._state is PluginRunState.FAILED
+            assert dispatcher.is_healthy() is False
+        else:
             dispatcher._run_handle_incoming_jobs()
-
-        assert exit_.called is exits
+            assert dispatcher._state is not PluginRunState.FAILED
 
 
 # -- concurrency -------------------------------------------------------------
