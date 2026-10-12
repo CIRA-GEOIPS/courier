@@ -758,3 +758,154 @@ class TestRestartsThroughTheRealLoop:
 
         assert manager._monitor_thread is None
         manager.stop()
+
+
+def _blocked_starter(plugin: MagicMock, info: PluginStateInfo) -> threading.Event:
+    """Run ``plugin.start`` on a starter thread that blocks until released."""
+    release = threading.Event()
+    plugin.start.side_effect = release.wait
+    info.state = PluginRunState.STARTING
+    info.starting_since = time.monotonic()
+    info.thread = threading.Thread(target=plugin.start, name="stuck-start", daemon=True)
+    info.thread.start()
+    return release
+
+
+class TestStuckStart:
+    """A start() that never returns is given up on, not retried."""
+
+    def test_a_fresh_start_is_left_alone(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("warming-up")
+        info = PluginStateInfo(plugin=plugin)
+        release = _blocked_starter(plugin, info)
+        try:
+            assert manager._check_plugin("warming-up", info) is False
+            assert info.state == PluginRunState.STARTING
+            manager._state = PluginRunState.RUNNING
+            manager._plugins["warming-up"] = info
+            assert manager.is_healthy()
+        finally:
+            release.set()
+
+    def test_an_overdue_start_is_failed_exhausted_and_told_to_stop(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_start_timeout=1, plugin_max_restart_attempts=3),
+            parent_service=MagicMock(),
+        )
+        plugin = _make_plugin("stuck")
+        info = PluginStateInfo(plugin=plugin)
+        release = _blocked_starter(plugin, info)
+        stuck_thread = info.thread
+        manager._state = PluginRunState.RUNNING
+        manager._plugins["stuck"] = info
+        try:
+            info.starting_since = time.monotonic() - 2
+            assert not manager.is_healthy(), "overdue start is unhealthy"
+
+            assert manager._check_plugin("stuck", info) is False
+
+            assert info.state == PluginRunState.FAILED
+            assert info.restart_count == 3
+            assert "did not return within 1s" in (info.error_message or "")
+            assert info.thread is None
+            assert info.abandoned_threads == [stuck_thread]
+            assert manager.exhausted_plugins() == ["stuck"]
+            plugin.stop.assert_called_once()
+            # A second tick does nothing more: not retried, not re-failed.
+            info.last_health_check = None
+            assert manager._check_plugin("stuck", info) is False
+            assert info.restart_count == 3
+        finally:
+            release.set()
+
+    def test_the_log_names_what_the_thread_is_blocked_on(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_start_timeout=1),
+            parent_service=MagicMock(),
+        )
+        plugin = _make_plugin("stuck")
+        info = PluginStateInfo(plugin=plugin)
+        release = _blocked_starter(plugin, info)
+        try:
+            time.sleep(0.05)  # let the thread reach Event.wait
+            info.starting_since = time.monotonic() - 2
+            with patch.object(manager, "_logger") as logger:
+                manager._abandon_stuck_start(info)
+            message = logger.error.call_args.args[0] % logger.error.call_args.args[1:]
+            assert "blocked at" in message
+            assert "wait" in message
+        finally:
+            release.set()
+
+    def test_a_late_return_does_not_resurrect_the_plugin(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_start_timeout=1),
+            parent_service=MagicMock(),
+        )
+        plugin = _make_plugin("tardy", healthy=True)
+        info = PluginStateInfo(plugin=plugin)
+        manager._plugins["tardy"] = info
+        release = threading.Event()
+        plugin.start.side_effect = release.wait
+
+        manager._start_plugin(info)
+        starter = info.thread
+        info.starting_since = time.monotonic() - 2
+        manager._abandon_stuck_start(info)
+        assert info.state == PluginRunState.FAILED
+
+        release.set()
+        starter.join(timeout=5)  # type: ignore[union-attr]
+
+        assert info.state == PluginRunState.FAILED
+        assert not info.ready.is_set()
+        assert manager.exhausted_plugins() == ["tardy"]
+
+    def test_the_real_loop_gives_up_and_stop_returns(self) -> None:
+        manager = PluginManager(
+            _make_config(plugin_health_check_interval=0.2, plugin_start_timeout=0.5),
+            parent_service=MagicMock(),
+        )
+        good = _make_plugin("good")
+        manager.register_plugin(_plugin_cls_for(good), {}, identifier="good")
+        stuck = _make_plugin("stuck")
+        release = threading.Event()
+        stuck.start.side_effect = release.wait
+        manager.register_plugin(_plugin_cls_for(stuck), {}, identifier="stuck")
+
+        manager.start()
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not manager.exhausted_plugins():
+                time.sleep(0.05)
+            assert manager.exhausted_plugins() == ["stuck"]
+            assert not manager.is_healthy()
+            assert manager.get_plugin_status()["stuck"]["abandoned_threads"] == 1
+
+            started = time.monotonic()
+            manager.stop()
+            assert time.monotonic() - started < 10
+        finally:
+            release.set()
+
+
+class TestStopOutlivingItsJoin:
+    def test_a_thread_that_will_not_stop_is_recorded(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("clingy")
+        release = threading.Event()
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.RUNNING)
+        info.thread = threading.Thread(target=release.wait, daemon=True)
+        info.thread.start()
+        clingy = info.thread
+        try:
+            with patch.object(
+                threading.Thread, "join", lambda self, timeout=None: None
+            ):
+                manager._stop_plugin(info)
+            assert info.state == PluginRunState.STOPPED
+            assert info.thread is None
+            assert info.abandoned_threads == [clingy]
+        finally:
+            release.set()

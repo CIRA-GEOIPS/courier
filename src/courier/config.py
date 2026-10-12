@@ -65,6 +65,15 @@ class ServiceConfig:
     plugin_health_check_interval : int, optional
         Interval in seconds between plugin health checks. Defaults to
         environment variable PLUGIN_HEALTH_CHECK_INTERVAL or 2.
+    plugin_start_timeout : int, optional
+        Seconds a plugin's ``start()`` may take before it is given up on. A
+        thread blocked inside ``start()`` (a Redis that accepts and never
+        answers, a broker confirm that never comes) cannot be interrupted
+        from outside, so a restart would only add a second stuck thread. The
+        plugin is marked failed with its restart attempts used up and the
+        service exits, which is the only recovery there is. Must be at least
+        ``plugin_health_check_interval``. Defaults to environment variable
+        PLUGIN_START_TIMEOUT or 60.
     loki_url : str, optional
         Grafana Loki push API URL for log shipping. Defaults to environment
         variable LOKI_URL or empty string (Loki disabled).
@@ -146,6 +155,9 @@ class ServiceConfig:
             os.environ.get("PLUGIN_HEALTH_CHECK_INTERVAL", "2"),
         ),
     )
+    plugin_start_timeout: int = field(
+        default_factory=lambda: int(os.environ.get("PLUGIN_START_TIMEOUT", "60")),
+    )
     loki_url: str = field(
         default_factory=lambda: os.environ.get("LOKI_URL", ""),
     )
@@ -184,7 +196,7 @@ class ServiceConfig:
     )
 
     def __post_init__(self) -> None:
-        """Validate the sample rate, the prefetch, and the redelivery bound."""
+        """Validate the sample rate, prefetch, redelivery and start bounds."""
         if not (0.0 <= self.tracing_sample_rate <= 1.0):
             raise ConfigurationError(
                 "tracing_sample_rate must be between 0.0 and 1.0, "
@@ -201,4 +213,11 @@ class ServiceConfig:
                 "broker_max_redeliveries must not be negative "
                 "(0 parks a failing message on the first attempt), "
                 f"got {self.broker_max_redeliveries}",
+            )
+        if self.plugin_start_timeout < self.plugin_health_check_interval:
+            raise ConfigurationError(
+                "plugin_start_timeout must be at least "
+                "plugin_health_check_interval, or a start would be given up "
+                f"on before the health gate has waited for it; got "
+                f"{self.plugin_start_timeout} < {self.plugin_health_check_interval}",
             )

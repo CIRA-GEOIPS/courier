@@ -33,7 +33,7 @@ Courier runs a central `Service` that coordinates three stages of plugins throug
 [Dispatcher]   → executes each job's payload 
 ```
 
-Each plugin runs in its own thread with independent health monitoring and automatic restart on failure; a plugin that keeps failing takes the service down with it, so an orchestrator can replace the process. Configuration is validated at startup with Pydantic, and every payload's script template is parsed then too — not halfway through a run.
+Each plugin runs in its own thread with independent health monitoring and automatic restart on failure; a plugin that keeps failing, or hangs while starting, takes the service down with it, so an orchestrator can replace the process. Configuration is validated at startup with Pydantic, and every payload's script template is parsed then too — not halfway through a run.
 
 ## Quick Start
 
