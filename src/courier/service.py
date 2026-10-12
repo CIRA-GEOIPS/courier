@@ -26,7 +26,7 @@ from courier.constants import (
     file_found_queue_for,
     job_ready_queue_for,
 )
-from courier.errors import ConfigurationError, DiscoveryError
+from courier.errors import ConfigurationError, DiscoveryError, PluginFailedError
 from courier.managers.plugin_manager import PluginManager
 from courier.managers.prometheus_manager import PrometheusManager
 from courier.routing import TargetResolver, build_default_resolver
@@ -1042,10 +1042,26 @@ class Service:
 
                 self._service_uptime_metric.set(time.time() - self._start_time)
                 self._service_health_metric.set(1 if self._health_check() else 0)
+                self._require_no_failed_plugins()
 
                 plugin_status = self._plugin_manager.get_plugin_status()
                 if plugin_status:
                     self._logger.debug(f"Plugin status: {plugin_status}")
+
+    def _require_no_failed_plugins(self) -> None:
+        """Raise ``PluginFailedError`` if a plugin has used up its restarts.
+
+        A plugin the manager has given up on would otherwise stay dead for
+        the life of the process while the service kept its heartbeat. Exiting
+        hands the decision to whatever runs the process, which can restart
+        it, and makes the failure visible where a metric alone was not.
+        """
+        exhausted = self._plugin_manager.exhausted_plugins()
+        if exhausted:
+            raise PluginFailedError(
+                "Exiting: these plugins failed and exhausted their restart "
+                f"attempts: {', '.join(exhausted)}",
+            )
 
     @log_execution
     def start(self) -> None:
@@ -1074,7 +1090,7 @@ class Service:
                 self._logger.info("Received keyboard interrupt")
                 raise
             except Exception:
-                self._logger.exception("Service startup failed")
+                self._logger.exception("Service failed")
                 raise
             finally:
                 self._cleanup()

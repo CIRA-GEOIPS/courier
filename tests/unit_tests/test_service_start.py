@@ -8,6 +8,7 @@ replaced the exception in flight and skipped ``_cleanup()``.
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -15,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from courier.config import ServiceConfig
+from courier.errors import PluginFailedError
 from courier.service import Service
 
 if TYPE_CHECKING:
@@ -129,3 +131,59 @@ class TestServiceStart:
 
         lifecycle["heartbeat"].assert_not_called()
         lifecycle["cleanup"].assert_called_once()
+
+
+class TestFailedPluginsEndTheService:
+    """A plugin the manager has given up on takes the process down with it."""
+
+    def test_an_exhausted_plugin_raises(self, service: Service) -> None:
+        with patch.object(
+            service._plugin_manager,
+            "exhausted_plugins",
+            return_value=["watcher"],
+        ):
+            with pytest.raises(PluginFailedError, match="watcher"):
+                service._require_no_failed_plugins()
+
+    def test_no_exhausted_plugins_is_quiet(self, service: Service) -> None:
+        with patch.object(
+            service._plugin_manager,
+            "exhausted_plugins",
+            return_value=[],
+        ):
+            service._require_no_failed_plugins()
+
+    def test_the_heartbeat_loop_itself_raises(self, service: Service) -> None:
+        """The real loop, not the helper: the check must be on its path."""
+        service._start_time = time.time()
+        with (
+            patch("courier.service.time.sleep"),
+            patch.object(service, "_prometheus_manager"),
+            patch.object(service, "_health_check", return_value=True),
+            patch.object(
+                service._plugin_manager,
+                "exhausted_plugins",
+                return_value=["watcher"],
+            ),
+            pytest.raises(PluginFailedError, match="watcher"),
+        ):
+            service._run_heartbeat_loop()
+
+    def test_start_propagates_it_and_cleans_up(self, service: Service) -> None:
+        with (
+            patch.object(service, "preflight_check"),
+            patch.object(service, "_start_managers"),
+            patch.object(service, "_health_check", return_value=True),
+            patch.object(service, "_cleanup") as cleanup,
+            patch("courier.service.time.sleep"),
+            patch.object(service, "_prometheus_manager"),
+            patch.object(
+                service._plugin_manager,
+                "exhausted_plugins",
+                return_value=["watcher"],
+            ),
+            pytest.raises(PluginFailedError, match="watcher"),
+        ):
+            service.start()
+
+        cleanup.assert_called_once()

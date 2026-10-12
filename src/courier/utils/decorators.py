@@ -6,7 +6,6 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Final, TypeVar
 
-from courier.errors import CourierError
 from courier.utils.logging import get_logger
 
 T = TypeVar("T")
@@ -176,7 +175,9 @@ def log_execution(func: Callable[..., T]) -> Callable[..., T]:  # noqa: UP047
             result = func(*args, **kwargs)
             active_logger.debug(f"Successfully executed {func.__name__}")
             return result  # noqa: TRY300
-        except CourierError:
+        except Exception:
+            # Every exception, not only CourierError: the one a caller has
+            # not anticipated is the one that most needs a logged traceback.
             active_logger.exception(f"Error in {func.__name__}")
             raise
 

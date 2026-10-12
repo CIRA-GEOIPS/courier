@@ -42,7 +42,6 @@ DATA_FILE = "/data/in-a.nc"
 def service() -> MagicMock:
     svc = MagicMock()
     svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
     svc.target_resolver = None
     return svc
 

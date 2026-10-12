@@ -17,7 +17,6 @@ def service() -> MagicMock:
     """Service stub for payload and dispatcher tests, with no broker."""
     svc = MagicMock()
     svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
     return svc
 
 
