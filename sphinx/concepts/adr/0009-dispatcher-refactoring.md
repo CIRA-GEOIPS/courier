@@ -160,7 +160,7 @@ task runtime. We are able to check statically via service validation at the time
 
 - Compatibility failures move to config-validation time
 
-- `get_execution_log` becomes the composition point. Everything above it is untouched, so dedupe,
+- `execute` becomes the composition point. Everything above it is untouched, so dedupe,
   metrics, tracing, restart and routing behave exactly as today.
 
 - `serial_bash` and `parallel_bash` become collapse candidates

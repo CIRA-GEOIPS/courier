@@ -150,7 +150,7 @@ The other hooks, from the outside in:
   a value such as `{{ dispatcher.<field>.<key> }}` by looking each step up as
   a dictionary key or a list index, never as an object attribute.
 
-`get_execution_log(job)` runs all of the above. Extend it with `super()` to
+`execute(job)` runs all of the above. Extend it with `super()` to
 emit files decided in code once the job has run (see
 {ref}`pipeline-feedback-example`); replacing it skips payload hydration,
 toolchain checks and script handling.
