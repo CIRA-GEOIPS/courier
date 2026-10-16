@@ -184,7 +184,7 @@ def test_slugify_leaves_already_safe_values_untouched() -> None:
 def test_malformed_metric_line_does_not_raise(line: str) -> None:
     """A bad metric line must not escape as ValueError.
 
-    ``_ingest_courier_metrics`` runs inside ``get_execution_log``; a raised
+    ``_ingest_courier_metrics`` runs inside ``execute``; a raised
     ValueError is not a CourierError, so the dispatcher loop does not catch it
     and the process exits via ``os._exit(1)`` with the message unacked --
     which then kills the service again on redelivery.

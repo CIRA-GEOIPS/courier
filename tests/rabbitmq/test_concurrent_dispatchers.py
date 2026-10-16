@@ -105,7 +105,7 @@ class _RecordingDispatcher(Dispatcher):
         self.executed: list[str] = []
         self._executed_lock = threading.Lock()
 
-    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+    def execute(self, job: Job) -> list[ExecutionLog]:
         with self._executed_lock:
             self.executed.append(job.identifier)
         return [ExecutionLog(return_code=0, stdout="ok", stderr="", hostname="h")]
