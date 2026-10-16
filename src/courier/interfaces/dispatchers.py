@@ -231,7 +231,7 @@ class Dispatcher(ServicePlugin):
         # taking messages while max_workers jobs are in flight.
         self._slots = threading.BoundedSemaphore(self.config.max_workers)
 
-    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+    def execute(self, job: Job) -> list[ExecutionLog]:
         """Resolve the job's payload, prepare its environment, and execute it.
 
         Parameters
@@ -893,7 +893,7 @@ class Dispatcher(ServicePlugin):
             start_time - job.last_modified,
         )
         try:
-            execution_logs = self.get_execution_log(job)
+            execution_logs = self.execute(job)
             get_current_span().add_event(
                 "job.executed",
                 attributes={

@@ -139,7 +139,7 @@ def run_locally(
 ) -> list[ExecutionLog]:
     """Run a payload through a real ``LocalDispatcher``; see :func:`wire_job`."""
     dispatcher = dispatcher_cls(service, dispatcher_config or {}, identifier="ld")
-    return dispatcher.get_execution_log(wire_job(service, payload_config, **wire))
+    return dispatcher.execute(wire_job(service, payload_config, **wire))
 
 
 def consume(dispatcher: Dispatcher, *jobs: Job) -> None:

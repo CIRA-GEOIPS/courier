@@ -177,7 +177,7 @@ and processes it again, forever.
 ### From a custom dispatcher
 
 A dispatcher that decides in code which files a job produced extends
-`get_execution_log(job)`, and calls `self.emit_file()` for each of them once
+`execute(job)`, and calls `self.emit_file()` for each of them once
 the job has run:
 
 ```python
@@ -195,8 +195,8 @@ class CalibrateDispatcher(LocalDispatcher):
     name: ClassVar[str] = "calibrate_dispatcher"
     version: ClassVar[str] = "1.0.0"
 
-    def get_execution_log(self, job):
-        logs = super().get_execution_log(job)  # runs the payload
+    def execute(self, job):
+        logs = super().execute(job)  # runs the payload
         if all(log.return_code == 0 for log in logs):
             for source in job.files:
                 self.emit_file(

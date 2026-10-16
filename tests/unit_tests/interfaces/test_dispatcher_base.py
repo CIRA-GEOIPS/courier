@@ -1,7 +1,7 @@
 """Behavioural tests for the ``Dispatcher`` base class.
 
 The consume/execute/ack loop is where one bad job could once take a whole
-service down: any non-``CourierError`` escaping ``get_execution_log`` reached
+service down: any non-``CourierError`` escaping ``execute`` reached
 ``os._exit`` with the message unacked, so it recurred on every redelivery.
 These tests pin the contract that replaced that:
 
@@ -68,7 +68,7 @@ class _RecordingDispatcher(Dispatcher):
         self.executed: list[Job] = []
         self.raise_on_execute: Exception | None = None
 
-    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+    def execute(self, job: Job) -> list[ExecutionLog]:
         if self.raise_on_execute is not None:
             raise self.raise_on_execute
         self.executed.append(job)
@@ -92,7 +92,7 @@ class _ConcurrencyDispatcher(_RecordingDispatcher):
         self.most_running = 0
         self._lock = threading.Lock()
 
-    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+    def execute(self, job: Job) -> list[ExecutionLog]:
         with self._lock:
             self.executed.append(job)
             self.running += 1
@@ -113,7 +113,7 @@ class _OutputFilesDispatcher(_RecordingDispatcher):
 
     name = "output_files_dispatcher"
 
-    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+    def execute(self, job: Job) -> list[ExecutionLog]:
         self.executed.append(job)
         return [
             ExecutionLog(
@@ -286,7 +286,7 @@ class TestJobExecution:
             return [ExecutionLog(return_code=0, stdout="", stderr="", hostname="h")]
 
         before = _processed(dispatcher, "failure")
-        with patch.object(dispatcher, "get_execution_log", side_effect=_flaky):
+        with patch.object(dispatcher, "execute", side_effect=_flaky):
             consume(dispatcher, _job("job-1"), _job("job-2"))
 
         assert calls == ["job-1", "job-2"]
@@ -1024,7 +1024,7 @@ class TestScriptMaterialization:
         dispatcher = LocalDispatcher(service, {}, identifier="mat")
 
         with pytest.raises(Exception, match=error):
-            dispatcher.get_execution_log(job)
+            dispatcher.execute(job)
 
         assert list(private_tmpdir.iterdir()) == []
 
@@ -1040,7 +1040,7 @@ class TestScriptMaterialization:
             ),
             pytest.raises(ValueError, match="bad"),
         ):
-            dispatcher.get_execution_log(_script_job("echo hi"))
+            dispatcher.execute(_script_job("echo hi"))
 
         assert list(private_tmpdir.iterdir()) == []
 
@@ -1070,7 +1070,7 @@ class TestScriptMaterialization:
         private_tmpdir: Path,
     ) -> None:
         dispatcher = LocalDispatcher(service, {}, identifier="mat")
-        logs = dispatcher.get_execution_log(_script_job('echo "$0"'))
+        logs = dispatcher.execute(_script_job('echo "$0"'))
 
         assert logs[0].return_code == 0
         assert logs[0].stdout.strip().startswith(str(private_tmpdir))
@@ -1096,7 +1096,7 @@ class TestScriptMaterialization:
                 return [ExecutionLog(return_code=0, stdout="", stderr="", hostname="")]
 
         dispatcher = _Submitting(service, {}, identifier="mat")
-        dispatcher.get_execution_log(_script_job("echo hi"))
+        dispatcher.execute(_script_job("echo hi"))
 
         (kept,) = private_tmpdir.iterdir()
         assert kept.read_text() == "echo hi"
@@ -1106,7 +1106,7 @@ class TestScriptMaterialization:
 class TestEndToEndExecution:
     """Drive a real dispatcher through the consume loop with a real subprocess.
 
-    ``_RecordingDispatcher`` overrides ``get_execution_log``, so the tests above
+    ``_RecordingDispatcher`` overrides ``execute``, so the tests above
     never exercise hydration, rendering or process execution.  This runs
     ``LocalDispatcher`` (no overrides) end to end: consume -> hydrate -> render
     pass two -> write script -> run -> observe the file it produced.
