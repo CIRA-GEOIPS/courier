@@ -37,6 +37,7 @@ from courier.tracing import (
     inject_trace_headers,
     shutdown_tracing,
 )
+from courier.utils.config_monitor import ConfigMonitor
 
 if TYPE_CHECKING:
     import threading
@@ -173,6 +174,8 @@ class Service:
             self._broker_manager,
             self._plugin_manager,
         ]
+        if self._config.live_reload:
+            self._config_monitor = ConfigMonitor(self._config.config_path)
         self.namespace = self._config.namespace
         self._start_time = time.time()
 

@@ -82,7 +82,13 @@ class ServiceConfig:
         Trace sampling rate between 0.0 and 1.0. Defaults to
         COURIER_TRACING_SAMPLE_RATE or 1.0 (always on).
     live_reload : bool, optional
+        -----Testing purposes only-----
+        to be replaced with a cmdline argument
         Reconfigure service configuration while running. Defaults to False.
+    config_path : str, optional
+        -----Testing purposes only-----
+        To be routed into the Service object instead of defined explicitly
+        Path to watch for live reload
     Examples
     --------
     >>> config = ServiceConfig()
@@ -175,6 +181,10 @@ class ServiceConfig:
     live_reload: bool = field(
         default_factory=lambda: bool(
             os.environ.get("COURIER_LIVE_RELOAD", "False"),
+        ),
+    )
+    config_path: str = field(
+            default_factory=lambda: str(os.environ.get("COURIER_CONFIG_PATH", "")
         ),
     )
 
