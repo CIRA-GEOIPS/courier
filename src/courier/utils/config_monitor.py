@@ -7,16 +7,15 @@ from pathlib import Path
 import re
 import yaml
 import textwrap
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
-from courier.managers import PluginManager
+if TYPE_CHECKING:
+    from courier.managers import PluginManager
 from courier.managers.base import ServiceManager
 from courier.schema.v1alpha1.service_config import MicroserviceModel
-from courier.service import Service
 
 def get_diff_lines(old_src: str, new_src: str) -> list[int]:
     old = old_src.splitlines()
@@ -72,16 +71,7 @@ def get_spec_from_line(src_str, line_num) -> tuple[int, int]:
     return (id_line, lower_bound)
 
 def get_spec_from_buffer(spec: str) -> MicroserviceModel:
-    # remove bullet point
-    lines = spec.splitlines()
-    lines[0] = re.sub(
-        r"^([ \t]*)-[ \t]+(?=identifier:)",
-        r"\1",
-        lines[0]
-    )
-
-    cleaned_spec = "\n".join(lines)
-    data = yaml.safe_load(textwrap.dedent(cleaned_spec))
+    data = yaml.safe_load(textwrap.dedent(spec))
 
     if isinstance(data, list):
         data = data[0]
@@ -116,6 +106,7 @@ class ConfigMonitor:
         self._observer = Observer()
         self._observer.schedule(ConfigMonitorEventHandler(self), str(Path(self._config_file).parent), recursive=False)
     def _replace_running_plugin(self, service: MicroserviceModel) -> None:
+        from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind
         id = service.identifier
         identified_plugin = self._parent_service._plugins.get(id, None)
         if not identified_plugin:
@@ -124,6 +115,7 @@ class ConfigMonitor:
                              "service configs")
 
         self._parent_service._stop_plugin(identified_plugin)
+        self._parent_service._plugins.pop(id)
 
         kind = normalize_kind(service.spec.kind)
         
@@ -151,10 +143,11 @@ class ConfigMonitor:
             updated_buffers.add(get_spec_from_line(new_config, line_num))
         updated_models = []
         for upper, lower in updated_buffers:
-            updated_models.append(get_spec_from_buffer(new_config[upper:lower]))
+            spec = "\n".join(new_config.splitlines()[upper:lower+1])
+            updated_models.append(get_spec_from_buffer(spec))
 
         for service in updated_models:
-
+            self._replace_running_plugin(service)
 
     def start(self):
         self._observer.start()

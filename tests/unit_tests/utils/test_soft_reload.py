@@ -6,10 +6,12 @@ from unittest.mock import MagicMock
 import tempfile
 
 from courier.cli.feedback import load_config_or_exit
+from courier.cli.plugins import PLUGIN_REGISTRIES
 from courier.managers.plugin_manager import PluginManager
 from courier.schema import ServiceConfigModel
+from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.service import Service
-from courier.utils.config_monitor import ConfigMonitor, get_diff_lines, get_spec_from_line
+from courier.utils.config_monitor import ConfigMonitor, get_diff_lines, get_spec_from_buffer, get_spec_from_line
 
 
 @pytest.fixture
@@ -140,6 +142,18 @@ class TestBasicUtils:
         upper, lower = get_spec_from_line(ln, 8)
         assert upper == 8
         assert lower == 14
+    
+    def test_get_spec_from_buffer(self) -> None:
+        spec = """- identifier: data-monitor-file-system-poller-watchdog
+spec:
+    kind: data_monitor
+    name: file_system_poller_watchdog
+    config:
+      path: ./incoming
+      hostname: localhost"""
+
+        model = get_spec_from_buffer(spec)
+        assert model.identifier == "data-monitor-file-system-poller-watchdog"
 
 
 class TestFileMonitor:
@@ -171,3 +185,64 @@ class TestFileMonitor:
         finally:
             monitor.stop()
 
+class TestFullWorkflow:
+    def test_replace_running_plugin(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        identifier = "data-monitor-file-system-poller-watchdog"
+
+        old_plugin = MagicMock()
+
+        manager = MagicMock()
+        manager._plugins = {
+            identifier: old_plugin,
+        }
+
+        new_plugin_class = MagicMock()
+        registry = MagicMock()
+        registry.get_plugin.return_value = new_plugin_class
+
+        monkeypatch.setitem(
+            PLUGIN_REGISTRIES,
+            "data_monitors",
+            registry,
+        )
+
+        service = MicroserviceModel.model_validate({
+            "identifier": identifier,
+            "spec": {
+                "kind": "data_monitor",
+                "name": "file_system_poller_watchdog",
+                "config": {
+                    "path": "./new_incoming",
+                    "hostname": "localhost",
+                },
+            },
+        })
+
+        config_file = tmp_path / "service.yaml"
+        config_file.write_text("")
+
+        monitor = ConfigMonitor(
+            config_file=str(config_file),
+            parent_service=manager,
+        )
+
+        monitor._replace_running_plugin(service)
+
+        manager._stop_plugin.assert_called_once_with(old_plugin)
+
+        registry.get_plugin.assert_called_once_with(
+            "file_system_poller_watchdog"
+        )
+
+        manager.register_plugin.assert_called_once_with(
+            new_plugin_class,
+            {
+                "path": "./new_incoming",
+                "hostname": "localhost",
+            },
+            identifier,
+        )
