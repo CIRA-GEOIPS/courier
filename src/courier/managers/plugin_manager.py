@@ -21,6 +21,7 @@ from courier.tracing import (
     ATTR_PLUGIN_NAME,
     get_tracer,
 )
+from courier.utils.config_monitor import ConfigMonitor
 from courier.utils.decorators import log_execution
 from courier.utils.functional import filter_map
 from courier.utils.logging import get_logger
@@ -113,6 +114,9 @@ class PluginManager(ServiceManager):
         self._plugin_restart_metric = PLUGIN_RESTARTS
         self._plugin_health_metric = PLUGIN_HEALTH
         self._registration_failures_metric = PLUGIN_REGISTRATION_FAILURES
+
+        if self._config.live_reload:
+            self._config_monitor = ConfigMonitor(self._config.config_path, parent_service=self)
 
         self._tracer = get_tracer(__name__)
 
@@ -512,6 +516,8 @@ class PluginManager(ServiceManager):
             daemon=True,
         )
         self._monitor_thread.start()
+        if self._config.live_reload:
+            self._config_monitor.start()
 
         # Phase 1: Start every plugin.
         #
@@ -560,6 +566,8 @@ class PluginManager(ServiceManager):
 
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=5)
+        if self._config.live_reload:
+            self._config_monitor.stop()
 
         self._logger.info("Plugin manager stopped")
 

@@ -37,7 +37,7 @@ class ResourceMetadataModel(FrozenModel):
     """Kubernetes-style metadata block for a courier resource."""
 
     name: str = Field(..., description="DNS-subdomain name for this resource.")
-    config_path : str | None = Field
+    config_path : str | None = Field(
         default = None,
         description="Path to the config service file",
     )

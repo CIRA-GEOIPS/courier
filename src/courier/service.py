@@ -174,8 +174,6 @@ class Service:
             self._broker_manager,
             self._plugin_manager,
         ]
-        if self._config.live_reload:
-            self._config_monitor = ConfigMonitor(self._config.config_path)
         self.namespace = self._config.namespace
         self._start_time = time.time()
 
