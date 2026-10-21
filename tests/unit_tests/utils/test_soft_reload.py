@@ -9,21 +9,28 @@ from courier.cli.feedback import load_config_or_exit
 from courier.managers.plugin_manager import PluginManager
 from courier.schema import ServiceConfigModel
 from courier.service import Service
-from courier.utils.config_monitor import ConfigMonitor
+from courier.utils.config_monitor import ConfigMonitor, get_diff_lines, get_spec_from_line
 
-example_service = """apiVersion: runcourier.dev/v1alpha1
+
+@pytest.fixture
+def reload_config_file(tmp_path: Path) -> Path:
+    dummy_file = tmp_path / "service.yaml"
+    example_service = f"""apiVersion: runcourier.dev/v1alpha1
 kind: Service
 metadata:
   name: service
   namespace: service
   description: 'A courier service: service'
   docstring: null
-  labels: {}
-  annotations: {}
+  labels: {{}}
+  annotations: {{}}
 spec:
   broker:
     transport: memory
     max_retries: 5
+  service_config: 
+      live_reload: True
+      config_path: {dummy_file}
   run:
   - identifier: data-monitor-file-system-poller-watchdog
     spec:
@@ -33,10 +40,6 @@ spec:
         path: ./incoming
         hostname: localhost
 """
-
-@pytest.fixture
-def reload_config_file(tmp_path: Path) -> Path:
-    dummy_file = tmp_path / "service.yaml"
     dummy_file.write_text(example_service)
     return dummy_file
 
@@ -45,7 +48,8 @@ def reload_config_file(tmp_path: Path) -> Path:
 def reload_service_config(
     reload_config_file: Path,
 ) -> ServiceConfigModel:
-    return load_config_or_exit(reload_config_file)
+    config = load_config_or_exit(reload_config_file)
+    return config
 
 @pytest.fixture
 def reload_plugin_manager(reload_service_config: ServiceConfigModel) -> PluginManager: 
@@ -64,12 +68,86 @@ class TestConstruction:
         reload_plugin_manager.start()
         reload_plugin_manager.stop()
 
+class TestBasicUtils:
+    def test_diff_lines(self):
+        old_src = """1. one
+2. two
+3. three
+4. four
+5. five
+"""
+        new_src = """1. one
+2. two
+3. new_three
+4. four
+5. new_five
+6. hello world
+"""
+        diff_lines = get_diff_lines(old_src, new_src)
+        assert len(diff_lines) == 3
+        assert diff_lines == [2, 4, 5]
+    def test_spec_from_line(self):
+        ln = """- identifier: data-monitor-file-system-poller-watchdog
+    spec:
+      kind: data_monitor
+      name: file_system_poller_watchdog
+      config:
+        path: ./incoming
+        hostname: localhost"""
+        assert ln.splitlines()[3].lstrip() == "name: file_system_poller_watchdog"
+        upper, lower = get_spec_from_line(ln, 3)
+        assert upper == 0
+        assert lower == 6
+
+    def test_two_spec_from_line(self):
+        ln = """- identifier: data-monitor-file-system-poller-watchdog
+    spec:
+      kind: data_monitor
+      name: file_system_poller_watchdog
+      config:
+        path: ./incoming
+        hostname: localhost
+
+  - identifier: data-monitor-file-system-poller-watchdog
+    spec:
+      kind: data_monitor
+      name: file_system_poller_watchdog
+      config:
+        path: ./incoming
+        hostname: localhost"""
+        assert ln.splitlines()[3].lstrip() == "name: file_system_poller_watchdog"
+        upper, lower = get_spec_from_line(ln, 3)
+        assert upper == 0
+        assert lower == 6
+
+    def test_two_spec_from_line_start_on_id(self):
+        ln = """- identifier: data-monitor-file-system-poller-watchdog
+    spec:
+      kind: data_monitor
+      name: file_system_poller_watchdog
+      config:
+        path: ./incoming
+        hostname: localhost
+
+  - identifier: data-monitor-file-system-poller-watchdog
+    spec:
+      kind: data_monitor
+      name: file_system_poller_watchdog
+      config:
+        path: ./incoming
+        hostname: localhost"""
+        assert ln.splitlines()[3].lstrip() == "name: file_system_poller_watchdog"
+        upper, lower = get_spec_from_line(ln, 8)
+        assert upper == 8
+        assert lower == 14
+
+
 class TestFileMonitor:
     def test_detects_file_change(self,
                                  reload_config_file: Path,
                                  monkeypatch: pytest.MonkeyPatch):
         monitor = ConfigMonitor(
-                config_file=reload_config_file,
+                config_file=str(reload_config_file),
                 parent_service=MagicMock
         )
 
@@ -78,7 +156,7 @@ class TestFileMonitor:
         monkeypatch.setattr(
             monitor,
             "_on_config_changed",
-            lambda event: changed.set(),
+            changed.set()
         )
 
         monitor.start()
