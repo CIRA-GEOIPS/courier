@@ -315,6 +315,35 @@ spec:
         upper, lower = get_spec_from_line(example_service, 27)
         assert upper == 26
         assert lower == 37
+
+    def test_get_parent_spec_from_nested_plugin(self, reload_nested_config: str) -> None:    
+        example_buffer = (
+"""
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+""")
+
+        spec = get_spec_from_buffer(example_buffer)
+        assert spec.spec.config == {
+                "payload": {
+                    "identifier": "payload-bash-payload",
+                    "spec": {
+                        "kind": "payload",
+                        "name": "bash_payload",
+                        "config": {"script": "echo \"hi\""}
+                        }
+                    }
+                }
 class TestFileMonitor:
     def test_detects_file_change(self,
                                  reload_config_file: Path,
@@ -358,6 +387,13 @@ class TestFullWorkflow:
         manager._plugins = {
             identifier: old_plugin,
         }
+
+        new_plugin_info = MagicMock()
+
+        def mock_register_plugin(plugin_class, config, plugin_id):
+            manager._plugins[plugin_id] = new_plugin_info
+
+        manager.register_plugin.side_effect = mock_register_plugin
 
         new_plugin_class = MagicMock()
         registry = MagicMock()

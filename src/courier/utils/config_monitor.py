@@ -12,8 +12,11 @@ from typing import Any, TYPE_CHECKING
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from courier.interfaces.job_builders import JobBuilder
+
 if TYPE_CHECKING:
     from courier.managers import PluginManager
+from courier.errors import InvalidIdentifierError, PluginError
 from courier.managers.base import ServiceManager
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 
@@ -124,12 +127,23 @@ class ConfigMonitor:
 
         plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(service.spec.name)
         config = service.spec.config or {}
-
+        
         self._parent_service.register_plugin(
             plugin_class,
             config,
             id
         )
+        plugin_info = self._parent_service._plugins[id]
+
+        if (kind == "job_builders" 
+            and isinstance(plugin_info.plugin, JobBuilder)
+            and not plugin_info.plugin.targets
+            and isinstance(identified_plugin.plugin, JobBuilder)):
+            plugin_info.plugin.targets = identified_plugin.plugin.targets
+        if not plugin_info:
+            raise PluginError(
+                    f"Error registering plugin {id}")
+        self._parent_service._start_plugin(plugin_info)
     def _on_config_changed(self):
         new_config = self._config_file.read_text()
         old_config = self._last_read_text
