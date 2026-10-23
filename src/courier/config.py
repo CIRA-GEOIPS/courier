@@ -180,7 +180,7 @@ class ServiceConfig:
     )
     live_reload: bool = field(
         default_factory=lambda: bool(
-            os.environ.get("COURIER_LIVE_RELOAD", "False"),
+            os.environ.get("COURIER_LIVE_RELOAD", False),
         ),
     )
     config_path: str = field(

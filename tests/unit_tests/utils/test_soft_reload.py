@@ -1,6 +1,5 @@
 from pathlib import Path
 from threading import Event
-
 import pytest
 from unittest.mock import MagicMock
 import tempfile
@@ -44,6 +43,41 @@ spec:
 """
     dummy_file.write_text(example_service)
     return dummy_file
+
+@pytest.fixture
+def reload_nested_config() -> str:
+    example_service = (
+"""
+kind: Service
+metadata:
+  name: tmp-vvkvek7pth
+  config_path: null
+  namespace: tmp-vvkvek7pth
+  description: 'A courier service: tmp-vvkvek7pth'
+  docstring: null
+  labels: {}
+  annotations: {}
+spec:
+  broker:
+    transport: memory
+    max_retries: 5
+  run:
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+
+"""
+)
+    return example_service
 
 
 @pytest.fixture
@@ -145,7 +179,7 @@ class TestBasicUtils:
     
     def test_get_spec_from_buffer(self) -> None:
         spec = """- identifier: data-monitor-file-system-poller-watchdog
-spec:
+  spec:
     kind: data_monitor
     name: file_system_poller_watchdog
     config:
@@ -155,7 +189,132 @@ spec:
         model = get_spec_from_buffer(spec)
         assert model.identifier == "data-monitor-file-system-poller-watchdog"
 
+    def test_get_parent_buffer_from_nested_plugin(self, reload_nested_config: str) -> None:    
+        example_service = (
+"""kind: Service
+metadata:
+  name: tmp-vvkvek7pth
+  config_path: null
+  namespace: tmp-vvkvek7pth
+  description: 'A courier service: tmp-vvkvek7pth'
+  docstring: null
+  labels: {}
+  annotations: {}
+spec:
+  broker:
+    transport: memory
+    max_retries: 5
+  run:
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+""")
 
+        upper, lower = get_spec_from_line(example_service, 22)
+        assert upper == 14
+        assert lower == 25
+
+    def test_get_parent_buffer_from_two_nested_plugin(self, reload_nested_config: str) -> None:    
+        example_service = (
+"""kind: Service
+metadata:
+  name: tmp-vvkvek7pth
+  config_path: null
+  namespace: tmp-vvkvek7pth
+  description: 'A courier service: tmp-vvkvek7pth'
+  docstring: null
+  labels: {}
+  annotations: {}
+spec:
+  broker:
+    transport: memory
+    max_retries: 5
+  run:
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+""")
+
+        upper, lower = get_spec_from_line(example_service, 22)
+        assert upper == 14
+        assert lower == 25
+
+
+    def test_get_parent_buffer_from_two_nested_plugin_bottom(self, reload_nested_config: str) -> None:    
+        example_service = (
+"""kind: Service
+metadata:
+  name: tmp-vvkvek7pth
+  config_path: null
+  namespace: tmp-vvkvek7pth
+  description: 'A courier service: tmp-vvkvek7pth'
+  docstring: null
+  labels: {}
+  annotations: {}
+spec:
+  broker:
+    transport: memory
+    max_retries: 5
+  run:
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+  - identifier: job-builder-dummyjobbuilder
+    spec:
+      kind: job_builder
+      name: DummyJobBuilder
+      config:
+        payload:
+          identifier: payload-bash-payload
+          spec:
+            kind: payload
+            name: bash_payload
+            config:
+              script: echo "hi"
+""")
+
+        upper, lower = get_spec_from_line(example_service, 27)
+        assert upper == 26
+        assert lower == 37
 class TestFileMonitor:
     def test_detects_file_change(self,
                                  reload_config_file: Path,
