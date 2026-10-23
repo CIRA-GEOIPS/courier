@@ -19,7 +19,6 @@ from courier.types.datum import Datum
 from courier.types.job import Job
 from tests._helpers import file_job, run_locally
 
-
 _SHELL_PLUGINS = [ShellPayload, BashPayload, PythonPayload]
 _IDS = ["shell", "bash", "python"]
 

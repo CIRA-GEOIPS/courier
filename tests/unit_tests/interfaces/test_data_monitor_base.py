@@ -48,7 +48,8 @@ def _monitor(service: MagicMock, identifier: str = "dm-1") -> _ScriptedMonitor:
 
 def _emitted_files(service: MagicMock) -> list[Datum]:
     return [
-        Datum.from_string(call.kwargs["message"]) for call in service.emit.call_args_list
+        Datum.from_string(call.kwargs["message"])
+        for call in service.emit.call_args_list
     ]
 
 

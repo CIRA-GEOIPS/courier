@@ -845,7 +845,7 @@ class TestUnexecutableJobsAreParked:
         dispatcher = _ForeignOnlyDispatcher(service, {}, identifier="parker")
         consume(dispatcher, _bash_job(binary="true"))
 
-        (_, _, reason) = service.park_message.call_args.args
+        _, _, reason = service.park_message.call_args.args
         assert "no compatible representation" in reason
 
     def test_parked_job_is_not_remembered_as_seen(self, service: MagicMock) -> None:

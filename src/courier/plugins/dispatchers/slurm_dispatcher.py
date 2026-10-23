@@ -605,9 +605,11 @@ class SlurmDispatcher(Dispatcher):
         self._record_payload_outcome(
             payload,
             return_code,
-            record.elapsed_seconds
-            if record.elapsed_seconds is not None
-            else time.monotonic() - submitted_at,
+            (
+                record.elapsed_seconds
+                if record.elapsed_seconds is not None
+                else time.monotonic() - submitted_at
+            ),
         )
         if return_code != 0:
             # A successful job's stderr stays exactly what it wrote.

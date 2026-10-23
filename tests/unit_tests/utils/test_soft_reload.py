@@ -1,3 +1,4 @@
+from importlib import reload
 from pathlib import Path
 from threading import Event
 import pytest
@@ -10,7 +11,12 @@ from courier.managers.plugin_manager import PluginManager
 from courier.schema import ServiceConfigModel
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 from courier.service import Service
-from courier.utils.config_monitor import ConfigMonitor, get_diff_lines, get_spec_from_buffer, get_spec_from_line
+from courier.utils.config_monitor import (
+    ConfigMonitor,
+    get_diff_lines,
+    get_spec_from_buffer,
+    get_spec_from_line,
+)
 
 
 @pytest.fixture
@@ -44,10 +50,10 @@ spec:
     dummy_file.write_text(example_service)
     return dummy_file
 
+
 @pytest.fixture
 def reload_nested_config() -> str:
-    example_service = (
-"""
+    example_service = """
 kind: Service
 metadata:
   name: tmp-vvkvek7pth
@@ -76,7 +82,6 @@ spec:
               script: echo "hi"
 
 """
-)
     return example_service
 
 
@@ -87,11 +92,13 @@ def reload_service_config(
     config = load_config_or_exit(reload_config_file)
     return config
 
+
 @pytest.fixture
-def reload_plugin_manager(reload_service_config: ServiceConfigModel) -> PluginManager: 
+def reload_plugin_manager(reload_service_config: ServiceConfigModel) -> PluginManager:
     service_dummy = Service(reload_service_config.spec.service_config)
     plugin_manager_dummy = PluginManager(
-            reload_service_config.spec.service_config, service_dummy)
+        reload_service_config.spec.service_config, service_dummy
+    )
     return plugin_manager_dummy
 
 
@@ -99,10 +106,13 @@ class TestConstruction:
     def test_construction(self, reload_service_config: ServiceConfigModel):
         service_dummy = Service(reload_service_config.spec.service_config)
         plugin_manager_dummy = PluginManager(
-                reload_service_config.spec.service_config, service_dummy)
+            reload_service_config.spec.service_config, service_dummy
+        )
+
     def test_pm_start(self, reload_plugin_manager: PluginManager):
         reload_plugin_manager.start()
         reload_plugin_manager.stop()
+
 
 class TestBasicUtils:
     def test_diff_lines(self):
@@ -122,6 +132,7 @@ class TestBasicUtils:
         diff_lines = get_diff_lines(old_src, new_src)
         assert len(diff_lines) == 3
         assert diff_lines == [2, 4, 5]
+
     def test_spec_from_line(self):
         ln = """- identifier: data-monitor-file-system-poller-watchdog
     spec:
@@ -176,7 +187,7 @@ class TestBasicUtils:
         upper, lower = get_spec_from_line(ln, 8)
         assert upper == 8
         assert lower == 14
-    
+
     def test_get_spec_from_buffer(self) -> None:
         spec = """- identifier: data-monitor-file-system-poller-watchdog
   spec:
@@ -189,9 +200,10 @@ class TestBasicUtils:
         model = get_spec_from_buffer(spec)
         assert model.identifier == "data-monitor-file-system-poller-watchdog"
 
-    def test_get_parent_buffer_from_nested_plugin(self, reload_nested_config: str) -> None:    
-        example_service = (
-"""kind: Service
+    def test_get_parent_buffer_from_nested_plugin(
+        self, reload_nested_config: str
+    ) -> None:
+        example_service = """kind: Service
 metadata:
   name: tmp-vvkvek7pth
   config_path: null
@@ -217,15 +229,16 @@ spec:
             name: bash_payload
             config:
               script: echo "hi"
-""")
+"""
 
         upper, lower = get_spec_from_line(example_service, 22)
         assert upper == 14
         assert lower == 25
 
-    def test_get_parent_buffer_from_two_nested_plugin(self, reload_nested_config: str) -> None:    
-        example_service = (
-"""kind: Service
+    def test_get_parent_buffer_from_two_nested_plugin(
+        self, reload_nested_config: str
+    ) -> None:
+        example_service = """kind: Service
 metadata:
   name: tmp-vvkvek7pth
   config_path: null
@@ -263,16 +276,16 @@ spec:
             name: bash_payload
             config:
               script: echo "hi"
-""")
+"""
 
         upper, lower = get_spec_from_line(example_service, 22)
         assert upper == 14
         assert lower == 25
 
-
-    def test_get_parent_buffer_from_two_nested_plugin_bottom(self, reload_nested_config: str) -> None:    
-        example_service = (
-"""kind: Service
+    def test_get_parent_buffer_from_two_nested_plugin_bottom(
+        self, reload_nested_config: str
+    ) -> None:
+        example_service = """kind: Service
 metadata:
   name: tmp-vvkvek7pth
   config_path: null
@@ -310,15 +323,16 @@ spec:
             name: bash_payload
             config:
               script: echo "hi"
-""")
+"""
 
         upper, lower = get_spec_from_line(example_service, 27)
         assert upper == 26
         assert lower == 37
 
-    def test_get_parent_spec_from_nested_plugin(self, reload_nested_config: str) -> None:    
-        example_buffer = (
-"""
+    def test_get_parent_spec_from_nested_plugin(
+        self, reload_nested_config: str
+    ) -> None:
+        example_buffer = """
   - identifier: job-builder-dummyjobbuilder
     spec:
       kind: job_builder
@@ -331,35 +345,32 @@ spec:
             name: bash_payload
             config:
               script: echo "hi"
-""")
+"""
 
         spec = get_spec_from_buffer(example_buffer)
         assert spec.spec.config == {
-                "payload": {
-                    "identifier": "payload-bash-payload",
-                    "spec": {
-                        "kind": "payload",
-                        "name": "bash_payload",
-                        "config": {"script": "echo \"hi\""}
-                        }
-                    }
-                }
+            "payload": {
+                "identifier": "payload-bash-payload",
+                "spec": {
+                    "kind": "payload",
+                    "name": "bash_payload",
+                    "config": {"script": 'echo "hi"'},
+                },
+            }
+        }
+
+
 class TestFileMonitor:
-    def test_detects_file_change(self,
-                                 reload_config_file: Path,
-                                 monkeypatch: pytest.MonkeyPatch):
+    def test_detects_file_change(
+        self, reload_config_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
         monitor = ConfigMonitor(
-                config_file=str(reload_config_file),
-                parent_service=MagicMock
+            config_file=str(reload_config_file), parent_service=MagicMock
         )
 
         changed = Event()
 
-        monkeypatch.setattr(
-            monitor,
-            "_on_config_changed",
-            changed.set()
-        )
+        monkeypatch.setattr(monitor, "_on_config_changed", changed.set())
 
         monitor.start()
 
@@ -367,11 +378,12 @@ class TestFileMonitor:
             with reload_config_file.open("a") as f:
                 f.write("\n# Config modified\n")
 
-            assert changed.wait(timeout=5), (
-                    "ConfigMonitor did not detect file modification"
-            )
+            assert changed.wait(
+                timeout=5
+            ), "ConfigMonitor did not detect file modification"
         finally:
             monitor.stop()
+
 
 class TestFullWorkflow:
     def test_replace_running_plugin(
@@ -405,17 +417,19 @@ class TestFullWorkflow:
             registry,
         )
 
-        service = MicroserviceModel.model_validate({
-            "identifier": identifier,
-            "spec": {
-                "kind": "data_monitor",
-                "name": "file_system_poller_watchdog",
-                "config": {
-                    "path": "./new_incoming",
-                    "hostname": "localhost",
+        service = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
                 },
-            },
-        })
+            }
+        )
 
         config_file = tmp_path / "service.yaml"
         config_file.write_text("")
@@ -429,9 +443,7 @@ class TestFullWorkflow:
 
         manager._stop_plugin.assert_called_once_with(old_plugin)
 
-        registry.get_plugin.assert_called_once_with(
-            "file_system_poller_watchdog"
-        )
+        registry.get_plugin.assert_called_once_with("file_system_poller_watchdog")
 
         manager.register_plugin.assert_called_once_with(
             new_plugin_class,
@@ -441,3 +453,89 @@ class TestFullWorkflow:
             },
             identifier,
         )
+
+    def test_reload_plugin_on_config_change(
+        self,
+        reload_config_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        identifier = "data-monitor-file-system-poller-watchdog"
+
+        old_plugin = MagicMock()
+        new_plugin_info = MagicMock()
+
+        manager = MagicMock()
+        manager._plugins = {
+            identifier: old_plugin,
+        }
+
+        # Signal when the replacement plugin is started.
+        reloaded = Event()
+
+        def mock_register_plugin(plugin_class, config, plugin_id):
+            manager._plugins[plugin_id] = new_plugin_info
+
+        manager.register_plugin.side_effect = mock_register_plugin
+        manager._start_plugin.side_effect = lambda plugin: reloaded.set()
+
+        # Mock plugin discovery, not the config-monitor workflow.
+        new_plugin_class = MagicMock()
+        registry = MagicMock()
+        registry.get_plugin.return_value = new_plugin_class
+
+        monkeypatch.setitem(
+            PLUGIN_REGISTRIES,
+            "data_monitors",
+            registry,
+        )
+
+        monitor = ConfigMonitor(
+            config_file=str(reload_config_file),
+            parent_service=manager,
+        )
+
+        monitor.start()
+
+        try:
+            # Simulate a user editing the YAML configuration.
+            original_config = reload_config_file.read_text()
+
+            assert "path: ./incoming" in original_config
+
+            updated_config = original_config.replace(
+                "path: ./incoming",
+                "path: ./new_incoming",
+                1,
+            )
+
+            reload_config_file.write_text(updated_config)
+
+            # Wait for watchdog to process the change.
+            assert reloaded.wait(
+                timeout=5
+            ), "Plugin was not reloaded after config modification"
+
+        finally:
+            monitor.stop()
+
+        # Old plugin was stopped.
+        manager._stop_plugin.assert_called_once_with(old_plugin)
+
+        # Correct plugin was discovered.
+        registry.get_plugin.assert_called_once_with("file_system_poller_watchdog")
+
+        # New plugin was registered with updated configuration.
+        manager.register_plugin.assert_called_once_with(
+            new_plugin_class,
+            {
+                "path": "./new_incoming",
+                "hostname": "localhost",
+            },
+            identifier,
+        )
+
+        # New plugin was started.
+        manager._start_plugin.assert_called_once_with(new_plugin_info)
+
+        # Plugin registry contains the replacement.
+        assert manager._plugins[identifier] is new_plugin_info

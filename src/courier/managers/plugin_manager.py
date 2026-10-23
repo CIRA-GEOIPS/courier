@@ -116,7 +116,9 @@ class PluginManager(ServiceManager):
         self._registration_failures_metric = PLUGIN_REGISTRATION_FAILURES
 
         if self._config.live_reload:
-            self._config_monitor = ConfigMonitor(self._config.config_path, parent_service=self)
+            self._config_monitor = ConfigMonitor(
+                self._config.config_path, parent_service=self,
+            )
 
         self._tracer = get_tracer(__name__)
 

@@ -145,9 +145,7 @@ class TestInitShutdownLifecycle:
 class TestNoOpMode:
     """Tests for tracing-disabled paths (no provider installed)."""
 
-    def test_tracing_disabled_by_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_tracing_disabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without COURIER_TRACING_ENABLED, tracing is off and spans are NoOp."""
         monkeypatch.delenv("COURIER_TRACING_ENABLED", raising=False)
         config = ServiceConfig()
@@ -433,9 +431,7 @@ class TestConfigValidation:
 
         reset_tracing()
         try:
-            init_tracing(
-                ServiceConfig(tracing_enabled=True, tracing_sample_rate=0.25)
-            )
+            init_tracing(ServiceConfig(tracing_enabled=True, tracing_sample_rate=0.25))
             import courier.tracing as tracing_module
 
             sampler = tracing_module._tracer_provider.sampler

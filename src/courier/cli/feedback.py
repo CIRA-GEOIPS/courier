@@ -150,9 +150,11 @@ def format_problem_report(
     count = len(problems)
     header = f"{path} is not valid ({count} problem{'s' if count != 1 else ''}):"
     lines = [
-        f"  {location:<{_LOCATION_WIDTH}} {message}"
-        if len(location) <= _LOCATION_WIDTH
-        else f"  {location}\n  {'':<{_LOCATION_WIDTH}} {message}"
+        (
+            f"  {location:<{_LOCATION_WIDTH}} {message}"
+            if len(location) <= _LOCATION_WIDTH
+            else f"  {location}\n  {'':<{_LOCATION_WIDTH}} {message}"
+        )
         for location, message in problems
     ]
     return "\n".join([header, "", *lines, "", next_step])

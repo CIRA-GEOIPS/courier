@@ -471,9 +471,7 @@ class TestGetLogger:
         # but we can verify the logger is created without errors
         assert isinstance(logger, ContextAdapter)
 
-    def test_log_level_defaults_to_info(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_log_level_defaults_to_info(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without COURIER_LOG_LEVEL, the config and the logger default to INFO."""
         monkeypatch.delenv("COURIER_LOG_LEVEL", raising=False)
         config = ServiceConfig(loki_enabled=False)

@@ -89,6 +89,7 @@ class ServiceConfig:
         -----Testing purposes only-----
         To be routed into the Service object instead of defined explicitly
         Path to watch for live reload
+
     Examples
     --------
     >>> config = ServiceConfig()
@@ -189,7 +190,7 @@ class ServiceConfig:
     )
     live_reload: bool = field(
         default_factory=lambda: bool(
-            os.environ.get("COURIER_LIVE_RELOAD", False),
+            os.environ.get("COURIER_LIVE_RELOAD", "False"),
         ),
     )
 

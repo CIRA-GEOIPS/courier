@@ -762,7 +762,7 @@ def write_yaml(
 
     # config path is configured at runtime, and we don't want that field
     # in the yaml dump :]
-    config_dict.get('spec', {}).get('service_config', {}).pop('config_path', None)
+    config_dict.get("spec", {}).get("service_config", {}).pop("config_path", None)
     # An interactive generator that silently clobbers an existing service
     # config is a bad trade: accepting the default path twice was enough to
     # lose hand-edited settings.

@@ -37,7 +37,6 @@ from courier.tracing import (
     inject_trace_headers,
     shutdown_tracing,
 )
-from courier.utils.config_monitor import ConfigMonitor
 
 if TYPE_CHECKING:
     import threading
