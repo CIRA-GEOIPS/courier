@@ -118,7 +118,7 @@ class ServiceConfig:
     config_path: str = field(
         default_factory=lambda: os.environ.get(
             "SERVICE_CONFIG_PATH",
-            "./service.yaml",
+            "",
         ),
     )
 
@@ -190,7 +190,7 @@ class ServiceConfig:
     )
     live_reload: bool = field(
         default_factory=lambda: bool(
-            os.environ.get("COURIER_LIVE_RELOAD", "False"),
+            os.environ.get("COURIER_LIVE_RELOAD", False), # noqa PLW1508
         ),
     )
 

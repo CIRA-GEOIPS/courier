@@ -17,6 +17,7 @@ from courier.utils.config_monitor import (
     get_spec_from_buffer,
     get_spec_from_line,
 )
+from courier.utils.logging import ContextAdapter
 
 
 @pytest.fixture
@@ -364,8 +365,10 @@ class TestFileMonitor:
     def test_detects_file_change(
         self, reload_config_file: Path, monkeypatch: pytest.MonkeyPatch
     ):
+        manager = MagicMock()
+        manager._logger = ContextAdapter(None)
         monitor = ConfigMonitor(
-            config_file=str(reload_config_file), parent_service=MagicMock
+            config_file=str(reload_config_file), parent_service=manager
         )
 
         changed = Event()
@@ -468,6 +471,7 @@ class TestFullWorkflow:
         manager._plugins = {
             identifier: old_plugin,
         }
+        manager._logger = ContextAdapter(None)
 
         # Signal when the replacement plugin is started.
         reloaded = Event()
