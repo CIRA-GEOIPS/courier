@@ -74,7 +74,7 @@ def load_config(file_path: Path) -> ServiceConfigModel:
         If the ``apiVersion`` is missing or unsupported.
     """
     raw = _load_raw(file_path)
-    raw["metadata"]["config_path"] = str(file_path)
+    raw.setdefault("metadata", {})["config_path"] = str(file_path)
     api_version = raw.get("apiVersion", "")
     model_cls = get_model_for_version(api_version)
     try:

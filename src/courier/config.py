@@ -112,6 +112,15 @@ class ServiceConfig:
             "default",
         ),
     )
+
+    # this is filled in at runtime, and really should not be overridden by users.
+    config_path: str = field(
+        default_factory=lambda: os.environ.get(
+            "SERVICE_CONFIG_PATH",
+            "./service.yaml",
+        ),
+    )
+
     prometheus_port: int = field(
         default_factory=lambda: int(os.environ.get("PROMETHEUS_PORT", "8000")),
     )
@@ -181,10 +190,6 @@ class ServiceConfig:
     live_reload: bool = field(
         default_factory=lambda: bool(
             os.environ.get("COURIER_LIVE_RELOAD", False),
-        ),
-    )
-    config_path: str = field(
-            default_factory=lambda: str(os.environ.get("COURIER_CONFIG_PATH", "")
         ),
     )
 
