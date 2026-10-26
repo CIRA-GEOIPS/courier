@@ -17,7 +17,7 @@ from courier.utils.logging import ContextAdapter
 
 if TYPE_CHECKING:
     from courier.managers import PluginManager
-from courier.errors import CourierError, PluginError
+from courier.errors import CourierError
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 
 
@@ -57,9 +57,8 @@ def get_diff_lines(old_src: str, new_src: str) -> list[int]:
             diff_lines.append(line_num)
             line_num += 1
 
-        elif code == "- ":
-            if new:
-                diff_lines.append(min(line_num, len(new) - 1))
+        elif code == "- " and new:
+            diff_lines.append(min(line_num, len(new) - 1))
 
     return sorted(set(diff_lines))
 
@@ -149,7 +148,7 @@ def get_spec_from_buffer(spec: str) -> MicroserviceModel:
 class ConfigMonitorEventHandler(FileSystemEventHandler):
     """Event handler for the config monitor observer."""
 
-    def __init__(self, config_monitor: "ConfigMonitor"):
+    def __init__(self, config_monitor: ConfigMonitor):
         self._config_monitor: ConfigMonitor = config_monitor
 
     def on_any_event(self, event: FileSystemEvent) -> None:
@@ -167,7 +166,7 @@ class ConfigMonitorEventHandler(FileSystemEventHandler):
                 self._config_monitor._on_config_changed()
             except Exception:
                 self._config_monitor._logger.exception(
-                    "Unexpected error processing config change"
+                    "Unexpected error processing config change",
                 )
 
 
@@ -187,11 +186,11 @@ class ConfigMonitor:
         self._logger = self._parent_service._logger or ContextAdapter(None)
 
     def _replace_running_plugin(self, service: MicroserviceModel) -> None:
-        from courier.cli.plugins import (
+        from courier.cli.plugins import (  # noqa: PLC0415
             PLUGIN_REGISTRIES,
             RUN_KINDS,
             normalize_kind,
-        )  # noqa: PLC0415
+        )
 
         """Create, start, and replace plugins stored in the plugin manager.
 
@@ -227,15 +226,15 @@ class ConfigMonitor:
             plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(service.spec.name)
         except Exception as e:
             raise ValueError(
-                f"Invalid plugin provided - {service.spec.name} not in registry."
-            )
+                f"Invalid plugin provided - {service.spec.name} not in registry.",
+            ) from e
         config = service.spec.config or {}
 
         old_plugin = self._parent_service._plugins[identifier]
-        if old_plugin.type == None:
+        if old_plugin.type is None:
             raise CourierError(
                 f"Previous plugin {identifier} has no defined type "
-                "aborting soft reload"
+                "aborting soft reload",
             )
         old_thread = old_plugin.thread
 
@@ -243,7 +242,7 @@ class ConfigMonitor:
 
         if old_thread is not None and old_thread.is_alive():
             raise CourierError(
-                f"Plugin {identifier} failed to stop within the timeout."
+                f"Plugin {identifier} failed to stop within the timeout.",
             )
 
         with self._parent_service._lock:
@@ -265,14 +264,16 @@ class ConfigMonitor:
                 self._parent_service._plugins.pop(identifier, None)
             try:
                 self._parent_service.register_plugin(
-                    old_plugin.type, old_plugin.config, old_plugin.identifier
+                    old_plugin.type,
+                    old_plugin.config,
+                    old_plugin.identifier,
                 )
 
                 restored_plugin = self._parent_service._plugins[identifier]
                 self._parent_service._start_plugin(restored_plugin)
             except Exception as rollback_error:
                 raise CourierError(
-                    f"Rollback failed for plugin {identifier}"
+                    f"Rollback failed for plugin {identifier}",
                 ) from rollback_error
 
             # rollback succeeded
@@ -280,16 +281,16 @@ class ConfigMonitor:
         else:
             try:
                 self._parent_service._start_plugin(
-                    self._parent_service._plugins[identifier]
+                    self._parent_service._plugins[identifier],
                 )
             except Exception as start_error:
                 raise CourierError(
-                    f"Error starting modified service {identifier}"
+                    f"Error starting modified service {identifier}",
                 ) from start_error
 
     def _on_config_changed(self) -> None:
         """Act on a changed config."""
-        self._logger.debug(f"Detected config change...")
+        self._logger.debug("Detected config change...")
         new_config = self._config_file.read_text()
 
         old_config = self._last_read_text
@@ -310,10 +311,10 @@ class ConfigMonitor:
         for service in updated_models:
             try:
                 self._replace_running_plugin(service)
-            except Exception as e:
+            except Exception:
                 self._logger.exception(
                     f"Unable to load new configuration."
-                    f"Rollback triggered for {service.identifier}"
+                    f"Rollback triggered for {service.identifier}",
                 )
 
         self._last_read_text = new_config
