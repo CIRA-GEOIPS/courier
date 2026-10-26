@@ -1,4 +1,3 @@
-from importlib import reload
 from pathlib import Path
 from threading import Event
 import pytest

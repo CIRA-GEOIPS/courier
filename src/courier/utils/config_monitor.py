@@ -36,7 +36,7 @@ def get_diff_lines(old_src: str, new_src: str) -> list[int]:
     Returns
     -------
     diff_lines : list[int]
-        A list of all differring lines.
+        A list of all differing lines.
     """
     old = old_src.splitlines()
     new = new_src.splitlines()
@@ -287,7 +287,7 @@ class ConfigMonitor:
                     f"Error starting modified service {identifier}"
                 ) from start_error
 
-    def _on_config_changed(self):
+    def _on_config_changed(self) -> None:
         """Act on a changed config."""
         self._logger.debug(f"Detected config change...")
         new_config = self._config_file.read_text()
@@ -296,7 +296,7 @@ class ConfigMonitor:
 
         diff_lines = get_diff_lines(old_config, new_config)
 
-        updated_buffers = set()
+        updated_buffers: set[tuple[int, int]] = set()
         for line_num in diff_lines:
             # skip duplicate services
             if any(start <= line_num < end for start, end in updated_buffers):
@@ -318,11 +318,12 @@ class ConfigMonitor:
 
         self._last_read_text = new_config
 
-    def start(self):
+    def start(self) -> None:
         """Start the observer."""
         self._observer.start()
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop the observer."""
-        self._observer.stop()
-        self._observer.join()
+        if self._observer.is_alive():
+            self._observer.stop()
+            self._observer.join()
