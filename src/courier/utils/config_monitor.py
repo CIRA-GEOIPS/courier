@@ -1,5 +1,7 @@
 """Monitor changes to the designated config file."""
 
+from __future__ import annotations
+
 import difflib
 import re
 import textwrap
@@ -15,7 +17,7 @@ from courier.utils.logging import ContextAdapter
 
 if TYPE_CHECKING:
     from courier.managers import PluginManager
-from courier.errors import PluginError
+from courier.errors import CourierError, PluginError
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 
 
@@ -166,8 +168,6 @@ class ConfigMonitor:
             recursive=False,
         )
         self._logger = self._parent_service._logger or ContextAdapter(None)
-        # reloads that succeeded in a failed reload
-        self._dupe_reload_specs: dict[str, str] = {}
 
     def _replace_running_plugin(self, service: MicroserviceModel) -> None:
         from courier.cli.plugins import (
@@ -214,8 +214,22 @@ class ConfigMonitor:
             )
         config = service.spec.config or {}
 
+        old_plugin = self._parent_service._plugins[identifier]
+        if old_plugin.type == None:
+            raise CourierError(
+                f"Previous plugin {identifier} has no defined type "
+                "aborting soft reload"
+            )
+        old_thread = old_plugin.thread
+
         self._parent_service._stop_plugin(identified_plugin)
-        old_plugin = self._parent_service._plugins.pop(identifier)
+
+        # if old_thread is not None and old_thread.is_alive():
+        #     raise CourierError(
+        #         f"Plugin {identifier} failed to stop within the timeout."
+        #     )
+
+        self._parent_service._plugins.pop(identifier)
 
         try:
             self._parent_service.register_plugin(plugin_class, config, identifier)
@@ -228,50 +242,62 @@ class ConfigMonitor:
                 and isinstance(identified_plugin.plugin, JobBuilder)
             ):
                 plugin_info.plugin.targets = identified_plugin.plugin.targets
-            print("VALID - SWITCHING PLUGINS")
         except Exception as e:
             # rollback - log error
-            self._parent_service._plugins[identifier] = old_plugin
+            # self._parent_service._plugins[identifier] = old_plugin
+            try:
+                self._parent_service.register_plugin(
+                    old_plugin.type, old_plugin.config, old_plugin.identifier
+                )
+            except Exception as rollback_error:
+                raise CourierError(
+                    f"Rollback failed for plugin {identifier}"
+                ) from rollback_error
+
+            # rollback succeeded
+            raise CourierError(f"Error registering plugin {identifier}") from e
         finally:
-            # start plugin - if the plugin was invalid, it will be rolled back.
-            self._parent_service._start_plugin(
-                self._parent_service._plugins[identifier]
-            )
+            plugin = self._parent_service._plugins.get(identifier)
+
+            if plugin is not None:
+                # if rollback failed, the service is aborted
+                # start plugin - if the plugin was invalid, it will be rolled back.
+                self._parent_service._start_plugin(plugin)
 
     def _on_config_changed(self):
         """Act on a changed config."""
-        new_config = self._config_file.read_text()
+        self._logger.debug(f"Detected config change...")
+        try:
+            new_config = self._config_file.read_text()
+        except Exception as e:
+            self._logger.exception("Unable to read changed config file.")
+            return
+
         old_config = self._last_read_text
 
         diff_lines = get_diff_lines(old_config, new_config)
 
         updated_buffers = set()
         for line_num in diff_lines:
+            # skip duplicate services
             if any(start <= line_num < end for start, end in updated_buffers):
                 continue
             updated_buffers.add(get_spec_from_line(new_config, line_num))
         updated_models = []
         for upper, lower in updated_buffers:
             spec = "\n".join(new_config.splitlines()[upper : lower + 1])
-            updated_models.append((get_spec_from_buffer(spec), spec))
+            updated_models.append(get_spec_from_buffer(spec))
 
-        successful_runs = {}
-        failed_run = False
-        for service, spec in updated_models:
-            if self._dupe_reload_specs.get(service.identifier) == spec:
-                continue
+        for service in updated_models:
             try:
                 self._replace_running_plugin(service)
-                successful_runs[service.identifier] = spec
-            except Exception:
-                # log
-                failed_run = True
+            except Exception as e:
+                self._logger.exception(
+                    f"Unable to load new configuration."
+                    f"Rollback triggered for {service.identifier}"
+                )
 
-        if failed_run:
-            self._dupe_reload_specs = successful_runs
-        else:
-            self._dupe_reload_specs = {}
-            self._last_read_text = new_config
+        self._last_read_text = new_config
 
     def start(self):
         """Start the observer."""

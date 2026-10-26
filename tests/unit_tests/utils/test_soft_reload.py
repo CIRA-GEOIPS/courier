@@ -7,6 +7,7 @@ import tempfile
 
 from courier.cli.feedback import load_config_or_exit
 from courier.cli.plugins import PLUGIN_REGISTRIES
+from courier.errors import CourierError
 from courier.managers.plugin_manager import PluginManager
 from courier.schema import ServiceConfigModel
 from courier.schema.v1alpha1.service_config import MicroserviceModel
@@ -373,7 +374,7 @@ class TestFileMonitor:
 
         changed = Event()
 
-        monkeypatch.setattr(monitor, "_on_config_changed", changed.set())
+        monkeypatch.setattr(monitor, "_on_config_changed", changed.set)
 
         monitor.start()
 
@@ -386,6 +387,60 @@ class TestFileMonitor:
             ), "ConfigMonitor did not detect file modification"
         finally:
             monitor.stop()
+
+
+@pytest.fixture
+def reload_setup(tmp_path, monkeypatch):
+    identifier = "data-monitor-file-system-poller-watchdog"
+
+    old_plugin = MagicMock()
+    old_plugin.type = MagicMock(name="OldPluginClass")
+    old_plugin.config = {
+        "path": "./incoming",
+        "hostname": "localhost",
+    }
+    old_plugin.identifier = identifier
+    old_plugin.thread = None
+
+    manager = MagicMock()
+    manager._plugins = {identifier: old_plugin}
+
+    new_plugin_class = MagicMock(name="NewPluginClass")
+    registry = MagicMock()
+    registry.get_plugin.return_value = new_plugin_class
+
+    monkeypatch.setitem(PLUGIN_REGISTRIES, "data_monitors", registry)
+
+    service = MicroserviceModel.model_validate(
+        {
+            "identifier": identifier,
+            "spec": {
+                "kind": "data_monitor",
+                "name": "file_system_poller_watchdog",
+                "config": {
+                    "path": "./new_incoming",
+                    "hostname": "localhost",
+                },
+            },
+        }
+    )
+
+    config_file = tmp_path / "service.yaml"
+    config_file.write_text("")
+
+    monitor = ConfigMonitor(
+        config_file=str(config_file),
+        parent_service=manager,
+    )
+
+    return (
+        monitor,
+        manager,
+        service,
+        identifier,
+        old_plugin,
+        new_plugin_class,
+    )
 
 
 class TestFullWorkflow:
@@ -566,7 +621,13 @@ class TestFullWorkflow:
         new_plugin_info = MagicMock()
 
         def mock_register_plugin(plugin_class, config, plugin_id):
-            raise ValueError("Mock error")
+            if config["path"] == "./new_incoming":
+
+                # Something fails after registration.
+                raise ValueError("Mock error")
+
+            # Original configuration: rollback succeeds.
+            manager._plugins[identifier] = old_plugin
 
         manager.register_plugin.side_effect = mock_register_plugin
 
@@ -600,7 +661,8 @@ class TestFullWorkflow:
             parent_service=manager,
         )
 
-        monitor._replace_running_plugin(service)
+        with pytest.raises(CourierError):
+            monitor._replace_running_plugin(service)
 
         assert manager._plugins[identifier] == old_plugin
         manager._start_plugin.assert_called_once_with(old_plugin)
@@ -618,7 +680,13 @@ class TestFullWorkflow:
         new_plugin_info = MagicMock()
 
         def mock_register_plugin(plugin_class, config, plugin_id):
-            raise ValueError("Mock error")
+            if config["path"] == "./new_incoming":
+
+                # Something fails after registration.
+                raise ValueError("Mock error")
+
+            # Original configuration: rollback succeeds.
+            manager._plugins[identifier] = old_plugin
 
         manager.register_plugin.side_effect = mock_register_plugin
 
@@ -652,7 +720,8 @@ class TestFullWorkflow:
             parent_service=manager,
         )
 
-        monitor._replace_running_plugin(service)
+        with pytest.raises(CourierError):
+            monitor._replace_running_plugin(service)
 
         assert manager._plugins[identifier] == old_plugin
         manager._start_plugin.assert_called_once_with(old_plugin)

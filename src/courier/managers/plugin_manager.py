@@ -52,6 +52,9 @@ class PluginStateInfo:
     """
 
     plugin: ServicePlugin
+    type: type[ServicePlugin] | None = None
+    identifier: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
     last_health_check: datetime | None = None
@@ -117,7 +120,8 @@ class PluginManager(ServiceManager):
 
         if self._config.live_reload:
             self._config_monitor = ConfigMonitor(
-                self._config.config_path, parent_service=self,
+                self._config.config_path,
+                parent_service=self,
             )
 
         self._tracer = get_tracer(__name__)
@@ -177,6 +181,9 @@ class PluginManager(ServiceManager):
 
             self._plugins[registry_key] = PluginStateInfo(
                 plugin=plugin_instance,
+                config=config,
+                identifier=identifier,
+                type=plugin,
             )
 
             # Emit initial metric values so the series exists from container
