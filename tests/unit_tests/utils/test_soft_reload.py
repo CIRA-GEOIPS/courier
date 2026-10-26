@@ -53,40 +53,6 @@ spec:
 
 
 @pytest.fixture
-def reload_nested_config() -> str:
-    example_service = """
-kind: Service
-metadata:
-  name: tmp-vvkvek7pth
-  config_path: null
-  namespace: tmp-vvkvek7pth
-  description: 'A courier service: tmp-vvkvek7pth'
-  docstring: null
-  labels: {}
-  annotations: {}
-spec:
-  broker:
-    transport: memory
-    max_retries: 5
-  run:
-  - identifier: job-builder-dummyjobbuilder
-    spec:
-      kind: job_builder
-      name: DummyJobBuilder
-      config:
-        payload:
-          identifier: payload-bash-payload
-          spec:
-            kind: payload
-            name: bash_payload
-            config:
-              script: echo "hi"
-
-"""
-    return example_service
-
-
-@pytest.fixture
 def reload_service_config(
     reload_config_file: Path,
 ) -> ServiceConfigModel:
@@ -236,9 +202,7 @@ spec:
         model = get_spec_from_buffer(spec)
         assert model.identifier == "data-monitor-file-system-poller-watchdog"
 
-    def test_get_parent_buffer_from_nested_plugin(
-        self, reload_nested_config: str
-    ) -> None:
+    def test_get_parent_buffer_from_nested_plugin(self) -> None:
         example_service = """kind: Service
 metadata:
   name: tmp-vvkvek7pth
@@ -271,9 +235,7 @@ spec:
         assert upper == 14
         assert lower == 25
 
-    def test_get_parent_buffer_from_two_nested_plugin(
-        self, reload_nested_config: str
-    ) -> None:
+    def test_get_parent_buffer_from_two_nested_plugin(self) -> None:
         example_service = """kind: Service
 metadata:
   name: tmp-vvkvek7pth
@@ -318,9 +280,7 @@ spec:
         assert upper == 14
         assert lower == 25
 
-    def test_get_parent_buffer_from_two_nested_plugin_bottom(
-        self, reload_nested_config: str
-    ) -> None:
+    def test_get_parent_buffer_from_two_nested_plugin_bottom(self) -> None:
         example_service = """kind: Service
 metadata:
   name: tmp-vvkvek7pth
@@ -365,9 +325,7 @@ spec:
         assert upper == 26
         assert lower == 37
 
-    def test_get_parent_spec_from_nested_plugin(
-        self, reload_nested_config: str
-    ) -> None:
+    def test_get_parent_spec_from_nested_plugin(self) -> None:
         example_buffer = """
   - identifier: job-builder-dummyjobbuilder
     spec:
@@ -707,7 +665,6 @@ class TestFullWorkflow:
 
     def test_partial_fail(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         identifier = "data-monitor-file-system-poller-watchdog"
-        identifier_err = "invalid"
         old_plugin = MagicMock()
         old_plugin.thread = None
 
