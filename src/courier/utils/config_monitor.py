@@ -170,7 +170,12 @@ class ConfigMonitor:
         self._dupe_reload_specs: dict[str, str] = {}
 
     def _replace_running_plugin(self, service: MicroserviceModel) -> None:
-        from courier.cli.plugins import PLUGIN_REGISTRIES, RUN_KINDS, normalize_kind  # noqa: PLC0415
+        from courier.cli.plugins import (
+            PLUGIN_REGISTRIES,
+            RUN_KINDS,
+            normalize_kind,
+        )  # noqa: PLC0415
+
         """Create, start, and replace plugins stored in the plugin manager.
 
         Parameters
@@ -193,9 +198,6 @@ class ConfigMonitor:
                 "service configs",
             )
 
-        self._parent_service._stop_plugin(identified_plugin)
-        self._parent_service._plugins.pop(identifier)
-
         kind = normalize_kind(service.spec.kind)
 
         if kind not in RUN_KINDS:
@@ -204,22 +206,37 @@ class ConfigMonitor:
                 f"{service.spec.kind!r} is not a runnable kind.",
             )
 
-        plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(service.spec.name)
+        try:
+            plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(service.spec.name)
+        except Exception as e:
+            raise ValueError(
+                f"Invalid plugin provided - {service.spec.name} not in registry."
+            )
         config = service.spec.config or {}
 
-        self._parent_service.register_plugin(plugin_class, config, identifier)
-        plugin_info = self._parent_service._plugins[identifier]
+        self._parent_service._stop_plugin(identified_plugin)
+        old_plugin = self._parent_service._plugins.pop(identifier)
 
-        if (
-            kind == "job_builders"
-            and isinstance(plugin_info.plugin, JobBuilder)
-            and not plugin_info.plugin.targets
-            and isinstance(identified_plugin.plugin, JobBuilder)
-        ):
-            plugin_info.plugin.targets = identified_plugin.plugin.targets
-        if not plugin_info:
-            raise PluginError(f"Error registering plugin {id}")
-        self._parent_service._start_plugin(plugin_info)
+        try:
+            self._parent_service.register_plugin(plugin_class, config, identifier)
+            plugin_info = self._parent_service._plugins[identifier]
+            # route targets
+            if (
+                kind == "job_builders"
+                and isinstance(plugin_info.plugin, JobBuilder)
+                and not plugin_info.plugin.targets
+                and isinstance(identified_plugin.plugin, JobBuilder)
+            ):
+                plugin_info.plugin.targets = identified_plugin.plugin.targets
+            print("VALID - SWITCHING PLUGINS")
+        except Exception as e:
+            # rollback - log error
+            self._parent_service._plugins[identifier] = old_plugin
+        finally:
+            # start plugin - if the plugin was invalid, it will be rolled back.
+            self._parent_service._start_plugin(
+                self._parent_service._plugins[identifier]
+            )
 
     def _on_config_changed(self):
         """Act on a changed config."""

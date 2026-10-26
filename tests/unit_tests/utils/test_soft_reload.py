@@ -457,32 +457,30 @@ class TestFullWorkflow:
             identifier,
         )
 
-    def test_reload_plugin_on_config_change(
-        self,
-        reload_config_file: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        identifier = "data-monitor-file-system-poller-watchdog"
+    def test_fail_update(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        identifier_a = "data-monitor-file-system-poller-watchdog-a"
+        identifier_b = "data-monitor-file-system-poller-watchdog-b"
 
-        old_plugin = MagicMock()
-        new_plugin_info = MagicMock()
+        old_plugin_a = MagicMock()
+        old_plugin_b = MagicMock()
 
         manager = MagicMock()
         manager._plugins = {
-            identifier: old_plugin,
+            identifier_a: old_plugin_a,
+            identifier_b: old_plugin_b,
         }
-        manager._logger = ContextAdapter(None)
 
-        # Signal when the replacement plugin is started.
-        reloaded = Event()
+        new_plugin_a = MagicMock()
+        new_plugin_b = MagicMock()
 
         def mock_register_plugin(plugin_class, config, plugin_id):
-            manager._plugins[plugin_id] = new_plugin_info
+            if plugin_id == "data-monitor-file-system-poller-watchdog-a":
+                manager._plugins[plugin_id] = new_plugin_a
+            else:
+                manager._plugins[plugin_id] = new_plugin_b
 
         manager.register_plugin.side_effect = mock_register_plugin
-        manager._start_plugin.side_effect = lambda plugin: reloaded.set()
 
-        # Mock plugin discovery, not the config-monitor workflow.
         new_plugin_class = MagicMock()
         registry = MagicMock()
         registry.get_plugin.return_value = new_plugin_class
@@ -493,53 +491,168 @@ class TestFullWorkflow:
             registry,
         )
 
+        service_a = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier_a,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        service_b = MicroserviceModel.model_validate(
+            {
+                "identifier": "invalid",
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        config_file = tmp_path / "service.yaml"
+        config_file.write_text("")
+
         monitor = ConfigMonitor(
-            config_file=str(reload_config_file),
+            config_file=str(config_file),
             parent_service=manager,
         )
 
-        monitor.start()
+        monitor._replace_running_plugin(service_a)
 
-        try:
-            # Simulate a user editing the YAML configuration.
-            original_config = reload_config_file.read_text()
+        with pytest.raises(ValueError):
+            monitor._replace_running_plugin(service_b)
 
-            assert "path: ./incoming" in original_config
-
-            updated_config = original_config.replace(
-                "path: ./incoming",
-                "path: ./new_incoming",
-                1,
-            )
-
-            reload_config_file.write_text(updated_config)
-
-            # Wait for watchdog to process the change.
-            assert reloaded.wait(
-                timeout=5
-            ), "Plugin was not reloaded after config modification"
-
-        finally:
-            monitor.stop()
-
-        # Old plugin was stopped.
-        manager._stop_plugin.assert_called_once_with(old_plugin)
-
-        # Correct plugin was discovered.
-        registry.get_plugin.assert_called_once_with("file_system_poller_watchdog")
-
-        # New plugin was registered with updated configuration.
-        manager.register_plugin.assert_called_once_with(
-            new_plugin_class,
+        service_b = MicroserviceModel.model_validate(
             {
-                "path": "./new_incoming",
-                "hostname": "localhost",
-            },
-            identifier,
+                "identifier": identifier_b,
+                "spec": {
+                    "kind": "invalid",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
         )
 
-        # New plugin was started.
-        manager._start_plugin.assert_called_once_with(new_plugin_info)
+        with pytest.raises(ValueError):
+            monitor._replace_running_plugin(service_b)
 
-        # Plugin registry contains the replacement.
-        assert manager._plugins[identifier] is new_plugin_info
+        assert manager._plugins[identifier_a] == new_plugin_a
+        assert manager._plugins[identifier_b] != new_plugin_b
+
+    def test_fail_register_plugin(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        identifier = "data-monitor-file-system-poller-watchdog"
+        old_plugin = MagicMock()
+
+        manager = MagicMock()
+        manager._plugins = {
+            identifier: old_plugin,
+        }
+
+        new_plugin_info = MagicMock()
+
+        def mock_register_plugin(plugin_class, config, plugin_id):
+            raise ValueError("Mock error")
+
+        manager.register_plugin.side_effect = mock_register_plugin
+
+        new_plugin_class = MagicMock()
+        registry = MagicMock()
+
+        registry.get_plugin.return_value = new_plugin_class
+
+        monkeypatch.setitem(PLUGIN_REGISTRIES, "data_monitors", registry)
+
+        service = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        config_file = tmp_path / "service.yaml"
+
+        config_file.write_text("")
+
+        monitor = ConfigMonitor(
+            config_file=str(config_file),
+            parent_service=manager,
+        )
+
+        monitor._replace_running_plugin(service)
+
+        assert manager._plugins[identifier] == old_plugin
+        manager._start_plugin.assert_called_once_with(old_plugin)
+
+    def test_partial_fail(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        identifier = "data-monitor-file-system-poller-watchdog"
+        identifier_err = "invalid"
+        old_plugin = MagicMock()
+
+        manager = MagicMock()
+        manager._plugins = {
+            identifier: old_plugin,
+        }
+
+        new_plugin_info = MagicMock()
+
+        def mock_register_plugin(plugin_class, config, plugin_id):
+            raise ValueError("Mock error")
+
+        manager.register_plugin.side_effect = mock_register_plugin
+
+        new_plugin_class = MagicMock()
+        registry = MagicMock()
+
+        registry.get_plugin.return_value = new_plugin_class
+
+        monkeypatch.setitem(PLUGIN_REGISTRIES, "data_monitors", registry)
+
+        service = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        config_file = tmp_path / "service.yaml"
+
+        config_file.write_text("")
+
+        monitor = ConfigMonitor(
+            config_file=str(config_file),
+            parent_service=manager,
+        )
+
+        monitor._replace_running_plugin(service)
+
+        assert manager._plugins[identifier] == old_plugin
+        manager._start_plugin.assert_called_once_with(old_plugin)
