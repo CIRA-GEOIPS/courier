@@ -50,12 +50,18 @@ def get_diff_lines(old_src: str, new_src: str) -> list[int]:
     for line in diffs:
         code = line[:2]
 
-        if code in ("  ", "+ "):
+        if code == "  ":
             line_num += 1
-        if code == "+ ":
-            # zero-indexed
-            diff_lines.append(line_num - 1)
-    return diff_lines
+
+        elif code == "+ ":
+            diff_lines.append(line_num)
+            line_num += 1
+
+        elif code == "- ":
+            if new:
+                diff_lines.append(min(line_num, len(new) - 1))
+
+    return sorted(set(diff_lines))
 
 
 def get_spec_from_line(src_str: str, line_num: int) -> tuple[int, int]:
@@ -102,6 +108,12 @@ def get_spec_from_line(src_str: str, line_num: int) -> tuple[int, int]:
 
     while curr_line_num < len(lines):
         curr_line = lines[curr_line_num]
+
+        # Ignore blank or whitespace-only lines
+        if not curr_line.strip():
+            curr_line_num += 1
+            continue
+
         curr_indentation = len(curr_line) - len(curr_line.lstrip())
 
         if curr_indentation <= upper_indentation:
@@ -151,7 +163,12 @@ class ConfigMonitorEventHandler(FileSystemEventHandler):
         config_path = Path(self._config_monitor._config_file).resolve()
 
         if event_path == config_path:
-            self._config_monitor._on_config_changed()
+            try:
+                self._config_monitor._on_config_changed()
+            except Exception:
+                self._config_monitor._logger.exception(
+                    "Unexpected error processing config change"
+                )
 
 
 class ConfigMonitor:
@@ -224,12 +241,13 @@ class ConfigMonitor:
 
         self._parent_service._stop_plugin(identified_plugin)
 
-        # if old_thread is not None and old_thread.is_alive():
-        #     raise CourierError(
-        #         f"Plugin {identifier} failed to stop within the timeout."
-        #     )
+        if old_thread is not None and old_thread.is_alive():
+            raise CourierError(
+                f"Plugin {identifier} failed to stop within the timeout."
+            )
 
-        self._parent_service._plugins.pop(identifier)
+        with self._parent_service._lock:
+            self._parent_service._plugins.pop(identifier)
 
         try:
             self._parent_service.register_plugin(plugin_class, config, identifier)
@@ -243,12 +261,15 @@ class ConfigMonitor:
             ):
                 plugin_info.plugin.targets = identified_plugin.plugin.targets
         except Exception as e:
-            # rollback - log error
-            # self._parent_service._plugins[identifier] = old_plugin
+            with self._parent_service._lock:
+                self._parent_service._plugins.pop(identifier, None)
             try:
                 self._parent_service.register_plugin(
                     old_plugin.type, old_plugin.config, old_plugin.identifier
                 )
+
+                restored_plugin = self._parent_service._plugins[identifier]
+                self._parent_service._start_plugin(restored_plugin)
             except Exception as rollback_error:
                 raise CourierError(
                     f"Rollback failed for plugin {identifier}"
@@ -256,22 +277,20 @@ class ConfigMonitor:
 
             # rollback succeeded
             raise CourierError(f"Error registering plugin {identifier}") from e
-        finally:
-            plugin = self._parent_service._plugins.get(identifier)
-
-            if plugin is not None:
-                # if rollback failed, the service is aborted
-                # start plugin - if the plugin was invalid, it will be rolled back.
-                self._parent_service._start_plugin(plugin)
+        else:
+            try:
+                self._parent_service._start_plugin(
+                    self._parent_service._plugins[identifier]
+                )
+            except Exception as start_error:
+                raise CourierError(
+                    f"Error starting modified service {identifier}"
+                ) from start_error
 
     def _on_config_changed(self):
         """Act on a changed config."""
         self._logger.debug(f"Detected config change...")
-        try:
-            new_config = self._config_file.read_text()
-        except Exception as e:
-            self._logger.exception("Unable to read changed config file.")
-            return
+        new_config = self._config_file.read_text()
 
         old_config = self._last_read_text
 

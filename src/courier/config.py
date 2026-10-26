@@ -190,7 +190,7 @@ class ServiceConfig:
     )
     live_reload: bool = field(
         default_factory=lambda: bool(
-            os.environ.get("COURIER_LIVE_RELOAD", False), # noqa PLW1508
+            os.environ.get("COURIER_LIVE_RELOAD", "false").lower() == "true"
         ),
     )
 

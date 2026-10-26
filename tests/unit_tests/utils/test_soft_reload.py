@@ -135,6 +135,22 @@ class TestBasicUtils:
         assert len(diff_lines) == 3
         assert diff_lines == [2, 4, 5]
 
+    def test_diff_lines_subtract(self):
+        old_src = """1. one
+2. two
+3. three
+4. four
+5. five
+"""
+        new_src = """1. one
+2. two
+4. four
+5. new_five
+"""
+        diff_lines = get_diff_lines(old_src, new_src)
+        assert len(diff_lines) == 2
+        assert diff_lines == [2, 3]
+
     def test_spec_from_line(self):
         ln = """- identifier: data-monitor-file-system-poller-watchdog
     spec:
@@ -148,6 +164,25 @@ class TestBasicUtils:
         assert upper == 0
         assert lower == 6
 
+    def test_spec_from_line_with_blank_lines(self):
+        src = """- identifier: example
+      spec:
+        kind: data_monitor
+        name: example
+
+        config:
+          path: ./incoming
+
+- identifier: another
+  spec:
+    kind: data_monitor
+    """
+
+        upper, lower = get_spec_from_line(src, 6)
+
+        assert upper == 0
+        assert lower == 7
+
     def test_two_spec_from_line(self):
         ln = """- identifier: data-monitor-file-system-poller-watchdog
     spec:
@@ -157,17 +192,17 @@ class TestBasicUtils:
         path: ./incoming
         hostname: localhost
 
-  - identifier: data-monitor-file-system-poller-watchdog
-    spec:
-      kind: data_monitor
-      name: file_system_poller_watchdog
-      config:
-        path: ./incoming
-        hostname: localhost"""
+- identifier: data-monitor-file-system-poller-watchdog
+spec:
+  kind: data_monitor
+  name: file_system_poller_watchdog
+  config:
+    path: ./incoming
+    hostname: localhost"""
         assert ln.splitlines()[3].lstrip() == "name: file_system_poller_watchdog"
         upper, lower = get_spec_from_line(ln, 3)
         assert upper == 0
-        assert lower == 6
+        assert lower == 7
 
     def test_two_spec_from_line_start_on_id(self):
         ln = """- identifier: data-monitor-file-system-poller-watchdog
@@ -452,6 +487,7 @@ class TestFullWorkflow:
         identifier = "data-monitor-file-system-poller-watchdog"
 
         old_plugin = MagicMock()
+        old_plugin.thread = None
 
         manager = MagicMock()
         manager._plugins = {
@@ -517,7 +553,9 @@ class TestFullWorkflow:
         identifier_b = "data-monitor-file-system-poller-watchdog-b"
 
         old_plugin_a = MagicMock()
+        old_plugin_a.thread = None
         old_plugin_b = MagicMock()
+        old_plugin_b.thread = None
 
         manager = MagicMock()
         manager._plugins = {
@@ -612,6 +650,7 @@ class TestFullWorkflow:
     ):
         identifier = "data-monitor-file-system-poller-watchdog"
         old_plugin = MagicMock()
+        old_plugin.thread = None
 
         manager = MagicMock()
         manager._plugins = {
@@ -671,6 +710,7 @@ class TestFullWorkflow:
         identifier = "data-monitor-file-system-poller-watchdog"
         identifier_err = "invalid"
         old_plugin = MagicMock()
+        old_plugin.thread = None
 
         manager = MagicMock()
         manager._plugins = {
