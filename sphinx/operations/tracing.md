@@ -767,6 +767,19 @@ structured JSON logs through your log aggregator (Loki, Elasticsearch, Splunk)
 with the `courier_trace_id` field indexed. Then use the trace ID from any
 Jaeger span to query all log lines for that trace.
 
+**Logs are JSON.** Every line Courier ships to Loki is a JSON object with
+fields `message`, `level`, `name`, `module`, `function`, `correlation_id`,
+among others. Parse it with LogQL's `| json` and reformat with
+`| line_format` so the panel shows the message instead of the raw JSON:
+
+```text
+{service="my-svc"} | json | correlation_id="abc" | line_format "{{.message}}"
+```
+
+The generated Grafana dashboard exposes this as the Correlation ID template
+variable, feeding a "Logs by Correlation ID" panel alongside the TraceQL
+panels that already use the same variable.
+
 #### Production Readiness Checklist
 
 Before enabling tracing in production, verify each item:

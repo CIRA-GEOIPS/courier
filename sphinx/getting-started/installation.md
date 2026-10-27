@@ -108,7 +108,7 @@ docker run -d \
 
 > **Note:** `latest` pulls the most recent image. Pin to a specific version tag for production.
 
-> **Note:** Courier sends logs to Loki using the `python-logging-loki` package, which is installed by default.
+> **Note:** Courier sends logs to Loki using the `loki-logger-handler` package, which is installed by default. Log lines are shipped as JSON, with `level` attached as a Loki stream label. Batches are pushed every `LOKI_FLUSH_INTERVAL` seconds (default 2; also roughly the most logs that can be lost on a hard kill).
 
 ## Verification
 

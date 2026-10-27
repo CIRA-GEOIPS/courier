@@ -145,8 +145,24 @@ class TestDashboardSelectorsMatchMetrics:
         assert not offenders, "\n".join(offenders)
 
 
+_DEMO_CONFIG = Path(__file__).resolve().parents[1] / "demo.yaml"
+
+
 class TestLokiSelectorsMatchHandlerTags:
-    """LogQL stream selectors must use the labels the Loki handler emits."""
+    """LogQL stream selectors must use the labels and JSON fields
+    ``loki-logger-handler`` actually emits.
+    """
+
+    _LOG_VIEWING_PANEL_TITLES = frozenset(
+        {
+            "Error Log Details",
+            "Data Monitor: Recent Logs",
+            "Job Builder: Recent Logs",
+            "Dispatcher: Recent Logs",
+            "Log Search Results",
+            "Logs by Correlation ID",
+        },
+    )
 
     def test_queries_use_the_tags_the_handler_sets(self) -> None:
         """``_create_loki_handler`` tags streams with ``service``.
@@ -160,13 +176,108 @@ class TestLokiSelectorsMatchHandlerTags:
         assert 'service_name="' not in source
         assert 'service="$service"' in source
 
-    def test_no_logfmt_parser_on_plain_text_lines(self) -> None:
-        """python-logging-loki ships the formatted message, not logfmt pairs."""
+    def test_no_logfmt_parser(self) -> None:
+        """``loki-logger-handler`` ships JSON lines, never logfmt pairs."""
         from courier.dashboard import loki_panels
 
         source = Path(loki_panels.__file__).read_text()
         assert "logfmt" not in source
-        assert "{{.message}}" not in source
+
+    def test_log_viewing_panels_parse_json(self) -> None:
+        """Panels that render raw log lines must ``| json`` before formatting.
+
+        Every Loki line is a JSON object (``{"message": ..., "level": ...}``).
+        A panel that applied ``line_format`` without first parsing it would
+        format against the raw JSON blob instead of the extracted message
+        text, so every log-viewing panel must carry both.
+        """
+        from courier.dashboard.config_parser import parse_config
+        from courier.dashboard.loki_panels import build_loki_panels
+
+        model = parse_config(str(_DEMO_CONFIG))
+        rows = build_loki_panels(model, datasource="Loki")
+
+        found_titles: set[str] = set()
+        for row in rows:
+            for panel in getattr(row, "panels", []) or []:
+                if panel.title not in self._LOG_VIEWING_PANEL_TITLES:
+                    continue
+                found_titles.add(panel.title)
+                for target in panel.targets:
+                    expr = target["expr"]
+                    assert "| json" in expr, expr
+                    assert 'line_format "{{.message}}"' in expr, expr
+
+        missing = self._LOG_VIEWING_PANEL_TITLES - found_titles
+        assert not missing, f"expected log-viewing panels not generated: {missing}"
+
+    def test_correlation_id_template_exists_and_is_referenced(self) -> None:
+        """``$correlation_id`` must be both declared and used by a panel query.
+
+        A template variable nobody queries is a dead dropdown; a query
+        referencing a variable nobody declared renders literally as the
+        string ``$correlation_id`` instead of being substituted.
+        """
+        from courier.dashboard.config_parser import parse_config
+        from courier.dashboard.loki_panels import (
+            build_loki_panels,
+            build_loki_templates,
+        )
+
+        model = parse_config(str(_DEMO_CONFIG))
+        template_names = {
+            getattr(tmpl, "name", None) for tmpl in build_loki_templates(model)
+        }
+        assert "correlation_id" in template_names
+
+        rows = build_loki_panels(model, datasource="Loki")
+        exprs = [
+            target["expr"]
+            for row in rows
+            for panel in getattr(row, "panels", []) or []
+            for target in panel.targets
+        ]
+        assert any("$correlation_id" in expr for expr in exprs)
+
+    @pytest.mark.parametrize("mode", ["UNIFIED", "SPLIT_BY_KIND", "SPLIT_BY_PLUGIN"])
+    def test_trace_and_log_dashboards_share_one_correlation_id(self, mode: str) -> None:
+        """Trace and log builders both declare ``$correlation_id``.
+
+        Grafana rejects a dashboard with two variables of the same name, so
+        a dashboard carrying both panel kinds must declare it exactly once.
+        """
+        from courier.dashboard.config_parser import parse_config
+        from courier.dashboard.generator import generate_dashboard
+
+        model = parse_config(str(_DEMO_CONFIG))
+        for dashboard in generate_dashboard(model, mode=mode, loki_datasource="Loki"):
+            names = [tmpl.name for tmpl in dashboard.templating.list]
+            assert len(names) == len(set(names)), names
+
+    def test_correlation_id_field_matches_dispatcher_extra_key(self) -> None:
+        """The JSON field Loki panels query must match the ``extra=`` key dispatchers log with.
+
+        ``src/courier/interfaces/dispatchers.py`` attaches the correlation id
+        via ``extra={"correlation_id": ...}``, which ``loki-logger-handler``
+        promotes to a top-level JSON field of the same name.  If that key
+        were ever renamed on one side only, the dashboard's correlation-ID
+        panel would silently come back empty.
+        """
+        import importlib.util
+
+        from courier.dashboard import loki_panels
+
+        spec = importlib.util.find_spec("courier.interfaces.dispatchers")
+        assert spec is not None and spec.origin is not None
+        dispatchers_source = Path(spec.origin).read_text()
+        match = re.search(
+            r'extra=\{"(\w+)":\s*job\.correlation_id\}', dispatchers_source
+        )
+        assert match, "could not find the correlation_id extra= key in dispatchers.py"
+        extra_key = match.group(1)
+
+        loki_source = Path(loki_panels.__file__).read_text()
+        assert f"| {extra_key}" in loki_source
 
 
 class TestLiveDetection:
