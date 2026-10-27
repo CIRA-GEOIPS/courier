@@ -581,7 +581,7 @@ def delivery_attempt(headers: dict[str, str]) -> int:
     return max(attempt, 1)
 
 
-def redeliver_or_park(  # noqa: PLR0913, PLR0917 -- one delivery's worth of state
+def redeliver_or_park(  # noqa: PLR0913 -- one delivery's worth of state
     conn: "kombu.Connection",
     queue: "kombu.Queue",
     dead_letter: "kombu.Queue",
@@ -848,8 +848,8 @@ class MessageBrokerManager(ServiceManager):
     ----------
     _config : ServiceConfig
         Service configuration.
-    _publisher_connections : list[kombu.Connection]
-        Every thread's cached publisher connection; see
+    _publisher_connections : dict[threading.Thread, kombu.Connection]
+        Each publishing thread's cached connection, keyed by the thread; see
         :meth:`publisher_connection`.
     _queues : dict[str, dict[str, Any]]
         Registered queue configurations.
@@ -899,12 +899,16 @@ class MessageBrokerManager(ServiceManager):
         self._queues: dict[str, dict[str, Any]] = {}
         self._created_queues: set[str] = set()
         self._namespace = config.namespace
-        # One publisher connection per thread, kept for the life of the
-        # service; see publisher_connection(). The list lets stop() close
-        # every thread's connection, whichever thread opened it.
-        self._publisher_local = threading.local()
-        self._publisher_connections: list[kombu.Connection] = []
+        # One publisher connection per thread, kept for the life of that
+        # thread; see publisher_connection(). Keying by thread lets stop()
+        # close every thread's connection, whichever thread opened it, and
+        # lets a dead thread's connection be found and closed.
+        self._publisher_connections: dict[threading.Thread, kombu.Connection] = {}
         self._publisher_lock = threading.Lock()
+        # Set by stop() and cleared by start(). While set no new publisher
+        # connection is adopted, so a job still running after shutdown cannot
+        # reopen one that nothing would close.
+        self._publisher_stopped = False
 
         self._open_publisher_connection = retry_with_backoff(
             max_retries=self._config.broker_max_retries,
@@ -958,7 +962,9 @@ class MessageBrokerManager(ServiceManager):
         stays cached and idle, and between publishes from other threads it
         is what keeps :meth:`is_healthy` true.
         """
-        conn = getattr(self._publisher_local, "connection", None)
+        with self._publisher_lock:
+            self._publisher_stopped = False
+        conn = self._cached_publisher_connection()
         if conn is not None and conn.connected:
             return
         if conn is not None:
@@ -971,19 +977,19 @@ class MessageBrokerManager(ServiceManager):
         self._logger.info("Broker connections closed")
 
     def _close_publisher_connections(self) -> None:
-        """Close the cached publisher connection of every thread."""
+        """Close the cached publisher connection of every thread.
+
+        Further publishes raise :class:`TransientBrokerError` until
+        :meth:`start` is called again.
+        """
         with self._publisher_lock:
-            connections, self._publisher_connections = (
-                self._publisher_connections,
-                [],
-            )
+            self._publisher_stopped = True
+            connections = list(self._publisher_connections.values())
+            self._publisher_connections.clear()
             self._update_connected_gauge_locked()
         for conn in connections:
             with suppress(Exception):
                 conn.close()
-        # Each thread's cached reference is now closed; the next publish from
-        # any thread reopens. Only this thread's slot can be cleared from here.
-        self._publisher_local.connection = None
 
     def is_healthy(self) -> bool:
         """Return whether any thread holds an open publisher connection.
@@ -993,6 +999,9 @@ class MessageBrokerManager(ServiceManager):
         normally the one answering. ``connected`` reports the client's view;
         a drop the broker has not yet signalled shows up at the next publish,
         which closes that connection and reopens it.
+
+        Connections whose thread has exited are closed first, so they neither
+        leak nor answer for a thread that is gone.
 
         Returns
         -------
@@ -1006,8 +1015,9 @@ class MessageBrokerManager(ServiceManager):
         >>> manager.is_healthy()
         False
         """
+        self._close_dead_thread_connections()
         with self._publisher_lock:
-            connections = list(self._publisher_connections)
+            connections = list(self._publisher_connections.values())
         return any(conn.connected for conn in connections)
 
     @contextmanager
@@ -1046,7 +1056,10 @@ class MessageBrokerManager(ServiceManager):
         found, per job emitted and per execution log. This keeps one
         connection per thread instead. Per thread because kombu connections
         are not thread-safe (see :meth:`open_private_connection`); for the
-        life of the service because a publisher's own thread lives that long.
+        life of the thread because a publisher's own thread normally lives
+        as long as the service. A thread that exits (a restarted plugin's
+        worker, a dispatcher's executor) leaves its connection behind; the
+        next adoption or :meth:`is_healthy` call closes it.
 
         Registered queues are declared on the connection the first time it is
         used, as :meth:`get_connection_context` does. If the block raises,
@@ -1069,6 +1082,8 @@ class MessageBrokerManager(ServiceManager):
         ------
         OperationalError
             If a connection has to be opened and the broker is unreachable.
+        TransientBrokerError
+            If a connection has to be opened after :meth:`stop`.
         """
         conn = self._thread_publisher_connection()
         try:
@@ -1077,13 +1092,22 @@ class MessageBrokerManager(ServiceManager):
             self._discard_publisher_connection(conn)
             raise
 
+    def _cached_publisher_connection(self) -> "kombu.Connection | None":
+        """Return the calling thread's cached connection, if any."""
+        with self._publisher_lock:
+            return self._publisher_connections.get(threading.current_thread())
+
     def _thread_publisher_connection(self) -> "kombu.Connection":
         """Return this thread's cached connection, opening one if needed."""
-        conn = getattr(self._publisher_local, "connection", None)
+        conn = self._cached_publisher_connection()
         if conn is not None and conn.connected:
             return conn
         if conn is not None:
             self._discard_publisher_connection(conn)
+        with self._publisher_lock:
+            stopped = self._publisher_stopped
+        if stopped:
+            raise TransientBrokerError("Broker manager is stopped")
         # One retry layer only: _open_connection already retries inside
         # ensure_connection, and this thread may be holding a message.
         conn = self._open_publisher_connection_impl()
@@ -1091,12 +1115,47 @@ class MessageBrokerManager(ServiceManager):
         return conn
 
     def _adopt_publisher_connection(self, conn: "kombu.Connection") -> None:
-        """Cache *conn* as this thread's publisher connection."""
+        """Declare registered queues on *conn*, then cache it for this thread.
+
+        If the declaration fails, or :meth:`stop` has run, *conn* is closed
+        and not cached, so nothing reuses it and nothing leaks it.
+
+        Raises
+        ------
+        TransientBrokerError
+            If the manager has been stopped.
+        """
+        try:
+            self._declare_registered_queues(conn)
+        except BaseException:
+            with suppress(Exception):
+                conn.close()
+            raise
+        self._close_dead_thread_connections()
         with self._publisher_lock:
-            self._publisher_connections.append(conn)
-            self._update_connected_gauge_locked()
-        self._publisher_local.connection = conn
-        self._declare_registered_queues(conn)
+            stopped = self._publisher_stopped
+            if not stopped:
+                self._publisher_connections[threading.current_thread()] = conn
+                self._update_connected_gauge_locked()
+        if stopped:
+            with suppress(Exception):
+                conn.close()
+            raise TransientBrokerError("Broker manager is stopped")
+
+    def _close_dead_thread_connections(self) -> None:
+        """Close and forget the connections of threads that have exited."""
+        with self._publisher_lock:
+            dead = [
+                thread
+                for thread in self._publisher_connections
+                if not thread.is_alive()
+            ]
+            connections = [self._publisher_connections.pop(t) for t in dead]
+            if connections:
+                self._update_connected_gauge_locked()
+        for conn in connections:
+            with suppress(Exception):
+                conn.close()
 
     def _update_connected_gauge_locked(self) -> None:
         """Set ``BROKER_CONNECTED`` from the connection list. Lock held."""
@@ -1105,11 +1164,10 @@ class MessageBrokerManager(ServiceManager):
     def _discard_publisher_connection(self, conn: "kombu.Connection") -> None:
         """Close *conn* and forget it, so the thread reopens on next use."""
         with self._publisher_lock:
-            with suppress(ValueError):
-                self._publisher_connections.remove(conn)
+            for thread, cached in list(self._publisher_connections.items()):
+                if cached is conn:
+                    del self._publisher_connections[thread]
             self._update_connected_gauge_locked()
-        if getattr(self._publisher_local, "connection", None) is conn:
-            self._publisher_local.connection = None
         with suppress(Exception):
             conn.close()
 

@@ -19,6 +19,7 @@ from kombu.exceptions import OperationalError
 from courier.broker.kombu import MessageBrokerManager
 from courier.config import ServiceConfig
 from courier.constants import DISPATCHER_QUEUE
+from courier.errors import TransientBrokerError
 from courier.metrics import BROKER_CONNECTED
 from courier.service import Service
 
@@ -100,19 +101,20 @@ def test_stop_closes_every_threads_connection() -> None:
     manager.stop()
 
     assert all(not conn.connected for conn in opened)
-    assert manager._publisher_connections == []
+    assert manager._publisher_connections == {}
 
 
 def test_registered_queues_are_declared_once_on_the_cached_connection() -> None:
     manager = _manager()
     name = manager.add_queue("declared-once", durable=True, exclusive=False)
-    with manager.publisher_connection():
-        pass
+    with patch("courier.broker.kombu.declare_queue") as declare:
+        with manager.publisher_connection() as first:
+            pass
+        with manager.publisher_connection() as second:
+            pass
+    assert first is second
     assert name in manager._created_queues
-    before = set(manager._created_queues)
-    with manager.publisher_connection():
-        pass
-    assert manager._created_queues == before
+    declare.assert_called_once_with(first, name, durable=True, exclusive=False)
 
 
 def test_emit_reuses_the_publisher_connection() -> None:
@@ -127,8 +129,14 @@ def test_emit_reuses_the_publisher_connection() -> None:
     )
     manager = service._broker_manager
     try:
-        service.emit(message="one", queue=DISPATCHER_QUEUE)
-        service.emit(message="two", queue=DISPATCHER_QUEUE)
+        with patch.object(
+            manager,
+            "_open_publisher_connection_impl",
+            wraps=manager._open_publisher_connection_impl,
+        ) as opener:
+            service.emit(message="one", queue=DISPATCHER_QUEUE)
+            service.emit(message="two", queue=DISPATCHER_QUEUE)
+        assert opener.call_count == 1
         assert len(manager._publisher_connections) == 1
     finally:
         manager.stop()
@@ -150,10 +158,10 @@ def test_health_and_the_gauge_follow_start_and_stop() -> None:
 def test_start_twice_on_one_thread_keeps_one_connection() -> None:
     manager = _manager()
     manager.start()
-    first = manager._publisher_local.connection
+    first = manager._cached_publisher_connection()
     manager.start()
 
-    assert manager._publisher_local.connection is first
+    assert manager._cached_publisher_connection() is first
     assert len(manager._publisher_connections) == 1
     manager.stop()
 
@@ -188,3 +196,112 @@ def test_only_start_retries_around_the_connection_attempt() -> None:
         with pytest.raises(OperationalError):
             manager.start()
         assert opener.call_count == 2
+
+
+def test_a_failed_queue_declaration_does_not_cache_the_connection() -> None:
+    """A connection whose adoption failed is closed, not reused."""
+    manager = _manager()
+    manager.add_queue("fails-to-declare", durable=True, exclusive=False)
+    real_open = manager._open_publisher_connection_impl
+    opened: list[kombu.Connection] = []
+
+    def open_and_record() -> kombu.Connection:
+        conn = real_open()
+        opened.append(conn)
+        return conn
+
+    with (
+        patch(
+            "courier.broker.kombu.declare_queue",
+            side_effect=OperationalError("declare failed"),
+        ),
+        patch.object(
+            manager,
+            "_open_publisher_connection_impl",
+            side_effect=open_and_record,
+        ),
+        pytest.raises(OperationalError),
+        manager.publisher_connection(),
+    ):
+        pass
+    assert manager._publisher_connections == {}
+    assert not opened[0].connected
+
+    with manager.publisher_connection() as conn:
+        pass
+    assert conn.connected
+    assert len(manager._publisher_connections) == 1
+
+
+def test_a_dead_threads_connection_is_closed() -> None:
+    """A thread that exits does not leave its connection open and tracked."""
+    manager = _manager()
+    opened: list[kombu.Connection] = []
+
+    def grab() -> None:
+        with manager.publisher_connection() as conn:
+            opened.append(conn)
+
+    worker = threading.Thread(target=grab)
+    worker.start()
+    worker.join(timeout=5)
+    assert len(manager._publisher_connections) == 1
+
+    assert not manager.is_healthy()
+    assert not opened[0].connected
+    assert manager._publisher_connections == {}
+    assert _gauge() == 0
+
+
+def test_no_connection_is_adopted_after_stop() -> None:
+    """A job still running after shutdown cannot reopen an unmanaged connection."""
+    manager = _manager()
+    manager.start()
+    manager.stop()
+
+    with (
+        patch.object(manager, "_open_publisher_connection_impl") as opener,
+        pytest.raises(TransientBrokerError),
+        manager.publisher_connection(),
+    ):
+        pass
+    opener.assert_not_called()
+    assert manager._publisher_connections == {}
+
+
+def test_a_connection_opened_across_stop_is_closed() -> None:
+    """stop() landing between open and adopt closes the new connection."""
+    manager = _manager()
+    real_open = manager._open_publisher_connection_impl
+    opened: list[kombu.Connection] = []
+
+    def open_then_stop() -> kombu.Connection:
+        conn = real_open()
+        opened.append(conn)
+        manager.stop()
+        return conn
+
+    with (
+        patch.object(
+            manager,
+            "_open_publisher_connection_impl",
+            side_effect=open_then_stop,
+        ),
+        pytest.raises(TransientBrokerError),
+        manager.publisher_connection(),
+    ):
+        pass
+    assert not opened[0].connected
+    assert manager._publisher_connections == {}
+
+
+def test_start_after_stop_allows_publishing_again() -> None:
+    """The stop gate is lifted by the next start."""
+    manager = _manager()
+    manager.start()
+    manager.stop()
+    manager.start()
+    with manager.publisher_connection() as conn:
+        pass
+    assert conn.connected
+    manager.stop()

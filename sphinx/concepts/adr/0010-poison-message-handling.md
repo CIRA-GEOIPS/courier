@@ -55,7 +55,7 @@ per-queue dead-letter queue** once the count passes `broker_max_redeliveries`
 (default 3, `BROKER_MAX_REDELIVERIES`).
 
 - The count lives in the `x-courier-delivery-attempt` header, so it survives the
-  process exit that the plugin interfaces perform on error. A message with no
+  plugin restart that follows an unhandled error. A message with no
   header — which is every message already queued when this ships — is on its
   first attempt.
 - Republishing to the tail is what unblocks the pipeline. It takes effect on the

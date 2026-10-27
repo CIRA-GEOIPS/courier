@@ -585,6 +585,46 @@ class TestRestartScheduling:
         assert info.restart_count == 2
         assert info.restart_due is not None
 
+    def test_a_restart_is_not_started_once_the_manager_stops(self) -> None:
+        """A restart picked as due just before stop() must not launch."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("late")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.RESTARTING)
+
+        manager._start_plugin(info)
+
+        assert info.thread is None
+        assert info.state == PluginRunState.RESTARTING
+        plugin.start.assert_not_called()
+
+    def test_stop_during_a_restart_leaves_the_plugin_stopped(self) -> None:
+        """stop() landing while a failed plugin is stopping cancels the restart."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("interrupted")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+
+        def shutdown_arrives() -> None:
+            manager._state = PluginRunState.STOPPED
+
+        plugin.stop.side_effect = shutdown_arrives
+        manager._handle_failed_plugin(info)
+
+        assert info.state == PluginRunState.STOPPED
+        assert info.restart_due is None
+
+    def test_a_stopped_manager_schedules_no_restart(self) -> None:
+        """A failure noticed after shutdown is not acted on."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        plugin = _make_plugin("after-shutdown")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+
+        manager._handle_failed_plugin(info)
+
+        assert info.state == PluginRunState.FAILED
+        assert info.restart_count == 0
+        plugin.stop.assert_not_called()
+
     def test_the_monitor_restarts_a_crashed_plugin(self) -> None:
         """End to end: unhealthy → stop → scheduled → started again."""
         manager = PluginManager(_make_config(), parent_service=MagicMock())
