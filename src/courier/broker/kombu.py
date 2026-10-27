@@ -586,6 +586,7 @@ def redeliver_or_park(  # noqa: PLR0913 -- one delivery's worth of state
     queue: "kombu.Queue",
     dead_letter: "kombu.Queue",
     body: str,
+    *,
     headers: dict[str, str],
     max_redeliveries: int,
 ) -> bool:

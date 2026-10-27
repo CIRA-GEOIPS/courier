@@ -605,8 +605,8 @@ class Service:
                 queue,
                 dead_letter,
                 body,
-                headers,
-                self._config.broker_max_redeliveries,
+                headers=headers,
+                max_redeliveries=self._config.broker_max_redeliveries,
             )
         except Exception:
             self._logger.exception(
