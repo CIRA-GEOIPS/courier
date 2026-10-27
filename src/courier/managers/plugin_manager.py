@@ -52,7 +52,7 @@ class PluginStateInfo:
     """
 
     plugin: ServicePlugin
-    type: type[ServicePlugin] | None = None
+    plugin_type: type[ServicePlugin] | None = None
     identifier: str | None = None
     config: dict[str, Any] = field(default_factory=dict)
     state: PluginRunState = PluginRunState.STOPPED
@@ -183,7 +183,7 @@ class PluginManager(ServiceManager):
                 plugin=plugin_instance,
                 config=config,
                 identifier=identifier,
-                type=plugin,
+                plugin_type=plugin,
             )
 
             # Emit initial metric values so the series exists from container

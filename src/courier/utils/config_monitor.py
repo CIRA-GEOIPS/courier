@@ -231,7 +231,7 @@ class ConfigMonitor:
         config = service.spec.config or {}
 
         old_plugin = self._parent_service._plugins[identifier]
-        if old_plugin.type is None:
+        if old_plugin.plugin_type is None:
             raise CourierError(
                 f"Previous plugin {identifier} has no defined type "
                 "aborting soft reload",
@@ -264,12 +264,21 @@ class ConfigMonitor:
                 self._parent_service._plugins.pop(identifier, None)
             try:
                 self._parent_service.register_plugin(
-                    old_plugin.type,
+                    old_plugin.plugin_type,
                     old_plugin.config,
                     old_plugin.identifier,
                 )
 
                 restored_plugin = self._parent_service._plugins[identifier]
+
+                if (
+                    kind == "job_builders"
+                    and isinstance(restored_plugin.plugin, JobBuilder)
+                    and not restored_plugin.plugin.targets
+                    and isinstance(identified_plugin.plugin, JobBuilder)
+                ):
+                    restored_plugin.plugin.targets = identified_plugin.plugin.targets
+
                 self._parent_service._start_plugin(restored_plugin)
             except Exception as rollback_error:
                 raise CourierError(
@@ -292,6 +301,8 @@ class ConfigMonitor:
         """Act on a changed config."""
         self._logger.debug("Detected config change...")
         new_config = self._config_file.read_text()
+        if not new_config.strip():
+            return
 
         old_config = self._last_read_text
 
@@ -302,7 +313,12 @@ class ConfigMonitor:
             # skip duplicate services
             if any(start <= line_num < end for start, end in updated_buffers):
                 continue
-            updated_buffers.add(get_spec_from_line(new_config, line_num))
+            try:
+                updated_buffers.add(get_spec_from_line(new_config, line_num))
+            except ValueError:
+                self._logger.debug(
+                    f"Line {line_num} is outside any service spec; ignoring"
+                )
         updated_models = []
         for upper, lower in updated_buffers:
             spec = "\n".join(new_config.splitlines()[upper : lower + 1])
