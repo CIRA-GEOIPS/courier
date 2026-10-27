@@ -196,14 +196,15 @@ class ConfigMonitor:
     ) -> None:
         """Rollback plugins based on their info in the registry."""
         # stop the old thread and check for timeout
+        with self._parent_service._lock:
+            self._parent_service._plugins.pop(identifier, None)
+
         old_thread = old_plugin.thread
         self._parent_service._stop_plugin(old_plugin)
         if old_thread is not None and old_thread.is_alive():
             raise CourierError(
                 f"Plugin {identifier} failed to stop within the timeout.",
             )
-        with self._parent_service._lock:
-            self._parent_service._plugins.pop(identifier, None)
 
         # plugin registration
         self._parent_service.register_plugin(plugin_type, config, identifier)
@@ -259,7 +260,7 @@ class ConfigMonitor:
 
         try:
             plugin_class = PLUGIN_REGISTRIES[kind].get_plugin(service.spec.name)
-        except Exception as e:
+        except KeyError as e:
             raise ValueError(
                 f"Invalid plugin provided - {service.spec.name} not in registry.",
             ) from e

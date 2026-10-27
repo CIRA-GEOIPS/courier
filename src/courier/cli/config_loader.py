@@ -78,7 +78,7 @@ def load_config(file_path: Path) -> ServiceConfigModel:
     if metadata is None:
         metadata = raw["metadata"] = {}
     if isinstance(metadata, dict):
-        metadata["config_path"] = str(file_path)
+        metadata["config_path"] = metadata.get("config_path", str(file_path))
     api_version = raw.get("apiVersion", "")
     model_cls = get_model_for_version(api_version)
     try:
