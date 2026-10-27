@@ -760,6 +760,16 @@ class TestRestartsThroughTheRealLoop:
         manager.stop()
 
 
+def _poll(predicate: Callable[[], bool], timeout: float = 5.0) -> bool:
+    """Return whether *predicate* becomes true within *timeout* seconds."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
 def _blocked_starter(plugin: MagicMock, info: PluginStateInfo) -> threading.Event:
     """Run ``plugin.start`` on a starter thread that blocks until released."""
     release = threading.Event()
@@ -809,9 +819,13 @@ class TestStuckStart:
             assert info.restart_count == 3
             assert "did not return within 1s" in (info.error_message or "")
             assert info.thread is None
-            assert info.abandoned_threads == [stuck_thread]
+            assert stuck_thread in info.abandoned_threads
             assert manager.exhausted_plugins() == ["stuck"]
-            plugin.stop.assert_called_once()
+            # stop() runs on a thread the monitor does not wait for.
+            assert _poll(lambda: plugin.stop.call_count == 1)
+            assert _poll(
+                lambda: manager.get_plugin_status()["stuck"]["abandoned_threads"] == 1,
+            ), "only the stuck starter is still running"
             # A second tick does nothing more: not retried, not re-failed.
             info.last_health_check = None
             assert manager._check_plugin("stuck", info) is False
@@ -849,6 +863,7 @@ class TestStuckStart:
         release = threading.Event()
         plugin.start.side_effect = release.wait
 
+        manager._state = PluginRunState.RUNNING
         manager._start_plugin(info)
         starter = info.thread
         info.starting_since = time.monotonic() - 2
@@ -881,7 +896,9 @@ class TestStuckStart:
                 time.sleep(0.05)
             assert manager.exhausted_plugins() == ["stuck"]
             assert not manager.is_healthy()
-            assert manager.get_plugin_status()["stuck"]["abandoned_threads"] == 1
+            assert _poll(
+                lambda: manager.get_plugin_status()["stuck"]["abandoned_threads"] == 1,
+            )
 
             started = time.monotonic()
             manager.stop()
@@ -889,9 +906,81 @@ class TestStuckStart:
         finally:
             release.set()
 
+    def test_the_health_gate_does_not_count_against_the_timeout(self) -> None:
+        """A start() that returned is waiting on health, not stuck."""
+        manager = PluginManager(
+            _make_config(plugin_health_check_interval=1.0, plugin_start_timeout=0.2),
+            parent_service=MagicMock(),
+        )
+        plugin = _make_plugin("slow-to-health", healthy=False)
+        info = PluginStateInfo(plugin=plugin)
+        manager._plugins["slow-to-health"] = info
+        manager._state = PluginRunState.RUNNING
+
+        manager._start_plugin(info)
+        starter = info.thread
+        assert _poll(lambda: info.starting_since is None), "start() returned"
+        time.sleep(0.4)  # past plugin_start_timeout, still inside the gate
+        assert info.state == PluginRunState.STARTING
+        assert manager._check_plugin("slow-to-health", info) is False
+        assert manager.is_healthy()
+        assert info.state == PluginRunState.STARTING
+
+        starter.join(timeout=5)  # type: ignore[union-attr]
+        assert info.state == PluginRunState.RUNNING
+        assert info.abandoned_threads == []
+
+    def test_a_late_return_is_warned_about(self) -> None:
+        """A start() finishing after it was given up on is a warning."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        info = PluginStateInfo(plugin=_make_plugin("tardy"))
+        info.state = PluginRunState.FAILED
+        with patch.object(manager, "_logger") as logger:
+            manager._log_lost_start_locked(info, "returned")
+        assert "given up on" in logger.warning.call_args.args[0]
+        logger.debug.assert_not_called()
+
+    def test_a_start_overtaken_by_stop_is_not_warned_about(self) -> None:
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        info = PluginStateInfo(plugin=_make_plugin("interrupted"))
+        info.state = PluginRunState.STOPPED
+        with patch.object(manager, "_logger") as logger:
+            manager._log_lost_start_locked(info, "raised RuntimeError()")
+        logger.warning.assert_not_called()
+        assert "after it was stopped" in logger.debug.call_args.args[0]
+
+
+class TestAbandonedThreads:
+    """Abandoned threads are counted while they run and pruned after."""
+
+    def test_finished_threads_are_pruned_and_not_counted(self) -> None:
+        """A finished thread drops out of the count and the list."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        info = PluginStateInfo(plugin=_make_plugin("p"))
+        manager._plugins["p"] = info
+        finished = threading.Thread(target=lambda: None)
+        finished.start()
+        finished.join()
+        release = threading.Event()
+        running = threading.Thread(target=release.wait, daemon=True)
+        running.start()
+        try:
+            info.abandoned_threads.append(finished)
+            assert manager.get_plugin_status()["p"]["abandoned_threads"] == 0
+            assert PluginManager._abandon_thread_locked(info, running) == 1
+            assert info.abandoned_threads == [running]
+            assert manager.get_plugin_status()["p"]["abandoned_threads"] == 1
+        finally:
+            release.set()
+            running.join(timeout=5)
+        assert manager.get_plugin_status()["p"]["abandoned_threads"] == 0
+
 
 class TestStopOutlivingItsJoin:
+    """A thread still alive after its stop join is recorded, not forgotten."""
+
     def test_a_thread_that_will_not_stop_is_recorded(self) -> None:
+        """The unjoinable starter thread ends up on abandoned_threads."""
         manager = PluginManager(_make_config(), parent_service=MagicMock())
         plugin = _make_plugin("clingy")
         release = threading.Event()
@@ -900,9 +989,7 @@ class TestStopOutlivingItsJoin:
         info.thread.start()
         clingy = info.thread
         try:
-            with patch.object(
-                threading.Thread, "join", lambda self, timeout=None: None
-            ):
+            with patch.object(clingy, "join"):
                 manager._stop_plugin(info)
             assert info.state == PluginRunState.STOPPED
             assert info.thread is None

@@ -30,16 +30,20 @@ seconds, env `PLUGIN_START_TIMEOUT`) is given up on:
   non-zero. Whatever runs the process decides what happens next.
 - The stuck thread's stack is written to the error log, so the operator
   learns what it was waiting on without attaching a debugger.
-- The plugin's own `stop()` is called on a separate thread, in case the
-  blocked call ever returns and the plugin should then wind down rather than
-  carry on. If `start()` does return late, the plugin stays `FAILED`.
-- The thread is recorded on the plugin's `abandoned_threads` and counted in
-  the status report. It is not forgotten, because it cannot be freed.
+- The plugin's own `stop()` is called on a separate thread that the monitor
+  does not wait for, in case the blocked call ever returns and the plugin
+  should then wind down rather than carry on. If `start()` does return late,
+  the plugin stays `FAILED`.
+- The stuck thread and the stop thread are recorded on the plugin's
+  `abandoned_threads`, and the status report counts those still running.
+  They are not forgotten, because they cannot be freed.
 - A start past its timeout counts as unhealthy, so the service's own
   post-startup health check also catches it.
 
-`plugin_start_timeout` must be at least `plugin_health_check_interval`, the
-time the start gate already waits for a plugin to report healthy.
+Only the `start()` call is timed. Once it returns, the start gate's wait for
+the plugin to report healthy has its own deadline,
+`plugin_health_check_interval`, and does not count against
+`plugin_start_timeout`.
 
 ## Alternatives Considered
 

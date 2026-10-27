@@ -1028,3 +1028,6 @@ def test_a_plugin_stuck_in_start_ends_the_service(tmp_path: Path) -> None:
         assert "did not return" in stuck["error"]
     finally:
         release.set()
+        # A no-op once the service has exited; otherwise it is stopped here
+        # rather than left running for the rest of the session.
+        _shutdown_service(service, thread)
