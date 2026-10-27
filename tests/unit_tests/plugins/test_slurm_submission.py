@@ -399,7 +399,7 @@ class TestWaitMode:
             {"script": "echo 'out from {{ job.identifier }}'; echo 'err line' >&2"},
         )
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         assert log.return_code == 0
         assert log.stdout == "out from job-1\n"
@@ -417,7 +417,7 @@ class TestWaitMode:
         dispatcher = _dispatcher(service, out_dir)
         job = wire_job(service, {"script": "echo 'going down' >&2; exit 3"})
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         assert log.return_code == 3  # noqa: PLR2004
         assert log.stderr is not None
@@ -435,7 +435,7 @@ class TestWaitMode:
         monkeypatch.setenv("FAKE_SBATCH_CLUSTER", "1")
         dispatcher = _dispatcher(service, out_dir, polling_timeout_seconds=10)
 
-        (log,) = dispatcher.get_execution_log(wire_job(service, {"script": "echo ok"}))
+        (log,) = dispatcher.execute(wire_job(service, {"script": "echo ok"}))
 
         assert log.return_code == 0, log.stderr
         assert log.stdout == "ok\n"
@@ -483,7 +483,7 @@ class TestBatchScripts:
         dispatcher = _dispatcher(service, out_dir)
         job = wire_job(service, {"file": str(template), "suffix_args": ["a", "b c"]})
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         submitted = fake_slurm.only_job()
         assert submitted["wrap"] is None
@@ -503,7 +503,7 @@ class TestBatchScripts:
         release = fake_slurm.hold_jobs(monkeypatch)
         dispatcher = _dispatcher(service, out_dir, wait_for_completion=False)
 
-        (log,) = dispatcher.get_execution_log(wire_job(service, {"script": "echo ran"}))
+        (log,) = dispatcher.execute(wire_job(service, {"script": "echo ran"}))
 
         submitted = fake_slurm.only_job()
         assert log.return_code == 0
@@ -535,7 +535,7 @@ class TestWrappedJobs:
             payload_cls=PythonPayload,
         )
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         submitted = fake_slurm.only_job()
         assert submitted["script"] is None
@@ -566,7 +566,7 @@ class TestWrappedJobs:
             payload_cls=PythonPayload,
         )
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         submitted = fake_slurm.only_job()
         assert log.return_code == 0
@@ -602,7 +602,7 @@ class TestWrappedJobs:
             {"script": 'if [[ -n "$BASH_VERSION" ]]; then echo bash; fi'},
         )
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         submitted = fake_slurm.only_job()
         assert submitted["script"] is None
@@ -628,7 +628,7 @@ class TestWrappedJobs:
             job=file_job(evil),
         )
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         assert log.return_code == 0, log.stderr
         assert log.stdout == f"{evil}\n"
@@ -654,7 +654,7 @@ class TestRejectedSubmissions:
         rejected = _submissions("sd-reject", "rejected")
         submitted = _submissions("sd-reject", "submitted")
 
-        (log,) = dispatcher.get_execution_log(wire_job(service, payload_config))
+        (log,) = dispatcher.execute(wire_job(service, payload_config))
 
         assert log.return_code == 1
         assert log.stderr is not None
@@ -681,7 +681,7 @@ class TestRejectedSubmissions:
         job = wire_job(service, {"script": "echo hi", "prefix_args": ["-e"]})
 
         started = time.monotonic()
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
         elapsed = time.monotonic() - started
 
         assert elapsed < _PROMPT_SECONDS
@@ -716,7 +716,7 @@ class TestDispatcherLoggingOptions:
             log_to_logger=True,
         )
 
-        (log,) = dispatcher.get_execution_log(
+        (log,) = dispatcher.execute(
             wire_job(service, {"script": "echo hi", "toolchain": ["sh"]}),
         )
 
@@ -778,7 +778,7 @@ class TestPollingGivesUp:
             payload_identifier="p-giveup",
         )
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         assert log.return_code == -1
         assert "did not reach a terminal state" in (log.stderr or "")
@@ -802,7 +802,7 @@ class TestPollingGivesUp:
         dispatcher = _dispatcher(service, out_dir)
         job = wire_job(service, {"script": "echo hi", "prefix_args": ["-e"]})
 
-        (log,) = dispatcher.get_execution_log(job)
+        (log,) = dispatcher.execute(job)
 
         assert log.return_code == -1
         assert "PREEMPTED" in (log.stderr or "")
@@ -824,7 +824,7 @@ class TestMetrics:
         result: list[list[ExecutionLog]] = []
 
         worker = threading.Thread(
-            target=lambda: result.append(dispatcher.get_execution_log(job)),
+            target=lambda: result.append(dispatcher.execute(job)),
         )
         worker.start()
         try:
@@ -857,7 +857,7 @@ class TestMetrics:
         before = _submissions("sd-nowait-metrics", "submitted")
         job = wire_job(service, {"script": "echo hi"}, payload_identifier="p-nowait")
 
-        dispatcher.get_execution_log(job)
+        dispatcher.execute(job)
 
         assert _submissions("sd-nowait-metrics", "submitted") == before + 1
         assert _pending("sd-nowait-metrics") == 0
@@ -883,7 +883,7 @@ class TestMetrics:
         )
         other = "failure" if status == "success" else "success"
 
-        dispatcher.get_execution_log(job)
+        dispatcher.execute(job)
 
         assert _payload_jobs(payload_identifier, status) == 1
         assert _payload_jobs(payload_identifier, other) == 0
