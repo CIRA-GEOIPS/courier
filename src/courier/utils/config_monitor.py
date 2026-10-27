@@ -317,7 +317,7 @@ class ConfigMonitor:
                 updated_buffers.add(get_spec_from_line(new_config, line_num))
             except ValueError:
                 self._logger.debug(
-                    f"Line {line_num} is outside any service spec; ignoring"
+                    f"Line {line_num} is outside any service spec; ignoring",
                 )
         updated_models = []
         for upper, lower in updated_buffers:
