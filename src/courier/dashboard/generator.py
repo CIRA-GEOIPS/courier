@@ -578,10 +578,10 @@ def _assemble_unified_panels(  # noqa: PLR0913
     # dashboard with two variables of the same name. First declaration wins.
     seen: set[str] = set()
     unique_templates = []
-    for tmpl in templates:
-        if tmpl.name not in seen:
-            seen.add(tmpl.name)
-            unique_templates.append(tmpl)
+    for template in templates:
+        if template.name not in seen:
+            seen.add(template.name)
+            unique_templates.append(template)
 
     return unique_templates, panel_rows
 
