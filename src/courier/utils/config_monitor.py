@@ -12,11 +12,14 @@ import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from courier.config import ServiceConfig
 from courier.interfaces.job_builders import JobBuilder
+from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.utils.logging import ContextAdapter
 
 if TYPE_CHECKING:
     from courier.managers import PluginManager
+    from courier.managers import PluginStateInfo
 from courier.errors import CourierError
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 
@@ -185,6 +188,41 @@ class ConfigMonitor:
         )
         self._logger = self._parent_service._logger or ContextAdapter(None)
 
+    def _register_and_start_plugin(
+        self,
+        old_plugin: PluginStateInfo,
+        plugin_type: type[ServicePlugin],
+        config: dict[str, Any],
+        identifier: str,
+        kind: str,
+    ) -> None:
+        """Rollback plugins based on their info in the registry."""
+
+        # stop the old thread and check for timeout
+        old_thread = old_plugin.thread
+        self._parent_service._stop_plugin(old_plugin)
+        if old_thread is not None and old_thread.is_alive():
+            raise CourierError(
+                f"Plugin {identifier} failed to stop within the timeout.",
+            )
+        with self._parent_service._lock:
+            self._parent_service._plugins.pop(identifier, None)
+
+        # plugin registration
+        self._parent_service.register_plugin(plugin_type, config, identifier)
+
+        restored_plugin = self._parent_service._plugins[identifier]
+
+        if (
+            kind == "job_builders"
+            and isinstance(restored_plugin.plugin, JobBuilder)
+            and not restored_plugin.plugin.targets
+            and isinstance(old_plugin.plugin, JobBuilder)
+        ):
+            restored_plugin.plugin.targets = old_plugin.plugin.targets
+
+        self._parent_service._start_plugin(restored_plugin)
+
     def _replace_running_plugin(self, service: MicroserviceModel) -> None:
         from courier.cli.plugins import (  # noqa: PLC0415
             PLUGIN_REGISTRIES,
@@ -231,55 +269,25 @@ class ConfigMonitor:
         config = service.spec.config or {}
 
         old_plugin = self._parent_service._plugins[identifier]
-        if old_plugin.plugin_type is None:
+        if not old_plugin.plugin_type:
             raise CourierError(
-                f"Previous plugin {identifier} has no defined type "
-                "aborting soft reload",
+                f"Plugin {identifier} to be replaced does not have valid type"
+                " - impossible rollback; exiting"
             )
-        old_thread = old_plugin.thread
-
-        self._parent_service._stop_plugin(identified_plugin)
-
-        if old_thread is not None and old_thread.is_alive():
-            raise CourierError(
-                f"Plugin {identifier} failed to stop within the timeout.",
-            )
-
-        with self._parent_service._lock:
-            self._parent_service._plugins.pop(identifier)
 
         try:
-            self._parent_service.register_plugin(plugin_class, config, identifier)
-            plugin_info = self._parent_service._plugins[identifier]
-            # route targets
-            if (
-                kind == "job_builders"
-                and isinstance(plugin_info.plugin, JobBuilder)
-                and not plugin_info.plugin.targets
-                and isinstance(identified_plugin.plugin, JobBuilder)
-            ):
-                plugin_info.plugin.targets = identified_plugin.plugin.targets
+            self._register_and_start_plugin(
+                old_plugin, plugin_class, config, identifier, kind
+            )
         except Exception as e:
-            with self._parent_service._lock:
-                self._parent_service._plugins.pop(identifier, None)
             try:
-                self._parent_service.register_plugin(
+                self._register_and_start_plugin(
+                    old_plugin,
                     old_plugin.plugin_type,
                     old_plugin.config,
-                    old_plugin.identifier,
+                    identifier,
+                    kind,
                 )
-
-                restored_plugin = self._parent_service._plugins[identifier]
-
-                if (
-                    kind == "job_builders"
-                    and isinstance(restored_plugin.plugin, JobBuilder)
-                    and not restored_plugin.plugin.targets
-                    and isinstance(identified_plugin.plugin, JobBuilder)
-                ):
-                    restored_plugin.plugin.targets = identified_plugin.plugin.targets
-
-                self._parent_service._start_plugin(restored_plugin)
             except Exception as rollback_error:
                 raise CourierError(
                     f"Rollback failed for plugin {identifier}",
@@ -287,15 +295,6 @@ class ConfigMonitor:
 
             # rollback succeeded
             raise CourierError(f"Error registering plugin {identifier}") from e
-        else:
-            try:
-                self._parent_service._start_plugin(
-                    self._parent_service._plugins[identifier],
-                )
-            except Exception as start_error:
-                raise CourierError(
-                    f"Error starting modified service {identifier}",
-                ) from start_error
 
     def _on_config_changed(self) -> None:
         """Act on a changed config."""
