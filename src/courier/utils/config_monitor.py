@@ -12,14 +12,12 @@ import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from courier.config import ServiceConfig
 from courier.interfaces.job_builders import JobBuilder
-from courier.interfaces.plugin_protocol import ServicePlugin
 from courier.utils.logging import ContextAdapter
 
 if TYPE_CHECKING:
-    from courier.managers import PluginManager
-    from courier.managers import PluginStateInfo
+    from courier.interfaces.plugin_protocol import ServicePlugin
+    from courier.managers import PluginManager, PluginStateInfo
 from courier.errors import CourierError
 from courier.schema.v1alpha1.service_config import MicroserviceModel
 
@@ -197,7 +195,6 @@ class ConfigMonitor:
         kind: str,
     ) -> None:
         """Rollback plugins based on their info in the registry."""
-
         # stop the old thread and check for timeout
         old_thread = old_plugin.thread
         self._parent_service._stop_plugin(old_plugin)
@@ -272,12 +269,16 @@ class ConfigMonitor:
         if not old_plugin.plugin_type:
             raise CourierError(
                 f"Plugin {identifier} to be replaced does not have valid type"
-                " - impossible rollback; exiting"
+                " - impossible rollback; exiting",
             )
 
         try:
             self._register_and_start_plugin(
-                old_plugin, plugin_class, config, identifier, kind
+                old_plugin,
+                plugin_class,
+                config,
+                identifier,
+                kind,
             )
         except Exception as e:
             try:
