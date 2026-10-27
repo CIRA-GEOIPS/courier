@@ -105,7 +105,7 @@ class S3Poller(DataMonitorBasePlugin):
 
     def is_healthy(self) -> bool:
         """Return ``True`` while the polling loop is running."""
-        return self.health
+        return self.health and self._worker_alive()
 
     def _build_client(self) -> Any:
         """Create the boto3 S3 client. Raises if boto3 is not installed."""

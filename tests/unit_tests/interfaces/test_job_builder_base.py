@@ -645,10 +645,9 @@ class TestPayloadRenderFailure:
         )
         before = _render_failures(identifier)
 
-        with patch("courier.interfaces.job_builders.os._exit") as exit_:
-            builder._run_handle_incoming_files()
+        builder._run_handle_incoming_files()
 
-        exit_.assert_not_called()
+        assert builder._state is not PluginRunState.FAILED
         assert _published_scripts(service) == published
         assert _render_failures(identifier) == before + 1
         assert builder.job_groups[0].jobs == {}

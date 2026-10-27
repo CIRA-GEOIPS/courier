@@ -53,7 +53,15 @@ class ServiceConfig:
         Defaults to environment variable PLUGIN_RESTART_DELAY or 5.
     plugin_max_restart_attempts : int, optional
         Maximum number of restart attempts for a plugin. Defaults to
-        environment variable PLUGIN_MAX_RESTARTS or 3.
+        environment variable PLUGIN_MAX_RESTARTS or 3. A plugin that
+        exhausts them is failed for good and the service exits, so an
+        orchestrator can replace the process.
+    plugin_restart_window : int, optional
+        Seconds a restarted plugin must stay healthy before its restart
+        attempts are forgiven and the count returns to zero. Without this a
+        plugin would be allowed only ``plugin_max_restart_attempts`` failures
+        over the whole life of the process. Defaults to environment variable
+        PLUGIN_RESTART_WINDOW or 300.
     plugin_health_check_interval : int, optional
         Interval in seconds between plugin health checks. Defaults to
         environment variable PLUGIN_HEALTH_CHECK_INTERVAL or 2.
@@ -129,6 +137,9 @@ class ServiceConfig:
     )
     plugin_max_restart_attempts: int = field(
         default_factory=lambda: int(os.environ.get("PLUGIN_MAX_RESTARTS", "3")),
+    )
+    plugin_restart_window: int = field(
+        default_factory=lambda: int(os.environ.get("PLUGIN_RESTART_WINDOW", "300")),
     )
     plugin_health_check_interval: int = field(
         default_factory=lambda: int(

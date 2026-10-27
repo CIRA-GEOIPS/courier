@@ -27,7 +27,6 @@ from pydantic import (
     model_validator,
 )
 
-from courier.constants import PluginRunState
 from courier.interfaces.job_builders import JobBuilder
 from courier.metrics import JOB_BUILDER_TIMEOUT_EMISSIONS
 from courier.types.job import Job, JobGroup
@@ -292,7 +291,7 @@ class FilterAndGroupJobBuilder(JobBuilder):
 
     def is_healthy(self) -> bool:
         """Healthy only while running and the reaper (if any) is still alive."""
-        if self._state != PluginRunState.RUNNING:
+        if not super().is_healthy():
             return False
         return self._reaper_thread is None or self._reaper_thread.is_alive()
 

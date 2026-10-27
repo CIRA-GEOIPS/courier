@@ -259,6 +259,14 @@ class PluginStartupError(PluginError):
     """Raised when a plugin fails to start."""
 
 
+class PluginFailedError(PluginError):
+    """A plugin failed and has exhausted its restart attempts.
+
+    Raised by the service's heartbeat loop so the process exits non-zero
+    rather than running on without the plugin.
+    """
+
+
 # ---------------------------------------------------------------------------
 # State sync errors
 # ---------------------------------------------------------------------------
