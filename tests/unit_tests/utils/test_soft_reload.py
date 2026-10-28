@@ -825,7 +825,8 @@ class TestBlueGreenReload:
             }
         )
 
-        monitor._replace_running_plugin(service)
+        with pytest.raises(ValueError):
+            monitor._replace_running_plugin(service)
 
         assert len(manager._plugins) == 1
         assert manager._plugins[identifier] == old_plugin
@@ -883,7 +884,11 @@ class TestBlueGreenReload:
             }
         )
 
-        monitor._replace_running_plugin(service)
+        with pytest.raises(CourierError, match="did not become ready"):
+            monitor._replace_running_plugin(service)
+
+        manager._wipe_plugin.assert_called_once_with(dummy_plugin)
+        manager._start_plugin.assert_called_once_with(dummy_plugin)
 
         assert len(manager._plugins) == 1
         assert manager._plugins[identifier] == old_plugin

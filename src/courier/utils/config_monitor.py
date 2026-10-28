@@ -5,8 +5,8 @@ from __future__ import annotations
 import difflib
 import re
 import textwrap
+from copy import deepcopy
 from pathlib import Path
-import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -198,9 +198,6 @@ class ConfigMonitor:
         kind: str,
     ) -> None:
         """Rollback plugins based on their info in the registry."""
-        # stop the old thread and check for timeout
-        self._parent_service._wipe_plugin(old_plugin)
-
         # plugin registration
         self._parent_service.register_plugin(plugin_type, config, identifier)
 
@@ -223,7 +220,7 @@ class ConfigMonitor:
         config: dict[str, Any],
         identifier: str,
         kind: str,
-    ):
+    ) -> None:
         """Blue-green handling for registering plugins.
 
         Register and start the new service, then check if it passes.
@@ -241,7 +238,7 @@ class ConfigMonitor:
             with self._parent_service._lock:
                 if dummy_identifier in self._parent_service._plugins:
                     self._parent_service._plugins.pop(dummy_identifier, None)
-            return
+            raise
 
         if (
             kind == "job_builders"
@@ -254,17 +251,21 @@ class ConfigMonitor:
         health_check_interval = (
             self._parent_service._config.plugin_health_check_interval
         )
-        self._parent_service._start_plugin(dummy_plugin)
+        try:
+            self._parent_service._start_plugin(dummy_plugin)
+        except Exception as e:
+            self._parent_service._wipe_plugin(dummy_plugin)
+            raise CourierError(f"Service {identifier} failed to start on reload") from e
         if not dummy_plugin.ready.wait(timeout=health_check_interval):
-            self._logger.error(
+            self._parent_service._wipe_plugin(dummy_plugin)
+            raise CourierError(
                 f"Modified plugin {identifier} did not become ready"
                 f" within {health_check_interval} seconds.",
             )
-            self._parent_service._wipe_plugin(dummy_plugin)
-            return
 
         # blue-green passed
         self._parent_service._wipe_plugin(old_plugin)
+        dummy_plugin.identifier = identifier
         with self._parent_service._lock:
             self._parent_service._plugins[identifier] = dummy_plugin
             self._parent_service._plugins.pop(dummy_identifier, None)
@@ -276,10 +277,30 @@ class ConfigMonitor:
         config: dict[str, Any],
         identifier: str,
         kind: str,
-    ):
-        """Full reload-rollback system for hard live reloads."""
+    ) -> None:
+        """Full reload-rollback system for hard live reloads.
+
+        Parameters
+        ----------
+        old_plugin: PluginStateInfo
+            The plugin to be replaced that is currently in the plugin registry.
+        plugin_type: type[ServicePlugin]
+            The datatype of the relevant plugin
+        config: dict[str, Any]
+            The configuration of the relevant plugin
+        identifier: str
+            The identifier of the relevant plugin.
+            Also the key of the plugin registry.
+        kind: str
+            The normalized kind of the relevant plugin.
+        """
         if not old_plugin.plugin_type:
             raise CourierError(f"Plugin {identifier} not supplied with a type.")
+
+        original_type = old_plugin.plugin_type
+        original_config = deepcopy(old_plugin.config)
+
+        self._parent_service._wipe_plugin(old_plugin)
         try:
             self._register_and_start_plugin(
                 old_plugin,
@@ -289,11 +310,17 @@ class ConfigMonitor:
                 kind,
             )
         except Exception as e:
+            self._logger.exception(
+                f"Replacement failed for {identifier}; attempting rollback",
+            )
             try:
+                failed_plugin = self._parent_service._plugins.get(identifier)
+                if failed_plugin is not None:
+                    self._parent_service._wipe_plugin(failed_plugin)
                 self._register_and_start_plugin(
                     old_plugin,
-                    old_plugin.plugin_type,
-                    old_plugin.config,
+                    original_type,
+                    original_config,
                     identifier,
                     kind,
                 )
