@@ -81,10 +81,11 @@ class ServiceConfig:
     tracing_sample_rate : float, optional
         Trace sampling rate between 0.0 and 1.0. Defaults to
         COURIER_TRACING_SAMPLE_RATE or 1.0 (always on).
-    live_reload : bool, optional
-        -----Testing purposes only-----
-        to be replaced with a cmdline argument
-        Reconfigure service configuration while running. Defaults to False.
+    live_reload : str, optional
+        Reconfigure service configuration while running. Three options:
+            - off: Does not reconfigure service configuration while running
+            - hard: Stops updated service and initializes the new one.
+            - blue-green: Get the new service running. If it succeeds, stop the old one.
     config_path : str, optional
         -----Testing purposes only-----
         To be routed into the Service object instead of defined explicitly
@@ -188,10 +189,8 @@ class ServiceConfig:
             os.environ.get("COURIER_TRACING_SAMPLE_RATE", "1.0"),
         ),
     )
-    live_reload: bool = field(
-        default_factory=lambda: bool(
-            os.environ.get("COURIER_LIVE_RELOAD", "false").lower() == "true",
-        ),
+    live_reload: str = field(
+        default_factory=lambda: os.environ.get("COURIER_LIVE_RELOAD", "off"),
     )
 
     def __post_init__(self) -> None:

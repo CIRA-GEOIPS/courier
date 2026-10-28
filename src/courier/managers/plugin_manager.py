@@ -118,7 +118,7 @@ class PluginManager(ServiceManager):
         self._plugin_health_metric = PLUGIN_HEALTH
         self._registration_failures_metric = PLUGIN_REGISTRATION_FAILURES
 
-        if self._config.live_reload:
+        if self._config.live_reload != "off":
             self._config_monitor = ConfigMonitor(
                 self._config.config_path,
                 parent_service=self,
@@ -525,7 +525,7 @@ class PluginManager(ServiceManager):
             daemon=True,
         )
         self._monitor_thread.start()
-        if self._config.live_reload:
+        if self._config.live_reload != "off":
             self._config_monitor.start()
 
         # Phase 1: Start every plugin.
@@ -575,7 +575,7 @@ class PluginManager(ServiceManager):
 
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=5)
-        if self._config.live_reload:
+        if self._config.live_reload != "off":
             self._config_monitor.stop()
 
         self._logger.info("Plugin manager stopped")

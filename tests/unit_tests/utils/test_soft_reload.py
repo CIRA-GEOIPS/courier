@@ -37,7 +37,7 @@ spec:
     transport: memory
     max_retries: 5
   service_config: 
-      live_reload: True
+      live_reload: hard
       config_path: {dummy_file}
   run:
   - identifier: data-monitor-file-system-poller-watchdog
