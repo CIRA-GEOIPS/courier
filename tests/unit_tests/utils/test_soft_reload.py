@@ -1,5 +1,6 @@
 from pathlib import Path
 from threading import Event
+import time
 import pytest
 from unittest.mock import MagicMock
 import tempfile
@@ -721,3 +722,168 @@ class TestFullWorkflow:
 
         assert manager._plugins[identifier] == old_plugin
         manager._start_plugin.assert_called_once_with(old_plugin)
+
+
+class TestBlueGreenReload:
+    def test_blue_green_valid_workflow(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        # just a valid workflow being changed with blue-green
+        identifier = "data-monitor-file-system-poller-watchdog"
+        old_plugin = MagicMock()
+
+        manager = MagicMock()
+        manager._plugins = {identifier: old_plugin}
+
+        dummy_plugin = MagicMock()
+        dummy_plugin.ready.wait.return_value = True
+
+        def mock_register_plugin(plugin_type, config, plugin_identifier):
+            manager._plugins[plugin_identifier] = dummy_plugin
+
+        manager.register_plugin.side_effect = mock_register_plugin
+
+        new_plugin_class = MagicMock()
+        registry = MagicMock()
+        registry.get_plugin.return_value = new_plugin_class
+        monkeypatch.setitem(PLUGIN_REGISTRIES, "data_monitors", registry)
+
+        config_file = tmp_path / "service.yaml"
+        config_file.write_text("")
+
+        monitor = ConfigMonitor(
+            config_file=str(config_file),
+            parent_service=manager,
+        )
+
+        monitor._reload_mode = "blue-green"
+
+        service = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        monitor._replace_running_plugin(service)
+        manager._wipe_plugin.assert_called_once_with(old_plugin)
+
+        assert len(manager._plugins) == 1
+        assert manager._plugins[identifier] == dummy_plugin
+
+    def test_blue_green_invalid_workflow(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        # just a valid workflow being changed with blue-green
+        identifier = "data-monitor-file-system-poller-watchdog"
+        old_plugin = MagicMock()
+
+        manager = MagicMock()
+        manager._plugins = {identifier: old_plugin}
+
+        dummy_plugin = MagicMock()
+        dummy_plugin.ready.wait.return_value = True
+
+        def mock_register_plugin(plugin_type, config, plugin_identifier):
+            raise ValueError("Mock error")
+
+        manager.register_plugin.side_effect = mock_register_plugin
+
+        new_plugin_class = MagicMock()
+        registry = MagicMock()
+        registry.get_plugin.return_value = new_plugin_class
+        monkeypatch.setitem(PLUGIN_REGISTRIES, "data_monitors", registry)
+
+        config_file = tmp_path / "service.yaml"
+        config_file.write_text("")
+
+        monitor = ConfigMonitor(
+            config_file=str(config_file),
+            parent_service=manager,
+        )
+
+        monitor._reload_mode = "blue-green"
+
+        service = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        monitor._replace_running_plugin(service)
+
+        assert len(manager._plugins) == 1
+        assert manager._plugins[identifier] == old_plugin
+
+    def test_blue_green_timeout(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        # just a valid workflow being changed with blue-green
+        identifier = "data-monitor-file-system-poller-watchdog"
+        old_plugin = MagicMock()
+
+        manager = MagicMock()
+        manager.identifier = identifier
+        manager._plugins = {identifier: old_plugin}
+
+        dummy_plugin = MagicMock()
+        dummy_plugin.ready.wait.return_value = False
+        dummy_plugin.identifier = identifier
+
+        def mock_register_plugin(plugin_type, config, plugin_identifier):
+            dummy_plugin.identifier = plugin_identifier
+            manager._plugins[plugin_identifier] = dummy_plugin
+
+        def mock_wipe_plugin(plugin_info):
+            manager._plugins.pop(plugin_info.identifier, None)
+
+        manager.register_plugin.side_effect = mock_register_plugin
+        manager._wipe_plugin.side_effect = mock_wipe_plugin
+
+        new_plugin_class = MagicMock()
+        new_plugin_class.return_value = dummy_plugin
+        registry = MagicMock()
+        registry.get_plugin.return_value = new_plugin_class
+        monkeypatch.setitem(PLUGIN_REGISTRIES, "data_monitors", registry)
+
+        config_file = tmp_path / "service.yaml"
+        config_file.write_text("")
+
+        monitor = ConfigMonitor(
+            config_file=str(config_file),
+            parent_service=manager,
+        )
+
+        monitor._reload_mode = "blue-green"
+
+        service = MicroserviceModel.model_validate(
+            {
+                "identifier": identifier,
+                "spec": {
+                    "kind": "data_monitor",
+                    "name": "file_system_poller_watchdog",
+                    "config": {
+                        "path": "./new_incoming",
+                        "hostname": "localhost",
+                    },
+                },
+            }
+        )
+
+        monitor._replace_running_plugin(service)
+
+        assert len(manager._plugins) == 1
+        assert manager._plugins[identifier] == old_plugin

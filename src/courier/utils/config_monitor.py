@@ -267,6 +267,7 @@ class ConfigMonitor:
         self._parent_service._wipe_plugin(old_plugin)
         with self._parent_service._lock:
             self._parent_service._plugins[identifier] = dummy_plugin
+            self._parent_service._plugins.pop(dummy_identifier, None)
 
     def _hard_reload_plugin(
         self,
