@@ -7,6 +7,7 @@ import re
 import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -178,6 +179,7 @@ class ConfigMonitor:
         self._config_file: Path = Path(config_file)
         self._last_read_text = self._config_file.read_text()
         self._parent_service: PluginManager = parent_service
+        self._reload_mode: str = self._parent_service._config.live_reload
         self._observer = Observer()
         self._observer.schedule(
             ConfigMonitorEventHandler(self),
@@ -196,15 +198,7 @@ class ConfigMonitor:
     ) -> None:
         """Rollback plugins based on their info in the registry."""
         # stop the old thread and check for timeout
-        with self._parent_service._lock:
-            self._parent_service._plugins.pop(identifier, None)
-
-        old_thread = old_plugin.thread
-        self._parent_service._stop_plugin(old_plugin)
-        if old_thread is not None and old_thread.is_alive():
-            raise CourierError(
-                f"Plugin {identifier} failed to stop within the timeout.",
-            )
+        self._parent_service._wipe_plugin(old_plugin)
 
         # plugin registration
         self._parent_service.register_plugin(plugin_type, config, identifier)
@@ -220,6 +214,75 @@ class ConfigMonitor:
             restored_plugin.plugin.targets = old_plugin.plugin.targets
 
         self._parent_service._start_plugin(restored_plugin)
+
+    def _bg_register_and_start_plugin(
+        self,
+        old_plugin: PluginStateInfo,
+        plugin_type: type[ServicePlugin],
+        config: dict[str, Any],
+        identifier: str,
+        kind: str,
+    ):
+        """Blue-green handling for registering plugins.
+
+        Register and start the new service, then check if it passes.
+        """
+        # generate random identifier so registrations don't clash
+        dummy_identifier = f"dummy-{uuid4().hex}"
+        restored_plugin: PluginStateInfo
+        try:
+            self._parent_service.register_plugin(plugin_type, config, dummy_identifier)
+            restored_plugin = self._parent_service._plugins[identifier]
+        except (ValueError, KeyError):
+            self._logger.exception(
+                f"Registration failed for blue-green reload on service {identifier}",
+            )
+            with self._parent_service._lock:
+                if dummy_identifier in self._parent_service._plugins:
+                    self._parent_service._plugins.pop(dummy_identifier, None)
+            return
+
+        if (
+            kind == "job_builders"
+            and isinstance(restored_plugin.plugin, JobBuilder)
+            and not restored_plugin.plugin.targets
+            and isinstance(old_plugin.plugin, JobBuilder)
+        ):
+            restored_plugin.plugin.targets = old_plugin.plugin.targets
+
+    def _hard_reload_system(
+        self,
+        old_plugin: PluginStateInfo,
+        plugin_class: type[ServicePlugin],
+        config: dict[str, Any],
+        identifier: str,
+        kind: str,
+    ):
+        """Full reload-rollback system for hard live reloads."""
+        try:
+            self._register_and_start_plugin(
+                old_plugin,
+                plugin_class,
+                config,
+                identifier,
+                kind,
+            )
+        except Exception as e:
+            try:
+                self._register_and_start_plugin(
+                    old_plugin,
+                    old_plugin.plugin_type,
+                    old_plugin.config,
+                    identifier,
+                    kind,
+                )
+            except Exception as rollback_error:
+                raise CourierError(
+                    f"Rollback failed for plugin {identifier}",
+                ) from rollback_error
+
+            # rollback succeeded
+            raise CourierError(f"Error registering plugin {identifier}") from e
 
     def _replace_running_plugin(self, service: MicroserviceModel) -> None:
         from courier.cli.plugins import (  # noqa: PLC0415
@@ -273,30 +336,10 @@ class ConfigMonitor:
                 " - impossible rollback; exiting",
             )
 
-        try:
-            self._register_and_start_plugin(
-                old_plugin,
-                plugin_class,
-                config,
-                identifier,
-                kind,
-            )
-        except Exception as e:
-            try:
-                self._register_and_start_plugin(
-                    old_plugin,
-                    old_plugin.plugin_type,
-                    old_plugin.config,
-                    identifier,
-                    kind,
-                )
-            except Exception as rollback_error:
-                raise CourierError(
-                    f"Rollback failed for plugin {identifier}",
-                ) from rollback_error
-
-            # rollback succeeded
-            raise CourierError(f"Error registering plugin {identifier}") from e
+        if self._reload_mode == "blue-green":
+            pass
+        else:
+            self._hard_reload_system(old_plugin, plugin_class, config, identifier, kind)
 
     def _on_config_changed(self) -> None:
         """Act on a changed config."""

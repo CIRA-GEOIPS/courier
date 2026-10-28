@@ -376,6 +376,20 @@ class PluginManager(ServiceManager):
                 },
             )
 
+    def _wipe_plugin(self, plugin_info: PluginStateInfo) -> None:
+        """Remove a plugin from the plugin manager safely."""
+        if not plugin_info.identifier:
+            raise CourierError("No identifier specified for plugin to be wiped.")
+        with self._lock:
+            self._plugins.pop(plugin_info.identifier, None)
+
+        thread = plugin_info.thread
+        self._stop_plugin(plugin_info)
+        if thread is not None and thread.is_alive():
+            raise CourierError(
+                f"Plugin {plugin_info.identifier} failed to stop within the timeout.",
+            )
+
     def _monitor_plugins(self) -> None:
         """Monitor plugin health and restart failed plugins."""
         while self._state == PluginRunState.RUNNING:

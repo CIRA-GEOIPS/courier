@@ -492,7 +492,7 @@ class TestFullWorkflow:
 
         monitor._replace_running_plugin(service)
 
-        manager._stop_plugin.assert_called_once_with(old_plugin)
+        manager._wipe_plugin.assert_called_once_with(old_plugin)
 
         registry.get_plugin.assert_called_once_with("file_system_poller_watchdog")
 
