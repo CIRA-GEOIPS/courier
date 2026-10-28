@@ -6,6 +6,7 @@ import difflib
 import re
 import textwrap
 from pathlib import Path
+import time
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -229,10 +230,10 @@ class ConfigMonitor:
         """
         # generate random identifier so registrations don't clash
         dummy_identifier = f"dummy-{uuid4().hex}"
-        restored_plugin: PluginStateInfo
+        dummy_plugin: PluginStateInfo
         try:
             self._parent_service.register_plugin(plugin_type, config, dummy_identifier)
-            restored_plugin = self._parent_service._plugins[identifier]
+            dummy_plugin = self._parent_service._plugins[dummy_identifier]
         except (ValueError, KeyError):
             self._logger.exception(
                 f"Registration failed for blue-green reload on service {identifier}",
@@ -244,13 +245,30 @@ class ConfigMonitor:
 
         if (
             kind == "job_builders"
-            and isinstance(restored_plugin.plugin, JobBuilder)
-            and not restored_plugin.plugin.targets
+            and isinstance(dummy_plugin.plugin, JobBuilder)
+            and not dummy_plugin.plugin.targets
             and isinstance(old_plugin.plugin, JobBuilder)
         ):
-            restored_plugin.plugin.targets = old_plugin.plugin.targets
+            dummy_plugin.plugin.targets = old_plugin.plugin.targets
 
-    def _hard_reload_system(
+        health_check_interval = (
+            self._parent_service._config.plugin_health_check_interval
+        )
+        self._parent_service._start_plugin(dummy_plugin)
+        if not dummy_plugin.ready.wait(timeout=health_check_interval):
+            self._logger.error(
+                f"Modified plugin {identifier} did not become ready"
+                f" within {health_check_interval} seconds.",
+            )
+            self._parent_service._wipe_plugin(dummy_plugin)
+            return
+
+        # blue-green passed
+        self._parent_service._wipe_plugin(old_plugin)
+        with self._parent_service._lock:
+            self._parent_service._plugins[identifier] = dummy_plugin
+
+    def _hard_reload_plugin(
         self,
         old_plugin: PluginStateInfo,
         plugin_class: type[ServicePlugin],
@@ -259,6 +277,8 @@ class ConfigMonitor:
         kind: str,
     ):
         """Full reload-rollback system for hard live reloads."""
+        if not old_plugin.plugin_type:
+            raise CourierError(f"Plugin {identifier} not supplied with a type.")
         try:
             self._register_and_start_plugin(
                 old_plugin,
@@ -337,9 +357,15 @@ class ConfigMonitor:
             )
 
         if self._reload_mode == "blue-green":
-            pass
+            self._bg_register_and_start_plugin(
+                old_plugin,
+                plugin_class,
+                config,
+                identifier,
+                kind,
+            )
         else:
-            self._hard_reload_system(old_plugin, plugin_class, config, identifier, kind)
+            self._hard_reload_plugin(old_plugin, plugin_class, config, identifier, kind)
 
     def _on_config_changed(self) -> None:
         """Act on a changed config."""
@@ -376,6 +402,8 @@ class ConfigMonitor:
                     f"Unable to load new configuration."
                     f"Rollback triggered for {service.identifier}",
                 )
+            else:
+                self._logger.info(f"Successfully updated plugin {service.identifier}")
 
         self._last_read_text = new_config
 
