@@ -106,6 +106,11 @@ class DockerDispatcher(Dispatcher):
         self._docker_args = docker_config.docker_args
         self._volumes = docker_config.volumes
 
+    def _validate_payload_toolchain(self, payload: Payload) -> None:
+        if not payload.config.toolchain_prepend:
+            payload.config.toolchain_prepend = self._build_docker_args()
+        return super()._validate_payload_toolchain(payload)
+
     def _build_docker_args(self) -> list[str]:
         """Return the `docker` command, minus the payload command."""
         cfg = self.config
