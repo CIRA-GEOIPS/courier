@@ -86,7 +86,12 @@ class ShellPayload(Payload):
             Execution logs describing the validation result.
         """
         return self._probe_toolchain(
-            [self._interpreter(), "-c", f"command -v {shlex.quote(value)}"],
+            [
+                *self.config.toolchain_prepend,
+                self._interpreter(),
+                "-c",
+                f"command -v {shlex.quote(value)}",
+            ],
         )
 
     def generate_calling_method(self) -> list[str]:

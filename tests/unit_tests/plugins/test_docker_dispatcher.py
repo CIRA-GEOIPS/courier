@@ -2,13 +2,14 @@
 
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, ANY
+from unittest.mock import MagicMock, ANY, patch
 
 from _pytest.tmpdir import tmp_path
 from pydantic import ValidationError
 import pytest
 
 from courier.cli.plugins import PLUGIN_REGISTRIES
+from courier.errors import UnexecutableJobError
 from courier.interfaces.dispatchers import ExecutionPayload
 from courier.plugins.dispatchers.docker_dispatcher import (
     DockerDispatcher,
@@ -187,7 +188,7 @@ class TestDispatcherFunctionality:
         payload = ShellPayload(
             service=service,
             config={"script": "echo 'hi'"},
-            identifier=id,
+            identifier="dummy-payload",
         )
 
         job = _job
@@ -208,3 +209,51 @@ class TestDispatcherFunctionality:
         assert payload is not None
         assert isinstance(payload, ExecutionPayload)
         assert payload.command == ["docker", "run", "alpine:latest", "sh", ANY]
+
+    def test_validate_payload_toolchain(self, docker_client):
+        """The docker dispatcher should prepend `docker run {container} to the toolchain validation.`"""
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        payload = ShellPayload(
+            service=service,
+            config={"script": "echo 'hi'", "toolchain": ["echo"]},
+            identifier="dummy-payload",
+        )
+
+        plugin = DockerDispatcher(service, {"image": "alpine"}, "dummy-dispatcher")
+
+        with patch.object(
+            payload, "_probe_toolchain", wraps=payload._probe_toolchain
+        ) as mock_probe:
+            plugin._validate_payload_toolchain(payload)
+
+            assert len(plugin._validated_toolchains) == 1
+            mock_probe.assert_called_once_with(
+                ["docker", "run", "alpine:latest", "sh", "-c", "command -v echo"]
+            )
+
+    def test_invalid_payload_toolchain(self, docker_client):
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        payload = ShellPayload(
+            service=service,
+            config={"script": "echo 'hi'", "toolchain": ["invalid"]},
+            identifier="dummy-payload",
+        )
+
+        plugin = DockerDispatcher(service, {"image": "alpine"}, "dummy-dispatcher")
+
+        with patch.object(
+            payload, "_probe_toolchain", wraps=payload._probe_toolchain
+        ) as mock_probe:
+            with pytest.raises(
+                UnexecutableJobError, match="Toolchain validation failed"
+            ):
+                plugin._validate_payload_toolchain(payload)
+
+            assert len(plugin._validated_toolchains) == 0
+            mock_probe.assert_called_once_with(
+                ["docker", "run", "alpine:latest", "sh", "-c", "command -v invalid"]
+            )
