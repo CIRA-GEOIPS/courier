@@ -36,6 +36,10 @@ class DockerDispatcherConfig(DispatcherConfig):
     docker_args: list[str] = Field(
         description="Arguments passed to docker, e.g. --rm", default_factory=list
     )
+    mount_point: str = Field(
+        description="Where courier utilities will be mounted in the docker container.",
+        default="/courier",
+    )
 
     @model_validator(mode="after")
     def _validate_image(self):
@@ -105,6 +109,7 @@ class DockerDispatcher(Dispatcher):
         self._container: str = f"{docker_config.image}:{docker_config.tag}"
         self._docker_args = docker_config.docker_args
         self._volumes = docker_config.volumes
+        self._mount_point = docker_config.mount_point
 
     def _validate_payload_toolchain(self, payload: Payload) -> None:
         if not payload.config.toolchain_prepend:
@@ -123,7 +128,7 @@ class DockerDispatcher(Dispatcher):
         script_path, context = self._materialize_script(job, payload)
         normalized_script_path = Path(script_path or "").resolve()
         filename = normalized_script_path.name
-        docker_script_path = Path(f"/courier/script/{filename}")
+        docker_script_path = Path(f"{self._mount_point}/script/{filename}")
 
         self._volumes.append(f"{normalized_script_path}:{docker_script_path}")
         try:
