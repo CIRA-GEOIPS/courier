@@ -24,7 +24,7 @@ class DockerDispatcherConfig(DispatcherConfig):
 
     image: str = Field(description="The image path to be dispatched, e.g. alpine")
     tag: str = Field(
-        description="The tag to speciy which version of the specified image to pull.",
+        description="The tag to specify which version of the specified image to pull.",
         default="latest",
     )
     volumes: list[str] = Field(
