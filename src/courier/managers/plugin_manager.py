@@ -455,6 +455,10 @@ class PluginManager(ServiceManager):
                         )
 
             for plugin_info in failed_plugins:
+                with self._lock:
+                    # if the original reference was popped elsewhere
+                    if plugin_info not in self._plugins.values():
+                        failed_plugins.remove(plugin_info)
                 self._handle_failed_plugin(plugin_info)
 
             time.sleep(1)

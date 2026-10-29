@@ -79,6 +79,11 @@ def load_config(file_path: Path) -> ServiceConfigModel:
         metadata = raw["metadata"] = {}
     if isinstance(metadata, dict):
         metadata["config_path"] = metadata.get("config_path") or str(file_path)
+        if not Path.is_file(Path(metadata["config_path"])):
+            raise ValueError(
+                f"Config path {metadata["config_path"]} "
+                "not recognized as a valid config path.",
+            )
     api_version = raw.get("apiVersion", "")
     model_cls = get_model_for_version(api_version)
     try:

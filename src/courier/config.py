@@ -212,3 +212,8 @@ class ServiceConfig:
                 "(0 parks a failing message on the first attempt), "
                 f"got {self.broker_max_redeliveries}",
             )
+        if self.live_reload not in {"off", "hard", "blue-green"}:
+            raise ConfigurationError(
+                "live reload must be one of off, hard, or blue-green, "
+                f"got {self.live_reload}",
+            )

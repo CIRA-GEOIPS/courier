@@ -158,10 +158,11 @@ class ConfigMonitorEventHandler(FileSystemEventHandler):
         """Filter events only for modification to the config file."""
         if event.is_directory:
             return
-        if event.event_type not in {"modified", "created"}:
+        if event.event_type not in {"modified", "created", "moved"}:
             return
 
-        event_path = Path(str(event.src_path)).resolve()
+        raw_path = event.dest_path if event.event_type == "moved" else event.src_path
+        event_path = Path(str(raw_path)).resolve()
         config_path = Path(self._config_monitor._config_file).resolve()
 
         if event_path == config_path:
@@ -420,7 +421,12 @@ class ConfigMonitor:
         updated_models = []
         for upper, lower in updated_buffers:
             spec = "\n".join(new_config.splitlines()[upper : lower + 1])
-            updated_models.append(get_spec_from_buffer(spec))
+            try:
+                updated_models.append(get_spec_from_buffer(spec))
+            except Exception:
+                self._logger.exception(
+                    f"Unable to parse service spec at lines {upper + 1}-{lower + 1}",
+                )
 
         for service in updated_models:
             try:
