@@ -359,7 +359,9 @@ class TestDataKeyedLookups:
 
         spec = payload.to_job_spec(job)
         resolved = _pass_two(service, spec, job)
-        subprocess.run(["bash", "-c", resolved], check=True, capture_output=True)  # noqa: S603, S607
+        subprocess.run(
+            ["bash", "-c", resolved], check=True, capture_output=True
+        )  # noqa: S603, S607
 
         assert spec.script == "echo none"
         assert _DEFER_PREFIX not in spec.script
@@ -376,7 +378,9 @@ class TestDataKeyedLookups:
         job = _job({"band": band})
 
         resolved = _render(service, "echo '{{ files[0].metadata.band }}'", job)
-        subprocess.run(["bash", "-c", resolved], check=True, capture_output=True)  # noqa: S603, S607
+        subprocess.run(
+            ["bash", "-c", resolved], check=True, capture_output=True
+        )  # noqa: S603, S607
 
         assert resolved == f"echo '{band}'"
         assert not target.exists()
