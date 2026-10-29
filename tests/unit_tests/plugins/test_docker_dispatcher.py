@@ -86,3 +86,58 @@ class TestBasicFunctionality:
             config = DockerDispatcherConfig(image="invalid")
 
         docker_client.close.assert_called_once()
+
+
+class TestDispatcherFunctionality:
+    """Test things like command building, payload validation, etc"""
+
+    def test_build_command(self, docker_client) -> None:
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        config = {"image": "alpine"}
+        id = "dummy-dispatcher"
+
+        plugin = DockerDispatcher(service, config, id)
+
+        assert plugin._build_docker_args() == ["docker", "run", "alpine:latest"]
+
+    def test_build_command_with_volumes(self, docker_client) -> None:
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        config = {
+            "image": "alpine",
+            "volumes": ["./script:/mnt/script", "./other:/tmp/other"],
+        }
+        id = "dummy-dispatcher"
+
+        plugin = DockerDispatcher(service, config, id)
+
+        assert plugin._build_docker_args() == [
+            "docker",
+            "run",
+            "-v ./script:/mnt/script",
+            "-v ./other:/tmp/other",
+            "alpine:latest",
+        ]
+
+    def test_build_command_with_args(self, docker_client) -> None:
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        config = {
+            "image": "alpine",
+            "docker_args": ["--rm", "--it"],
+        }
+        id = "dummy-dispatcher"
+
+        plugin = DockerDispatcher(service, config, id)
+
+        assert plugin._build_docker_args() == [
+            "docker",
+            "run",
+            "--rm",
+            "--it",
+            "alpine:latest",
+        ]

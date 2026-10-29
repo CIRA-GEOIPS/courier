@@ -1,10 +1,15 @@
 """Deploys docker for a specified payload."""
 
-from typing import ClassVar, cast
+from pathlib import Path
+from typing import ClassVar, Any, cast
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 
-from courier.interfaces.dispatchers import Dispatcher, DispatcherConfig
+from courier.interfaces.dispatchers import (
+    Dispatcher,
+    DispatcherConfig,
+    ExecutionPayload,
+)
 from courier.interfaces.payloads import DispatcherGroupConfig, Payload
 from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
@@ -12,6 +17,8 @@ from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.service import Service
 
 import docker
+
+from courier.types import Job
 
 
 class DockerDispatcherConfig(DispatcherConfig):
@@ -21,6 +28,13 @@ class DockerDispatcherConfig(DispatcherConfig):
     tag: str = Field(
         description="The tag to speciy which version of the specified image to pull.",
         default="latest",
+    )
+    volumes: list[str] = Field(
+        description="Bind mounts, passed as -v",
+        default_factory=list,
+    )
+    docker_args: list[str] = Field(
+        description="Arguments passed to docker, e.g. --rm", default_factory=list
     )
 
     @model_validator(mode="after")
@@ -65,6 +79,32 @@ class DockerDispatcher(Dispatcher):
         super().__init__(service, config, identifier)
 
         docker_config = cast(DockerDispatcherConfig, self.config)
+        self._container: str = f"{docker_config.image}:{docker_config.tag}"
+        self._docker_args = docker_config.docker_args
+        self._volumes = docker_config.volumes
 
-        self._image: str = docker_config.image
-        self._tag: str = docker_config.tag
+    def _build_docker_args(self) -> list[str]:
+        """Return the `docker` command, minus the payload command."""
+        cfg = self.config
+        volumes = [f"-v {volume}" for volume in self._volumes]
+        args = ["docker", "run", *self._docker_args, *volumes, self._container]
+
+        return args
+
+    def initialize_environment(self, job: Job, payload: Payload) -> ExecutionPayload:
+        script_path, context = self._materialize_script(job, payload)
+        try:
+            command = [
+                *self._build_docker_args(),
+                *self._render_command(job, payload, script_path, context),
+            ]
+        except BaseException:
+            if script_path is not None:
+                self._discard_script(script_path)
+            raise
+
+        self._logger.debug(f"Generated docker command: {command}")
+        return ExecutionPayload(
+            command=command,
+            file=script_path,
+        )
