@@ -1,7 +1,9 @@
 """Plugin lifecycle management, health monitoring, and auto-restart."""
 
+import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -38,6 +40,16 @@ class PluginStateInfo:
     thread : threading.Thread or None, default=None
         Starter thread for the most recent ``start()``; it exits once the
         plugin is RUNNING or FAILED. The plugin runs its own worker thread.
+    abandoned_threads : list[threading.Thread]
+        Threads the manager stopped waiting for: a ``start()`` that never
+        returned, a stop that outlived its join, or the stop issued to a
+        start that was given up on. They cannot be interrupted; they are kept
+        so they are at least counted. Finished ones are pruned whenever
+        another is added, and status reports count only the live ones.
+    starting_since : float or None, default=None
+        ``time.monotonic()`` at which the current ``start()`` was called;
+        None once ``start()`` has returned, so the health gate that follows
+        does not count against ``plugin_start_timeout``.
     last_health_check : float or None, default=None
         ``time.monotonic()`` of the last health check.
     restart_count : int, default=0
@@ -62,6 +74,8 @@ class PluginStateInfo:
     plugin: ServicePlugin
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
+    abandoned_threads: list[threading.Thread] = field(default_factory=list)
+    starting_since: float | None = None
     last_health_check: float | None = None
     restart_count: int = 0
     last_restart: datetime | None = None
@@ -218,6 +232,7 @@ class PluginManager(ServiceManager):
             if self._state != PluginRunState.RUNNING:
                 return
             plugin_info.state = PluginRunState.STARTING
+            plugin_info.starting_since = time.monotonic()
             plugin_info.last_health_check = None
             plugin_info.running_since = None
             plugin_info.error_message = None
@@ -231,10 +246,20 @@ class PluginManager(ServiceManager):
             plugin_info.thread.start()
 
     def _run_start(self, plugin_info: PluginStateInfo) -> None:
-        """Body of the starter thread: start, gate on health, mark RUNNING."""
+        """Body of the starter thread: start, gate on health, mark RUNNING.
+
+        A start the monitor has already given up on (see
+        :meth:`_abandon_stuck_start`) that returns late changes nothing: the
+        plugin stays FAILED, and this thread just ends.
+        """
         name = plugin_info.plugin.name
         try:
             plugin_info.plugin.start()
+            with self._lock:
+                # Only start() itself is bounded by plugin_start_timeout; the
+                # health gate below has its own deadline.
+                if self._owns_start_locked(plugin_info):
+                    plugin_info.starting_since = None
             self._logger.debug(
                 "plugin.start() returned for %s; entering health gate",
                 name,
@@ -246,13 +271,21 @@ class PluginManager(ServiceManager):
                     name,
                 )
             with self._lock:
+                if not self._owns_start_locked(plugin_info):
+                    self._log_lost_start_locked(plugin_info, "returned")
+                    return
                 plugin_info.state = PluginRunState.RUNNING
+                plugin_info.starting_since = None
                 plugin_info.last_health_check = None
                 plugin_info.running_since = time.monotonic()
                 plugin_info.error_message = None
         except Exception as e:
             with self._lock:
+                if not self._owns_start_locked(plugin_info):
+                    self._log_lost_start_locked(plugin_info, f"raised {e!r}")
+                    return
                 plugin_info.state = PluginRunState.FAILED
+                plugin_info.starting_since = None
                 plugin_info.error_message = (
                     str(e) if isinstance(e, CourierError) else f"Unexpected error: {e}"
                 )
@@ -265,6 +298,38 @@ class PluginManager(ServiceManager):
         with self._tracer.start_as_current_span("plugin_lifecycle") as span:
             span.add_event("plugin.started", attributes={ATTR_PLUGIN_NAME: name})
         plugin_info.ready.set()
+
+    @staticmethod
+    def _owns_start_locked(plugin_info: PluginStateInfo) -> bool:
+        """Return whether the calling starter thread is still the current one."""
+        return (
+            plugin_info.state == PluginRunState.STARTING
+            and plugin_info.thread is threading.current_thread()
+        )
+
+    def _log_lost_start_locked(
+        self,
+        plugin_info: PluginStateInfo,
+        outcome: str,
+    ) -> None:
+        """Log a ``start()`` that finished after its starter lost ownership.
+
+        Only a start the monitor gave up on is worth a warning; one overtaken
+        by a stop is ordinary shutdown.
+        """
+        if plugin_info.state == PluginRunState.FAILED:
+            self._logger.warning(
+                "Plugin %s start() %s after it was given up on; leaving it FAILED",
+                plugin_info.plugin.name,
+                outcome,
+            )
+        else:
+            self._logger.debug(
+                "Plugin %s start() %s after it was stopped; leaving it %s",
+                plugin_info.plugin.name,
+                outcome,
+                plugin_info.state.name,
+            )
 
     def _wait_until_healthy(self, plugin_info: PluginStateInfo) -> bool:
         """Poll ``is_healthy`` for up to one health-check interval."""
@@ -328,6 +393,16 @@ class PluginManager(ServiceManager):
 
         with self._lock:
             plugin_info.state = PluginRunState.STOPPED
+            if thread_to_join is not None and thread_to_join.is_alive():
+                abandoned = self._abandon_thread_locked(plugin_info, thread_to_join)
+                self._logger.warning(
+                    "Thread %s of plugin %s is still running after being told "
+                    "to stop; it cannot be interrupted (%d abandoned and "
+                    "still running)",
+                    thread_to_join.name,
+                    plugin_info.plugin.name,
+                    abandoned,
+                )
             plugin_info.thread = None
             self._record_state(plugin_info)
 
@@ -342,6 +417,27 @@ class PluginManager(ServiceManager):
                     ATTR_PLUGIN_NAME: plugin_info.plugin.name,
                 },
             )
+
+    @staticmethod
+    def _abandon_thread_locked(
+        plugin_info: PluginStateInfo,
+        thread: threading.Thread,
+    ) -> int:
+        """Record a thread the manager will not wait for. Lock held.
+
+        Threads that have since finished are dropped first, so the list does
+        not grow across restarts. Returns how many are still running.
+        """
+        plugin_info.abandoned_threads = [
+            t for t in plugin_info.abandoned_threads if t.is_alive()
+        ]
+        plugin_info.abandoned_threads.append(thread)
+        return len(plugin_info.abandoned_threads)
+
+    @staticmethod
+    def _live_abandoned_locked(plugin_info: PluginStateInfo) -> int:
+        """Return how many abandoned threads are still running. Lock held."""
+        return sum(t.is_alive() for t in plugin_info.abandoned_threads)
 
     def _call_plugin_stop(self, plugin_info: PluginStateInfo) -> None:
         """Call ``plugin.stop()``, logging rather than raising if it fails."""
@@ -402,9 +498,91 @@ class PluginManager(ServiceManager):
             plugin_info.last_health_check = now
             if plugin_info.state == PluginRunState.FAILED:
                 return self._restarts_left_locked(plugin_info)
-            if plugin_info.state != PluginRunState.RUNNING:
+            overdue = self._start_overdue_locked(plugin_info, now)
+            if plugin_info.state != PluginRunState.RUNNING and not overdue:
                 return False
+        if overdue:
+            self._abandon_stuck_start(plugin_info)
+            return False
         return self._assess_running(plugin_name, plugin_info, now)
+
+    def _start_overdue_locked(self, plugin_info: PluginStateInfo, now: float) -> bool:
+        """Return whether a plugin's ``start()`` call has outlived its timeout.
+
+        Only the call itself counts: ``starting_since`` is cleared when it
+        returns, so a plugin in the health gate is never overdue.
+        """
+        return (
+            plugin_info.state == PluginRunState.STARTING
+            and plugin_info.starting_since is not None
+            and now - plugin_info.starting_since > self._config.plugin_start_timeout
+        )
+
+    def _abandon_stuck_start(self, plugin_info: PluginStateInfo) -> None:
+        """Give up on a ``start()`` that has not returned: fail it for good.
+
+        The starter thread is blocked in something the manager cannot
+        interrupt, and a restart would only stack a second stuck thread on
+        the same dependency. So the plugin is marked FAILED with its restart
+        attempts used up; the service's heartbeat then exits the process,
+        which is the only recovery. The thread's stack is logged so the
+        operator learns what it was waiting on without a debugger.
+        """
+        name = plugin_info.plugin.name
+        timeout = self._config.plugin_start_timeout
+        with self._lock:
+            if plugin_info.state != PluginRunState.STARTING:
+                return
+            thread = plugin_info.thread
+            stack = self._thread_stack(thread)
+            plugin_info.state = PluginRunState.FAILED
+            plugin_info.starting_since = None
+            plugin_info.restart_count = max(
+                plugin_info.restart_count,
+                self._config.plugin_max_restart_attempts,
+            )
+            plugin_info.error_message = f"start() did not return within {timeout}s"
+            if thread is not None and thread.is_alive():
+                self._abandon_thread_locked(plugin_info, thread)
+            plugin_info.thread = None
+        self._record_state(plugin_info)
+        self._logger.error(
+            "Plugin %s start() did not return within %ss; the thread cannot "
+            "be interrupted and the service will exit. It is blocked at:\n%s",
+            name,
+            timeout,
+            stack,
+        )
+        with self._tracer.start_as_current_span("plugin_lifecycle") as span:
+            span.add_event(
+                "plugin.start_timed_out",
+                attributes={ATTR_PLUGIN_NAME: name},
+            )
+        # Set the plugin's own stop flag in case the blocked call ever
+        # returns. stop() may block on the same dependency, so it runs on a
+        # thread of its own and the monitor does not wait for it. It is
+        # recorded as abandoned straight away: status counts it only while
+        # it is still running.
+        stopper = threading.Thread(
+            target=self._call_plugin_stop,
+            args=(plugin_info,),
+            name=f"Plugin-{name}-abandon",
+            daemon=True,
+        )
+        with self._lock:
+            # Started under the lock so no prune sees it before it is alive.
+            self._abandon_thread_locked(plugin_info, stopper)
+            stopper.start()
+
+    @staticmethod
+    def _thread_stack(thread: threading.Thread | None) -> str:
+        """Return the formatted stack of *thread*, or a note if unavailable."""
+        if thread is None or thread.ident is None:
+            return "<no thread>"
+        frame = sys._current_frames().get(thread.ident)
+        if frame is None:
+            return "<thread has no frame>"
+        return "".join(traceback.format_stack(frame))
 
     def _assess_running(
         self,
@@ -676,11 +854,13 @@ class PluginManager(ServiceManager):
 
         Unhealthy if any plugin has failed for good, or any RUNNING plugin
         reports itself unhealthy. Plugins in transit do not count against
-        health: starting, restarting, stopping, or RUNNING but not yet
-        examined by the monitor. That last case covers a plugin whose start
-        gate timed out; the monitor decides whether it is failed, so the
-        service's own startup check does not abort over a slow plugin. With
-        no plugins registered there is nothing to be unhealthy.
+        health: starting (a ``start()`` call within ``plugin_start_timeout``,
+        or the health gate after it), restarting, stopping, or RUNNING but
+        not yet examined by the monitor. That last case covers a plugin
+        whose start gate timed out; the monitor decides whether it is failed,
+        so the service's own startup check does not abort over a slow plugin.
+        A ``start()`` call past its timeout is unhealthy. With no plugins
+        registered there is nothing to be unhealthy.
 
         Plugin health checks run outside the manager lock: they belong to
         the plugin and may block.
@@ -695,7 +875,11 @@ class PluginManager(ServiceManager):
                 # If plugins are registered but not started, not healthy.
                 # If no plugins are registered, nothing to monitor: healthy.
                 return not bool(self._plugins)
-            if any(self._is_exhausted_locked(i) for i in self._plugins.values()):
+            now = time.monotonic()
+            if any(
+                self._is_exhausted_locked(i) or self._start_overdue_locked(i, now)
+                for i in self._plugins.values()
+            ):
                 return False
             running = [
                 info
@@ -734,6 +918,7 @@ class PluginManager(ServiceManager):
                     "state": info.state.name,
                     "version": info.plugin.version,
                     "restart_count": info.restart_count,
+                    "abandoned_threads": self._live_abandoned_locked(info),
                     "last_restart": (
                         info.last_restart.isoformat() if info.last_restart else None
                     ),

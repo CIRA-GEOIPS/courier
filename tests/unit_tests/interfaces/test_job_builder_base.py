@@ -77,6 +77,19 @@ def _file(name: str) -> FrozenDatum:
     return FrozenDatum(file=Path(f"/data/{name}.nc"), hostname="h")
 
 
+def _idle_consume(
+    *_args: Any, stop_event: threading.Event, **_kwargs: Any
+) -> Iterator[Any]:
+    """Stand in for a broker loop that delivers nothing until stopped.
+
+    An empty ``consume`` ends the builder's thread at once, so a test that
+    checks ``is_healthy()`` after ``start()`` raced the thread's exit and
+    failed whenever the thread won.
+    """
+    stop_event.wait()
+    return iter(())
+
+
 @contextlib.contextmanager
 def _captured(
     builder: JobBuilder,
@@ -377,7 +390,7 @@ class TestLifecycle:
     def test_stop_signals_the_consume_loop(self, service: MagicMock) -> None:
         """Without this the non-daemon consumer wedged interpreter shutdown."""
         builder = _builder(service)
-        service.consume.return_value = iter(())
+        service.consume.side_effect = _idle_consume
 
         builder.start()
         assert builder.is_healthy() is True
@@ -660,7 +673,7 @@ class TestPayloadRenderFailure:
         group = builder.job_groups[0]
         group.add_file(_file("a"))
         group.add_file(_file("b"))
-        service.consume.return_value = iter(())
+        service.consume.side_effect = _idle_consume
 
         builder.start()
         try:

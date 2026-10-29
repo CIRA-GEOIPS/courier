@@ -62,9 +62,18 @@ class ServiceConfig:
         plugin would be allowed only ``plugin_max_restart_attempts`` failures
         over the whole life of the process. Defaults to environment variable
         PLUGIN_RESTART_WINDOW or 300.
-    plugin_health_check_interval : int, optional
+    plugin_health_check_interval : float, optional
         Interval in seconds between plugin health checks. Defaults to
         environment variable PLUGIN_HEALTH_CHECK_INTERVAL or 2.
+    plugin_start_timeout : float, optional
+        Seconds a plugin's ``start()`` may take before it is given up on. A
+        thread blocked inside ``start()`` (a Redis that accepts and never
+        answers, a broker confirm that never comes) cannot be interrupted
+        from outside, so a restart would only add a second stuck thread. The
+        plugin is marked failed with its restart attempts used up and the
+        service exits, which is the only recovery there is. Only the
+        ``start()`` call counts, not the health gate after it. Must be
+        positive. Defaults to environment variable PLUGIN_START_TIMEOUT or 60.
     loki_url : str, optional
         Grafana Loki push API URL for log shipping. Defaults to environment
         variable LOKI_URL or empty string (Loki disabled).
@@ -146,10 +155,13 @@ class ServiceConfig:
     plugin_restart_window: int = field(
         default_factory=lambda: int(os.environ.get("PLUGIN_RESTART_WINDOW", "300")),
     )
-    plugin_health_check_interval: int = field(
-        default_factory=lambda: int(
+    plugin_health_check_interval: float = field(
+        default_factory=lambda: float(
             os.environ.get("PLUGIN_HEALTH_CHECK_INTERVAL", "2"),
         ),
+    )
+    plugin_start_timeout: float = field(
+        default_factory=lambda: float(os.environ.get("PLUGIN_START_TIMEOUT", "60")),
     )
     loki_url: str = field(
         default_factory=lambda: os.environ.get("LOKI_URL", ""),
@@ -194,7 +206,7 @@ class ServiceConfig:
     )
 
     def __post_init__(self) -> None:
-        """Validate the sample rate, the prefetch, and the redelivery bound."""
+        """Validate the sample rate, prefetch, redelivery and start bounds."""
         if not (0.0 <= self.tracing_sample_rate <= 1.0):
             raise ConfigurationError(
                 "tracing_sample_rate must be between 0.0 and 1.0, "
@@ -211,6 +223,11 @@ class ServiceConfig:
                 "broker_max_redeliveries must not be negative "
                 "(0 parks a failing message on the first attempt), "
                 f"got {self.broker_max_redeliveries}",
+            )
+        if self.plugin_start_timeout <= 0:
+            raise ConfigurationError(
+                "plugin_start_timeout must be positive, "
+                f"got {self.plugin_start_timeout}",
             )
         if self.loki_flush_interval <= 0:
             raise ConfigurationError(
