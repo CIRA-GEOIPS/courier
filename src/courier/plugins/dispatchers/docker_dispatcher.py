@@ -1,9 +1,10 @@
 """Deploys docker for a specified payload."""
 
 from pathlib import Path
-from typing import ClassVar, Any, cast
+from typing import ClassVar, cast
 
-from pydantic import Field, ValidationError, field_validator, model_validator
+import docker
+from pydantic import Field, field_validator, model_validator
 
 from courier.interfaces.dispatchers import (
     Dispatcher,
@@ -15,9 +16,6 @@ from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.service import Service
-
-import docker
-
 from courier.types import Job
 
 
@@ -34,7 +32,8 @@ class DockerDispatcherConfig(DispatcherConfig):
         default_factory=list,
     )
     docker_args: list[str] = Field(
-        description="Arguments passed to docker, e.g. --rm", default_factory=list
+        description="Arguments passed to docker, e.g. --rm",
+        default_factory=list,
     )
     mount_point: str = Field(
         description="Where courier utilities will be mounted in the docker container.",
@@ -42,7 +41,7 @@ class DockerDispatcherConfig(DispatcherConfig):
     )
 
     @model_validator(mode="after")
-    def _validate_image(self):
+    def _validate_image(self) -> "DockerDispatcherConfig":
         client = docker.from_env()
         try:
             image_name = f"{self.image}:{self.tag}"
@@ -51,7 +50,7 @@ class DockerDispatcherConfig(DispatcherConfig):
             if not filtered_images:
                 raise ValueError(
                     f"Image {image_name} not found locally. "
-                    "Please validate that it exists and pull it."
+                    "Please validate that it exists and pull it.",
                 )
             return self
         finally:
@@ -59,12 +58,13 @@ class DockerDispatcherConfig(DispatcherConfig):
 
     @field_validator("volumes")
     @classmethod
-    def _validate_volume_arg(cls, value) -> list[str]:
+    def _validate_volume_arg(cls, value: list[str]) -> list[str]:
+        num_sides = 2
         for volume_str in value:
             split_sides = volume_str.split(":")
-            if len(split_sides) != 2:
+            if len(split_sides) != num_sides:
                 raise ValueError(
-                    f"Invalid volume mount: {value} " "invalid mapping detected."
+                    f"Invalid volume mount: {value} " "invalid mapping detected.",
                 )
             local = split_sides[0]
             remote = split_sides[1]
@@ -72,7 +72,7 @@ class DockerDispatcherConfig(DispatcherConfig):
             # validation on local path
             if not Path(local).exists():
                 raise FileNotFoundError(
-                    "Invalid volume mount " f"Local path {local} not found!"
+                    "Invalid volume mount " f"Local path {local} not found!",
                 )
 
             # validation on remote path
@@ -105,7 +105,7 @@ class DockerDispatcher(Dispatcher):
     ) -> None:
         super().__init__(service, config, identifier)
 
-        docker_config = cast(DockerDispatcherConfig, self.config)
+        docker_config = cast("DockerDispatcherConfig", self.config)
         self._container: str = f"{docker_config.image}:{docker_config.tag}"
         self._docker_args = docker_config.docker_args
         self._volumes = docker_config.volumes
@@ -118,8 +118,6 @@ class DockerDispatcher(Dispatcher):
 
     def _build_docker_args(self, extra_volumes: list[str] | None = None) -> list[str]:
         """Return the `docker` command, minus the payload command."""
-        cfg = self.config
-
         volumes = [*self._volumes, *(extra_volumes or [])]
         volume_args = [arg for volume in volumes for arg in ("-v", volume)]
         args = ["docker", "run", *self._docker_args, *volume_args, self._container]
@@ -127,6 +125,7 @@ class DockerDispatcher(Dispatcher):
         return args
 
     def initialize_environment(self, job: Job, payload: Payload) -> ExecutionPayload:
+        """Initialize the docker command to run and mount the temporary script."""
         script_path, context = self._materialize_script(job, payload)
         docker_script_path = None
         docker_mount_str = None
@@ -140,7 +139,7 @@ class DockerDispatcher(Dispatcher):
         try:
             command = [
                 *self._build_docker_args(
-                    [docker_mount_str] if docker_mount_str else None
+                    [docker_mount_str] if docker_mount_str else None,
                 ),
                 *self._render_command(job, payload, docker_script_path, context),
             ]

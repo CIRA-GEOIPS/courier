@@ -49,8 +49,12 @@ def job_with_files() -> Job:
         identifier="job-002",
         config=None,
         files={
-            FrozenDatum(file=Path("/data/file_a.nc"), hostname="host1", source="goes16"),
-            FrozenDatum(file=Path("/data/file_b.nc"), hostname="host1", source="goes16"),
+            FrozenDatum(
+                file=Path("/data/file_a.nc"), hostname="host1", source="goes16"
+            ),
+            FrozenDatum(
+                file=Path("/data/file_b.nc"), hostname="host1", source="goes16"
+            ),
         },
         last_modified=2000.0,
         timeout=3600.0,

@@ -136,9 +136,9 @@ def test_trace_emits_a_record_through_the_public_logger(
     records = [r for r in caplog.records if r.levelno == TRACE_LEVEL]
     assert records, "no record emitted at TRACE level"
     assert "detailed diagnostic" in records[0].getMessage()
-    assert "[Service: trace-emit]" in records[0].getMessage(), (
-        "trace() must apply the same context prefix as the other levels"
-    )
+    assert (
+        "[Service: trace-emit]" in records[0].getMessage()
+    ), "trace() must apply the same context prefix as the other levels"
 
 
 def test_trace_is_suppressed_above_its_level() -> None:
