@@ -150,8 +150,10 @@ class TestDispatcherFunctionality:
         assert plugin._build_docker_args() == [
             "docker",
             "run",
-            f"-v {a_path}:/mnt/script",
-            f"-v {b_path}:/tmp/other",
+            "-v",
+            f"{a_path}:/mnt/script",
+            "-v",
+            f"{b_path}:/tmp/other",
             "alpine:latest",
         ]
 
@@ -208,7 +210,15 @@ class TestDispatcherFunctionality:
 
         assert payload is not None
         assert isinstance(payload, ExecutionPayload)
-        assert payload.command == ["docker", "run", "alpine:latest", "sh", ANY]
+        assert payload.command == [
+            "docker",
+            "run",
+            "-v",
+            ANY,
+            "alpine:latest",
+            "sh",
+            ANY,
+        ]
 
     def test_validate_payload_toolchain(self, docker_client):
         """The docker dispatcher should prepend `docker run {container} to the toolchain validation.`"""
