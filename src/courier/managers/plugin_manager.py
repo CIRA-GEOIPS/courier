@@ -219,12 +219,18 @@ class PluginManager(ServiceManager):
         wrapper thread kept alive only to be found alive told the monitor
         nothing.
 
+        Does nothing once the manager has left RUNNING. The state check and
+        the thread launch share one hold of the lock, so :meth:`stop` cannot
+        slip between them and leave a plugin starting after shutdown.
+
         Parameters
         ----------
         plugin_info : PluginStateInfo
             Information about the plugin to start.
         """
         with self._lock:
+            if self._state != PluginRunState.RUNNING:
+                return
             plugin_info.state = PluginRunState.STARTING
             plugin_info.starting_since = time.monotonic()
             plugin_info.last_health_check = None
@@ -237,8 +243,7 @@ class PluginManager(ServiceManager):
                 name=f"Plugin-{plugin_info.plugin.name}-start",
                 daemon=True,
             )
-
-        plugin_info.thread.start()
+            plugin_info.thread.start()
 
     def _run_start(self, plugin_info: PluginStateInfo) -> None:
         """Body of the starter thread: start, gate on health, mark RUNNING.
@@ -599,6 +604,14 @@ class PluginManager(ServiceManager):
         self._logger.error(f"Plugin {plugin_name} is unhealthy")
         return True
 
+    def _is_running_locked(self) -> bool:
+        """Return whether the manager is RUNNING. Lock held.
+
+        A call rather than an inline comparison so a second check after
+        releasing and retaking the lock is not narrowed away by mypy.
+        """
+        return self._state == PluginRunState.RUNNING
+
     def _restarts_left_locked(self, plugin_info: PluginStateInfo) -> bool:
         """Return whether the plugin has restart attempts left. Lock held."""
         return plugin_info.restart_count < self._config.plugin_max_restart_attempts
@@ -696,13 +709,12 @@ class PluginManager(ServiceManager):
         plugin_info : PluginStateInfo
             Information about the failed plugin.
         """
-        if self._state != PluginRunState.RUNNING:
-            return
-
         plugin_name = plugin_info.plugin.name
         plugin_ident = self._plugin_identifier(plugin_info.plugin)
 
         with self._lock:
+            if not self._is_running_locked():
+                return
             can_restart = self._restarts_left_locked(plugin_info)
 
             if can_restart:
@@ -741,6 +753,10 @@ class PluginManager(ServiceManager):
         if can_restart:
             self._stop_plugin(plugin_info)
             with self._lock:
+                # stop() may have run while the plugin was stopping; it is
+                # STOPPED now and must stay so.
+                if not self._is_running_locked():
+                    return
                 plugin_info.state = PluginRunState.RESTARTING
                 plugin_info.restart_due = (
                     time.monotonic() + self._config.plugin_restart_delay
@@ -754,10 +770,10 @@ class PluginManager(ServiceManager):
     @log_execution
     def start(self) -> None:
         """Start the plugin manager and all registered plugins."""
-        if self._state == PluginRunState.RUNNING:
-            return
-
-        self._state = PluginRunState.RUNNING
+        with self._lock:
+            if self._state == PluginRunState.RUNNING:
+                return
+            self._state = PluginRunState.RUNNING
 
         # Phase 1: Start every plugin.
         #
@@ -806,9 +822,8 @@ class PluginManager(ServiceManager):
 
     def stop(self) -> None:
         """Stop all plugins and the plugin manager."""
-        self._state = PluginRunState.STOPPED
-
         with self._lock:
+            self._state = PluginRunState.STOPPED
             plugins = list(self._plugins.values())
 
         for plugin_info in plugins:

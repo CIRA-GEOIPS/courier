@@ -4,7 +4,7 @@ This module provides comprehensive logging support with Grafana Loki
 integration, custom TRACE logging level, and contextualized loggers for
 services, managers, and plugins.
 
-``python-logging-loki`` is a required dependency: Loki shipping is a
+``loki-logger-handler`` is a required dependency: Loki shipping is a
 first-class part of courier's observability story, and an optional import
 meant an operator who set ``loki_enabled`` got a warning and console-only
 logs instead of the logs they asked for.
@@ -17,12 +17,19 @@ get_logger
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 
-import logging_loki  # type: ignore[import-untyped]
+from loki_logger_handler.formatters.logger_formatter import (  # type: ignore[import-untyped]
+    LoggerFormatter,
+)
+from loki_logger_handler.loki_logger_handler import (  # type: ignore[import-untyped]
+    LokiLoggerHandler,
+)
 from rich.logging import RichHandler
 
 if TYPE_CHECKING:
@@ -142,16 +149,113 @@ class ContextAdapter(logging.LoggerAdapter):
             )
 
 
+class _SafeLoggerFormatter(LoggerFormatter):
+    """``LoggerFormatter`` that survives a non-JSON-serializable extra.
+
+    ``LokiLoggerHandler`` calls ``json.dumps`` on a whole batch in ``_send``,
+    well after the records that make it up have left ``emit()``
+    successfully. One record carrying e.g. a ``set`` or a custom object as an
+    extra would otherwise raise there and drop every record in that flush,
+    not just its own.
+    """
+
+    def format(
+        self,
+        record: logging.LogRecord,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Format *record*, coercing any non-JSON-serializable extra to str.
+
+        Parameters
+        ----------
+        record : logging.LogRecord
+            The log record to format.
+
+        Returns
+        -------
+        tuple[dict[str, Any], dict[str, Any]]
+            The formatted record and its loki_metadata, as returned by
+            ``LoggerFormatter.format``, with unserializable values replaced.
+        """
+        formatted, loki_metadata = super().format(record)
+        for key, value in formatted.items():
+            try:
+                json.dumps(value)
+            except (TypeError, ValueError):  # ValueError: circular reference
+                formatted[key] = str(value)
+        return formatted, loki_metadata
+
+
+class _CourierLokiHandler(LokiLoggerHandler):
+    """``LokiLoggerHandler`` with a rate-limited stderr notice, not tracebacks.
+
+    ``LokiLoggerHandler.emit()`` never raises: formatting and send errors are
+    routed to ``handle_unexpected_error``, whose default implementation is
+    silent unless ``enable_self_errors`` is set, in which case it prints a
+    full traceback for every failed batch. This override stays silent but
+    writes a single rate-limited (60s) diagnostic to stderr, so a Loki outage
+    is still visible without flooding the console.
+    """
+
+    _ERROR_SUPPRESS_INTERVAL = 60.0
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._last_error_log: float = 0.0
+
+    def handle_unexpected_error(self, e: Exception) -> None:
+        """Mark the handler as errored and rate-limit a stderr notice.
+
+        Parameters
+        ----------
+        e : Exception
+            The exception raised while formatting or sending a batch.
+
+        Returns
+        -------
+        None
+        """
+        super().handle_unexpected_error(e)
+        now = time.monotonic()
+        if now - self._last_error_log > self._ERROR_SUPPRESS_INTERVAL:
+            self._last_error_log = now
+            sys.stderr.write(
+                "courier: Loki handler failed to push log records "
+                "(rate-limited to 1/min); check Loki backend health.\n",
+            )
+
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
+        pass  # fully suppressed; diagnostics handled in handle_unexpected_error()
+
+    def __repr__(self) -> str:
+        return f"CourierLokiHandler({self.labels!r})"
+
+
+#: Handlers keyed by (url, flush_interval, frozenset(tags.items())). Each
+#: ``LokiLoggerHandler`` starts its own daemon flush thread, so repeated calls
+#: to ``get_logger`` with the same url/interval/labels must share one handler
+#: instead of leaking a thread per call.
+_loki_handler_cache: dict[tuple[str, float, frozenset[tuple[str, str]]], Any] = {}
+# Plugins call get_logger from their own threads; without this, two racing
+# first calls for one label set would each start a flush thread.
+_loki_handler_cache_lock = threading.Lock()
+
+
+def _reset_loki_handler_cache() -> None:
+    """Clear the module-level Loki handler cache.
+
+    Not used by production code; exists so tests can isolate themselves
+    from handlers (and their flush threads) created by earlier tests.
+    """
+    _loki_handler_cache.clear()
+
+
 def _create_loki_handler(
     url: str,
     tags: dict[str, str],
     fallback_logger: logging.Logger,
+    flush_interval: float,
 ) -> Any:
-    """Attempt to create Loki handler with graceful fallback.
-
-    Wraps the raw ``logging_loki.LokiHandler`` in a rate-limited error
-    suppressor so that a transient backend outage (Loki 500s) does not
-    flood stderr with a traceback per log record.
+    """Attempt to create (or reuse) a Loki handler with graceful fallback.
 
     Parameters
     ----------
@@ -161,28 +265,51 @@ def _create_loki_handler(
         Labels to attach to all log entries.
     fallback_logger : logging.Logger
         Logger to use for warning messages if Loki setup fails.
+    flush_interval : float
+        Seconds between batched pushes to Loki.
 
     Returns
     -------
-    logging_loki.LokiHandler or None
+    _CourierLokiHandler or None
         Configured Loki handler, or None if setup failed.
 
     Examples
     --------
     >>> logger = logging.getLogger("fallback")
     >>> handler = _create_loki_handler("http://localhost:3100/loki/api/v1/push",
-                                        {"service": "test"}, logger)
+                                        {"service": "test"}, logger, 2.0)
     """
-    try:
-        logging_loki.emitter.LokiEmitter.level_tag = "level"
-
-        raw_handler = logging_loki.LokiHandler(
-            url=url,
-            version="1",
-            tags=tags,
+    cache_key = (url, flush_interval, frozenset(tags.items()))
+    with _loki_handler_cache_lock:
+        cached = _loki_handler_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        return _build_loki_handler(
+            url,
+            tags,
+            fallback_logger,
+            flush_interval,
+            cache_key,
         )
 
-        handler = _ResilientLokiHandler(raw_handler)
+
+def _build_loki_handler(
+    url: str,
+    tags: dict[str, str],
+    fallback_logger: logging.Logger,
+    flush_interval: float,
+    cache_key: tuple[str, float, frozenset[tuple[str, str]]],
+) -> Any:
+    """Construct and cache a Loki handler; caller holds the cache lock."""
+    try:
+        handler = _CourierLokiHandler(
+            url=url,
+            labels=tags,
+            label_keys={"level"},
+            timeout=flush_interval,
+            compressed=True,
+            default_formatter=_SafeLoggerFormatter(),
+        )
     except (ConnectionError, OSError) as e:
         fallback_logger.warning(
             f"Failed to initialize Loki handler: {e}. "
@@ -196,58 +323,8 @@ def _create_loki_handler(
         )
         return None
     else:
+        _loki_handler_cache[cache_key] = handler
         return handler
-
-
-class _ResilientLokiHandler(logging.Handler):
-    """Rate-limited wrapper that suppresses stderr storms on Loki outage.
-
-    When Loki returns 500s, ``logging_loki.LokiHandler.emit()`` raises
-    ``ValueError``, which triggers Python's ``Handler.handleError()``
-    which prints a full traceback to stderr for *every* log record.
-    This wrapper rate-limits the diagnostic to once per 60 seconds.
-    """
-
-    _ERROR_SUPPRESS_INTERVAL = 60.0
-
-    def __init__(self, delegate: logging.Handler) -> None:
-        level = logging.NOTSET
-        try:
-            raw = delegate.level
-            if isinstance(raw, (int, str)):
-                level = int(raw)
-        except (ValueError, TypeError):
-            pass
-        super().__init__(level=level)
-        self.delegate = delegate
-        self._last_error_log: float = 0.0
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self.delegate.emit(record)
-        except Exception:
-            now = time.monotonic()
-            if now - self._last_error_log > self._ERROR_SUPPRESS_INTERVAL:
-                self._last_error_log = now
-                sys.stderr.write(
-                    "courier: Loki handler failed to push log records "
-                    "(rate-limited to 1/min); check Loki backend health.\n",
-                )
-            # Deliberately not delegate.handleError(record): that is exactly
-            # the per-record traceback this wrapper exists to suppress, and it
-            # was only silenced when production_mode happened to set
-            # logging.raiseExceptions = False. The record is dropped; the
-            # rate-limited notice above is the diagnostic.
-
-    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
-        pass  # fully suppressed; diagnostics handled in emit()
-
-    def close(self) -> None:
-        self.delegate.close()
-        super().close()
-
-    def __repr__(self) -> str:
-        return f"ResilientLokiHandler({self.delegate!r})"
 
 
 def get_logger(
@@ -328,9 +405,14 @@ def get_logger(
 
             # Add Loki handler if enabled and URL provided
             if config.loki_enabled and config.loki_url:
-                # In production, suppress Python's per-record traceback on
-                # handler failures (e.g. Loki 500s).  The _ResilientLokiHandler
-                # already rate-limits diagnostics to 1/min independently.
+                # _CourierLokiHandler.emit() never raises -- formatting and
+                # send errors are routed to handle_unexpected_error, which
+                # already rate-limits its own diagnostic to 1/min -- so this
+                # is no longer load-bearing for Loki. It still suppresses
+                # Handler.handleError()'s per-record traceback for any other
+                # handler attached to this logger (e.g. a broken console
+                # write), which is a reasonable production default on its
+                # own, so it stays.
                 if config.production_mode:
                     logging.raiseExceptions = False
                 # Prepare tags for Loki
@@ -357,6 +439,7 @@ def get_logger(
                     config.loki_url,
                     tags,
                     fallback_logger,
+                    config.loki_flush_interval,
                 )
 
                 if loki_handler is not None:

@@ -48,7 +48,8 @@ little the current one has to move.
 
 The import graph is a directed acyclic graph with the edges below, enforced by
 [import-linter](https://import-linter.readthedocs.io/) in pre-commit and CI.
-Any edge not in the table is forbidden.
+Any edge not in the table is forbidden; the [contracts](#contracts) below say
+which of those prohibitions the linter checks and which are left to review.
 
 ```{mermaid}
 flowchart TB
@@ -168,6 +169,14 @@ broke.
    `schema | types` over `utils | metrics` over `constants` over `errors`.
 1. **`runtime`** (`layers`). `service` over `managers` over
    `broker | routing | interfaces` over `sync | lifecycle`.
+
+A `layers` contract forbids upward imports and imports between siblings
+separated by `|`. It does not forbid a higher layer from skipping down: it
+permits `config -> types`, `tracing -> schema` and `managers -> routing`,
+which the table leaves out. The contracts therefore guarantee the direction of
+every edge, not the exact edge set. The table is the edge set reviewers hold a
+change to; an omitted downward edge is caught in review, not by the linter,
+until it is worth a `forbidden` contract of its own.
 
 The `cli` module's lazy imports of `viz` and `dashboard`, which keep heavy
 optional dependencies off the command-line start-up path, are declared under

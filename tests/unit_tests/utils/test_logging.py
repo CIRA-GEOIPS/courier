@@ -12,8 +12,9 @@ Dependencies
 
 Notes
 -----
-- All external dependencies (e.g., logging_loki) are mocked to ensure tests are
-  deterministic and don't rely on real system state.
+- All external dependencies (e.g., loki_logger_handler) are mocked to ensure
+  tests are deterministic, don't rely on real system state, and never touch
+  the network.
 - Tests follow functional paradigms: minimal side effects, pure functions where
   possible, and clear separation of arrange-act-assert.
 - Type hints are used throughout for mypy compatibility.
@@ -22,6 +23,7 @@ Notes
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -32,9 +34,20 @@ from courier.config import ServiceConfig  # For mocking in fixtures
 from courier.utils.logging import (
     TRACE_LEVEL,
     ContextAdapter,
+    _CourierLokiHandler,
     _create_loki_handler,
+    _reset_loki_handler_cache,
+    _SafeLoggerFormatter,
     get_logger,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_loki_handler_cache() -> Any:
+    """Isolate every test from Loki handlers (and flush threads) others made."""
+    _reset_loki_handler_cache()
+    yield
+    _reset_loki_handler_cache()
 
 
 # Fixtures
@@ -123,9 +136,9 @@ def test_trace_emits_a_record_through_the_public_logger(
     records = [r for r in caplog.records if r.levelno == TRACE_LEVEL]
     assert records, "no record emitted at TRACE level"
     assert "detailed diagnostic" in records[0].getMessage()
-    assert (
-        "[Service: trace-emit]" in records[0].getMessage()
-    ), "trace() must apply the same context prefix as the other levels"
+    assert "[Service: trace-emit]" in records[0].getMessage(), (
+        "trace() must apply the same context prefix as the other levels"
+    )
 
 
 def test_trace_is_suppressed_above_its_level() -> None:
@@ -272,14 +285,14 @@ class TestContextAdapter:
 class TestCreateLokiHandler:
     """Test suite for _create_loki_handler function."""
 
-    @patch("courier.utils.logging.logging_loki")
-    def test_create_loki_handler_success(self, mock_logging_loki: MagicMock) -> None:
-        """Test successful Loki handler creation.
+    @patch("courier.utils.logging._CourierLokiHandler")
+    def test_create_loki_handler_success(self, mock_handler_cls: MagicMock) -> None:
+        """Test successful Loki handler creation with the expected arguments.
 
         Parameters
         ----------
-        mock_logging_loki : MagicMock
-            Mock for logging_loki module.
+        mock_handler_cls : MagicMock
+            Mock for the ``_CourierLokiHandler`` class.
 
         Returns
         -------
@@ -288,29 +301,35 @@ class TestCreateLokiHandler:
         Raises
         ------
         AssertionError
-            If handler creation fails or returns None.
+            If handler creation fails, or the constructor args are wrong.
         """
         mock_handler = MagicMock()
-        mock_logging_loki.LokiHandler.return_value = mock_handler
+        mock_handler_cls.return_value = mock_handler
 
-        result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
-
-        mock_logging_loki.LokiHandler.assert_called_once_with(
-            url="http://test-loki", version="1", tags={}
+        result = _create_loki_handler(
+            "http://test-loki", {"service": "x"}, logging.getLogger("test"), 2.5
         )
-        assert result is not None
-        assert hasattr(result, "delegate") and result.delegate is mock_handler
 
-    @patch("courier.utils.logging.logging_loki")
+        mock_handler_cls.assert_called_once()
+        _args, kwargs = mock_handler_cls.call_args
+        assert kwargs["url"] == "http://test-loki"
+        assert kwargs["labels"] == {"service": "x"}
+        assert kwargs["label_keys"] == {"level"}
+        assert kwargs["timeout"] == 2.5
+        assert kwargs["compressed"] is True
+        assert isinstance(kwargs["default_formatter"], _SafeLoggerFormatter)
+        assert result is mock_handler
+
+    @patch("courier.utils.logging._CourierLokiHandler")
     def test_create_loki_handler_connection_error(
-        self, mock_logging_loki: MagicMock, caplog: pytest.LogCaptureFixture
+        self, mock_handler_cls: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Test Loki handler creation fails due to connection error.
 
         Parameters
         ----------
-        mock_logging_loki : MagicMock
-            Mock for logging_loki module.
+        mock_handler_cls : MagicMock
+            Mock for the ``_CourierLokiHandler`` class.
         caplog : pytest.LogCaptureFixture
             Fixture to capture log messages.
 
@@ -323,14 +342,174 @@ class TestCreateLokiHandler:
         AssertionError
             If result is not None or warning not logged.
         """
-        mock_logging_loki.LokiHandler.side_effect = ValueError(
-            "Unexpected Loki init error"
+        mock_handler_cls.side_effect = ConnectionError("unreachable")
+
+        result = _create_loki_handler(
+            "http://test-loki", {}, logging.getLogger("test"), 2.0
         )
 
-        result = _create_loki_handler("http://test-loki", {}, logging.getLogger("test"))
+        assert result is None
+        assert "Failed to initialize Loki handler" in caplog.text
+
+    @patch("courier.utils.logging._CourierLokiHandler")
+    def test_create_loki_handler_unexpected_error(
+        self, mock_handler_cls: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test Loki handler creation fails due to an unexpected error.
+
+        Parameters
+        ----------
+        mock_handler_cls : MagicMock
+            Mock for the ``_CourierLokiHandler`` class.
+        caplog : pytest.LogCaptureFixture
+            Fixture to capture log messages.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        AssertionError
+            If result is not None or warning not logged.
+        """
+        mock_handler_cls.side_effect = ValueError("Unexpected Loki init error")
+
+        result = _create_loki_handler(
+            "http://test-loki", {}, logging.getLogger("test"), 2.0
+        )
 
         assert result is None
         assert "Unexpected error initializing Loki handler" in caplog.text
+
+
+class TestLokiHandlerCache:
+    """A distinct (url, flush_interval, tags) combination gets one handler."""
+
+    @patch("courier.utils.logging._CourierLokiHandler")
+    def test_same_tags_reuse_the_handler(self, mock_handler_cls: MagicMock) -> None:
+        """Repeated calls with the same arguments must not spawn a new handler."""
+        mock_handler_cls.side_effect = lambda **_kwargs: MagicMock()
+        logger = logging.getLogger("cache-test-same")
+
+        first = _create_loki_handler("http://loki", {"service": "a"}, logger, 2.0)
+        second = _create_loki_handler("http://loki", {"service": "a"}, logger, 2.0)
+
+        assert first is second
+        mock_handler_cls.assert_called_once()
+
+    @patch("courier.utils.logging._CourierLokiHandler")
+    def test_different_plugin_tag_gets_a_new_handler(
+        self, mock_handler_cls: MagicMock
+    ) -> None:
+        """A different label set must get its own handler, and its own thread."""
+        mock_handler_cls.side_effect = lambda **_kwargs: MagicMock()
+        logger = logging.getLogger("cache-test-diff")
+
+        first = _create_loki_handler("http://loki", {"plugin": "a"}, logger, 2.0)
+        second = _create_loki_handler("http://loki", {"plugin": "b"}, logger, 2.0)
+
+        assert first is not second
+        assert mock_handler_cls.call_count == 2
+
+
+class TestCourierLokiHandler:
+    """Test suite for ``_CourierLokiHandler``'s error handling."""
+
+    @staticmethod
+    def _make_handler() -> _CourierLokiHandler:
+        """Build a handler whose flush thread is a no-op (no real thread, no network)."""
+        with patch.object(_CourierLokiHandler, "_flush", lambda self: None):
+            return _CourierLokiHandler(url="http://test-loki", labels={})
+
+    def test_first_error_logs_the_rate_limited_notice(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The first failure within a fresh handler's lifetime must be reported."""
+        handler = self._make_handler()
+
+        with patch("courier.utils.logging.time.monotonic", return_value=100.0):
+            handler.handle_unexpected_error(ValueError("boom"))
+
+        captured = capsys.readouterr()
+        assert "courier: Loki handler failed to push log records" in captured.err
+        assert handler.error is True
+
+    def test_a_second_error_within_the_window_is_suppressed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Two failures inside the 60s window produce exactly one notice."""
+        handler = self._make_handler()
+
+        with patch("courier.utils.logging.time.monotonic", side_effect=[100.0, 130.0]):
+            handler.handle_unexpected_error(ValueError("first"))
+            handler.handle_unexpected_error(ValueError("second"))
+
+        captured = capsys.readouterr()
+        assert captured.err.count("courier: Loki handler failed") == 1
+
+    def test_a_later_error_past_the_window_logs_again(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A failure more than 60s after the last notice gets its own notice."""
+        handler = self._make_handler()
+
+        with patch("courier.utils.logging.time.monotonic", side_effect=[100.0, 170.0]):
+            handler.handle_unexpected_error(ValueError("first"))
+            handler.handle_unexpected_error(ValueError("second"))
+
+        captured = capsys.readouterr()
+        assert captured.err.count("courier: Loki handler failed") == 2
+
+    def test_handle_error_is_fully_suppressed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``handleError`` must never print a traceback, rate-limited or not."""
+        handler = self._make_handler()
+
+        handler.handleError(logging.makeLogRecord({}))
+
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+
+class TestSafeLoggerFormatter:
+    """``_SafeLoggerFormatter`` must keep one bad extra from losing a batch."""
+
+    @staticmethod
+    def _record(**extra: Any) -> logging.LogRecord:
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
+        )
+        for key, value in extra.items():
+            setattr(record, key, value)
+        return record
+
+    def test_non_serialisable_extra_becomes_a_string(self) -> None:
+        """A ``set`` (not JSON-serialisable) must be coerced, not raise."""
+        formatter = _SafeLoggerFormatter()
+        record = self._record(bad_value={1, 2, 3})
+
+        formatted, _loki_metadata = formatter.format(record)
+
+        assert json.dumps(formatted)  # must not raise
+        assert formatted["bad_value"] == str({1, 2, 3})
+
+    def test_correlation_id_extra_survives(self) -> None:
+        """A normal extra, such as ``correlation_id``, must pass through untouched."""
+        formatter = _SafeLoggerFormatter()
+        record = self._record(correlation_id="abc-123")
+
+        formatted, _loki_metadata = formatter.format(record)
+
+        assert formatted["correlation_id"] == "abc-123"
+        assert json.dumps(formatted)  # must not raise
 
 
 # Test get_logger
@@ -439,8 +618,23 @@ class TestGetLogger:
         # Check that third argument is a logger (the fallback_logger)
         assert isinstance(call_args[0][2], logging.Logger)
 
+        # Check that the fourth argument is the configured flush interval
+        assert call_args[0][3] == sample_service_config.loki_flush_interval
+
         # Verify mock handler was added to the logger
         assert mock_handler in logger.logger.handlers
+
+    @patch("courier.utils.logging._create_loki_handler")
+    def test_get_logger_passes_loki_flush_interval(
+        self, mock_create_handler: MagicMock, sample_service_config: ServiceConfig
+    ) -> None:
+        """A non-default ``loki_flush_interval`` must reach ``_create_loki_handler``."""
+        mock_create_handler.return_value = MagicMock()
+        config = dataclasses.replace(sample_service_config, loki_flush_interval=7.0)
+
+        get_logger("plugin", "flush-interval-test", config)
+
+        assert mock_create_handler.call_args[0][3] == 7.0
 
     def test_get_logger_production_mode_enforces_min_level(
         self, sample_service_config: ServiceConfig
@@ -471,9 +665,7 @@ class TestGetLogger:
         # but we can verify the logger is created without errors
         assert isinstance(logger, ContextAdapter)
 
-    def test_log_level_defaults_to_info(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_log_level_defaults_to_info(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without COURIER_LOG_LEVEL, the config and the logger default to INFO."""
         monkeypatch.delenv("COURIER_LOG_LEVEL", raising=False)
         config = ServiceConfig(loki_enabled=False)

@@ -80,6 +80,11 @@ class ServiceConfig:
     loki_enabled : bool, optional
         Enable log shipping to Grafana Loki. Defaults to environment variable
         LOKI_ENABLED or False.
+    loki_flush_interval : float, optional
+        Seconds between batched pushes to Loki. Defaults to environment
+        variable LOKI_FLUSH_INTERVAL or 2. Also roughly the most logs that
+        can be lost on a hard kill, since buffered records are only flushed
+        on this interval (plus an atexit flush on clean shutdown).
     log_level : str, optional
         Logging level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL). Defaults
         to environment variable COURIER_LOG_LEVEL or 'INFO'.
@@ -166,6 +171,11 @@ class ServiceConfig:
             os.environ.get("LOKI_ENABLED", "false").lower() == "true"
         ),
     )
+    loki_flush_interval: float = field(
+        default_factory=lambda: float(
+            os.environ.get("LOKI_FLUSH_INTERVAL", "2"),
+        ),
+    )
     log_level: str = field(
         default_factory=lambda: os.environ.get("COURIER_LOG_LEVEL", "INFO"),
     )
@@ -218,4 +228,9 @@ class ServiceConfig:
             raise ConfigurationError(
                 "plugin_start_timeout must be positive, "
                 f"got {self.plugin_start_timeout}",
+            )
+        if self.loki_flush_interval <= 0:
+            raise ConfigurationError(
+                "loki_flush_interval must be greater than 0, "
+                f"got {self.loki_flush_interval}",
             )
