@@ -1,14 +1,23 @@
 """All testing for the docker dispatcher plugin."""
 
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, ANY
+
+from _pytest.tmpdir import tmp_path
 from pydantic import ValidationError
 import pytest
 
 from courier.cli.plugins import PLUGIN_REGISTRIES
+from courier.interfaces.dispatchers import ExecutionPayload
 from courier.plugins.dispatchers.docker_dispatcher import (
     DockerDispatcher,
     DockerDispatcherConfig,
 )
+from courier.plugins.payloads.shell_payload import ShellPayload, ShellPayloadConfig
 from courier.service import Service
+from courier.types import Datum, Job
+from courier.types.payload import PayloadSpec
 
 
 @pytest.fixture
@@ -18,6 +27,21 @@ def docker_client(mocker):
     ).return_value
 
     return client
+
+
+@pytest.fixture
+def _job(
+    metadata: dict[str, Any] | None = None,
+    config: Any = None,
+    files: tuple[str, ...] = ("/data/a.nc",),
+) -> Job:
+    return Job(
+        "n",
+        "job-1",
+        config if config is not None else {},
+        files=[Datum(file=Path(f), metadata=dict(metadata or {})) for f in files],
+        targets=("ld",),
+    )
 
 
 class TestBasicFunctionality:
@@ -104,13 +128,19 @@ class TestDispatcherFunctionality:
 
         assert plugin._build_docker_args() == ["docker", "run", "alpine:latest"]
 
-    def test_build_command_with_volumes(self, docker_client) -> None:
+    def test_build_command_with_volumes(self, docker_client, tmp_path) -> None:
         docker_client.images.list.return_value = [object()]
+
+        a_path = tmp_path / "script.py"
+        Path(a_path).write_text("")
+
+        b_path = tmp_path / "other.py"
+        Path(b_path).write_text("")
 
         service = Service()
         config = {
             "image": "alpine",
-            "volumes": ["./script:/mnt/script", "./other:/tmp/other"],
+            "volumes": [f"{a_path}:/mnt/script", f"{b_path}:/tmp/other"],
         }
         id = "dummy-dispatcher"
 
@@ -119,8 +149,8 @@ class TestDispatcherFunctionality:
         assert plugin._build_docker_args() == [
             "docker",
             "run",
-            "-v ./script:/mnt/script",
-            "-v ./other:/tmp/other",
+            f"-v {a_path}:/mnt/script",
+            f"-v {b_path}:/tmp/other",
             "alpine:latest",
         ]
 
@@ -143,3 +173,38 @@ class TestDispatcherFunctionality:
             "--it",
             "alpine:latest",
         ]
+
+    def test_initialize_environment(self, docker_client, _job) -> None:
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        config = {
+            "image": "alpine",
+        }
+        id = "dummy-dispatcher"
+
+        plugin = DockerDispatcher(service, config, id)
+        payload = ShellPayload(
+            service=service,
+            config={"script": "echo 'hi'"},
+            identifier=id,
+        )
+
+        job = _job
+        job.payload = PayloadSpec(
+            name=payload.name,
+            identifier=id,
+            config=payload.config.model_dump(
+                mode="json",
+                exclude={"script"},
+            ),
+            script="echo 'hi'",
+            suffix=payload.file_suffix,
+            defer_nonce="",
+        )
+
+        payload = plugin.initialize_environment(job, payload)
+
+        assert payload is not None
+        assert isinstance(payload, ExecutionPayload)
+        assert payload.command == ["docker", "run", "alpine:latest", "sh", ANY]
