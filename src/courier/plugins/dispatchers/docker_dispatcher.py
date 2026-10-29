@@ -114,17 +114,22 @@ class DockerDispatcher(Dispatcher):
     def _build_docker_args(self) -> list[str]:
         """Return the `docker` command, minus the payload command."""
         cfg = self.config
-        volumes = [f"-v {volume}" for volume in self._volumes]
+        volumes = [arg for volume in self._volumes for arg in ("-v", volume)]
         args = ["docker", "run", *self._docker_args, *volumes, self._container]
 
         return args
 
     def initialize_environment(self, job: Job, payload: Payload) -> ExecutionPayload:
         script_path, context = self._materialize_script(job, payload)
+        normalized_script_path = Path(script_path or "").resolve()
+        filename = normalized_script_path.name
+        docker_script_path = Path(f"/courier/script/{filename}")
+
+        self._volumes.append(f"{normalized_script_path}:{docker_script_path}")
         try:
             command = [
                 *self._build_docker_args(),
-                *self._render_command(job, payload, script_path, context),
+                *self._render_command(job, payload, docker_script_path, context),
             ]
         except BaseException:
             if script_path is not None:
