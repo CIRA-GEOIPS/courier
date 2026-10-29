@@ -55,7 +55,7 @@ class DockerDispatcherConfig(DispatcherConfig):
 
     @field_validator("volumes")
     @classmethod
-    def _validate_volume_arg(cls, value) -> None:
+    def _validate_volume_arg(cls, value) -> list[str]:
         for volume_str in value:
             split_sides = volume_str.split(":")
             if len(split_sides) != 2:
@@ -74,6 +74,7 @@ class DockerDispatcherConfig(DispatcherConfig):
             # validation on remote path
             if remote == "/":
                 raise ValueError(f"Invalid docker remote mount: {remote}")
+        return value
 
 
 class DockerDispatcher(Dispatcher):
