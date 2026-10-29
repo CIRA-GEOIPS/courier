@@ -116,26 +116,35 @@ class DockerDispatcher(Dispatcher):
             payload.config.toolchain_prepend = self._build_docker_args()
         return super()._validate_payload_toolchain(payload)
 
-    def _build_docker_args(self) -> list[str]:
+    def _build_docker_args(self, extra_volumes: list[str] | None = None) -> list[str]:
         """Return the `docker` command, minus the payload command."""
         cfg = self.config
-        volumes = [arg for volume in self._volumes for arg in ("-v", volume)]
-        args = ["docker", "run", *self._docker_args, *volumes, self._container]
+
+        volumes = [*self._volumes, *(extra_volumes or [])]
+        volume_args = [arg for volume in volumes for arg in ("-v", volume)]
+        args = ["docker", "run", *self._docker_args, *volume_args, self._container]
 
         return args
 
     def initialize_environment(self, job: Job, payload: Payload) -> ExecutionPayload:
         script_path, context = self._materialize_script(job, payload)
-        normalized_script_path = Path(script_path or "").resolve()
-        filename = normalized_script_path.name
-        docker_script_path = Path(f"{self._mount_point}/script/{filename}")
+        docker_script_path = None
+        docker_mount_str = None
+        if script_path is not None:
 
-        self._volumes.append(f"{normalized_script_path}:{docker_script_path}")
+            normalized_script_path = Path(script_path or "").resolve()
+            filename = normalized_script_path.name
+            docker_script_path = Path(f"{self._mount_point}/script/{filename}")
+
+            docker_mount_str = f"{normalized_script_path}:{docker_script_path}"
         try:
             command = [
-                *self._build_docker_args(),
+                *self._build_docker_args(
+                    [docker_mount_str] if docker_mount_str else None
+                ),
                 *self._render_command(job, payload, docker_script_path, context),
             ]
+            log_prefix, log_file_path = self._log_destination(job)
         except BaseException:
             if script_path is not None:
                 self._discard_script(script_path)
@@ -145,4 +154,6 @@ class DockerDispatcher(Dispatcher):
         return ExecutionPayload(
             command=command,
             file=script_path,
+            log_prefix=log_prefix,
+            log_file_path=log_file_path,
         )
