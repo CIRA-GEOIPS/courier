@@ -53,6 +53,28 @@ class DockerDispatcherConfig(DispatcherConfig):
         finally:
             client.close()
 
+    @field_validator("volumes")
+    @classmethod
+    def _validate_volume_arg(cls, value) -> None:
+        for volume_str in value:
+            split_sides = volume_str.split(":")
+            if len(split_sides) != 2:
+                raise ValueError(
+                    f"Invalid volume mount: {value} " "invalid mapping detected."
+                )
+            local = split_sides[0]
+            remote = split_sides[1]
+
+            # validation on local path
+            if not Path(local).exists():
+                raise FileNotFoundError(
+                    "Invalid volume mount " f"Local path {local} not found!"
+                )
+
+            # validation on remote path
+            if remote == "/":
+                raise ValueError(f"Invalid docker remote mount: {remote}")
+
 
 class DockerDispatcher(Dispatcher):
     """Dispatcher that executes payloads in a Docker container."""
