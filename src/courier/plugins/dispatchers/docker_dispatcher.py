@@ -159,7 +159,7 @@ class DockerDispatcher(Dispatcher):
         try:
             command = [
                 *self._build_docker_args(
-                    ([docker_mount_str, *job_volumes] if docker_mount_str else None),
+                    [*([docker_mount_str] if docker_mount_str else []), *job_volumes],
                 ),
                 *self._render_command(job, payload, docker_script_path, context),
             ]
