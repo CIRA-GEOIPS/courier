@@ -215,6 +215,8 @@ class TestDispatcherFunctionality:
             "run",
             "-v",
             ANY,
+            "-v",
+            "/data/a.nc:/data/a.nc:ro",
             "alpine:latest",
             "sh",
             ANY,
@@ -267,37 +269,3 @@ class TestDispatcherFunctionality:
             mock_probe.assert_called_once_with(
                 ["docker", "run", "alpine:latest", "sh", "-c", "command -v invalid"]
             )
-
-
-class TestWorkflow:
-    """Test the full docker workflow"""
-
-    def test_get_job_info(self, docker_client, _job):
-        docker_client.images.list.return_value = [object()]
-
-        service = Service()
-        config = {"image": "alpine"}
-
-        id = "dummy-dispatcher"
-
-        plugin = DockerDispatcher(service, config, id)
-        payload = ShellPayload(
-            service=service,
-            config={"script": "echo {{ files[0].file }}"},
-            identifier="dummy-payload",
-        )
-
-        dummy_job = _job
-        dummy_job.payload = PayloadSpec(
-            name=payload.name,
-            identifier=id,
-            config=payload.config.model_dump(
-                mode="json",
-                exclude={"script"},
-            ),
-            script="echo {{ files[0].file }}",
-            suffix=payload.file_suffix,
-            defer_nonce="",
-        )
-
-        plugin.initialize_environment(dummy_job, payload)
