@@ -427,6 +427,7 @@ ignore_names = [
     "sub_title",
     "watch_*",
     # -- watchdog ---------------------------------------------------------
+    "on_any_event",
     "on_created",
     # -- stdlib hooks overridden on purpose -------------------------------
     "handleError",

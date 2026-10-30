@@ -204,12 +204,13 @@ class PluginManager(ServiceManager):
 
             plugin_name = plugin_instance.name
 
-            self._plugins[registry_key] = PluginStateInfo(
+            info = PluginStateInfo(
                 plugin=plugin_instance,
                 config=config,
                 identifier=identifier,
                 plugin_type=plugin,
             )
+            self._plugins[registry_key] = info
 
             # Emit initial metric values so the series exists from container
             # start, before the plugin transitions to RUNNING / healthy.
@@ -444,6 +445,8 @@ class PluginManager(ServiceManager):
         if thread is not None and thread.is_alive():
             raise CourierError(
                 f"Plugin {plugin_info.identifier} failed to stop within the timeout.",
+            )
+
     @staticmethod
     def _abandon_thread_locked(
         plugin_info: PluginStateInfo,
@@ -489,69 +492,6 @@ class PluginManager(ServiceManager):
         """
         while self._state == PluginRunState.RUNNING:
             with self._lock:
-                for plugin_name, plugin_info in self._plugins.items():
-                    try:
-                        now = datetime.now()
-                        if plugin_info.last_health_check is not None and (
-                            (now - plugin_info.last_health_check).seconds
-                            < self._config.plugin_health_check_interval
-                        ):
-                            continue
-
-                        plugin_info.last_health_check = now
-
-                        if plugin_info.state == PluginRunState.RUNNING:
-                            if (
-                                not plugin_info.thread
-                                or not plugin_info.thread.is_alive()
-                            ):
-                                self._logger.error(
-                                    f"Plugin {plugin_name} thread died",
-                                )
-                                plugin_info.state = PluginRunState.FAILED
-                                failed_plugins.append(plugin_info)
-                            else:
-                                is_healthy = plugin_info.plugin.is_healthy()
-                                self._plugin_health_metric.labels(
-                                    plugin_name=plugin_info.plugin.name,
-                                    plugin_identifier=self._plugin_identifier(
-                                        plugin_info.plugin,
-                                    ),
-                                ).set(1 if is_healthy else 0)
-
-                                if not is_healthy:
-                                    self._logger.warning(
-                                        f"Plugin {plugin_name} is unhealthy",
-                                    )
-                                    plugin_info.state = PluginRunState.FAILED
-                                    failed_plugins.append(plugin_info)
-
-                                    with self._tracer.start_as_current_span(
-                                        "plugin_lifecycle",
-                                    ) as span:
-                                        span.add_event(
-                                            "plugin.health_check_failed",
-                                            attributes={
-                                                ATTR_PLUGIN_NAME: (
-                                                    plugin_info.plugin.name
-                                                ),
-                                            },
-                                        )
-
-                    except CourierError:
-                        self._logger.exception(
-                            f"Error monitoring plugin {plugin_name}",
-                        )
-                    except Exception:
-                        self._logger.exception(
-                            f"Unexpected error monitoring plugin {plugin_name}",
-                        )
-
-            for plugin_info in failed_plugins:
-                with self._lock:
-                    # if the original reference was popped elsewhere
-                    if plugin_info not in self._plugins.values():
-                        failed_plugins.remove(plugin_info)
                 snapshot = list(self._plugins.items())
 
             newly_failed = [
@@ -701,6 +641,14 @@ class PluginManager(ServiceManager):
         """
         return self._state == PluginRunState.RUNNING
 
+    def _is_registered_locked(self, plugin_info: PluginStateInfo) -> bool:
+        """Return whether a plugin is still registered. Lock held.
+
+        A soft reload can wipe a plugin between the monitor taking its
+        snapshot and acting on it; a wiped plugin must not be restarted.
+        """
+        return any(info is plugin_info for info in self._plugins.values())
+
     def _restarts_left_locked(self, plugin_info: PluginStateInfo) -> bool:
         """Return whether the plugin has restart attempts left. Lock held."""
         return plugin_info.restart_count < self._config.plugin_max_restart_attempts
@@ -781,6 +729,7 @@ class PluginManager(ServiceManager):
                     plugin_info.state == PluginRunState.RESTARTING
                     and plugin_info.restart_due is not None
                     and now >= plugin_info.restart_due
+                    and self._is_registered_locked(plugin_info)
                 ):
                     plugin_info.restart_due = None
                     due.append(plugin_info)
@@ -802,7 +751,9 @@ class PluginManager(ServiceManager):
         plugin_ident = self._plugin_identifier(plugin_info.plugin)
 
         with self._lock:
-            if not self._is_running_locked():
+            if not self._is_running_locked() or not self._is_registered_locked(
+                plugin_info,
+            ):
                 return
             can_restart = self._restarts_left_locked(plugin_info)
 
@@ -863,16 +814,8 @@ class PluginManager(ServiceManager):
             if self._state == PluginRunState.RUNNING:
                 return
             self._state = PluginRunState.RUNNING
-
-            self._monitor_thread = threading.Thread(
-                target=self._monitor_plugins,
-                name="PluginMonitor",
-                daemon=True,
-            )
-            self._monitor_thread.start()
             if self._config.live_reload != "off":
                 self._config_monitor.start()
-
 
         # Phase 1: Start every plugin.
         #
