@@ -206,6 +206,7 @@ class ConfigMonitor:
 
         if (
             kind == "job_builders"
+            and "targets" not in config
             and isinstance(restored_plugin.plugin, JobBuilder)
             and not restored_plugin.plugin.targets
             and isinstance(old_plugin.plugin, JobBuilder)
@@ -243,6 +244,7 @@ class ConfigMonitor:
 
         if (
             kind == "job_builders"
+            and "targets" not in config
             and isinstance(dummy_plugin.plugin, JobBuilder)
             and not dummy_plugin.plugin.targets
             and isinstance(old_plugin.plugin, JobBuilder)
