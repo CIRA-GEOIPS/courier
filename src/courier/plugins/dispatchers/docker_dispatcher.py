@@ -1,5 +1,6 @@
 """Deploys docker for a specified payload."""
 
+from multiprocessing import Value
 from pathlib import Path
 from typing import ClassVar, cast
 
@@ -59,24 +60,35 @@ class DockerDispatcherConfig(DispatcherConfig):
     @field_validator("volumes")
     @classmethod
     def _validate_volume_arg(cls, value: list[str]) -> list[str]:
-        num_sides = 2
         for volume_str in value:
             split_sides = volume_str.split(":")
-            if len(split_sides) != num_sides:
+            if len(split_sides) not in (2, 3):
                 raise ValueError(
                     f"Invalid volume mount: {value} " "invalid mapping detected.",
+                )
+            if len(split_sides) == 3 and split_sides[2] not in ("ro", "rw"):
+                raise ValueError(
+                    f"Invalid volume mode in {volume_str}; expected 'ro' or 'rw'."
                 )
             local = split_sides[0]
             remote = split_sides[1]
 
             # validation on local path
-            if not Path(local).exists():
+            if not (Path(local).is_absolute() or local.startswith(("./", "../"))):
+                raise ValueError(
+                    f"Volume host path {local} must be absolute or start with"
+                    " './' or '../'. "
+                    "A bare name is parsed by Docker as a named volume."
+                )
+
+            local_path = Path(local).resolve()
+            if not local_path.exists():
                 raise FileNotFoundError(
-                    "Invalid volume mount " f"Local path {local} not found!",
+                    f"Invalid volume mount" f" Local path {local_path} not found!"
                 )
 
             # validation on remote path
-            if remote == "/":
+            if remote == "/" or not Path(remote).is_absolute():
                 raise ValueError(f"Invalid docker remote mount: {remote}")
         return value
 
