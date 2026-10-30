@@ -516,6 +516,7 @@ class TestRestartScheduling:
         manager._state = PluginRunState.RUNNING
         plugin = _make_plugin("restartable")
         info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+        manager._plugins["restartable"] = info
 
         with patch("courier.managers.plugin_manager.time.sleep") as sleep:
             manager._handle_failed_plugin(info)
@@ -532,6 +533,7 @@ class TestRestartScheduling:
         manager._state = PluginRunState.RUNNING
         plugin = _make_plugin("due")
         info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+        manager._plugins["due"] = info
 
         manager._handle_failed_plugin(info)
 
@@ -552,6 +554,7 @@ class TestRestartScheduling:
             state=PluginRunState.FAILED,
             restart_count=1,
         )
+        manager._plugins["exhausted"] = info
 
         manager._handle_failed_plugin(info)
 
@@ -573,6 +576,7 @@ class TestRestartScheduling:
         manager._state = PluginRunState.RUNNING
         plugin = _make_plugin("hasty")
         info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+        manager._plugins["hasty"] = info
 
         manager._handle_failed_plugin(info)
         assert info.state == PluginRunState.RESTARTING
@@ -603,6 +607,7 @@ class TestRestartScheduling:
         manager._state = PluginRunState.RUNNING
         plugin = _make_plugin("interrupted")
         info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+        manager._plugins["interrupted"] = info
 
         def shutdown_arrives() -> None:
             manager._state = PluginRunState.STOPPED
@@ -612,6 +617,26 @@ class TestRestartScheduling:
 
         assert info.state == PluginRunState.STOPPED
         assert info.restart_due is None
+
+    def test_a_wiped_plugin_is_not_restarted(self) -> None:
+        """A plugin wiped by a soft reload after the snapshot is left alone."""
+        manager = PluginManager(_make_config(), parent_service=MagicMock())
+        manager._state = PluginRunState.RUNNING
+        plugin = _make_plugin("wiped")
+        info = PluginStateInfo(plugin=plugin, state=PluginRunState.FAILED)
+        manager._plugins["wiped"] = info
+        snapshot = [("wiped", info)]
+
+        manager._plugins.pop("wiped")
+        manager._handle_failed_plugin(info)
+
+        assert info.state == PluginRunState.FAILED
+        assert info.restart_count == 0
+        plugin.stop.assert_not_called()
+
+        info.state = PluginRunState.RESTARTING
+        info.restart_due = 0.0
+        assert manager._due_restarts(snapshot) == []
 
     def test_a_stopped_manager_schedules_no_restart(self) -> None:
         """A failure noticed after shutdown is not acted on."""
