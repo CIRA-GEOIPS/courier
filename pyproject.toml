@@ -130,6 +130,8 @@ test = [
     "grafanalib",                # required by tests/unit_tests/dashboard/*
     "mutmut",                    # mutation testing; see .github/workflows/mutation.yaml
     "packaging",                 # version comparison in the name/version drift guards
+    "docker",
+    "types-docker",
 ]
 
 ha = [
