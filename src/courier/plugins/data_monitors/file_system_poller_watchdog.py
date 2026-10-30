@@ -66,7 +66,7 @@ class FileSystemPoller(DataMonitorBasePlugin):
 
     def is_healthy(self) -> bool:
         """Check if the data monitor is healthy."""
-        return self.health
+        return self.health and self._worker_alive()
 
     def find_file(self) -> Generator[Datum, None, None]:
         """

@@ -130,8 +130,11 @@ class KafkaConsumer(DataMonitorBasePlugin):
 
     def is_healthy(self) -> bool:
         """Return ``True`` while the listener thread is consuming messages."""
-        return self.health and (
-            self._listener_thread is not None and self._listener_thread.is_alive()
+        return (
+            self.health
+            and self._worker_alive()
+            and self._listener_thread is not None
+            and self._listener_thread.is_alive()
         )
 
     def _build_consumer(self) -> Any:

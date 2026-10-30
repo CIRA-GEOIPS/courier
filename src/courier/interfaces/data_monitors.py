@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import threading
 import time
-import traceback
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from opentelemetry.trace import Status, StatusCode, get_current_span
@@ -40,6 +38,11 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     from courier.service import Service
+
+
+def _thread_ok(thread: threading.Thread | None) -> bool:
+    """Return False only if a worker thread was started and has since died."""
+    return thread is None or thread.is_alive()
 
 
 class DataMonitorBasePlugin(ServicePlugin):
@@ -104,7 +107,12 @@ class DataMonitorBasePlugin(ServicePlugin):
             )
 
     def _run_find_and_emit_files(self) -> None:
-        """Exit the process on any unhandled exception."""
+        """Run the monitor loop; mark the plugin FAILED and re-raise if it dies.
+
+        The exception ends this thread. :meth:`is_healthy` then reports the
+        dead thread and the plugin manager restarts the plugin under its
+        restart policy, rather than the whole process exiting.
+        """
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "data_monitor.handle_incoming_files",
@@ -116,13 +124,14 @@ class DataMonitorBasePlugin(ServicePlugin):
             try:
                 self.find_and_emit_files()
             except Exception:
-                traceback.print_exc()
                 span.set_status(Status(StatusCode.ERROR))
+                self._state = PluginRunState.FAILED
                 self._logger.critical(
-                    "Fatal error in data monitor %s: exiting",
+                    "Fatal error in data monitor %s: its thread is exiting",
                     self.name,
+                    exc_info=True,
                 )
-                os._exit(1)
+                raise
 
     def find_and_emit_files(self) -> None:
         """Find file and put in file queue."""
@@ -212,8 +221,21 @@ class DataMonitorBasePlugin(ServicePlugin):
             self._main_thread.join(timeout=5)
 
     def is_healthy(self) -> bool:
-        """Check if plugin is healthy."""
-        return self._state == PluginRunState.RUNNING
+        """Return whether the plugin is running and its worker thread is alive.
+
+        A monitor whose ``find_file`` generator returns, or whose thread
+        died, is not healthy even though nothing called ``stop()``: the
+        state flag alone once reported such a plugin healthy forever.
+        """
+        return self._state == PluginRunState.RUNNING and self._worker_alive()
+
+    def _worker_alive(self) -> bool:
+        """Return False only if the worker thread was started and has died.
+
+        Subclasses that keep their own ``health`` flag should ``and`` it with
+        this, so a crashed thread is reported however the flag was left.
+        """
+        return _thread_ok(self._main_thread)
 
     def get_metrics(self) -> dict[str, Any]:
         """Return plugin-specific metrics including last-processed timestamp."""

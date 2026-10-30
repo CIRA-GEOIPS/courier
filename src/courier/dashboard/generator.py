@@ -574,7 +574,16 @@ def _assemble_unified_panels(  # noqa: PLR0913
     if cluster:
         panel_rows.extend(cluster)
 
-    return templates, panel_rows
+    # Trace and log builders both declare $correlation_id; Grafana rejects a
+    # dashboard with two variables of the same name. First declaration wins.
+    seen: set[str] = set()
+    unique_templates = []
+    for template in templates:
+        if template.name not in seen:
+            seen.add(template.name)
+            unique_templates.append(template)
+
+    return unique_templates, panel_rows
 
 
 # ---------------------------------------------------------------------------

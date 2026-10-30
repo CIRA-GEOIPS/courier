@@ -392,7 +392,7 @@ class RabbitMQWatcher(DataMonitorBasePlugin):
 
     def is_healthy(self) -> bool:
         """Return ``True`` while the listener thread is consuming messages."""
-        return self.health
+        return self.health and self._worker_alive()
 
     def _parse_location(self, location: str) -> tuple[str, str]:
         """Dispatch to the configured location parser and return (hostname, path)."""

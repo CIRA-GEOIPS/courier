@@ -53,16 +53,38 @@ class ServiceConfig:
         Defaults to environment variable PLUGIN_RESTART_DELAY or 5.
     plugin_max_restart_attempts : int, optional
         Maximum number of restart attempts for a plugin. Defaults to
-        environment variable PLUGIN_MAX_RESTARTS or 3.
-    plugin_health_check_interval : int, optional
+        environment variable PLUGIN_MAX_RESTARTS or 3. A plugin that
+        exhausts them is failed for good and the service exits, so an
+        orchestrator can replace the process.
+    plugin_restart_window : int, optional
+        Seconds a restarted plugin must stay healthy before its restart
+        attempts are forgiven and the count returns to zero. Without this a
+        plugin would be allowed only ``plugin_max_restart_attempts`` failures
+        over the whole life of the process. Defaults to environment variable
+        PLUGIN_RESTART_WINDOW or 300.
+    plugin_health_check_interval : float, optional
         Interval in seconds between plugin health checks. Defaults to
         environment variable PLUGIN_HEALTH_CHECK_INTERVAL or 2.
+    plugin_start_timeout : float, optional
+        Seconds a plugin's ``start()`` may take before it is given up on. A
+        thread blocked inside ``start()`` (a Redis that accepts and never
+        answers, a broker confirm that never comes) cannot be interrupted
+        from outside, so a restart would only add a second stuck thread. The
+        plugin is marked failed with its restart attempts used up and the
+        service exits, which is the only recovery there is. Only the
+        ``start()`` call counts, not the health gate after it. Must be
+        positive. Defaults to environment variable PLUGIN_START_TIMEOUT or 60.
     loki_url : str, optional
         Grafana Loki push API URL for log shipping. Defaults to environment
         variable LOKI_URL or empty string (Loki disabled).
     loki_enabled : bool, optional
         Enable log shipping to Grafana Loki. Defaults to environment variable
         LOKI_ENABLED or False.
+    loki_flush_interval : float, optional
+        Seconds between batched pushes to Loki. Defaults to environment
+        variable LOKI_FLUSH_INTERVAL or 2. Also roughly the most logs that
+        can be lost on a hard kill, since buffered records are only flushed
+        on this interval (plus an atexit flush on clean shutdown).
     log_level : str, optional
         Logging level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL). Defaults
         to environment variable COURIER_LOG_LEVEL or 'INFO'.
@@ -148,10 +170,16 @@ class ServiceConfig:
     plugin_max_restart_attempts: int = field(
         default_factory=lambda: int(os.environ.get("PLUGIN_MAX_RESTARTS", "3")),
     )
-    plugin_health_check_interval: int = field(
-        default_factory=lambda: int(
+    plugin_restart_window: int = field(
+        default_factory=lambda: int(os.environ.get("PLUGIN_RESTART_WINDOW", "300")),
+    )
+    plugin_health_check_interval: float = field(
+        default_factory=lambda: float(
             os.environ.get("PLUGIN_HEALTH_CHECK_INTERVAL", "2"),
         ),
+    )
+    plugin_start_timeout: float = field(
+        default_factory=lambda: float(os.environ.get("PLUGIN_START_TIMEOUT", "60")),
     )
     loki_url: str = field(
         default_factory=lambda: os.environ.get("LOKI_URL", ""),
@@ -159,6 +187,11 @@ class ServiceConfig:
     loki_enabled: bool = field(
         default_factory=lambda: (
             os.environ.get("LOKI_ENABLED", "false").lower() == "true"
+        ),
+    )
+    loki_flush_interval: float = field(
+        default_factory=lambda: float(
+            os.environ.get("LOKI_FLUSH_INTERVAL", "2"),
         ),
     )
     log_level: str = field(
@@ -194,7 +227,7 @@ class ServiceConfig:
     )
 
     def __post_init__(self) -> None:
-        """Validate the sample rate, the prefetch, and the redelivery bound."""
+        """Validate the sample rate, prefetch, redelivery and start bounds."""
         if not (0.0 <= self.tracing_sample_rate <= 1.0):
             raise ConfigurationError(
                 "tracing_sample_rate must be between 0.0 and 1.0, "
@@ -216,4 +249,13 @@ class ServiceConfig:
             raise ConfigurationError(
                 "live reload must be one of off, hard, or blue-green, "
                 f"got {self.live_reload}",
+        if self.plugin_start_timeout <= 0:
+            raise ConfigurationError(
+                "plugin_start_timeout must be positive, "
+                f"got {self.plugin_start_timeout}",
+            )
+        if self.loki_flush_interval <= 0:
+            raise ConfigurationError(
+                "loki_flush_interval must be greater than 0, "
+                f"got {self.loki_flush_interval}",
             )

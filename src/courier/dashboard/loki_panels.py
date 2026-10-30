@@ -2,8 +2,15 @@
 
 Generates Grafana panel objects (Row containers with nested TimeSeries, Table,
 and Logs panels) that query the Loki datasource using LogQL.  Panels provide
-log-level visibility, error inspection, and per-service log streams for
-Courier pipelines.
+log-level visibility, error inspection, per-service log streams, and
+correlation-ID lookups for Courier pipelines.
+
+Every Loki line is shipped as a JSON object (``message``, ``level``, ``name``,
+``module``, ``function``, ``correlation_id``, ...); panels that display raw
+log lines parse it with ``| json`` and reformat with ``| line_format`` so
+operators see the message text instead of the raw JSON blob.  Panels that
+only aggregate counts/rates by label (``level``, ``plugin``) skip the parser
+since those are stream labels, not JSON fields.
 
 Every query is expressed as an inline dict target (not a grafanalib Loki
 wrapper class), since grafanalib's Loki integration varies by version.
@@ -69,6 +76,11 @@ _LOG_RATE_H = 8
 _ERROR_LOG_H = 12
 _RECENT_LOGS_H = 10
 _PER_PLUGIN_H = 8
+
+# Plain strings (not f-strings) so the literal "{{" / "}}" LogQL template
+# syntax needs no brace-escaping.
+_JSON_LINE_FORMAT = ' | json | line_format "{{.message}}"'
+_LINE_FORMAT = ' | line_format "{{.message}}"'
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +151,7 @@ def _build_error_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_ERROR_LOG_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    error_filter,
+                    error_filter + _JSON_LINE_FORMAT,
                     datasource_uid=datasource,
                     legend="{{plugin}}",
                 ),
@@ -179,7 +191,7 @@ def _build_data_monitor_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_PER_PLUGIN_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    dm_filter,
+                    dm_filter + _JSON_LINE_FORMAT,
                     datasource_uid=datasource,
                     legend="",
                 ),
@@ -219,7 +231,7 @@ def _build_job_builder_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_PER_PLUGIN_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    jb_filter,
+                    jb_filter + _JSON_LINE_FORMAT,
                     datasource_uid=datasource,
                     legend="",
                 ),
@@ -259,7 +271,7 @@ def _build_dispatcher_log_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_PER_PLUGIN_H, w=12, x=12, y=y),
             targets=[
                 _target(
-                    dp_filter,
+                    dp_filter + _JSON_LINE_FORMAT,
                     datasource_uid=datasource,
                     legend="",
                 ),
@@ -288,7 +300,7 @@ def _build_log_search_row(datasource: str, y: int) -> tuple[list, int]:
             gridPos=GridPos(h=_RECENT_LOGS_H, w=24, x=0, y=y),
             targets=[
                 _target(
-                    search_filter,
+                    search_filter + _JSON_LINE_FORMAT,
                     datasource_uid=datasource,
                     legend="{{plugin}}",
                 ),
@@ -304,12 +316,58 @@ def _build_log_search_row(datasource: str, y: int) -> tuple[list, int]:
 
 
 # ---------------------------------------------------------------------------
+# 7. Logs by correlation ID (always generated)
+# ---------------------------------------------------------------------------
+
+
+def _build_correlation_id_log_row(datasource: str, y: int) -> tuple[list, int]:
+    """Build logs for a single pipeline run, selected via ``$correlation_id``.
+
+    ``correlation_id`` only exists once ``| json`` has parsed it out of the
+    line, so the parser must run before either label filter below.
+
+    LogQL regex filters are fully anchored, so the id is wrapped in ``.*``:
+    a full or partial id both match, and the empty default textbox becomes
+    ``.*.*``.  ``correlation_id != ""`` then keeps that default to "every
+    line belonging to some pipeline run" -- a missing field compares equal
+    to "" -- rather than the whole service's firehose.  Backticks keep the
+    pattern a raw string, so no LogQL escaping is needed.
+    """
+    corr_filter = (
+        '{service="$service"} | json '
+        '| correlation_id != "" | correlation_id =~ `.*$correlation_id.*`'
+    )
+    panels = [
+        Table(
+            title="Logs by Correlation ID",
+            gridPos=GridPos(h=_RECENT_LOGS_H, w=24, x=0, y=y),
+            targets=[
+                _target(
+                    corr_filter + _LINE_FORMAT,
+                    datasource_uid=datasource,
+                    legend="{{plugin}}",
+                ),
+            ],
+        ),
+    ]
+    y += _RECENT_LOGS_H
+    row = Row(
+        title="Logs by Correlation ID",
+        panels=panels,
+    )
+    return [row], y
+
+
+# ---------------------------------------------------------------------------
 # Template variables
 # ---------------------------------------------------------------------------
 
 
 def build_loki_templates(model: DashboardModel) -> list:
     """Build grafanalib Template objects for Loki dashboard variables.
+
+    Includes ``$service``, per-plugin-kind filters, ``$log_search``, and
+    ``$correlation_id`` (used by :func:`_build_correlation_id_log_row`).
 
     Parameters
     ----------
@@ -401,6 +459,21 @@ def build_loki_templates(model: DashboardModel) -> list:
         ),
     )
 
+    # generator._build_trace_templates declares the same textbox, so one value
+    # drives both trace and log panels; _assemble_unified_panels dedupes by
+    # name when a dashboard carries both.
+    templates.append(
+        Template(
+            name="correlation_id",
+            label="Correlation ID",
+            type="textbox",
+            query="",
+            allValue=".*",
+            includeAll=False,
+            multi=False,
+        ),
+    )
+
     return templates
 
 
@@ -418,7 +491,8 @@ def build_loki_panels(
 
     Returns a list of grafanalib ``Row`` panel objects, each containing
     ``Table`` panels that query Loki with LogQL.  Panels cover log levels,
-    errors, per-plugin log streams, and free-text search.
+    errors, per-plugin log streams, free-text search, and a correlation-ID
+    lookup.
 
     Panel rows are only emitted when the model contains relevant plugins.
 
@@ -463,5 +537,9 @@ def build_loki_panels(
     # 6. Log Search -- always
     search_rows, y = _build_log_search_row(datasource, y)
     rows.extend(search_rows)
+
+    # 7. Logs by Correlation ID -- always
+    corr_rows, y = _build_correlation_id_log_row(datasource, y)
+    rows.extend(corr_rows)
 
     return rows

@@ -42,8 +42,8 @@ def _wire_broker(
     """Point the service's broker manager at a stub channel.
 
     The probe takes a connection of its own from
-    ``open_private_connection`` rather than borrowing the service's shared
-    ``_connection``, so that is what is stubbed here.  A broker that cannot
+    ``open_private_connection`` rather than borrowing a publisher
+    connection, so that is what is stubbed here.  A broker that cannot
     be reached raises from there, which is the ``connected=False`` case.
     """
     channel = MagicMock()

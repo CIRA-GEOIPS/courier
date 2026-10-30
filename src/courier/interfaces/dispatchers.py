@@ -10,7 +10,6 @@ import queue
 import tempfile
 import threading
 import time
-import traceback
 from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -231,7 +230,7 @@ class Dispatcher(ServicePlugin):
         # taking messages while max_workers jobs are in flight.
         self._slots = threading.BoundedSemaphore(self.config.max_workers)
 
-    def get_execution_log(self, job: Job) -> list[ExecutionLog]:
+    def execute(self, job: Job) -> list[ExecutionLog]:
         """Resolve the job's payload, prepare its environment, and execute it.
 
         Parameters
@@ -715,7 +714,14 @@ class Dispatcher(ServicePlugin):
         ).set(message_count)
 
     def _run_handle_incoming_jobs(self) -> None:
-        """Exit the process on any unhandled exception."""
+        """Run the consume loop; mark the plugin FAILED and re-raise if it dies.
+
+        The exception ends this thread. :meth:`is_healthy` then reports the
+        dead thread and the plugin manager restarts the dispatcher under its
+        restart policy, rather than the whole process exiting. The message
+        in hand is unacknowledged when the loop is abandoned, so
+        :meth:`~courier.service.Service._relay` requeues or parks it.
+        """
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
             "dispatcher.handle_incoming_jobs",
@@ -727,13 +733,14 @@ class Dispatcher(ServicePlugin):
             try:
                 self.handle_incoming_jobs()
             except Exception:
-                traceback.print_exc()
                 span.set_status(Status(StatusCode.ERROR))
+                self._state = PluginRunState.FAILED
                 self._logger.critical(
-                    "Fatal error in dispatcher %s: exiting",
+                    "Fatal error in dispatcher %s: its thread is exiting",
                     self.name,
+                    exc_info=True,
                 )
-                os._exit(1)
+                raise
 
     def _consume_jobs(self) -> None:
         """Consume this dispatcher's job queue, submitting each job to the pool.
@@ -893,7 +900,7 @@ class Dispatcher(ServicePlugin):
             start_time - job.last_modified,
         )
         try:
-            execution_logs = self.get_execution_log(job)
+            execution_logs = self.execute(job)
             get_current_span().add_event(
                 "job.executed",
                 attributes={
@@ -1002,8 +1009,15 @@ class Dispatcher(ServicePlugin):
             self._main_thread.join(timeout=5)
 
     def is_healthy(self) -> bool:
-        """Check if plugin is healthy."""
-        return self._state == PluginRunState.RUNNING
+        """Return whether the dispatcher is running and its consumer thread is alive.
+
+        A consume loop that has exited, or a thread that died, is unhealthy
+        even though nothing called ``stop()``; the state flag alone once
+        reported such a dispatcher healthy forever.
+        """
+        return self._state == PluginRunState.RUNNING and (
+            self._main_thread is None or self._main_thread.is_alive()
+        )
 
     def wait_until_subscribed(self, timeout: float) -> bool:
         """Block until this dispatcher is bound to its job queue.

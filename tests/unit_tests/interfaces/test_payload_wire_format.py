@@ -42,7 +42,6 @@ DATA_FILE = "/data/in-a.nc"
 def service() -> MagicMock:
     svc = MagicMock()
     svc.config = MagicMock(log_level="DEBUG", loki_enabled=False, namespace="ns")
-    svc._broker_manager._connection = None
     svc.target_resolver = None
     return svc
 
@@ -173,7 +172,7 @@ class TestTheTemplateTravelsOnce:
             # The template need not exist where the dispatcher runs.
             Path(config["file"]).unlink()
 
-        (log,) = LocalDispatcher(service, {}, identifier="ld").get_execution_log(
+        (log,) = LocalDispatcher(service, {}, identifier="ld").execute(
             Job.from_string(message),
         )
 
@@ -202,7 +201,7 @@ class TestTheTemplateTravelsOnce:
         older = json.dumps(body)
         assert older.count(UNIQUE) == (2 if source == "inline" else 1)
 
-        (log,) = LocalDispatcher(service, {}, identifier="ld").get_execution_log(
+        (log,) = LocalDispatcher(service, {}, identifier="ld").execute(
             Job.from_string(older),
         )
 

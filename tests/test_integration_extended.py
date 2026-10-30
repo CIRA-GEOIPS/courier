@@ -24,8 +24,7 @@ from courier.constants import (
     PluginRunState,
     job_ready_queue_for,
 )
-from courier.errors import UnknownTargetError
-from courier.managers.plugin_manager import PluginStateInfo
+from courier.errors import PluginFailedError, UnknownTargetError
 from courier.plugins.data_monitors.cron_glob import CronGlob
 from courier.plugins.dispatchers.local_dispatcher import LocalDispatcher
 from courier.plugins.job_builders.dummy_job_builder import DummyJobBuilder
@@ -36,10 +35,9 @@ from courier.plugins.job_builders.metadata_router import (
     MetadataRouterBuilder,
 )
 from courier.service import Service
-from courier.types.execution_log import ExecutionLog
 from courier.types.datum import Datum
+from courier.types.execution_log import ExecutionLog
 from courier.types.job import Job
-
 from tests._helpers import payload_block, poll_until, stays_false
 
 # ---------------------------------------------------------------------------
@@ -552,9 +550,9 @@ def test_execution_log_flows_back(tmp_path: Path) -> None:
             future = executor.submit(_consume_one)
             log_entry = future.result(timeout=15)
 
-        assert (
-            log_entry is not None
-        ), "No ExecutionLog received from DISPATCHER_QUEUE within timeout"
+        assert log_entry is not None, (
+            "No ExecutionLog received from DISPATCHER_QUEUE within timeout"
+        )
         assert log_entry.return_code is not None, "ExecutionLog must have a return_code"
         assert isinstance(log_entry.return_code, int)
     finally:
@@ -960,4 +958,76 @@ def test_metadata_router_routes_by_source(tmp_path: Path) -> None:
             str(file_a) not in b_log.read_text()
         ), "proc_b should NOT process sat_a file"
     finally:
+        _shutdown_service(service, thread)
+
+
+@pytest.mark.integration
+def test_a_plugin_stuck_in_start_ends_the_service(tmp_path: Path) -> None:
+    """A ``start()`` that never returns cannot be interrupted, so the service
+    gives the plugin up, reports it exhausted, and exits with
+    ``PluginFailedError`` for the orchestrator to act on.
+    """
+    release = threading.Event()
+
+    class StuckCronGlob(CronGlob):
+        """CronGlob whose start() blocks until the test releases it."""
+
+        name = "stuck_cron_glob"
+
+        def start(self) -> None:
+            release.wait()
+
+    watch_dir = tmp_path / "stuck_input"
+    watch_dir.mkdir()
+    service = Service(
+        ServiceConfig(
+            broker_url="memory://",
+            prometheus_port=0,
+            heartbeat_interval=1,
+            plugin_health_check_interval=1,
+            plugin_start_timeout=2,
+            namespace=f"test-stuck-{uuid.uuid4().hex[:8]}",
+        ),
+    )
+    service.register_plugin(
+        StuckCronGlob,
+        {
+            "path": str(watch_dir),
+            "glob_pattern": "*.nc",
+            "cron_expression": "* * * * *",
+            "hostname": "test-host",
+        },
+    )
+    service.register_plugin(
+        DummyJobBuilder,
+        {"payload": payload_block("payload", "true")},
+        identifier="builder",
+    )
+    service.register_plugin(LocalDispatcher, {}, identifier="runner")
+
+    outcome: list[BaseException | None] = []
+
+    def run() -> None:
+        try:
+            service.start()
+        except BaseException as exc:  # noqa: BLE001
+            outcome.append(exc)
+        else:
+            outcome.append(None)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    try:
+        thread.join(timeout=30)
+        assert not thread.is_alive(), "service did not exit"
+        assert isinstance(outcome[0], PluginFailedError)
+        assert "stuck_cron_glob" in str(outcome[0])
+        status = service._plugin_manager.get_plugin_status()
+        stuck = next(v for k, v in status.items() if "stuck" in k)
+        assert stuck["state"] == "FAILED"
+        assert "did not return" in stuck["error"]
+    finally:
+        release.set()
+        # A no-op once the service has exited; otherwise it is stopped here
+        # rather than left running for the rest of the session.
         _shutdown_service(service, thread)
