@@ -249,6 +249,7 @@ class ServiceConfig:
             raise ConfigurationError(
                 "live reload must be one of off, hard, or blue-green, "
                 f"got {self.live_reload}",
+            )
         if self.plugin_start_timeout <= 0:
             raise ConfigurationError(
                 "plugin_start_timeout must be positive, "
