@@ -1,10 +1,7 @@
 """Deploys docker for a specified payload."""
 
-from copy import deepcopy
-from multiprocessing import Value
 from pathlib import Path
-from turtle import update
-from typing import Any, ClassVar, cast
+from typing import ClassVar, cast
 
 import docker
 from pydantic import Field, field_validator, model_validator
@@ -19,7 +16,7 @@ from courier.plugins.payloads.bash_payload import BashPayload
 from courier.plugins.payloads.python_payload import PythonPayload
 from courier.plugins.payloads.shell_payload import ShellPayload
 from courier.service import Service
-from courier.types import Datum, ExecutionLog, FrozenDatum, Job
+from courier.types import Job
 
 
 class DockerDispatcherConfig(DispatcherConfig):
@@ -68,9 +65,12 @@ class DockerDispatcherConfig(DispatcherConfig):
                 raise ValueError(
                     f"Invalid volume mount: {value} " "invalid mapping detected.",
                 )
-            if len(split_sides) == 3 and split_sides[2] not in ("ro", "rw"):
+            if len(split_sides) == 3 and split_sides[2] not in (  # noqa: PLR2004
+                "ro",
+                "rw",
+            ):
                 raise ValueError(
-                    f"Invalid volume mode in {volume_str}; expected 'ro' or 'rw'."
+                    f"Invalid volume mode in {volume_str}; expected 'ro' or 'rw'.",
                 )
             local = split_sides[0]
             remote = split_sides[1]
@@ -80,13 +80,13 @@ class DockerDispatcherConfig(DispatcherConfig):
                 raise ValueError(
                     f"Volume host path {local} must be absolute or start with"
                     " './' or '../'. "
-                    "A bare name is parsed by Docker as a named volume."
+                    "A bare name is parsed by Docker as a named volume.",
                 )
 
             local_path = Path(local).resolve()
             if not local_path.exists():
                 raise FileNotFoundError(
-                    f"Invalid volume mount" f" Local path {local_path} not found!"
+                    f"Invalid volume mount" f" Local path {local_path} not found!",
                 )
 
             # validation on remote path
@@ -124,7 +124,6 @@ class DockerDispatcher(Dispatcher):
         self._docker_args = docker_config.docker_args
         self._volumes = docker_config.volumes
         self._mount_point = docker_config.mount_point
-        self._extra_volumes: list[str] = []
 
     def _validate_payload_toolchain(self, payload: Payload) -> None:
         if not payload.config.toolchain_prepend:
@@ -139,23 +138,6 @@ class DockerDispatcher(Dispatcher):
 
         return args
 
-    def _set_job_paths(self, job: Job) -> tuple[Job, list[str]]:
-        """Create and return a deepcopy and volume string of the jobs with valid paths."""
-        faux_job = deepcopy(job)
-        volume_str: list[str] = []
-        updated_files: set[FrozenDatum[Any]] = set()
-
-        for f in faux_job.files:
-            if not f.file:
-                updated_files.add(f)
-                continue
-
-            host_path = Path(f.file).absolute()
-            volume_str.append(f"{host_path}:{host_path}")
-
-        faux_job.files = updated_files
-        return (faux_job, volume_str)
-
     def initialize_environment(self, job: Job, payload: Payload) -> ExecutionPayload:
         """Initialize the docker command to run and mount the temporary script."""
         # gracefully set the jobs to be valid in the container's environment
@@ -169,14 +151,15 @@ class DockerDispatcher(Dispatcher):
             docker_script_path = Path(f"{self._mount_point}/script/{filename}")
 
             docker_mount_str = f"{normalized_script_path}:{docker_script_path}"
+        job_volumes = [
+            f"{Path(f.file).absolute()}:{Path(f.file).absolute()}:ro"
+            for f in job.files
+            if f.file
+        ]
         try:
             command = [
                 *self._build_docker_args(
-                    (
-                        [docker_mount_str, *self._extra_volumes]
-                        if docker_mount_str
-                        else None
-                    ),
+                    ([docker_mount_str, *job_volumes] if docker_mount_str else None),
                 ),
                 *self._render_command(job, payload, docker_script_path, context),
             ]
@@ -193,7 +176,3 @@ class DockerDispatcher(Dispatcher):
             log_prefix=log_prefix,
             log_file_path=log_file_path,
         )
-
-    def execute(self, job: Job) -> list[ExecutionLog]:
-        faux_job, self._extra_volumes = self._set_job_paths(job)
-        return super().execute(faux_job)
