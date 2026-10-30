@@ -19,6 +19,7 @@ from courier.plugins.payloads.shell_payload import ShellPayload, ShellPayloadCon
 from courier.service import Service
 from courier.types import Datum, Job
 from courier.types.payload import PayloadSpec
+from courier.utils.shell_executor import ShellExecResult
 
 
 @pytest.fixture
@@ -222,6 +223,7 @@ class TestDispatcherFunctionality:
             ANY,
         ]
 
+    @pytest.mark.docker
     def test_validate_payload_toolchain(self, docker_client):
         """The docker dispatcher should prepend `docker run {container} to the toolchain validation.`"""
         docker_client.images.list.return_value = [object()]
@@ -236,7 +238,9 @@ class TestDispatcherFunctionality:
         plugin = DockerDispatcher(service, {"image": "alpine"}, "dummy-dispatcher")
 
         with patch.object(
-            payload, "_probe_toolchain", wraps=payload._probe_toolchain
+            payload,
+            "_probe_toolchain",
+            return_value=[ShellExecResult(return_code=1, stdout="", stderr="")],
         ) as mock_probe:
             plugin._validate_payload_toolchain(payload)
 
