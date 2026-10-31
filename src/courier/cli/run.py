@@ -224,6 +224,7 @@ def run_service(
         config.spec.service_config,
         broker_url=config.spec.broker.to_url(),
         namespace=config.metadata.namespace or "default",
+        config_path=config.metadata.config_path,
         service_id=_resolve_service_id(config),
         **overrides,
     )

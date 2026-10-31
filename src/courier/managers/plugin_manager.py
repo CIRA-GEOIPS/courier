@@ -23,6 +23,7 @@ from courier.tracing import (
     ATTR_PLUGIN_NAME,
     get_tracer,
 )
+from courier.utils.config_monitor import ConfigMonitor
 from courier.utils.decorators import log_execution
 from courier.utils.logging import get_logger
 
@@ -72,6 +73,9 @@ class PluginStateInfo:
     """
 
     plugin: ServicePlugin
+    plugin_type: type[ServicePlugin] | None = None
+    identifier: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
     state: PluginRunState = PluginRunState.STOPPED
     thread: threading.Thread | None = None
     abandoned_threads: list[threading.Thread] = field(default_factory=list)
@@ -139,6 +143,12 @@ class PluginManager(ServiceManager):
         self._plugin_health_metric = PLUGIN_HEALTH
         self._registration_failures_metric = PLUGIN_REGISTRATION_FAILURES
 
+        if self._config.live_reload != "off":
+            self._config_monitor = ConfigMonitor(
+                self._config.config_path,
+                parent_service=self,
+            )
+
         self._tracer = get_tracer(__name__)
 
     @staticmethod
@@ -194,7 +204,12 @@ class PluginManager(ServiceManager):
 
             plugin_name = plugin_instance.name
 
-            info = PluginStateInfo(plugin=plugin_instance)
+            info = PluginStateInfo(
+                plugin=plugin_instance,
+                config=config,
+                identifier=identifier,
+                plugin_type=plugin,
+            )
             self._plugins[registry_key] = info
 
             # Emit initial metric values so the series exists from container
@@ -418,6 +433,20 @@ class PluginManager(ServiceManager):
                 },
             )
 
+    def _wipe_plugin(self, plugin_info: PluginStateInfo) -> None:
+        """Remove a plugin from the plugin manager safely."""
+        if not plugin_info.identifier:
+            raise CourierError("No identifier specified for plugin to be wiped.")
+        with self._lock:
+            self._plugins.pop(plugin_info.identifier, None)
+
+        thread = plugin_info.thread
+        self._stop_plugin(plugin_info)
+        if thread is not None and thread.is_alive():
+            raise CourierError(
+                f"Plugin {plugin_info.identifier} failed to stop within the timeout.",
+            )
+
     @staticmethod
     def _abandon_thread_locked(
         plugin_info: PluginStateInfo,
@@ -612,6 +641,14 @@ class PluginManager(ServiceManager):
         """
         return self._state == PluginRunState.RUNNING
 
+    def _is_registered_locked(self, plugin_info: PluginStateInfo) -> bool:
+        """Return whether a plugin is still registered. Lock held.
+
+        A soft reload can wipe a plugin between the monitor taking its
+        snapshot and acting on it; a wiped plugin must not be restarted.
+        """
+        return any(info is plugin_info for info in self._plugins.values())
+
     def _restarts_left_locked(self, plugin_info: PluginStateInfo) -> bool:
         """Return whether the plugin has restart attempts left. Lock held."""
         return plugin_info.restart_count < self._config.plugin_max_restart_attempts
@@ -692,6 +729,7 @@ class PluginManager(ServiceManager):
                     plugin_info.state == PluginRunState.RESTARTING
                     and plugin_info.restart_due is not None
                     and now >= plugin_info.restart_due
+                    and self._is_registered_locked(plugin_info)
                 ):
                     plugin_info.restart_due = None
                     due.append(plugin_info)
@@ -713,7 +751,9 @@ class PluginManager(ServiceManager):
         plugin_ident = self._plugin_identifier(plugin_info.plugin)
 
         with self._lock:
-            if not self._is_running_locked():
+            if not self._is_running_locked() or not self._is_registered_locked(
+                plugin_info,
+            ):
                 return
             can_restart = self._restarts_left_locked(plugin_info)
 
@@ -774,6 +814,8 @@ class PluginManager(ServiceManager):
             if self._state == PluginRunState.RUNNING:
                 return
             self._state = PluginRunState.RUNNING
+            if self._config.live_reload != "off":
+                self._config_monitor.start()
 
         # Phase 1: Start every plugin.
         #
@@ -831,6 +873,8 @@ class PluginManager(ServiceManager):
 
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=5)
+        if self._config.live_reload != "off":
+            self._config_monitor.stop()
 
         self._logger.info("Plugin manager stopped")
 

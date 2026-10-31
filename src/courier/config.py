@@ -103,6 +103,15 @@ class ServiceConfig:
     tracing_sample_rate : float, optional
         Trace sampling rate between 0.0 and 1.0. Defaults to
         COURIER_TRACING_SAMPLE_RATE or 1.0 (always on).
+    live_reload : str, optional
+        Reconfigure service configuration while running. Three options:
+            - off: Does not reconfigure service configuration while running
+            - hard: Stops updated service and initializes the new one.
+            - blue-green: Get the new service running. If it succeeds, stop the old one.
+    config_path : str, optional
+        -----Testing purposes only-----
+        To be routed into the Service object instead of defined explicitly
+        Path to watch for live reload
 
     Examples
     --------
@@ -127,6 +136,15 @@ class ServiceConfig:
             "default",
         ),
     )
+
+    # this is filled in at runtime, and really should not be overridden by users.
+    config_path: str = field(
+        default_factory=lambda: os.environ.get(
+            "SERVICE_CONFIG_PATH",
+            "",
+        ),
+    )
+
     prometheus_port: int = field(
         default_factory=lambda: int(os.environ.get("PROMETHEUS_PORT", "8000")),
     )
@@ -204,6 +222,9 @@ class ServiceConfig:
             os.environ.get("COURIER_TRACING_SAMPLE_RATE", "1.0"),
         ),
     )
+    live_reload: str = field(
+        default_factory=lambda: os.environ.get("COURIER_LIVE_RELOAD", "off"),
+    )
 
     def __post_init__(self) -> None:
         """Validate the sample rate, prefetch, redelivery and start bounds."""
@@ -223,6 +244,11 @@ class ServiceConfig:
                 "broker_max_redeliveries must not be negative "
                 "(0 parks a failing message on the first attempt), "
                 f"got {self.broker_max_redeliveries}",
+            )
+        if self.live_reload not in {"off", "hard", "blue-green"}:
+            raise ConfigurationError(
+                "live reload must be one of off, hard, or blue-green, "
+                f"got {self.live_reload}",
             )
         if self.plugin_start_timeout <= 0:
             raise ConfigurationError(
