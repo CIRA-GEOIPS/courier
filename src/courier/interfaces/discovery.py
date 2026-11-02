@@ -35,6 +35,7 @@ from __future__ import annotations
 import functools
 from dataclasses import dataclass, field
 from importlib.metadata import EntryPoint, entry_points
+from importlib.util import find_spec
 from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 from courier.errors import PluginNotFoundError, PluginValidationError
@@ -60,6 +61,10 @@ REMOVED_PLUGINS: dict[tuple[str, str], str] = {
         "use local_dispatcher, with a bash_payload in the job builder's payload block"
     ),
     ("dispatchers", "http_dispatcher"): "it has no replacement",
+}
+
+OPTIONAL_IMPORTS = {
+    ("courier.dispatchers", "docker_dispatcher"): "docker",
 }
 
 ModelT = TypeVar("ModelT", bound="BaseModel")
@@ -193,7 +198,16 @@ class ClassPluginRegistry(_EntryPointRegistry):
 
     def get_plugins(self) -> list[type[ServicePlugin]]:
         """Return every plugin class in this group, importing each one."""
-        return [self.get_plugin(name) for name in self.names()]
+        plugins = []
+
+        for name in self.names():
+            dependency = OPTIONAL_IMPORTS.get((self.group, name))
+
+            if dependency and find_spec(dependency) is None:
+                continue
+
+            plugins.append(self.get_plugin(name))
+        return plugins
 
 
 @dataclass(frozen=True)

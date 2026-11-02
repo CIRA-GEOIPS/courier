@@ -26,6 +26,9 @@ from courier.interfaces.discovery import (
     ConfigPluginRegistry,
     refresh,
 )
+
+import courier.interfaces.discovery as discovery
+
 from courier.interfaces.dispatchers import Dispatcher
 from courier.schema import DataMonitorConfig
 
@@ -197,6 +200,35 @@ class TestDiscovery:
         import fake_courier_plugins  # noqa: PLC0415
 
         assert loaded is fake_courier_plugins.ThirdPartyDispatcher
+
+    def test_missing_dependency_skips_plugin(
+        self,
+        fake_dist: Path,
+        class_registry: ClassPluginRegistry,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(
+            discovery.OPTIONAL_IMPORTS,
+            (_TEST_GROUP, "broken_on_import"),
+            "missing_optional_dependency",
+        )
+
+        monkeypatch.setattr(
+            discovery,
+            "find_spec",
+            lambda name: None,
+        )
+
+        monkeypatch.setattr(
+            ClassPluginRegistry,
+            "names",
+            lambda self: ["third_party_dispatcher", "broken_on_import"],
+        )
+
+        plugins = class_registry.get_plugins()
+
+        assert [plugin.name for plugin in plugins] == ["third_party_dispatcher"]
+        assert "broken_courier_plugin" not in sys.modules
 
 
 # ── error reporting ─────────────────────────────────────────────────────────
