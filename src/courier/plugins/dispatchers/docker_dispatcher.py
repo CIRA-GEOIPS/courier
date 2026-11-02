@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import ClassVar, cast
 
-import docker
 from pydantic import Field, field_validator, model_validator
 
+from courier.errors import InvalidPluginConfigError
 from courier.interfaces.dispatchers import (
     Dispatcher,
     DispatcherConfig,
@@ -42,6 +42,13 @@ class DockerDispatcherConfig(DispatcherConfig):
 
     @model_validator(mode="after")
     def _validate_image(self) -> "DockerDispatcherConfig":
+        try:
+            import docker  # noqa:PLC0415
+        except ImportError as exc:
+            raise InvalidPluginConfigError(
+                "docker_dispatcher requires the docker extra: "
+                "pip install courier-pigeon[docker]",
+            ) from exc
         client = docker.from_env()
         try:
             image_name = f"{self.image}:{self.tag}"
