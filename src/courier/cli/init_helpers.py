@@ -146,6 +146,10 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
         if field_info.description:
             description = str(field_info.description)
 
+        extra = {}
+        if isinstance(field_info.json_schema_extra, dict):
+            extra = field_info.json_schema_extra
+
         fields.append(
             {
                 "name": field_name,
@@ -153,6 +157,7 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
                 "default": default,
                 "description": description,
                 "required": required,
+                "extra": extra,
             },
         )
 

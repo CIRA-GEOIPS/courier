@@ -300,6 +300,11 @@ def prompt_plugin_config(
         required = field_meta["required"]
         default = field_meta["default"]
         description = field_meta.get("description", "")
+        extra = field_meta["extra"]
+
+        # skip hidden fields
+        if extra.get("hidden"):
+            continue
 
         # Build the prompt label
         if required:
