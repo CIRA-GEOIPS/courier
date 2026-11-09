@@ -24,9 +24,7 @@ from courier.utils.shell_executor import ShellExecResult
 
 @pytest.fixture
 def docker_client(mocker):
-    client = mocker.patch(
-        "courier.plugins.dispatchers.docker_dispatcher.docker.from_env"
-    ).return_value
+    client = mocker.patch("docker.from_env").return_value
 
     return client
 
