@@ -60,7 +60,9 @@ client.signal(data)
 - Requires access to a running message broker.
 - In-memory data must be serialized and transmitted through the broker, causing
   some network overhead.
-- Data size limitations may apply when submitting large amounts of data through
-  RabbitMQ
+- A payload larger than the broker's maximum message size is rejected by the
+  broker: the publish raises a broker error rather than truncating or silently
+  dropping the data, so an oversized injection fails loudly. Callers should
+  keep injected payloads small and pass large data by reference.
 - External programs must construct valid data payloads and supply metadata,
   rather than relying on data monitors to perform these tasks.
