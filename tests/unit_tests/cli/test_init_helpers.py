@@ -1,6 +1,7 @@
 """Unit tests for courier.cli.init_helpers."""
 
 from __future__ import annotations
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, Field
@@ -163,6 +164,25 @@ class TestGetFieldMetadata:
         fields = get_field_metadata(FileSystemPollerConfig)
         path_field = next(f for f in fields if f["name"] == "path")
         assert path_field["description"]
+
+    def test_extra_field(self):
+        class PayloadNoFile(PayloadConfig):
+            file: Path | None = Field(default=None, json_schema_extra={"hidden": True})
+
+        fields = get_field_metadata(PayloadNoFile)
+
+        for field_meta in fields:
+            if field_meta["name"] == "file":
+                extra = field_meta["extra"]
+                assert isinstance(extra, dict)
+                assert extra.get("hidden")
+
+    def test_required_hidden_field(self):
+        class FWNoFile(BaseModel):
+            file: Path = Field(json_schema_extra={"hidden": True})
+
+        with pytest.raises(ValueError, match="Required field file is hidden"):
+            get_field_metadata(FWNoFile)
 
 
 class TestGetPluginDescription:
