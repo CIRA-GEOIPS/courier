@@ -244,7 +244,7 @@ def classify_broker_error(
         return TransientBrokerError(
             f"transient failure while {action} {target_name!r}: {exc}",
         )
-    known = (
+    known: tuple[type[BaseException], ...] = (
         KombuError,
         *_error_types(conn, "channel_errors"),
         *_error_types(conn, "connection_errors"),
@@ -966,11 +966,13 @@ class MessageBrokerManager(ServiceManager):
         with self._publisher_lock:
             self._publisher_stopped = False
         conn = self._cached_publisher_connection()
-        if conn is not None and conn.connected:
-            return
         if conn is not None:
+            if conn.connected:
+                return
             self._discard_publisher_connection(conn)
-        self._adopt_publisher_connection(self._open_publisher_connection())
+        pub_connection = self._open_publisher_connection()
+        if pub_connection is not None:
+            self._adopt_publisher_connection(pub_connection)
 
     def stop(self) -> None:
         """Close every broker connection this manager owns and reset state."""
