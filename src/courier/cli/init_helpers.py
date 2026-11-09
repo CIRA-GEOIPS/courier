@@ -148,6 +148,12 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
                     call_default_factory=True,
                     validated_data={},
                 )
+        else:
+            if extra.get("hidden"):
+                raise ValueError(
+                    f"Required field {field_name} is hidden, "
+                    "and therefore cannot be set, making it invalid."
+                )
 
         annotation = field_info.annotation
         if annotation is not None:

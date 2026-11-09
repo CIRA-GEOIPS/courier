@@ -177,6 +177,13 @@ class TestGetFieldMetadata:
                 assert isinstance(extra, dict)
                 assert extra.get("hidden")
 
+    def test_required_hidden_field(self):
+        class FWNoFile(BaseModel):
+            file: Path = Field(json_schema_extra={"hidden": True})
+
+        with pytest.raises(ValueError, match="Required field file is hidden"):
+            get_field_metadata(FWNoFile)
+
 
 class TestGetPluginDescription:
     """Tests for get_plugin_description()."""
