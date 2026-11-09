@@ -1,12 +1,14 @@
 # Design Concepts
 
-This section explains Courier's architecture — how plugins fit together,
-how messages flow through the pipeline, and why key design choices were
-made the way they were.
+This section explains Courier's architecture — how plugins fit together, how
+messages flow through the pipeline, and why key design choices were made the way
+they were.
 
 ## Architecture Decision Records (ADRs)
 
-Courier's architecture is shaped by Architecture Decision Records (ADRs) — documents that capture non-obvious design choices, alternatives considered, and trade-offs accepted. Each ADR below covers a specific architectural decision.
+Courier's architecture is shaped by Architecture Decision Records (ADRs) —
+documents that capture non-obvious design choices, alternatives considered, and
+trade-offs accepted. Each ADR below covers a specific architectural decision.
 
 ```{toctree}
 :maxdepth: 1
@@ -24,4 +26,5 @@ adr/0010-poison-message-handling
 adr/0011-dispatchers-execute-jobs
 adr/0012-import-layering
 adr/0013-stuck-plugin-start
+adr/0014-programmatic-data-injection
 ```
