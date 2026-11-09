@@ -118,19 +118,36 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
     """
     fields: list[dict[str, Any]] = []
 
+    schema_properties = model.model_json_schema().get("properties", {})
+
     for field_name, field_info in model.model_fields.items():
         required = field_info.is_required()
         default: Any = ...
+
+        resolved_schema = schema_properties.get(field_name, {})
+        extra = {}
+        if isinstance(field_info.json_schema_extra, dict):
+            extra = field_info.json_schema_extra
+
+        if "hidden" in resolved_schema:
+            extra["hidden"] = resolved_schema["hidden"]
+
         if not required:
             # ``field_info.default`` is PydanticUndefined for a factory default,
             # which the prompt once offered and wrote into the config as the
             # literal string "PydanticUndefined"; ask pydantic to resolve it.
             # ``validated_data`` is the field *values* a factory taking data
             # receives -- none exist before prompting, so pass an empty dict.
-            default = field_info.get_default(
-                call_default_factory=True,
-                validated_data={},
-            )
+            if extra.get("hidden"):
+                if field_info.default_factory is None:
+                    default = field_info.get_default(
+                        call_default_factory=False,
+                    )
+            else:
+                default = field_info.get_default(
+                    call_default_factory=True,
+                    validated_data={},
+                )
 
         annotation = field_info.annotation
         if annotation is not None:
@@ -145,10 +162,6 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
         description = ""
         if field_info.description:
             description = str(field_info.description)
-
-        extra = {}
-        if isinstance(field_info.json_schema_extra, dict):
-            extra = field_info.json_schema_extra
 
         fields.append(
             {
