@@ -46,8 +46,14 @@ client.signal(data)
 - Data injection will reuse Courier's existing message-based architecture and
   allow submitted data to flow through the existing job builders and
   dispatchers.
-- Directly injected data will bypass the data-monitoring stage, potentially
-  requiring callers to supply metadata normally provided by data monitors.
+- Directly injected data will bypass the data-monitoring stage, so callers
+  must supply the metadata that data monitors would otherwise add: the
+  `Datum` attributes `source`, `instrument`, `processing_stage`, `domain`,
+  `hostname`, `num_expected` and `timestamp`, plus any `metadata` keys the
+  configured job-builder filters read. A filter key present in neither the
+  `metadata` dict nor the `Datum` attributes makes the file fail the filter
+  and be dropped, so injected data missing a configured filter key never
+  reaches a job.
 
 ## Trade-offs
 
