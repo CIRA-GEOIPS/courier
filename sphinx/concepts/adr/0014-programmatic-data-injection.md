@@ -6,18 +6,34 @@ Planning
 
 ## Context
 
-Courier workflows are triggered by the presence of data. As it stands now, the
-data must be present on a source before Courier can recognize it. There is no
-direct program-to-courier pipeline, which presents quite a costly overhead in
-time and space.
+Direct program-to-courier pipelines have been proven as a very useful way to
+trigger Courier workflows for all of the following use cases:
+
+    - Submitting data without writing it to a file
+    - Programmatic data submission
+    - CLI-driven data submission
+
+A user who wants to use this program-to-courier pipeline may be inexperienced or
+working on a small project that does not call for a broker setup. This calls for
+a native, easy, and customizable solution to data injection in Courier.
 
 ## Decision
 
 `courier song/signal/call`: A programmatic way to inject data into the found
-datum queue. It will serialize the supplied data in to a Datum object and
-publish it to the existing FilesFoundExchange through Courier's configured
-message broker. This allows the supplied data to enter the job building and
-dispatching pipeline directly from the call.
+datum queue. It will serialize the supplied data into a Datum object and publish
+it to the existing FilesFoundExchange through Courier's configured message
+broker. This allows the supplied data to enter the job building and dispatching
+pipeline directly from the call.
+
+If a service is configured with this functionality, a broker and broker data
+watcher will be attached to the service at startup. The call will prompt the
+plugin manager for the exchange to publish to. It will act as a catch-all
+approach to data injection, as the same syntax will apply to all available
+message queue services.
+
+If a file is passed, its metadata will be collected with Courier's built-in
+metadata collection functionality. If a piece of in-memory data is passed, it
+will be populated with a timestamp and the service's configured hostname.
 
 ## Syntax
 
