@@ -35,6 +35,12 @@ If a file is passed, its metadata will be collected with Courier's built-in
 metadata collection functionality. If a piece of in-memory data is passed, it
 will be populated with a timestamp and the service's configured hostname.
 
+## Preconditions
+
+1. The broker must be initialized after all the job builders are initialized,
+   predeclaring the fanout exchange and attaching itself to the FilesFound queue
+   for each builder.
+
 ## Syntax
 
 `courier song/signal/call` can be called through the command-line and through
