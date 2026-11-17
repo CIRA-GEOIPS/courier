@@ -398,13 +398,16 @@ def prompt_plugin_config(  # noqa: PLR0912
         nested_model = get_nested_model(annotation)
 
         if nested_model is not None:
-            if not required and is_nullable(annotation):
-                if not Confirm.ask(
+            if (
+                not required
+                and is_nullable(annotation)
+                and not Confirm.ask(
                     f"{prompt_text} [dim]configure?[/dim]",
                     default=False,
                     console=console,
-                ):
-                    continue
+                )
+            ):
+                continue
             if required:
                 console.print(f"{prompt_text}:")
             nested_values = prompt_plugin_config(
