@@ -196,3 +196,19 @@ def get_nested_model(type_hint: Any) -> type[BaseModel] | None:
             return get_nested_model(args[0])
 
     return None
+
+
+def get_list_item_type(annotation: Any) -> Any | None:
+    """Get the element annotation for a `list` item."""
+    origin = get_origin(annotation)
+
+    if origin in (Union, UnionType):
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(non_none) == 1:
+            return get_list_item_type(non_none[0])
+
+    if annotation is list or origin is list:
+        args = get_args(annotation)
+        return args[0] if args else Any
+
+    return None

@@ -6,8 +6,9 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import UnionType
 from re import escape
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
 
 from pydantic_core import PydanticUndefined
 import typer
@@ -23,6 +24,7 @@ from courier.cli.init_helpers import (
     get_field_metadata,
     get_plugin_description,
     get_nested_model,
+    get_list_item_type,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
@@ -281,6 +283,60 @@ def prompt_metadata(console: Console) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def _prompt_list_items(
+    item_type: Any,
+    console: Console,
+    *,
+    label: str,
+    indent: int,
+    required: bool = False,
+) -> list[Any]:
+    """Prompt repeatedly for list elements."""
+    pad = " " * indent
+    items: list[Any] = []
+
+    while Confirm.ask(
+        f"{pad}{escape(label)} "
+        f"[dim]{'Add another item?' if items else 'Add an item?'}[/dim]",
+        default=required and not items,
+        console=console,
+    ):
+        item_label = f"{label}[{len(items) + 1}]"
+        nested_list_item_type = get_list_item_type(item_type)
+        nested_model = get_nested_model(item_type)
+
+        if nested_list_item_type is not None:
+            console.print(f"{pad}  [dim]{escape(item_label)}:[/dim]")
+            item = _prompt_list_items(
+                nested_list_item_type,
+                console,
+                label=item_label,
+                indent=indent + 2,
+            )
+        elif nested_model is not None:
+            console.print(f"{pad}  [dim]{escape(item_label)}:[/dim]")
+            item = prompt_plugin_config(nested_model, console, indent=indent + 2)
+        else:
+            answer = Prompt.ask(f"{pad}  {escape(item_label)}", console=console)
+            if not answer or not answer.strip():
+                console.print(f"{pad}  [yellow]Enter a value to add an item.[/yellow]")
+                continue
+
+            type_hint = (
+                item_type.__name__
+                if isinstance(item_type, type)
+                else str(item_type).replace("typing.", "")
+            )
+            item = _coerce_value(answer, type_hint)
+            if item is ...:
+                console.print(f"{pad}  [yellow]Invalid item; try again.[/yellow]")
+                continue
+
+        items.append(item)
+
+    return items
+
+
 def prompt_plugin_config(
     config_model: type[BaseModel],
     console: Console,
@@ -315,6 +371,20 @@ def prompt_plugin_config(
 
         if description:
             prompt_text += f" [dim]({description})[/dim]"
+
+        # Handle lists first
+        list_item_type = get_list_item_type(annotation)
+        if list_item_type is not None:
+            items = _prompt_list_items(
+                list_item_type,
+                console,
+                label=field_name,
+                indent=indent + 2,
+                required=required,
+            )
+            if items or required:
+                values[field_name] = items
+            continue
 
         # Handle nested Pydantic models
         nested_model = get_nested_model(annotation)
