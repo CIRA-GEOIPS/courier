@@ -295,8 +295,12 @@ def _prompt_list_items(
     pad = " " * indent
     items: list[Any] = []
 
+    prompt_label = f"{pad}{escape(label)}"
+    if required:
+        prompt_label += " [bold red]*[/bold red]"
+
     while Confirm.ask(
-        f"{pad}{escape(label)} "
+        f"{prompt_label} "
         f"[dim]{'Add another item?' if items else 'Add an item?'}[/dim]",
         default=required and not items,
         console=console,
@@ -396,7 +400,8 @@ def prompt_plugin_config(
                 console=console,
             ):
                 continue
-
+            if required:
+                console.print(f"{prompt_text}:")
             nested_values = prompt_plugin_config(
                 nested_model,
                 console,
