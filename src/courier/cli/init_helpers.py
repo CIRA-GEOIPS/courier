@@ -207,3 +207,11 @@ def get_list_item_type(annotation: Any) -> Any | None:
         return args[0] if args else Any
 
     return None
+
+
+def is_nullable(type_hint: Any) -> bool:
+    """Return whether an annotation accepts None."""
+
+    return get_origin(type_hint) in (Union, UnionType) and type(None) in get_args(
+        type_hint
+    )

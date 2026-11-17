@@ -23,6 +23,7 @@ from courier.cli.init_helpers import (
     get_list_item_type,
     get_nested_model,
     get_plugin_description,
+    is_nullable,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
@@ -345,6 +346,7 @@ def prompt_plugin_config(  # noqa: PLR0912
     config_model: type[BaseModel],
     console: Console,
     indent: int = 2,
+    parent_default: BaseModel | None = None,
 ) -> dict[str, Any]:
     """Prompt for each field in a plugin's Config model.
 
@@ -364,6 +366,8 @@ def prompt_plugin_config(  # noqa: PLR0912
         type_hint = field_meta["type_hint"]
         required = field_meta["required"]
         default = field_meta["default"]
+        if parent_default is not None:
+            default = getattr(parent_default, field_name, default)
         description = field_meta.get("description", "")
         annotation = field_meta["annotation"]
 
@@ -394,22 +398,23 @@ def prompt_plugin_config(  # noqa: PLR0912
         nested_model = get_nested_model(annotation)
 
         if nested_model is not None:
-            if not required and not Confirm.ask(
-                f"{prompt_text} [dim]configure?[/dim]",
-                default=False,
-                console=console,
-            ):
-                continue
+            if not required and is_nullable(annotation):
+                if not Confirm.ask(
+                    f"{prompt_text} [dim]configure?[/dim]",
+                    default=False,
+                    console=console,
+                ):
+                    continue
             if required:
                 console.print(f"{prompt_text}:")
             nested_values = prompt_plugin_config(
                 nested_model,
                 console,
                 indent=indent + 2,
+                parent_default=default if isinstance(default, nested_model) else None,
             )
 
-            if required or nested_values:
-                values[field_name] = nested_values
+            values[field_name] = nested_values
 
             continue
 
