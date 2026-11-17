@@ -6,8 +6,10 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from re import escape
 from typing import TYPE_CHECKING, Any
 
+from pydantic_core import PydanticUndefined
 import typer
 import yaml
 from rich import box
@@ -20,6 +22,7 @@ from courier.cli.init_helpers import (
     find_config_model,
     get_field_metadata,
     get_plugin_description,
+    get_nested_model,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
@@ -281,6 +284,7 @@ def prompt_metadata(console: Console) -> dict[str, str]:
 def prompt_plugin_config(
     config_model: type[BaseModel],
     console: Console,
+    indent: int = 2,
 ) -> dict[str, Any]:
     """Prompt for each field in a plugin's Config model.
 
@@ -291,7 +295,8 @@ def prompt_plugin_config(
     if not fields:
         return {}
 
-    console.print(f"  [dim]Configure {config_model.__name__}:[/dim]")
+    pad = " " * indent
+    console.print(f"{pad}[dim]Configure {config_model.__name__}:[/dim]")
     values: dict[str, Any] = {}
 
     for field_meta in fields:
@@ -300,15 +305,38 @@ def prompt_plugin_config(
         required = field_meta["required"]
         default = field_meta["default"]
         description = field_meta.get("description", "")
+        annotation = field_meta["annotation"]
+
+        prompt_text = f"{pad}  {escape(field_name)}"
 
         # Build the prompt label
         if required:
-            prompt_text = f"    {field_name} [bold red]*[/bold red]"
-        else:
-            prompt_text = f"    {field_name}"
+            prompt_text += f" [bold red]*[/bold red]"
 
         if description:
             prompt_text += f" [dim]({description})[/dim]"
+
+        # Handle nested Pydantic models
+        nested_model = get_nested_model(annotation)
+
+        if nested_model is not None:
+            if not required and not Confirm.ask(
+                f"{prompt_text} [dim]configure?[/dim]",
+                default=False,
+                console=console,
+            ):
+                continue
+
+            nested_values = prompt_plugin_config(
+                nested_model,
+                console,
+                indent=indent + 2,
+            )
+
+            if required or nested_values:
+                values[field_name] = nested_values
+
+            continue
 
         # Build default display for optional fields
         default_display: Any = ""
@@ -332,7 +360,7 @@ def prompt_plugin_config(
         if parsed is not ...:
             values[field_name] = parsed
 
-    console.print("  [dim]✓ Configuration complete[/dim]")
+    console.print(f"{pad}[dim]✓ Configuration complete[/dim]")
     return values
 
 

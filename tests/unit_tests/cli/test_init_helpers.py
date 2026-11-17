@@ -9,6 +9,7 @@ from courier.cli.init_helpers import (
     _module_config_model,
     find_config_model,
     get_field_metadata,
+    get_nested_model,
     get_plugin_description,
 )
 from courier.interfaces.payloads import Payload, PayloadConfig
@@ -179,3 +180,18 @@ class TestGetPluginDescription:
         desc = get_plugin_description(FileSystemPoller)
         # Should end with period or be one line
         assert "." in desc or "\n" not in desc
+
+
+class TestGetNestedModel:
+    """Tests for get_nested_model()."""
+
+    class TestNest(BaseModel):
+        class TestTestNest(BaseModel):
+            hey: str
+
+        nest_test: TestTestNest
+
+    assert get_nested_model(TestNest) is TestNest
+    assert get_nested_model(TestNest | None) is TestNest
+    assert get_nested_model(str) is None
+    assert get_nested_model(list[TestNest]) is None
