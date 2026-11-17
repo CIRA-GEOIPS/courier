@@ -10,13 +10,9 @@ from __future__ import annotations
 import importlib
 import inspect
 from types import UnionType
-from typing import TYPE_CHECKING, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
-
-if TYPE_CHECKING:
-    from typing import Any
-
 
 # Suffixes that some plugin class names drop in their companion Config model
 # (e.g. MetadataRouterBuilder -> MetadataRouterConfig).
@@ -185,7 +181,6 @@ def get_plugin_description(plugin_class: type) -> str:
 
 def get_nested_model(type_hint: Any) -> type[BaseModel] | None:
     """Return a nested Pydantic model, if present."""
-
     if isinstance(type_hint, type) and issubclass(type_hint, BaseModel):
         return type_hint
 

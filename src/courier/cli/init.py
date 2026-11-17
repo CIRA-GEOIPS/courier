@@ -6,11 +6,9 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import UnionType
 from re import escape
-from typing import TYPE_CHECKING, Any, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any
 
-from pydantic_core import PydanticUndefined
 import typer
 import yaml
 from rich import box
@@ -22,9 +20,9 @@ from rich.table import Table
 from courier.cli.init_helpers import (
     find_config_model,
     get_field_metadata,
-    get_plugin_description,
-    get_nested_model,
     get_list_item_type,
+    get_nested_model,
+    get_plugin_description,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
@@ -309,6 +307,8 @@ def _prompt_list_items(
         nested_list_item_type = get_list_item_type(item_type)
         nested_model = get_nested_model(item_type)
 
+        item: Any
+
         if nested_list_item_type is not None:
             console.print(f"{pad}  [dim]{escape(item_label)}:[/dim]")
             item = _prompt_list_items(
@@ -341,7 +341,7 @@ def _prompt_list_items(
     return items
 
 
-def prompt_plugin_config(
+def prompt_plugin_config(  # noqa: PLR0912
     config_model: type[BaseModel],
     console: Console,
     indent: int = 2,
@@ -371,7 +371,7 @@ def prompt_plugin_config(
 
         # Build the prompt label
         if required:
-            prompt_text += f" [bold red]*[/bold red]"
+            prompt_text += " [bold red]*[/bold red]"
 
         if description:
             prompt_text += f" [dim]({description})[/dim]"
