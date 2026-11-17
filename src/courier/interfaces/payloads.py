@@ -189,6 +189,18 @@ def _prepare_log_dir(log_dir: str) -> None:
         raise ValueError(f"log_dir is not writable: {log_dir}")
 
 
+class ToolchainItem(BaseModel):
+    """Representation of one toolchain item for context and caching."""
+
+    #: Value to be validated. If a script is provided, this is used for identification.
+    value: str
+    #: Script to be executed for validation.
+    #: Defaults to `command -v [value]` after initialization.
+    script: str = Field(default="")
+    #: An expected output for the validation to produce.
+    expected_output: str | None = None
+
+
 class PayloadConfig(BaseModel):
     """Validated configuration for a payload.
 
@@ -202,10 +214,7 @@ class PayloadConfig(BaseModel):
     script: str | None = None
     #: Executables the dispatcher probes for on its own host before it runs a
     #: job (a success is cached); a missing one parks the job as unexecutable.
-    toolchain: list[str] = Field(default_factory=list)
-    #: Arguments python_payload puts in front of the interpreter in each
-    #: ``toolchain`` probe; never part of the job's command.
-    toolchain_prepend: list[str] = Field(default_factory=list)
+    toolchain: list[ToolchainItem]
     prefix_args: list[str] = Field(default_factory=list)
     suffix_args: list[str] = Field(default_factory=list)
     binary: str | None = None
