@@ -6,6 +6,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from re import escape
 from typing import TYPE_CHECKING, Any
 
 import typer
@@ -19,7 +20,10 @@ from rich.table import Table
 from courier.cli.init_helpers import (
     find_config_model,
     get_field_metadata,
+    get_list_item_type,
+    get_nested_model,
     get_plugin_description,
+    is_nullable,
 )
 from courier.cli.plugins import KIND_INFO, PLUGIN_REGISTRIES, normalize_kind
 from courier.schema.v1alpha1.service_config import ServiceConfigModel
@@ -278,9 +282,71 @@ def prompt_metadata(console: Console) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def prompt_plugin_config(
+def _prompt_list_items(
+    item_type: Any,
+    console: Console,
+    *,
+    label: str,
+    indent: int,
+    required: bool = False,
+) -> list[Any]:
+    """Prompt repeatedly for list elements."""
+    pad = " " * indent
+    items: list[Any] = []
+
+    prompt_label = f"{pad}{escape(label)}"
+    if required:
+        prompt_label += " [bold red]*[/bold red]"
+
+    while Confirm.ask(
+        f"{prompt_label} "
+        f"[dim]{'Add another item?' if items else 'Add an item?'}[/dim]",
+        default=required and not items,
+        console=console,
+    ):
+        item_label = f"{label}[{len(items) + 1}]"
+        nested_list_item_type = get_list_item_type(item_type)
+        nested_model = get_nested_model(item_type)
+
+        item: Any
+
+        if nested_list_item_type is not None:
+            console.print(f"{pad}  [dim]{escape(item_label)}:[/dim]")
+            item = _prompt_list_items(
+                nested_list_item_type,
+                console,
+                label=item_label,
+                indent=indent + 2,
+            )
+        elif nested_model is not None:
+            console.print(f"{pad}  [dim]{escape(item_label)}:[/dim]")
+            item = prompt_plugin_config(nested_model, console, indent=indent + 2)
+        else:
+            answer = Prompt.ask(f"{pad}  {escape(item_label)}", console=console)
+            if not answer or not answer.strip():
+                console.print(f"{pad}  [yellow]Enter a value to add an item.[/yellow]")
+                continue
+
+            type_hint = (
+                item_type.__name__
+                if isinstance(item_type, type)
+                else str(item_type).replace("typing.", "")
+            )
+            item = _coerce_value(answer, type_hint)
+            if item is ...:
+                console.print(f"{pad}  [yellow]Invalid item; try again.[/yellow]")
+                continue
+
+        items.append(item)
+
+    return items
+
+
+def prompt_plugin_config(  # noqa: PLR0912
     config_model: type[BaseModel],
     console: Console,
+    indent: int = 2,
+    parent_default: BaseModel | None = None,
 ) -> dict[str, Any]:
     """Prompt for each field in a plugin's Config model.
 
@@ -291,7 +357,8 @@ def prompt_plugin_config(
     if not fields:
         return {}
 
-    console.print(f"  [dim]Configure {config_model.__name__}:[/dim]")
+    pad = " " * indent
+    console.print(f"{pad}[dim]Configure {config_model.__name__}:[/dim]")
     values: dict[str, Any] = {}
 
     for field_meta in fields:
@@ -299,16 +366,60 @@ def prompt_plugin_config(
         type_hint = field_meta["type_hint"]
         required = field_meta["required"]
         default = field_meta["default"]
+        if parent_default is not None:
+            default = getattr(parent_default, field_name, default)
         description = field_meta.get("description", "")
+        annotation = field_meta["annotation"]
+
+        prompt_text = f"{pad}  {escape(field_name)}"
 
         # Build the prompt label
         if required:
-            prompt_text = f"    {field_name} [bold red]*[/bold red]"
-        else:
-            prompt_text = f"    {field_name}"
+            prompt_text += " [bold red]*[/bold red]"
 
         if description:
             prompt_text += f" [dim]({description})[/dim]"
+
+        # Handle lists first
+        list_item_type = get_list_item_type(annotation)
+        if list_item_type is not None:
+            items = _prompt_list_items(
+                list_item_type,
+                console,
+                label=field_name,
+                indent=indent + 2,
+                required=required,
+            )
+            if items or required:
+                values[field_name] = items
+            continue
+
+        # Handle nested Pydantic models
+        nested_model = get_nested_model(annotation)
+
+        if nested_model is not None:
+            if (
+                not required
+                and is_nullable(annotation)
+                and not Confirm.ask(
+                    f"{prompt_text} [dim]configure?[/dim]",
+                    default=False,
+                    console=console,
+                )
+            ):
+                continue
+            if required:
+                console.print(f"{prompt_text}:")
+            nested_values = prompt_plugin_config(
+                nested_model,
+                console,
+                indent=indent + 2,
+                parent_default=default if isinstance(default, nested_model) else None,
+            )
+
+            values[field_name] = nested_values
+
+            continue
 
         # Build default display for optional fields
         default_display: Any = ""
@@ -332,7 +443,7 @@ def prompt_plugin_config(
         if parsed is not ...:
             values[field_name] = parsed
 
-    console.print("  [dim]✓ Configuration complete[/dim]")
+    console.print(f"{pad}[dim]✓ Configuration complete[/dim]")
     return values
 
 

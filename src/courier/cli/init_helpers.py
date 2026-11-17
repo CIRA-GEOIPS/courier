@@ -9,13 +9,10 @@ from __future__ import annotations
 
 import importlib
 import inspect
-from typing import TYPE_CHECKING
+from types import UnionType
+from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
-
-if TYPE_CHECKING:
-    from typing import Any
-
 
 # Suffixes that some plugin class names drop in their companion Config model
 # (e.g. MetadataRouterBuilder -> MetadataRouterConfig).
@@ -115,6 +112,7 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
       produce it), or ``...`` sentinel if required
     * ``description`` — field description string (``""`` when absent)
     * ``required`` — ``True`` when the field has no default
+    * ``annotation`` - Field type provided by its annotation.
     """
     fields: list[dict[str, Any]] = []
 
@@ -153,6 +151,7 @@ def get_field_metadata(model: type[BaseModel]) -> list[dict[str, Any]]:
                 "default": default,
                 "description": description,
                 "required": required,
+                "annotation": annotation,
             },
         )
 
@@ -178,3 +177,40 @@ def get_plugin_description(plugin_class: type) -> str:
             return doc[: i + 1].strip()
 
     return doc.strip()
+
+
+def get_nested_model(type_hint: Any) -> type[BaseModel] | None:
+    """Return a nested Pydantic model, if present."""
+    if isinstance(type_hint, type) and issubclass(type_hint, BaseModel):
+        return type_hint
+
+    if get_origin(type_hint) in (Union, UnionType):
+        args = [arg for arg in get_args(type_hint) if arg is not type(None)]
+
+        if len(args) == 1:
+            return get_nested_model(args[0])
+
+    return None
+
+
+def get_list_item_type(annotation: Any) -> Any | None:
+    """Get the element annotation for a `list` item."""
+    origin = get_origin(annotation)
+
+    if origin in (Union, UnionType):
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(non_none) == 1:
+            return get_list_item_type(non_none[0])
+
+    if annotation is list or origin is list:
+        args = get_args(annotation)
+        return args[0] if args else Any
+
+    return None
+
+
+def is_nullable(type_hint: Any) -> bool:
+    """Return whether an annotation accepts None."""
+    return get_origin(type_hint) in (Union, UnionType) and type(None) in get_args(
+        type_hint,
+    )
