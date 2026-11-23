@@ -74,7 +74,7 @@ pytest-xdist = { version = "*", optional = true }
 pytest-mock = { version = "*", optional = true }
 types-pyyaml = { version = "*", optional = true }
 types-dateparser = { version = "*", optional = true }
-fakeredis = { version = "*", optional = true }
+fakeredis = { version = "*", extras=["lua"], optional = true }
 hypothesis = { version = "*", optional = true }
 mutmut = { version = "*", optional = true }
 # Named in the extras below. Without a declaration here the build backend

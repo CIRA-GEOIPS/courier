@@ -18,6 +18,7 @@ from courier.plugins.job_builders.file_count_builder import (
     FileCountJobGroup,
 )
 from courier.schema.v1alpha1.sync_config import RedisStateSyncConfig
+from concurrent.futures import ThreadPoolExecutor
 from courier.sync.job_builder_state_sync import JobBuilderStateSync
 from courier.types.datum import FrozenDatum
 from courier.types.job import Job, JobGroup
@@ -556,7 +557,21 @@ class TestThreadSafety:
 
 
 class TestHighAvailability:
-    """Tests for recovering incomplete jobs after builder failure."""
+    """Tests for high-availability edge-cases."""
+
+    def test_redis_lua_support(self) -> None:
+        """Verify fakeredis has lua support for this testing environment."""
+        client = fakeredis.FakeRedis(decode_responses=True)
+
+        assert client.eval("return 42", 0) == 42
+
+        result = client.eval(
+            "return cjson.encode(cjson.decode(ARGV[1]))",
+            0,
+            '{"files":[1,2]}',
+        )
+
+        assert json.loads(result) == {"files": [1, 2]}
 
     def test_partial_job_survives_builder_crash(self) -> None:
         """A replacement builder recovers 2/4 files and recovers with 4/4."""
@@ -604,3 +619,48 @@ class TestHighAvailability:
         raw = b._require_client().hget(b._hash_key(group_b.name), "job-1")
 
         assert isinstance(raw, str)
+
+    def test_concurrent_writes_preserve_all_files(self) -> None:
+        """Two replicas writing jobs concurrently must not lose either file."""
+
+        server = fakeredis.FakeServer()
+
+        a = _sync(builder_name="shared-builder", server=server)
+        b = _sync(builder_name="shared-builder", server=server)
+
+        def push(sync, job, barrier):
+            barrier.wait(timeout=5)
+            sync.push_job_update("g1", job.identifier, job)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            for i in range(50):
+                job_id = f"race-{i}"
+
+                job_a = _make_job(job_id)
+                job_a.files = _make_files(1, 2)
+
+                job_b = _make_job(job_id)
+                job_b.files = _make_files(3, 4)
+
+                barrier = threading.Barrier(2)
+
+                fa = pool.submit(push, a, job_a, barrier)
+                fb = pool.submit(push, b, job_b, barrier)
+
+                fa.result(timeout=10)
+                fb.result(timeout=10)
+
+                assert (
+                    not a._scripting_unavailable
+                ), "Builder A fell back to non-atomic HSET"
+                assert (
+                    not b._scripting_unavailable
+                ), "Builder B fell back to non-atomic HSET"
+
+                raw = a._require_client().hget(a._hash_key("g1"), job_id)
+
+                assert isinstance(raw, str)
+
+                recovered = Job.from_string(raw)
+
+                assert recovered.files == _make_files(1, 2, 3, 4)
