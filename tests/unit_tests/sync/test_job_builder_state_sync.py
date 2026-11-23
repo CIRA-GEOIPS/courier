@@ -13,10 +13,16 @@ import fakeredis
 import pytest
 
 from courier.errors import StateSyncConnectionError
+from courier.plugins.job_builders.file_count_builder import (
+    FileCountBuilderConfig,
+    FileCountJobGroup,
+)
 from courier.schema.v1alpha1.sync_config import RedisStateSyncConfig
+from concurrent.futures import ThreadPoolExecutor
 from courier.sync.job_builder_state_sync import JobBuilderStateSync
 from courier.types.datum import FrozenDatum
 from courier.types.job import Job, JobGroup
+from tests.unit_tests.plugins.conftest import make_file
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,14 +31,17 @@ from courier.types.job import Job, JobGroup
 _CFG = RedisStateSyncConfig()  # all defaults
 
 
-def _sync(builder_name: str = "test-builder") -> JobBuilderStateSync:
+def _sync(
+    builder_name: str = "test-builder", server: fakeredis.FakeServer | None = None
+) -> JobBuilderStateSync:
     """Return a JobBuilderStateSync connected to an in-process fake Redis."""
     s = JobBuilderStateSync(
         config=_CFG,
         namespace="test-ns",
         builder_name=builder_name,
     )
-    server = fakeredis.FakeServer()
+    if server is None:
+        server = fakeredis.FakeServer()
     fake_client = fakeredis.FakeRedis(server=server, decode_responses=True)
     fake_pubsub = fake_client.pubsub(ignore_subscribe_messages=True)
     s._client = fake_client
@@ -63,6 +72,21 @@ def _make_job(
     if last_modified is not None:
         j.last_modified = last_modified
     return j
+
+
+def _make_files(*numbers: int) -> set[FrozenDatum]:
+    """Create distinct synthetic file datums."""
+    return {
+        FrozenDatum(
+            file=None,
+            hostname=f"host-{n}",
+            source=None,
+            instrument=None,
+            processing_stage=None,
+            domain=None,
+        )
+        for n in numbers
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -525,3 +549,118 @@ class TestThreadSafety:
         order.append("merged")
         holder.join()
         assert order == ["locked", "released", "merged"]
+
+
+# ---------------------------------------------------------------------------
+# High availability: Test job security on builder crash
+# ---------------------------------------------------------------------------
+
+
+class TestHighAvailability:
+    """Tests for high-availability edge-cases."""
+
+    def test_redis_lua_support(self) -> None:
+        """Verify fakeredis has lua support for this testing environment."""
+        client = fakeredis.FakeRedis(decode_responses=True)
+
+        assert client.eval("return 42", 0) == 42
+
+        result = client.eval(
+            "return cjson.encode(cjson.decode(ARGV[1]))",
+            0,
+            '{"files":[1,2]}',
+        )
+
+        assert json.loads(result) == {"files": [1, 2]}
+
+    def test_partial_job_survives_builder_crash(self) -> None:
+        """A replacement builder recovers 2/4 files and recovers with 4/4."""
+        server = fakeredis.FakeServer()
+
+        # buider A gets the first two files
+        a = _sync(server=server)
+        builder_config = FileCountBuilderConfig(
+            files_per_job=4, job_name_template="job-1"
+        )  # name `file_count_builder`
+        group_a = FileCountJobGroup(builder_config)
+
+        for file in _make_files(1, 2):
+            assert group_a.add_file(file)
+            a.push_job_update(group_a.name, "job-1", group_a.jobs["job-1"])
+
+        assert len(group_a.jobs["job-1"].files) == 2
+        assert not group_a.jobs["job-1"].ready()
+
+        # builder A goes down
+        a.stop()
+        del a, group_a
+
+        b = _sync(server=server)
+        group_b = FileCountJobGroup(builder_config)
+
+        b._job_groups = [group_b]
+        b._group_locks = {group_b.name: threading.Lock()}
+
+        b.load_remote_state()
+
+        recovered = group_b.jobs["job-1"]
+        assert recovered.files == _make_files(1, 2)
+        assert not recovered.ready()
+
+        for file in _make_files(3, 4):
+            assert group_b.add_file(file)
+            b.push_job_update(group_b.name, "job-1", group_b.jobs["job-1"])
+
+        assert group_b.jobs["job-1"] is recovered
+
+        assert recovered.files == _make_files(1, 2, 3, 4)
+        assert recovered.ready()
+
+        raw = b._require_client().hget(b._hash_key(group_b.name), "job-1")
+
+        assert isinstance(raw, str)
+
+    def test_concurrent_writes_preserve_all_files(self) -> None:
+        """Two replicas writing jobs concurrently must not lose either file."""
+
+        server = fakeredis.FakeServer()
+
+        a = _sync(builder_name="shared-builder", server=server)
+        b = _sync(builder_name="shared-builder", server=server)
+
+        def push(sync, job, barrier):
+            barrier.wait(timeout=5)
+            sync.push_job_update("g1", job.identifier, job)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            for i in range(50):
+                job_id = f"race-{i}"
+
+                job_a = _make_job(job_id)
+                job_a.files = _make_files(1, 2)
+
+                job_b = _make_job(job_id)
+                job_b.files = _make_files(3, 4)
+
+                barrier = threading.Barrier(2)
+
+                fa = pool.submit(push, a, job_a, barrier)
+                fb = pool.submit(push, b, job_b, barrier)
+
+                fa.result(timeout=10)
+                fb.result(timeout=10)
+
+                assert (
+                    not a._scripting_unavailable
+                ), "Builder A fell back to non-atomic HSET"
+                assert (
+                    not b._scripting_unavailable
+                ), "Builder B fell back to non-atomic HSET"
+
+                raw = a._require_client().hget(a._hash_key("g1"), job_id)
+
+                assert isinstance(raw, str)
+
+                recovered = Job.from_string(raw)
+
+                assert recovered.files == _make_files(1, 2, 3, 4)
