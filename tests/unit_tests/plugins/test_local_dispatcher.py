@@ -381,5 +381,5 @@ class TestTempScripts:
 
         assert logs[0].return_code == 0, logs[0].stderr
         script, argument = logs[0].stdout.split()
-        assert Path(script).parent == directory
+        assert Path(script).parent.parent == directory
         assert argument == "1"

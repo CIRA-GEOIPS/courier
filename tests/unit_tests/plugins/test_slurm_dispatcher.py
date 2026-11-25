@@ -427,7 +427,7 @@ class TestBatchScriptSubmission:
         env = _prepare(dispatcher, job)
 
         assert env.file is not None
-        assert env.file.parent == output_dir / "slurm"
+        assert env.file.parent.parent == output_dir / "slurm"
         assert env.command[_options_end(env.command) :] == [str(env.file), "42"]
 
     def test_existing_shebang_is_kept(self, service: MagicMock, tmp_path: Path) -> None:
@@ -608,7 +608,9 @@ class TestScriptFiles:
         env = _prepare(dispatcher, wire_job(service, {"script": "echo hi"}))
 
         assert env.file is not None
-        assert env.file.parent == dispatcher._output_dir
+        assert env.payload_dir is not None
+        assert env.file.parent == env.payload_dir
+        assert env.payload_dir.parent == dispatcher._output_dir
         assert env.file.name.startswith("job-1-")
         assert stat.S_IMODE(env.file.stat().st_mode) == 0o755  # noqa: PLR2004
         assert list(private_tmpdir.iterdir()) == []
@@ -661,18 +663,29 @@ class TestScriptFiles:
         """Even a symlink planted at the exact random name is never written through."""
         victim = tmp_path / "victim"
         victim.write_text("precious\n")
+
         dispatcher = _dispatcher(service, tmp_path)
         dispatcher._output_dir.mkdir(parents=True)
+
         (dispatcher._output_dir / "job-1-planted.sh").symlink_to(victim)
+
         monkeypatch.setattr(
             tempfile,
             "_get_candidate_names",
             lambda: iter(["planted", "fresh"]),
         )
 
-        env = _prepare(dispatcher, wire_job(service, {"script": "echo hi"}))
+        job = wire_job(service, {"script": "echo hi"})
+        payload = dispatcher._resolve_job_payload(job)
 
-        assert env.file == dispatcher._output_dir / "job-1-fresh.sh"
+        script_path, _ = dispatcher._materialize_script(
+            job,
+            payload,
+            directory=dispatcher._output_dir,
+            prefix="job-1-",
+        )
+
+        assert script_path == dispatcher._output_dir / "job-1-fresh.sh"
         assert victim.read_text() == "precious\n"
 
     def test_command_render_failure_removes_the_script(

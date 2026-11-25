@@ -1107,7 +1107,11 @@ class TestScriptMaterialization:
         dispatcher = _Submitting(service, {}, identifier="mat")
         dispatcher.execute(_script_job("echo hi"))
 
-        (kept,) = private_tmpdir.iterdir()
+        (payload_dir,) = private_tmpdir.iterdir()
+        assert payload_dir.is_dir()
+
+        (kept,) = payload_dir.iterdir()
+        assert kept.is_file()
         assert kept.read_text() == "echo hi"
         kept.unlink()
 
