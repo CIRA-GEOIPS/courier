@@ -221,6 +221,56 @@ class TestDispatcherFunctionality:
             ANY,
         ]
 
+    def test_initialize_environment_with_preliminary_file(
+        self, docker_client, _job, tmp_path: Path
+    ) -> None:
+        docker_client.images.list.return_value = [object()]
+
+        service = Service()
+        config = {
+            "image": "alpine",
+        }
+        id = "dummy-dispatcher"
+
+        helper = tmp_path / "helper.py"
+        helper.write_text("print('hi')")
+
+        plugin = DockerDispatcher(service, config, id)
+        payload = ShellPayload(
+            service=service,
+            config={"script": "echo 'hi'", "prerequisite_files": [str(helper)]},
+            identifier="dummy-payload",
+        )
+
+        job = _job
+        job.payload = PayloadSpec(
+            name=payload.name,
+            identifier=id,
+            config=payload.config.model_dump(
+                mode="json",
+                exclude={"script"},
+            ),
+            script="echo 'hi'",
+            suffix=payload.file_suffix,
+            defer_nonce="",
+        )
+
+        payload = plugin.initialize_environment(job, payload)
+
+        assert payload is not None
+        assert isinstance(payload, ExecutionPayload)
+        assert payload.command == [
+            "docker",
+            "run",
+            "-v",
+            f"{payload.payload_dir}:{Path("/courier/script")}",
+            "-v",
+            "/data/a.nc:/data/a.nc:ro",
+            "alpine:latest",
+            "sh",
+            ANY,
+        ]
+
     def test_validate_payload_toolchain(self, docker_client):
         """The docker dispatcher should prepend `docker run {container} to the toolchain validation.`"""
         docker_client.images.list.return_value = [object()]
