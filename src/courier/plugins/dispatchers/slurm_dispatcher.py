@@ -9,6 +9,7 @@ import re
 import shlex
 import shutil
 import socket
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -434,24 +435,30 @@ class SlurmDispatcher(Dispatcher):
             A :class:`SlurmSubmission`: the ``sbatch`` command and the script.
         """
         self._output_dir.mkdir(parents=True, exist_ok=True)
-        script_path, context = self._materialize_script(
-            job,
-            payload,
-            directory=self._output_dir,
-            prefix=f"{slugify_for_filename(job.identifier)}-",
+        payload_dir = Path(
+            tempfile.mkdtemp(
+                prefix=f"{slugify_for_filename(job.identifier)}", dir=self._output_dir,
+            ),
         )
         try:
+            self._materialize_prerequisite_files(payload, payload_dir)
+            script_path, context = self._materialize_script(
+                job,
+                payload,
+                directory=payload_dir,
+                prefix=f"{slugify_for_filename(job.identifier)}-",
+            )
             command = [
                 *self._build_sbatch_args(job),
                 *self._job_arguments(job, payload, script_path, context),
             ]
         except BaseException:
-            if script_path is not None:
-                self._discard_script(script_path)
+            self._discard_payload_dir(payload_dir)
             raise
         self._logger.debug(f"Generated slurm command: {command}")
         return SlurmSubmission(
             command=command,
+            payload_dir=payload_dir,
             file=script_path,
             reads_script_at_run=(
                 script_path is not None and not self._submits_batch_script(job, payload)

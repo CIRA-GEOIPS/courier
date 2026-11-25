@@ -199,6 +199,7 @@ class PayloadConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     file: Path | None = None
+    prerequisite_files: list[Path] = Field(default_factory=list)
     script: str | None = None
     #: Executables the dispatcher probes for on its own host before it runs a
     #: job (a success is cached); a missing one parks the job as unexecutable.
@@ -233,6 +234,23 @@ class PayloadConfig(BaseModel):
         context = info.context or {}
         if value is not None and not context.get("hydrating") and not value.exists():
             raise ValueError(f"File does not exist: {value}")
+        return value
+
+    @field_validator("prerequisite_files")
+    @classmethod
+    def validate_prerequisite_files(
+        cls,
+        value: list[Path],
+        info: ValidationInfo,
+    ) -> list[Path]:
+        """Require all prerequisite files to exist, except hydrating a job spec."""
+        if (info.context or {}).get("hydrating"):
+            return value
+
+        for path in value:
+            if path is not None and not path.exists():
+                raise ValueError(f"Prerequisite file does not exist: {path}")
+
         return value
 
     @model_validator(mode="after")

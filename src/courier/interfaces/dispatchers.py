@@ -7,6 +7,7 @@ import contextvars
 import math
 import os
 import queue
+import shutil
 import tempfile
 import threading
 import time
@@ -131,7 +132,8 @@ class ExecutionPayload:
     """
 
     command: list[str]
-    file: Path | None
+    file: Path | None = None
+    payload_dir: Path | None = None
     log_prefix: str = ""
     log_file_path: Path | None = None
     keep_file: bool = False
@@ -262,8 +264,8 @@ class Dispatcher(ServicePlugin):
                 self._logger.debug(f"Yielding execution log for job: {job}")
                 logs = self._execute_job(job, payload, env)
             finally:
-                if env.file is not None and not env.keep_file:
-                    self._discard_script(env.file)
+                if env.payload_dir is not None and not env.keep_file:
+                    self._discard_payload_dir(env.payload_dir)
             self._report_failed_runs(job, logs)
             return logs
 
@@ -462,6 +464,7 @@ class Dispatcher(ServicePlugin):
         payload: Payload,
         directory: Path | str | None = None,
         prefix: str = "courier-",
+        runtime_directory: Path | None = None,
     ) -> tuple[Path | None, dict[str, Any]]:
         """Resolve the job's script (pass two) into a new private file.
 
@@ -475,9 +478,16 @@ class Dispatcher(ServicePlugin):
             The script path (``None`` when the job carries no script) and the
             dispatcher context it was resolved with.
         """
+        runtime_directory = (
+            runtime_directory
+            if runtime_directory is not None
+            else Path(directory or tempfile.gettempdir()).absolute()
+        )
         spec = job.payload
         if spec is None or spec.script is None:
-            return None, self._dispatcher_context(None)
+            context = self._dispatcher_context(None)
+            context["payload_dir"] = str(runtime_directory)
+            return None, context
         fd, name = tempfile.mkstemp(
             suffix=spec.suffix,
             prefix=prefix,
@@ -485,7 +495,10 @@ class Dispatcher(ServicePlugin):
         )
         path = Path(name)
         try:
-            context = self._dispatcher_context(path)
+            runtime_path = runtime_directory / path.name
+
+            context = self._dispatcher_context(runtime_path)
+            context["payload_dir"] = str(runtime_directory)
             resolved = payload.resolve_deferred_expressions(
                 spec.script,
                 job,
@@ -504,6 +517,18 @@ class Dispatcher(ServicePlugin):
             self._discard_script(path)
             raise
         return path, context
+
+    def _materialize_prerequisite_files(
+        self, payload: Payload, directory: Path,
+    ) -> None:
+        """Copy prerequisite files into the payload directory."""
+        for source in payload.config.prerequisite_files:
+            destination = directory / source.name
+
+            if destination.exists():
+                raise FileExistsError(f"Duplicate prerequisite filename: {source.name}")
+
+            shutil.copy2(source, destination)
 
     def _finalize_script_text(
         self,
@@ -574,16 +599,20 @@ class Dispatcher(ServicePlugin):
         ExecutionPayload
             Command, script and logging metadata for :meth:`_execute_job`.
         """
-        script_path, context = self._materialize_script(job, payload)
+        payload_dir = Path(tempfile.mkdtemp(prefix="courier-"))
         try:
+            self._materialize_prerequisite_files(payload, payload_dir)
+            script_path, context = self._materialize_script(
+                job, payload, directory=payload_dir,
+            )
             command = self._render_command(job, payload, script_path, context)
             log_prefix, log_file_path = self._log_destination(job)
         except BaseException:
-            if script_path is not None:
-                self._discard_script(script_path)
+            self._discard_payload_dir(payload_dir)
             raise
         return ExecutionPayload(
             command=command,
+            payload_dir=payload_dir,
             file=script_path,
             log_prefix=log_prefix,
             log_file_path=log_file_path,
@@ -1050,6 +1079,15 @@ class Dispatcher(ServicePlugin):
                 self.name,
             ),
         }
+
+    def _discard_payload_dir(self, path: Path) -> None:
+        """Delete a materialized payload directory; log cleanup failures."""
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            self._logger.warning(f"Could not remove payload directory {path}: {exc}")
 
 
 dispatchers = ClassPluginRegistry(

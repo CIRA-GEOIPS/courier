@@ -334,9 +334,11 @@ def _dispatcher(
 
 def _scripts(out_dir: Path) -> list[Path]:
     """Return the job scripts (not Slurm output files) in *out_dir*."""
-    if not out_dir.exists():
-        return []
-    return sorted(p for p in out_dir.iterdir() if p.suffix not in {".out", ".err"})
+    return sorted(
+        path
+        for path in out_dir.rglob("*")
+        if path.is_file() and path.suffix in {".sh", ".py"}
+    )
 
 
 def _sample(name: str, **labels: str) -> float:
@@ -541,7 +543,7 @@ class TestWrappedJobs:
         assert submitted["script"] is None
         argv = shlex.split(submitted["wrap"])
         assert argv[0] == sys.executable
-        assert Path(argv[1]).parent == out_dir
+        assert Path(argv[1]).parent.parent == out_dir
         assert argv[2:] == ["x", "y z"]
         assert log.return_code == 0, log.stderr
         assert log.stdout == "job-1 ['x', 'y z']\n"
@@ -608,7 +610,7 @@ class TestWrappedJobs:
         assert submitted["script"] is None
         argv = shlex.split(submitted["wrap"])
         assert argv[:5] == ["sh", "-c", RUN_ARGV_SCRIPT, "sh", "bash"]
-        assert Path(argv[5]).parent == out_dir
+        assert Path(argv[5]).parent.parent == out_dir
         assert log.return_code == 0, log.stderr
         assert log.stdout == "bash\n"
 

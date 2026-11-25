@@ -1,5 +1,6 @@
 """Deploys docker for a specified payload."""
 
+import tempfile
 from pathlib import Path
 from typing import ClassVar, cast
 
@@ -148,38 +149,43 @@ class DockerDispatcher(Dispatcher):
     def initialize_environment(self, job: Job, payload: Payload) -> ExecutionPayload:
         """Initialize the docker command to run and mount the temporary script."""
         # gracefully set the jobs to be valid in the container's environment
-        script_path, context = self._materialize_script(job, payload)
-        docker_script_path = None
-        docker_mount_str = None
-        if script_path is not None:
-
-            normalized_script_path = Path(script_path or "").resolve()
-            filename = normalized_script_path.name
-            docker_script_path = Path(f"{self._mount_point}/script/{filename}")
-
-            docker_mount_str = f"{normalized_script_path}:{docker_script_path}"
-        job_volumes = [
-            f"{Path(f.file).absolute()}:{Path(f.file).absolute()}:ro"
-            for f in job.files
-            if f.file
-        ]
+        payload_dir = Path(tempfile.mkdtemp(prefix="courier-")).resolve()
         try:
+            self._materialize_prerequisite_files(payload, payload_dir)
+            docker_payload_dir = Path(self._mount_point) / "script"
+            script_path, context = self._materialize_script(
+                job,
+                payload,
+                directory=payload_dir,
+                runtime_directory=docker_payload_dir,
+            )
+            docker_script_path = (
+                docker_payload_dir / script_path.name
+                if script_path is not None
+                else None
+            )
+            docker_mount_str = f"{payload_dir}:{docker_payload_dir}"
+            job_volumes = [
+                f"{Path(f.file).absolute()}:{Path(f.file).absolute()}:ro"
+                for f in job.files
+                if f.file
+            ]
             command = [
                 *self._build_docker_args(
-                    [*([docker_mount_str] if docker_mount_str else []), *job_volumes],
+                    [docker_mount_str, *job_volumes],
                 ),
                 *self._render_command(job, payload, docker_script_path, context),
             ]
             log_prefix, log_file_path = self._log_destination(job)
         except BaseException:
-            if script_path is not None:
-                self._discard_script(script_path)
+            self._discard_payload_dir(payload_dir)
             raise
 
         self._logger.debug(f"Generated docker command: {command}")
         return ExecutionPayload(
             command=command,
             file=script_path,
+            payload_dir=payload_dir,
             log_prefix=log_prefix,
             log_file_path=log_file_path,
         )
